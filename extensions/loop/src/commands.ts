@@ -354,15 +354,36 @@ export namespace Loop {
 	/**
 	 * Refuses `loop.harnesses` args with no command once the layers have merged: `Harnesses.resolve`
 	 * would put them after the adapter's `npx`, with no adapter. Each layer alone may hold either.
+	 * Refuses a command that is not there too, a bare name off PATH or a path relative to the
+	 * project: every session would fail to spawn, and the run would stall only after its attempts.
 	 */
-	const launchable = (config: LoopConfig.Config): Result<void> => {
-		for (const [id, launch] of Object.entries(config.harnesses))
-			if (launch.args !== undefined && launch.command === undefined)
+	const launchable = (
+		config: LoopConfig.Config,
+		projectDir: string,
+	): Result<void> => {
+		for (const [id, launch] of Object.entries(config.harnesses)) {
+			const key = `loop.harnesses.${id}`;
+			const fix = `in the layer \`kabane config get loop.harnesses --layers\` names`;
+			const { command } = launch;
+			if (command === undefined) {
+				if (launch.args !== undefined)
+					return err(
+						new Error(
+							`${key}.args is set with no ${key}.command, so ${id} would run npx with those arguments and no adapter: set the command beside them, or unset them, ${fix}`,
+						),
+					);
+				continue;
+			}
+			const found = command.includes("/")
+				? existsSync(resolve(projectDir, command))
+				: Bun.which(command) !== null;
+			if (!found)
 				return err(
 					new Error(
-						`loop.harnesses.${id}.args is set with no loop.harnesses.${id}.command, so ${id} would run npx with those arguments and no adapter: set the command beside them, or unset them, in the layer \`kabane config get loop.harnesses --layers\` names`,
+						`${key}.command ${command} is ${command.includes("/") ? "not there" : "not on PATH"}, so no ${id} session could start: correct or unset it ${fix}`,
 					),
 				);
+		}
 		return ok(undefined);
 	};
 
@@ -404,7 +425,7 @@ export namespace Loop {
 			},
 		);
 		if (!config.ok) return config;
-		const launches = launchable(config.value);
+		const launches = launchable(config.value, projectDir.value);
 		if (!launches.ok) return launches;
 		// Whether there is anything to do depends on the config: checks can run on done work.
 		const checked = await checkParent(

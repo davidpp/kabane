@@ -471,7 +471,7 @@ describe("kabane loop advise", () => {
 									codex: { frontier: "gpt-5.5" },
 								},
 								harnesses: {
-									codex: { command: "/opt/codex-acp", args: ["--local"] },
+									codex: { command: "/bin/echo", args: ["--local"] },
 								},
 							},
 						},
@@ -488,7 +488,7 @@ describe("kabane loop advise", () => {
 		);
 		expect([lines[1], ...lines.slice(3, 10)]).toEqual([
 			"  implementer claude  model unset  tiers frontier, balanced, fast",
-			"  codex launches /opt/codex-acp --local (loop.harnesses.codex)",
+			"  codex launches /bin/echo --local (loop.harnesses.codex)",
 			"advised:",
 			`  budget.concurrency 1 (now 1, the default in a shared tree): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
 			'  gates test="bun run test" (now none): package.json scripts, using bun from the lockfile',
@@ -570,6 +570,22 @@ describe("kabane loop advise", () => {
 			expect(taken.text).toContain(
 				"  claude launches /bin/echo --verbose (loop.harnesses.claude)",
 			);
+		});
+
+		it("refuses a command that is not there, by path or on PATH", async () => {
+			for (const [command, why] of [
+				["/nonexistent/acp", "not there"],
+				["no-such-acp-adapter", "not on PATH"],
+			] as const) {
+				const refused = await adviseUnder({
+					layer: "local",
+					value: { harnesses: { gemini: { command } } },
+				});
+				expect(refused.exitCode).not.toBe(0);
+				expect(refused.text).toContain(
+					`loop.harnesses.gemini.command ${command} is ${why}, so no gemini session could start`,
+				);
+			}
 		});
 	});
 });
