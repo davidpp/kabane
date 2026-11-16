@@ -399,19 +399,35 @@ It can also:
   (`/linear`, `/github`). The harness needs a Linear MCP server or `gh` access, respectively; a
   missing one is reported rather than worked around. Kabane holds no provider credentials and
   makes no network call of its own.
-- Explain commands and board keys, change Kabane settings, or enable an official extension
+- Explain commands and board keys, change Kabane settings, or enable an installed extension
   (`/setup`). A device setting, enabling an extension included, applies once the board restarts;
   an extension's own setting (`loop.*`) applies the next time it is read, with no restart.
-  Enabling loop does not start a run.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
   the `auto` fixes unasked, waits for a yes on the rest, follows a `route`, and hands you the
   command for a harness MCP entry instead of rewriting it.
-- Start a loop run when asked, such as “run this issue with codex”, with the loop extension
-  enabled. A run handles a single issue or a parent's subtasks; follow it in its board tab.
+- Follow the procedures an enabled extension adds. The loop's procedures let it start a run
+  when asked, such as “run this issue with codex”, and set one up from `kabane loop advise`. A
+  run handles a single issue or a parent's subtasks; follow it in its board tab.
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
+
+Kabane's own instructions name no extension. An enabled extension loaded from
+`$KABANE_HOME/extensions/<name>/` adds to them with markdown files in that directory:
+
+- `copilot/procedures/<name>.md`, with frontmatter `title`. Its body is appended after kabane's
+  own instructions, under a heading naming the extension, and cannot replace or reorder them.
+- `copilot/shortcuts/<name>.md`, with frontmatter `hint`. Its body, one line, is the template
+  `/<name>` drops into the prompt. The `/` list shows the built-in shortcuts first, then these.
+
+`{{extension}}` in a body is replaced with the absolute path of the extension's directory;
+nothing else is substituted. The frontmatter takes only that one key, so a file cannot set a
+harness mode, an allow list or an MCP entry. The board announces a file it refuses, with the
+extension and the file: frontmatter that is missing or invalid, a shortcut body that is not one
+line, a shortcut named like a built-in (the built-in wins), and a shortcut name two extensions
+both use (neither is offered). The rest loads. A bundled extension adds no files, so the copilot
+knows the loop's procedures only when the loop is loaded from its directory.
 
 ### `OpenRequests`
 

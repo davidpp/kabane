@@ -13,6 +13,7 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/context.ts` | `MODULES`, `configureRuntime`, `openContext` (the `Ctx` a command gets), scope selection |
 | `src/config*.ts` | `config.json`, the settings layers, `kabane config`, and the device config tools only `kabane mcp` serves (`config-tools.ts`) |
 | `src/extensions.ts` | directory extensions and the bundled fallback (`OFFICIAL`), loaded only when a command or the board needs one |
+| `src/copilot-files.ts` | a directory extension's `copilot/procedures` and `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
 | `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@cabane/board`, passing `Self.executable()`, then calls `startBoard` |
 | `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
 

@@ -266,6 +266,11 @@ subtasks' briefs, proposes settings and `tier:`/`agent:` tags with a reason for 
 waits for your yes before it tags anything or starts the run. It never changes the
 implementer or verifier unless you ask.
 
+The copilot knows how to start and set up a run from the loop's own procedure files, in
+`copilot/procedures/` of the loop's directory, so it can do either only when the loop is
+installed in `$KABANE_HOME/extensions/loop/` and enabled. Ask it to "run X with codex" and it
+runs `kabane loop start` for you.
+
 ## How much review a run gets
 
 With two lenses or more in `loop.lenses`, a run triages before they review. Once the

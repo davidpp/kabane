@@ -583,10 +583,9 @@ The alternatives, a read-only mode and refusing writes command by command, are i
 
 ### Procedures and shortcuts are markdown files, because the loop's need no code
 
-The copilot's procedures and shortcuts are constants in `packages/board/src/copilot-instructions.ts`, and
-base kabane's describe the loop by name (`copilot-instructions.ts:48`, and the "STARTING A LOOP RUN"
-procedure at `:58`; `packages/board/src/setup.tsx:136` offers "turns on the loop"). In API v1 an
-extension ships them as files, as opencode ships commands (`.opencode/commands/<name>.md`):
+Base kabane's procedures and shortcuts are constants in `packages/board/src/copilot-instructions.ts`,
+and they name no extension. In API v1 an extension ships its own as files, as opencode ships
+commands (`.opencode/commands/<name>.md`), and `packages/cli/src/copilot-files.ts` reads them:
 
 - `copilot/procedures/<name>.md`: frontmatter `title`; the body is appended to the copilot's
   instructions after base kabane's own, under a heading naming the extension. An extension cannot
@@ -675,8 +674,7 @@ This follows the 2026-11-04 research note except in three places:
 | | `storage/sessions.ts` | JCAB-316:7, then JCAB-329 |
 | | `file:` deref reads with `Bun.file` (`storage/assemble-context.ts:187`) | JCAB-328 |
 | Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
-| Base kabane does not describe an extension | `packages/board/src/copilot-instructions.ts`; `packages/board/src/setup.tsx:136` | JCAB-324 |
-| | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
+| Base kabane does not describe an extension | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |
 
 Each rule in this file, how it is held today, and the issue that makes a check or the code hold
 it. "Review" means nothing fails a build; a reviewer has to notice.
@@ -696,5 +694,5 @@ it. "Review" means nothing fails a build; a reviewer has to notice.
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts`; Host carries the API 1 members above | built (JCAB-321) |
 | `host` and its typed record wrappers | `host-record.test.ts`, CLI host and directory-extension tests; isolated declaration typecheck | built (JCAB-322) |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` | built (JCAB-337) |
-| Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | not built | JCAB-324; JCAB-327 for the stamp |
+| Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | `packages/cli/src/copilot-files.ts` and its test; the stamp is still computed in `setup()` | built (JCAB-324); JCAB-327 for the stamp |
 | Core reaches files through a port | not built | JCAB-328 |
