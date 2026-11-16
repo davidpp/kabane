@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { ok, type Result, trySync } from "@cabane/core";
 import type { Doctor, Extension } from "@cabane/extension";
+import { z } from "zod";
 import { projectAt } from "../context";
 import { McpClients } from "../mcp-clients";
 
@@ -81,20 +82,30 @@ export const project = async (
 	);
 };
 
-/** The template a skill was filled from: `<name>` of `kabane-template: <name>@<hash>` in its frontmatter. */
+const FrontmatterSchema = z.object({
+	metadata: z.object({ "kabane-template": z.string() }).optional(),
+});
+
+/**
+ * The template a skill was filled from: `<name>` of `metadata.kabane-template: <name>@<hash>` in
+ * its YAML frontmatter. A frontmatter that does not parse is not a stamped skill.
+ */
 const templateOf = (skill: string): string | undefined => {
 	const lines = skill.split(/\r?\n/);
 	if (lines[0]?.trimEnd() !== "---") return undefined;
 	const end = lines.findIndex(
 		(line, index) => index > 0 && line.trimEnd() === "---",
 	);
-	return lines
-		.slice(1, end === -1 ? 1 : end)
-		.map(
-			(line) =>
-				/^\s+kabane-template:\s*["']?([\w-]+)@[0-9a-f]+/.exec(line)?.[1],
-		)
-		.find((name) => name !== undefined);
+	if (end === -1) return undefined;
+	const parsed = trySync(() => Bun.YAML.parse(lines.slice(1, end).join("\n")));
+	if (!parsed.ok) return undefined;
+	const fields = FrontmatterSchema.safeParse(parsed.value);
+	const stamp = fields.success
+		? fields.data.metadata?.["kabane-template"]
+		: undefined;
+	return stamp === undefined
+		? undefined
+		: /^([\w-]+)@[0-9a-f]+$/.exec(stamp.trim())?.[1];
 };
 
 /** Each project skill's SKILL.md, once: a `.claude/skills` entry is usually a link to the `.agents` one. */

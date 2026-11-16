@@ -115,6 +115,35 @@ test("a stamped dispatch skill is mentioned without the dispatch extension, and 
 	expect(readFileSync(path, "utf8")).toBe(skill);
 });
 
+// The stamp is YAML, read as YAML: flow style counts, a stamp-like line inside another field's
+// text does not, and a frontmatter that does not parse is no stamped skill.
+test("a skill's stamp is read from its parsed frontmatter, in any YAML style", () => {
+	const { cwd, cli } = setup();
+	const path = join(cwd, ".agents/skills/dispatch/SKILL.md");
+	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
+	const unchecked = (frontmatter: string) => {
+		writeFileSync(path, `---\n${frontmatter}\n---\n\n# Dispatch\n`);
+		return JSON.parse(cli("--json")).findings.map(
+			({ source, id }: { source: string; id: string }) => `${source}/${id}`,
+		);
+	};
+	expect(
+		unchecked(
+			"name: dispatch\nmetadata: {kabane-template: dispatch@dacd7416f173}",
+		),
+	).toEqual(["project/skill-unchecked"]);
+	expect(
+		unchecked(
+			"name: dispatch\ndescription: |\n  Our own skill.\n  kabane-template: dispatch@dacd7416f173",
+		),
+	).toEqual([]);
+	expect(
+		unchecked(
+			"name: [unclosed\nmetadata:\n  kabane-template: dispatch@dacd7416f173",
+		),
+	).toEqual([]);
+});
+
 test("extension doctor counts open tier-tagged issues through the CLI store", () => {
 	const { cli, run, config } = setup();
 	config({
