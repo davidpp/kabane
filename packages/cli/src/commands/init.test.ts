@@ -10,9 +10,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { ProjectDirs } from "@cabane/core/scope";
 import { configPath, SCOPE_FILE } from "../config";
 import { run } from "../main";
+import { ProjectDirs } from "../scope/detect";
 import { buildConfig } from "./init";
 
 const BASE = { actor: "cabane://actor/human/ada", deviceId: "mbp" };

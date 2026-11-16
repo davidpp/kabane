@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { detectScope, ProjectDirs } from "@cabane/core/scope";
+import { detectScope, ProjectDirs } from "../scope/detect";
 
 const initial = {
 	actor: "cabane://actor/human/tester",

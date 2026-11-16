@@ -11,6 +11,7 @@ import { checklistModule } from "@cabane/checklist";
 import {
 	err,
 	type KabaneModule,
+	type ProjectScope,
 	normalizeScopeUri,
 	ok,
 	Planner,
@@ -19,11 +20,6 @@ import {
 	Runtime,
 	tryCatch,
 } from "@cabane/core";
-import {
-	detectScope,
-	mainCheckoutRoot,
-	type ProjectScope,
-} from "@cabane/core/scope";
 import {
 	type Extension,
 	flagString,
@@ -44,6 +40,7 @@ import {
 import { ConfigLayers } from "./config-layers";
 import { Extensions } from "./extensions";
 import { activateHostRecord, hostHarnessMode } from "./host";
+import { detectScope, mainCheckoutRoot } from "./scope/detect";
 
 /** An extension's context plus the device config, which only built-in commands read. */
 export type Ctx = Extension.Ctx & { config: Config };
@@ -74,6 +71,16 @@ export const configureRuntime = (
 		modules: [...MODULES, ...extensions],
 		provider: SqliteDb.provider({ dbName: DB_NAME }),
 		actor: () => actor,
+		fileReader: async (path, cap) => {
+			try {
+				const file = Bun.file(path);
+				if (!(await file.exists())) return { status: "missing" };
+				const size = file.size;
+				return { status: "read", size, head: await file.slice(0, cap).text() };
+			} catch {
+				return { status: "pointer" };
+			}
+		},
 		syncSettings: async () => ok(config.sync),
 		// Absent, the runtime's default: the system zone, which honours `TZ`.
 		timezone: zone === undefined ? undefined : () => zone,

@@ -2,7 +2,6 @@ import {
 	err,
 	ok,
 	registeredTools,
-	serveStdio,
 	tryCatch,
 	type Result,
 	type ToolDef,
@@ -14,6 +13,7 @@ import { ConfigSettings } from "../config-settings";
 import { configTools } from "../config-tools";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { Extensions } from "../extensions";
+import { serveStdio } from "../mcp-stdio";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
 const McpContribution = z.object({

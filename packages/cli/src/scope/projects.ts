@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 export namespace ProjectDirs {
 	/** The directory under KABANE_HOME. */
-	export const DIR = "projects";
+	const DIR = "projects";
 
 	/** `root` with each run outside `[A-Za-z0-9]` as `-`, then `-` and 8 hex of its sha256. */
 	export const slug = (root: string): string =>

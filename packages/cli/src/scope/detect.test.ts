@@ -12,6 +12,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GitFixture } from "@cabane/core/git-fixture";
 import {
 	detectScope,
 	findProjectRoot,
@@ -24,7 +25,6 @@ import {
 	SCOPE_FILE,
 } from "./detect";
 import { DetectedScopes } from "./detected";
-import { GitFixture } from "./git-fixture";
 
 const git = GitFixture.run;
 

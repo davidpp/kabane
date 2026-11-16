@@ -7,7 +7,6 @@ import {
 	tryCatch,
 	trySync,
 } from "@cabane/core";
-import { mainCheckoutRoot } from "@cabane/core/scope";
 import type { SettingField } from "@cabane/extension";
 import { Settings } from "@cabane/extension";
 import { z } from "zod";
@@ -23,6 +22,7 @@ import { ConfigLayers } from "./config-layers";
 import { DEVICE_LOOKS } from "./config-looks";
 import { projectAt } from "./context";
 import { Extensions } from "./extensions";
+import { mainCheckoutRoot } from "./scope/detect";
 
 const { unwrap } = Settings;
 

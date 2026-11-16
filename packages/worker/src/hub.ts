@@ -28,7 +28,6 @@ import {
 	ANONYMOUS_ACTOR,
 	Deadline,
 	err,
-	handleHttpRequest,
 	ok,
 	Planner,
 	type PullResult,
@@ -45,6 +44,7 @@ import { outcomeModule } from "@cabane/outcome";
 import { questionsModule } from "@cabane/questions";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
+import { handleHttpRequest } from "./mcp-http";
 import {
 	ACTOR_HEADER,
 	HUB_DEVICE_ID,

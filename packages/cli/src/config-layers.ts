@@ -28,9 +28,9 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { err, ok, type Result, toError, trySync } from "@cabane/core";
-import { MARKER_DIR, ProjectDirs } from "@cabane/core/scope";
 import type { Settings } from "@cabane/extension";
 import { configPath, isPlainObject } from "./config";
+import { MARKER_DIR, ProjectDirs } from "./scope/detect";
 
 export namespace ConfigLayers {
 	/** The key of `config.json` that holds the legacy local settings, by scope id. */

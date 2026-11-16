@@ -14,11 +14,11 @@ import { join } from "node:path";
 import { Harnesses } from "@cabane/acp";
 import { CopilotInstructions } from "@cabane/board/copilot-instructions";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { ProjectDirs } from "@cabane/core/scope";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
 import { Extensions } from "./extensions";
+import { ProjectDirs } from "./scope/detect";
 
 it("manages device config through the real stdio MCP server", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-config-mcp-"));

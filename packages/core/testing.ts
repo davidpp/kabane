@@ -8,8 +8,20 @@
  * one explicitly.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { SqliteDb } from "@cabane/sqlite";
-import { Runtime, type RuntimeConfig } from "./runtime";
+import { Runtime, type FileReader, type RuntimeConfig } from "./runtime";
+
+/** Read real test files through the runtime port without a CLI dependency. */
+export const testFileReader: FileReader = async (path, cap) => {
+	if (!existsSync(path)) return { status: "missing" };
+	const bytes = readFileSync(path);
+	return {
+		status: "read",
+		size: bytes.length,
+		head: bytes.subarray(0, cap).toString(),
+	};
+};
 
 export const TEST_DB_NAME = "kabane.db";
 

@@ -11,8 +11,6 @@
 		".": "./index.ts",
 		"./result": "./result.ts",
 		"./schemas": "./schemas/index.ts",
-		"./scope": "./scope/detect.ts",
-		"./self": "./self.ts",
 		"./git-fixture": "./scope/git-fixture.ts",
 		"./testing": "./testing.ts",
 		"./testing/issue-corpus": "./testing/issue-corpus-harness.ts",

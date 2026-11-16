@@ -10,11 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { ProjectDirs } from "@cabane/core/scope";
 import { configPath } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { projectAt, settingsPort } from "./context";
 import { Extensions } from "./extensions";
+import { ProjectDirs } from "./scope/detect";
 
 // The port an extension resolves its settings through, as the CLI wires it: config.json, a real
 // checkout's `.kabane/loop.json`, the legacy scopes block for the scope it detects, and its local

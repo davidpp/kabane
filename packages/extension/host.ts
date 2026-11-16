@@ -1,5 +1,6 @@
 /** The versioned host supplied to an extension factory. */
 import type {
+	ProjectScope,
 	Db,
 	defineTool,
 	err,
@@ -18,7 +19,6 @@ import type {
 	TaskPriority,
 	TaskState,
 } from "@cabane/core";
-import type { ProjectScope } from "@cabane/core/scope";
 import type { z } from "zod";
 import type { flagBool, flagCsv, flagList, flagString } from "./args";
 import type { conciseSuccess, failure, success, usage } from "./outcome";

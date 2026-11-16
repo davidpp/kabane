@@ -15,12 +15,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, ok, Planner, type Task, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { detectScope } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import type { Land } from "./land";
 import { RunStore } from "./store";
-import { testHost } from "./test-host";
+import { testHost, pinTestScope, testScope } from "./test-host";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -59,6 +58,7 @@ beforeEach(async () => {
 	mkdirSync(home);
 	GitFixture.run(root, ["init", "-q", "--bare", remote]);
 	GitFixture.run(root, ["clone", "-q", remote, repo]);
+	pinTestScope(repo);
 	commit(repo, "README.md");
 	GitFixture.run(repo, ["push", "-q", "-u", "origin", "main"]);
 	prSays = undefined;
@@ -82,7 +82,7 @@ const deps = () => ({
 });
 
 const parentWithChild = async (single = false): Promise<Task> => {
-	const scope = await detectScope(repo, { home, detectExtensions: false });
+	const scope = testScope(repo);
 	if (!scope) throw new Error("the fixture repo has no scope");
 	const add = async (title: string, extra: Record<string, unknown> = {}) => {
 		const created = await Planner.addTask(home, {

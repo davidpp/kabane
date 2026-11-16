@@ -1,18 +1,15 @@
 /**
- * Resolve a working directory to the scope its project files under.
- *
- * NOT exported from the package barrel, and deliberately so: this module spawns
- * `git` and reads the filesystem, neither of which exists on Workers. The hub
- * imports `@cabane/core`; only Bun hosts import `@cabane/core/scope`.
+ * Resolve a directory to its project scope from device and shared pins, git
+ * remotes, package metadata and the project root, with branch/package hints.
  */
 
 import { execFile } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { promisify } from "node:util";
+import { ScopeUri, type ProjectScope } from "@cabane/core";
 import { DetectedScopes } from "./detected";
 import { ProjectDirs } from "./projects";
-import { ScopeUri } from "./uri";
 
 export { ProjectDirs } from "./projects";
 
@@ -26,22 +23,6 @@ export const MARKER_DIR = ".kabane";
  * writes it; detection reads it and never writes it.
  */
 export const SCOPE_FILE = join(MARKER_DIR, "scope");
-
-/**
- * A resolved project scope.
- *
- * `scopeUri` is what a query filters on and a new task records; `name` is what
- * a UI shows. `extensions` are already folded into `scopeUri` — they ride along
- * for provenance and never narrow a filter, since a scope-family match covers
- * the base URI plus every extension-carrying variant.
- */
-export type ProjectScope = {
-	root: string;
-	scopeId: string;
-	name: string;
-	extensions: Record<string, string>;
-	scopeUri: string;
-};
 
 export type DetectOptions = {
 	/**

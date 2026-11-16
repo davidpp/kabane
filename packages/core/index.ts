@@ -52,13 +52,11 @@ export {
 	callTool,
 	createMcpServer,
 	defineTool,
-	handleHttpRequest,
 	humanActorOf,
 	KABANE_TOOLS,
 	type McpServerInfo,
 	registeredTools,
 	SERVER_INSTRUCTIONS,
-	serveStdio,
 	type CoreToolInputShapes,
 	type ToolContext,
 	type ToolDef,
@@ -92,6 +90,8 @@ export {
 	type Notifier,
 	Runtime,
 	type RuntimeConfig,
+	type FileReader,
+	type FileHead,
 	type SyncSettingsSource,
 	type TimezoneSource,
 	type Tracer,
@@ -99,9 +99,7 @@ export {
 } from "./runtime";
 // Schemas
 export * from "./schemas";
-// Scope URIs (parse/format only). Resolving a cwd to a scope lives in
-// `@cabane/core/scope`, kept off the barrel because it needs git and a
-// filesystem — neither of which the Worker runtime has.
+// Scope URIs and the resolved scope type; the CLI owns detection.
 export * from "./scope/schemas";
 export { ScopeUri } from "./scope/uri";
 // Storage

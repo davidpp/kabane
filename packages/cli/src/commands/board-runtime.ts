@@ -18,7 +18,6 @@ import {
 	type Task,
 	tryCatch,
 } from "@cabane/core";
-import { Self } from "@cabane/core/self";
 import {
 	type ActivitySource,
 	type Header,
@@ -40,6 +39,7 @@ import {
 } from "../context";
 import { CopilotFiles } from "../copilot-files";
 import { Extensions } from "../extensions";
+import { Self } from "../self";
 import { UpdateNotice } from "../update-notice";
 import { BoardControl } from "./board-control";
 

@@ -27,6 +27,7 @@
 		"@cabane/handoff": "workspace:*",
 		"@cabane/outcome": "workspace:*",
 		"@cabane/questions": "workspace:*",
+		"@modelcontextprotocol/sdk": "1.30.0",
 		"jose": "6.2.10",
 		"zod": "3.25.76"
 	}

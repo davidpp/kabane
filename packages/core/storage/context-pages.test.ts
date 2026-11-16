@@ -21,7 +21,7 @@ import { TABLES } from "../db/tables";
 import { err, ok, type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 import { serializedBytes } from "../task-output";
-import { configureTestRuntime } from "../testing";
+import { configureTestRuntime, testFileReader } from "../testing";
 import { createCorpusTemplate } from "../testing/issue-corpus-harness";
 import { Planner } from "./index";
 
@@ -43,7 +43,9 @@ beforeEach(() => {
 	if (!template) return;
 	tracker = template.clone();
 	id = tracker.ids[24] ?? "";
-	configureTestRuntime();
+	configureTestRuntime({
+		fileReader: testFileReader,
+	});
 });
 afterEach(() => {
 	tracker?.close();
@@ -299,7 +301,8 @@ describe("bounded selected context", () => {
 			expect(pointers.value.markdown).toContain(huge);
 		}
 	});
-	it("bounded unreadable file pointers disclose host availability without changing full fallback", async () => {
+	it("bounded unavailable file pointers disclose host availability without changing full fallback", async () => {
+		configureTestRuntime();
 		expect(
 			(
 				await Planner.addContextRef(tracker.home, {

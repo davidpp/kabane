@@ -28,7 +28,7 @@ await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
 | `activity: ActivitySource` | no | no badges, no header strip, no tabs beside the tracker |
 | `dispatcher: Dispatcher` | no | `a` flashes `no dispatcher configured` in the footer |
 | `copilot: Copilot` | no | `A` flashes `no copilot configured` in the footer |
-| `resolveScope(cwd)` | no | the board opens on all scopes (the CLI passes `@cabane/core/scope` detection) |
+| `resolveScope(cwd)` | no | the board opens on all scopes; the CLI supplies detection from `packages/cli/src/scope/detect.ts` |
 | `headers: Record<kind, Header>` | no | every card tab heads with the board's one-line title |
 | `announcer: Announcer` | no | nothing is announced over the footer |
 | `settings: SettingsSource` | no | `,` opens the settings view, which says settings are not available here |

@@ -1,10 +1,10 @@
 import { realpathSync } from "node:fs";
 import { err, ok, type Result, trySync } from "@cabane/core";
-import { Self } from "@cabane/core/self";
 import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import type { Command } from "../context";
+import { Self } from "../self";
 import { UpdateBinary } from "../update-binary";
 import {
 	inspectRegistryInstall,

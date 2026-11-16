@@ -1,12 +1,7 @@
 /**
  * MCP server over the tool definitions.
  *
- * Two transports sharing core tools; the CLI can supply device-local tools.
- * `serveStdio` blocks for a CLI process
- * (`kabane mcp`); `handleHttpRequest` is stateless Streamable HTTP for the hub:
- * a fresh server and transport per request, torn down after the response, so a
- * Durable Object never holds MCP session state and a request carries its own
- * actor.
+ * Hosts connect their own transports to this shared tool server.
  *
  * The low-level `Server` rather than `McpServer`: the high-level class infers
  * types over each tool's zod shape and, fed a generic `ZodRawShape`, tsc
@@ -19,8 +14,6 @@
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
 	CallToolRequestSchema,
 	type CallToolResult,
@@ -186,61 +179,4 @@ export const createMcpServer = (
 	});
 
 	return ok(server);
-};
-
-/**
- * Serve on stdio until the transport closes. Nothing may be written to
- * stdout by the caller before or during this: stdout is the wire.
- */
-export const serveStdio = async (
-	ctx: ToolContext,
-	info: McpServerInfo = {},
-	tools: readonly ToolDef[] = registeredTools(),
-	instructions: readonly string[] = [],
-): Promise<Result<void>> => {
-	const created = createMcpServer(ctx, info, undefined, tools, instructions);
-	if (!created.ok) return created;
-	const server = created.value;
-	const transport = new StdioServerTransport();
-	await server.connect(transport);
-	await new Promise<void>((resolve) => {
-		transport.onclose = () => resolve();
-		// The SDK transport never watches for end of input, so without this a server whose client
-		// went away keeps its process alive, spinning on a closed stdin.
-		process.stdin.once("end", () => void server.close());
-		for (const signal of ["SIGINT", "SIGTERM"] as const) {
-			process.once(signal, () => {
-				void server.close();
-				resolve();
-			});
-		}
-	});
-	return ok(undefined);
-};
-
-/**
- * Answer one Streamable HTTP request. Stateless: no session id is issued, a
- * GET (the SSE stream) is refused by the transport, JSON responses are
- * returned directly.
- */
-export const handleHttpRequest = async (
-	ctx: ToolContext,
-	request: Request,
-	info: McpServerInfo = {},
-	afterWrite?: AfterWrite,
-): Promise<Response> => {
-	const created = createMcpServer(ctx, info, afterWrite);
-	if (!created.ok)
-		return Response.json({ error: created.error.message }, { status: 500 });
-	const server = created.value;
-	const transport = new WebStandardStreamableHTTPServerTransport({
-		sessionIdGenerator: undefined,
-		enableJsonResponse: true,
-	});
-	await server.connect(transport);
-	try {
-		return await transport.handleRequest(request);
-	} finally {
-		await server.close();
-	}
 };

@@ -11,8 +11,6 @@ import {
 	trySync,
 	type ToolContext,
 } from "@cabane/core";
-import { detectScope } from "@cabane/core/scope";
-import { Self } from "@cabane/core/self";
 import {
 	createHostRecord,
 	createHostStore,
@@ -30,6 +28,8 @@ import {
 import { z } from "zod";
 import { version } from "../package.json";
 import { type Config, harnessMode, loadConfig } from "./config";
+import { detectScope } from "./scope/detect";
+import { Self } from "./self";
 
 const modes = new Map<string, Host["harnessMode"]>();
 

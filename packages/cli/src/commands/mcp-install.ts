@@ -1,6 +1,4 @@
 import { homedir } from "node:os";
-import { findProjectRoot } from "@cabane/core/scope";
-import { Self } from "@cabane/core/self";
 import {
 	flagBool,
 	flagList,
@@ -11,6 +9,8 @@ import {
 } from "@cabane/extension";
 import { resolveHome } from "../config";
 import { McpClients } from "../mcp-clients";
+import { findProjectRoot } from "../scope/detect";
+import { Self } from "../self";
 
 /**
  * Register this device's MCP server in the coding harnesses on this machine,
