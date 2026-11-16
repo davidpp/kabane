@@ -1,4 +1,4 @@
-// `kabane run <recipe> [--target <issue>] [--input k=v]… [<inputs JSON>]`: render a recipe's prompt,
+// `kabane run <recipe> [--target <issue>] [--input k=v]… [--inputs <JSON>]`: render a recipe's prompt,
 // record the run, start the harness in a runtime terminal and return without waiting. With no
 // recipe it lists the project's recipes.
 import { hostname } from "node:os";
@@ -31,7 +31,7 @@ export const settingsSchema = (z: Host["z"]) =>
 		.strict();
 
 const USAGE =
-	"kabane run [<recipe>] [--target <issue>] [--input name=value]... [--json '{\"name\": value}']";
+	"kabane run [<recipe>] [--target <issue>] [--input name=value]... [--inputs '{\"name\": value}']";
 
 /** The project the command runs in, or the one line that says there is none. */
 export const projectOf = async (
@@ -268,17 +268,24 @@ export const runCommand = (
 	run: async (args, ctx) => {
 		const project = await projectOf(host, ctx.cwd, "run");
 		if (!project.ok) return project.outcome;
-		const [name, json, ...extra] = args.positionals;
+		const [name, positional, ...extra] = args.positionals;
 		if (name === undefined) return list(host, project.value);
-		// The CLI takes every `--json` as its own output flag, so the object arrives as a positional.
+		// The inputs object may also follow the recipe name bare, as a positional.
 		if (
 			extra.length > 0 ||
-			(json !== undefined && !json.trim().startsWith("{"))
+			(positional !== undefined && !positional.trim().startsWith("{"))
 		)
 			return host.outcome.usage(
 				`Unexpected arguments: ${args.positionals.slice(1).join(" ")}`,
 				USAGE,
 			);
+		const flagged = host.args.flagString(args, "inputs");
+		if (flagged !== undefined && positional !== undefined)
+			return host.outcome.usage(
+				"Give the inputs JSON once: with --inputs or after the recipe name",
+				USAGE,
+			);
+		const json = flagged ?? positional;
 		const recipe = Recipe.load(host.z, project.value.root, name);
 		if (!recipe.ok) return host.outcome.failure(recipe.error);
 		const target = await targetOf(

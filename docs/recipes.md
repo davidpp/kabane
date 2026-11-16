@@ -71,14 +71,15 @@ From your project's folder, or any folder inside it:
 ```bash
 kabane run                                        # the recipes here, with their inputs
 kabane run preliminary-research --target JCAB-12 --input depth=quick
-kabane run preliminary-research --target JCAB-12 --json '{"depth": "thorough"}'
+kabane run preliminary-research --target JCAB-12 --inputs '{"depth": "thorough"}'
 ```
 
-Inputs come from `--input name=value` (repeat it), a JSON object, and then their defaults.
-`--input` wins over the JSON object. At a terminal, kabane asks for each required input still
-missing, numbering the options; anywhere else a missing required input is an error that
-names it. Each value is checked against its type and options. With `--json`, kabane also
-prints its own output as JSON.
+Inputs come from `--input name=value` (repeat it), a JSON object given with `--inputs` or
+bare after the recipe name, and then their defaults. `--input` wins over the JSON object. At
+a terminal, kabane asks for each required input still missing, numbering the options;
+anywhere else a missing required input is an error that names it. Each value is checked
+against its type and options. `--json` is the output flag every kabane command takes: it
+prints the command's own output as JSON and supplies no inputs.
 
 `kabane run` puts a short preamble above the recipe's prompt: the run's id, that nobody is
 watching the terminal, that a decision for you is filed with `kabane_ask` on the target issue
