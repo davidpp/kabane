@@ -353,8 +353,36 @@ export namespace Loop {
 		);
 	};
 
+	// The subtasks, or the single issue, a run would still work: open issues, findings included.
+	const openWork = (plan: LoopPlan.Plan): LoopPlan.Node[] =>
+		plan.nodes.filter(
+			(n) =>
+				LoopPlan.isWork(n) &&
+				n.task.kind === "issue" &&
+				!LoopPlan.isClosed(n.task),
+		);
+
 	/**
-	 * `config` with each `loop.harnesses` command a session can launch: a relative path made absolute
+	 * Every harness a run of `plan` would open a session on, in registry order: the implementer
+	 * (a single issue, the fixer), each open subtask's route, and the verifier when lenses run.
+	 * What `loop advise` prints the launch of, and what `prepare` checks.
+	 */
+	export const harnessesUsed = (
+		plan: LoopPlan.Plan,
+		config: LoopConfig.Config,
+	): Harnesses.Id[] => {
+		const used = new Set<Harnesses.Id>([
+			config.implementer,
+			...openWork(plan).map((n) => Route.of(n.task.tags, config).harness),
+			...(config.lenses.length > 0
+				? [config.verifier ?? config.implementer]
+				: []),
+		]);
+		return Harnesses.IDS.filter((id) => used.has(id));
+	};
+
+	/**
+	 * `config` with the `loop.harnesses` command of each harness in `used` one a session can launch: a relative path made absolute
 	 * against the project, since a session spawns in a tree of its own that has none of the
 	 * project's ignored files (a local build in `dist/`), so run.json holds the file checked here.
 	 * Refuses args with no command once the layers have merged (`Harnesses.resolve` would put them
@@ -365,9 +393,10 @@ export namespace Loop {
 	const launchable = (
 		config: LoopConfig.Config,
 		projectDir: string,
+		used: readonly Harnesses.Id[],
 	): Result<LoopConfig.Config> => {
 		const harnesses = { ...config.harnesses };
-		for (const id of Harnesses.IDS) {
+		for (const id of used) {
 			const launch = harnesses[id];
 			if (launch === undefined) continue;
 			const key = `loop.harnesses.${id}`;
@@ -447,7 +476,11 @@ export namespace Loop {
 			},
 		);
 		if (!config.ok) return config;
-		const launches = launchable(config.value, projectDir.value);
+		const launches = launchable(
+			config.value,
+			projectDir.value,
+			harnessesUsed(plan.value, config.value),
+		);
 		if (!launches.ok) return launches;
 		const resolved = launches.value;
 		// Whether there is anything to do depends on the config: checks can run on done work.
@@ -494,6 +527,8 @@ export namespace Loop {
 		isolated: boolean;
 		advice: LoopAdvice.Recommendation[];
 		subtasks: Routed[];
+		/** `harnessesUsed`: each harness the run would open a session on. */
+		harnesses: Harnesses.Id[];
 	};
 
 	const ROUTING_TAG = /^(tier|agent):/;
@@ -663,14 +698,7 @@ export namespace Loop {
 		const { advice } = await adviceOf(deps, prepared.value);
 		const git = deps.git ?? Worktree.git;
 		const subtasks = await Promise.all(
-			plan.nodes
-				.filter(
-					(n) =>
-						LoopPlan.isWork(n) &&
-						n.task.kind === "issue" &&
-						!LoopPlan.isClosed(n.task),
-				)
-				.map((n) => routedOf(config, projectDir, git, n.task)),
+			openWork(plan).map((n) => routedOf(config, projectDir, git, n.task)),
 		);
 		return ok({
 			parent: plan.parent.shortId ?? plan.parent.id,
@@ -679,6 +707,7 @@ export namespace Loop {
 			isolated,
 			advice,
 			subtasks,
+			harnesses: harnessesUsed(plan, config),
 		});
 	};
 

@@ -597,6 +597,15 @@ describe("kabane loop advise", () => {
 			}
 		});
 
+		it("leaves alone a broken entry for a harness the run does not use", async () => {
+			const advised = await adviseUnder({
+				layer: "global",
+				value: { harnesses: { codex: { command: "/nonexistent/codex-acp" } } },
+			});
+			expect(advised.exitCode).toBe(0);
+			expect(advised.text).not.toContain("codex");
+		});
+
 		it("stores a relative command in the run's config as the absolute path it checked", async () => {
 			mkdirSync(join(home, "dist"));
 			writeFileSync(join(home, "dist", "acp"), "#!/bin/sh\n", { mode: 0o755 });

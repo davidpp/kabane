@@ -421,23 +421,13 @@ const routedLines = (s: Loop.Routed): string[] => [
 	...s.notes.map((note) => `    note: ${note}`),
 ];
 
-// What each harness the run would open a session on launches, the pinned adapter or what
-// `loop.harnesses` names instead, so what spends quota shows before `loop start`. The implementer
-// always (a single issue, the fixer), each subtask's route, and the verifier when lenses run.
-const launches = (a: Loop.Advised): string[] => {
-	const { config } = a;
-	const used = new Set<Harnesses.Id>([
-		config.implementer,
-		...a.subtasks.map((s) => s.harness),
-		...(config.lenses.length > 0
-			? [config.verifier ?? config.implementer]
-			: []),
-	]);
-	return Harnesses.IDS.filter((id) => used.has(id)).map((id) => {
-		const { command, args, from } = LoopConfig.launch(config, id);
+// What each harness the run would open a session on (`Loop.harnessesUsed`) launches, the pinned
+// adapter or what `loop.harnesses` names instead, so what spends quota shows before `loop start`.
+const launches = (a: Loop.Advised): string[] =>
+	a.harnesses.map((id) => {
+		const { command, args, from } = LoopConfig.launch(a.config, id);
 		return `  ${id} launches ${[command, ...args].join(" ")} (${from})`;
 	});
-};
 
 const advisedText = (a: Loop.Advised): string => {
 	const flags = a.advice.flatMap(asFlags);
