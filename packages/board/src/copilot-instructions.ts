@@ -46,7 +46,7 @@ CONFIG AND HELP. Answer "how do I…" questions from the installed kabane's sour
 
 Change config only through kabane_configSet, never by editing config files or running config set/unset commands. Inside a project kabane_configSet writes the local layer by default, the human's settings for this project only, kept on this device outside the repository; outside one, and for a device key, it writes the global layer, config.json for every project. Pass layer: global only when the human wants the change for every project. Never pass layer: shared: that writes the repository's checked-in .kabane/<namespace>.json, so point the human to \`kabane config set <key> <value> --layer shared\` instead. kabane_configGet with a key and layers:true reports the layer each value came from; say which layer you changed. When kabane_configSet returns shadowedBy, the write changed nothing yet: tell the human which layer and file still decide and its value, and that a write to that layer, or its unset, is what changes it. Read the current value first. When the human names the setting and its value ("use haiku for the copilot", "stop checking for updates", an answer to your question during setup), call the tool, then report the key, the layer, the before and after value, and how to undo it: unset:true on the layer you wrote removes your override, so the value falls back to whatever a lower layer or the default gives; setting the previous value back would leave an override of its own. When the change is your own suggestion, as in answering a "how do I" question, or the request leaves the key or value open, explain the exact key, the before and after value and what it changes, and wait for a yes. Use its documented value syntax; unset:true without a value removes the key from the layer you name, which restores what the layers below give, the schema default only when no lower layer sets it. Never change or unset a key whose readOnly or protected flag is true; point the human to \`kabane config set\` for those. Never edit a harness's own configuration, permission modes or MCP entries. For copilot.command or copilot.args, ask for the command instead of guessing. After a successful change, when the result has restartRequired true (restart: start, as for a device key such as extensions or copilot.*), tell the human to restart running board and MCP processes to apply it; an open board will not load newly enabled extensions. When restart is resolve, as for an extension's own key, the change applies the next time settings are read, such as the next time that extension reads them, and no restart is needed: say so.
 
-To enable an installed extension, check the installed extensions KABANE ON THIS MACHINE lists below, read extensions with kabane_configGet, and preserve every existing entry in the new list. If it is already enabled, say so without writing. Pass the full comma-separated list to kabane_configSet with key extensions, under the rule above: asked to enable it, enable it; suggesting it yourself, wait for a yes. After saving, read \`kabane <extension-command> --help\` for its commands and remind the human to reopen the board. An extension's settings resolve through layers: default, global, shared (the project's checked-in .kabane/<extension>.json), local (the human's settings for this project on this device), then flags. kabane_configGet with the extension's name as key and layers:true shows each value and its layer. An extension setting the human wants for this project only goes to layer: local; this procedure does not authorize writing the shared file.
+To enable an installed extension, check the installed extensions KABANE ON THIS MACHINE lists below, read extensions with kabane_configGet, and preserve every existing entry in the new list. If it is already enabled, say so without writing. Pass the full comma-separated list to kabane_configSet with key extensions, under the rule above: asked to enable it, enable it; suggesting it yourself, wait for a yes. When you enable one, say what it adds from its description in that list, and that enabling it starts none of its work. After saving, read \`kabane <extension-command> --help\` for its commands and remind the human to reopen the board. An extension's settings resolve through layers: default, global, shared (the project's checked-in .kabane/<extension>.json), local (the human's settings for this project on this device), then flags. kabane_configGet with the extension's name as key and layers:true shows each value and its layer. An extension setting the human wants for this project only goes to layer: local; this procedure does not authorize writing the shared file.
 
 SETTING UP A DISPATCH SKILL. A dispatch skill is how a coding session in this project turns an ask into issues on this board and into shipped work. Kabane ships a generic one at ${DISPATCH_TEMPLATE}: SKILL.md and references/ are the skill, PLACEHOLDERS.md says what fills each {{NAME}} in them.
 
@@ -88,11 +88,13 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 		procedures: readonly Procedure[];
 	};
 
+	export type Installed = { name: string; description?: string };
+
 	export type Setup = {
 		/** The resolved `KABANE_HOME/config.json`, never assumed to be `~/.kabane`. */
 		configPath: string;
-		/** The installed extensions, by the name `extensions` takes. */
-		extensions: readonly string[];
+		/** The installed extensions, by the name `extensions` takes, and what each says it adds. */
+		extensions: readonly Installed[];
 		/** What enabled extensions add to base kabane's text, in the order they are enabled. */
 		procedures: readonly Contribution[];
 		/** The `/` shortcuts enabled extensions add, none named like a built-in or like each other. */
@@ -106,6 +108,15 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 	const shellWord = (word: string): string =>
 		`'${word.replaceAll("'", `'\\''`)}'`;
 
+	const installed = (extensions: readonly Installed[]): string =>
+		extensions.length === 0
+			? "Installed extensions: none."
+			: `Installed extensions, the ones available to enable: ${extensions
+					.map(({ name, description }) =>
+						description ? `${name} (${description})` : name,
+					)
+					.join("; ")}.`;
+
 	// Keep instance-specific facts here; key descriptions come from the config tools. `kabane` is the
 	// executable this board runs, the one its MCP server runs as: a `kabane` on the shell's PATH may
 	// be another install against another home, so the procedures' commands are spelled with it.
@@ -118,7 +129,7 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 		const provenance = stamp.ok
 			? stamp.value
 			: `unavailable (${stamp.error.message}). /setup-dispatch must report this error and ask the human to restore the shipped templates; never invent a stamp.`;
-		return `KABANE ON THIS MACHINE. This board runs kabane as \`${bin}\`. Every kabane command a procedure in these instructions names runs in your shell as that, for example \`${bin} --help\`, never as a kabane found on PATH, which may be another install with another home. The config tools manage ${configPath}. Installed extensions: ${extensions.length > 0 ? extensions.join(", ") : "none"}. These are the extensions available to enable. Supported copilot harnesses: ${Harnesses.IDS.join(", ")}; the chosen harness must be installed and logged in on this machine.\n\nDISPATCH TEMPLATE STAMP: ${provenance}`;
+		return `KABANE ON THIS MACHINE. This board runs kabane as \`${bin}\`. Every kabane command a procedure in these instructions names runs in your shell as that, for example \`${bin} --help\`, never as a kabane found on PATH, which may be another install with another home. The config tools manage ${configPath}. ${installed(extensions)} Supported copilot harnesses: ${Harnesses.IDS.join(", ")}; the chosen harness must be installed and logged in on this machine.\n\nDISPATCH TEMPLATE STAMP: ${provenance}`;
 	};
 
 	// What every harness is actually given. Both of the places that send instructions — the session's

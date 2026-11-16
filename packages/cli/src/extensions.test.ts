@@ -258,6 +258,35 @@ it("discovers symlinks and directory settings only when enabled, preserving bund
 	expect(options.ok && options.value.options).toContain("linked");
 });
 
+it("an installed extension's description comes from its package.json, read without importing it", async () => {
+	const home = makeHome();
+	install(
+		home,
+		"described",
+		`import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(join(home, "ran"))}, "bad"); export default () => ({name: "described"});`,
+	);
+	const dir = join(home, "extensions", "described");
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({
+			description: "  Keeps notes\n beside issues. ",
+			kabane: { extension: "./index.ts", api: 1 },
+		}),
+	);
+	install(home, "plain", 'export default () => ({name: "plain"});');
+	expect(Extensions.description(home, "described")).toBe(
+		"Keeps notes beside issues.",
+	);
+	expect(Extensions.description(home, "plain")).toBeUndefined();
+	expect(Extensions.description(home, "absent")).toBeUndefined();
+	expect(await Bun.file(join(home, "ran")).exists()).toBe(false);
+	const loop = await Bun.file(
+		join(import.meta.dir, "../../../extensions/loop/package.json"),
+	).json();
+	expect(Extensions.description(home, "loop")).toBe(loop.description);
+	expect(loop.description).toContain("`a` on an issue opens its run form");
+});
+
 it("a bundled extension carries no directory, so it contributes no copilot files", async () => {
 	const all = await Extensions.loadAll(["loop"], makeHome());
 	expect(all.loaded.map((e) => e.name)).toEqual(["loop"]);

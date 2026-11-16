@@ -134,16 +134,28 @@ describe("CopilotInstructions.SKILLS", () => {
 
 	it("names the resolved config path and the installed extensions", () => {
 		const prompt = CopilotInstructions.systemPrompt(
-			{ ...SETUP, extensions: ["notes", "timer"] },
+			{
+				...SETUP,
+				extensions: [
+					{ name: "notes", description: "Keeps notes beside issues." },
+					{ name: "timer" },
+				],
+			},
 			BIN,
 		);
 		expect(prompt).toContain("/sandbox/home/config.json");
 		expect(prompt).toContain(
-			"Installed extensions: notes, timer. These are the extensions available to enable.",
+			"Installed extensions, the ones available to enable: notes (Keeps notes beside issues.); timer.",
 		);
 		expect(prompt).not.toContain("~/.kabane");
 		expect(CopilotInstructions.systemPrompt(SETUP, BIN)).toContain(
 			"Installed extensions: none.",
+		);
+	});
+
+	it("says what an extension adds from its description when enabling it, and that enabling starts nothing", () => {
+		expect(CopilotInstructions.SKILLS).toContain(
+			"When you enable one, say what it adds from its description in that list, and that enabling it starts none of its work.",
 		);
 	});
 });
@@ -480,7 +492,7 @@ describe("CopilotInstructions running kabane", () => {
 describe("CopilotInstructions with contributed procedures and shortcuts", () => {
 	const contributed: CopilotInstructions.Setup = {
 		...SETUP,
-		extensions: ["notes", "timer", "quiet"],
+		extensions: [{ name: "notes" }, { name: "timer" }, { name: "quiet" }],
 		procedures: [
 			{
 				extension: "notes",
@@ -508,7 +520,7 @@ describe("CopilotInstructions with contributed procedures and shortcuts", () => 
 		const prompt = CopilotInstructions.systemPrompt(contributed, BIN);
 		const base = CopilotInstructions.systemPrompt(SETUP, BIN).replace(
 			"Installed extensions: none.",
-			"Installed extensions: notes, timer, quiet.",
+			"Installed extensions, the ones available to enable: notes; timer; quiet.",
 		);
 		expect(prompt.startsWith(`${base}\n\n`)).toBe(true);
 		const added = prompt.slice(base.length + 2);

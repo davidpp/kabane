@@ -1,14 +1,15 @@
 {
 	"name": "@cabane/loop",
 	"version": "0.1.0",
-	"description": "Kabane loop extension: drives an issue, or a parent issue's subtasks, to completion through ACP harnesses",
+	"description": "Drives an issue, or a parent issue's subtasks, to done through coding harnesses, and adds run activity and dispatch to the board, where `a` on an issue opens its run form.",
 	"license": "MIT",
 	"private": true,
 	"type": "module",
 	"main": "index.ts",
 	"types": "index.ts",
 	"exports": {
-		".": "./index.ts"
+		".": "./index.ts",
+		"./package.json": "./package.json"
 	},
 	"scripts": {
 		"test": "bun test",

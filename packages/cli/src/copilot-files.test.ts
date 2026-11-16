@@ -225,7 +225,7 @@ describe("CopilotFiles.read", () => {
 		const prompt = CopilotInstructions.systemPrompt(
 			{
 				configPath: "config.json",
-				extensions: ["loop"],
+				extensions: [{ name: "loop" }],
 				procedures: read.procedures,
 				shortcuts: read.shortcuts,
 			},
@@ -243,7 +243,6 @@ describe("CopilotFiles.read", () => {
 		expect(prompt).toContain(
 			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
 		);
-		expect(prompt).toContain("`a` on an issue opens its run form");
 		expect(prompt).toContain("kabane loop advise <id>");
 		expect(prompt).toContain(
 			"Never change the implementer or the verifier unless asked",
