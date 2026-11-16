@@ -22,7 +22,8 @@ packages/
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
 extensions/
 ├── loop/      # @cabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
-└── dispatch/  # @cabane/dispatch — the dispatch and grill skill templates, /setup-dispatch, `kabane dispatch stamp`, their doctor checks
+├── dispatch/  # @cabane/dispatch — the dispatch and grill skill templates, /setup-dispatch, `kabane dispatch stamp`, their doctor checks
+└── recipes/   # @cabane/recipes — prompt recipes from .kabane/recipes/, `kabane run` and `kabane runs` over hc terminals, its run table
 ```
 
 Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.
