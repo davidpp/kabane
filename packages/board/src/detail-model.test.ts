@@ -636,6 +636,14 @@ describe("log", () => {
 		).toMatchObject({ kind: "question", text: "Which tab opens first?" });
 	});
 
+	it("leaves a question pinned under a merged source's id out of the log", () => {
+		expect(
+			DetailModel.log(askedTwice(), [awaiting("loop:q2")]).some(
+				(line) => line.id === "q2",
+			),
+		).toBe(false);
+	});
+
 	it("puts every session activity and work log on one line, newest first, and leaves the pinned question out", () => {
 		const lines = DetailModel.log(
 			records({
