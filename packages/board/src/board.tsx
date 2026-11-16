@@ -24,7 +24,7 @@ import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
-import { StatusBar } from "./footer";
+import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { Segments } from "./segments";
@@ -617,7 +617,7 @@ const Footer = ({
 		return (
 			<StatusBar
 				text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
-				fg={notice.tone === "success" ? theme.done : theme.failed}
+				fg={noticeFg(notice.tone, theme)}
 			/>
 		);
 	}

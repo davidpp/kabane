@@ -33,7 +33,7 @@ import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 import type { Fresh } from "./detail-records";
 import { ErrorBoundary } from "./error-boundary";
-import { StatusBar } from "./footer";
+import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import { Segments } from "./segments";
@@ -384,7 +384,7 @@ export const Detail = ({
 			{notice ? (
 				<StatusBar
 					text={notice.undoable ? `${notice.text} · ⌃z undo` : notice.text}
-					fg={notice.tone === "success" ? theme.done : theme.failed}
+					fg={noticeFg(notice.tone, theme)}
 				/>
 			) : (
 				<StatusBar hints={hints} />

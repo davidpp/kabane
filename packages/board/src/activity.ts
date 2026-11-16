@@ -135,6 +135,25 @@ export namespace BoardActivity {
 		);
 	};
 
+	// What `o` says on a task with no events card. A card without events that is still in flight, or
+	// that still offers actions (`open`: an idle session someone has to stop), is shown elsewhere: the
+	// notice names it and its last detail line, which is where a host says where to look.
+	export const noEvents = (
+		activity: ActivityMap,
+		taskId: string,
+		shortId: string | undefined,
+		open: ReadonlyMap<string, unknown>,
+	): string => {
+		const card = cardsForTask(activity, taskId, shortId).find(
+			(c) =>
+				!c.tab &&
+				(c.status === "running" || c.status === "pending" || open.has(c.id)),
+		);
+		if (!card) return "no events";
+		const where = card.detail.at(-1);
+		return `${card.label} has no events here${where ? ` · ${where}` : ""}`;
+	};
+
 	// Whether the shared spinner should animate: any live (non-stale) running card.
 	export const anyRunning = (activity: ActivityMap): boolean =>
 		activity.cards.some(

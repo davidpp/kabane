@@ -74,13 +74,13 @@ export const useRunActivity = ({
 	// `o` in the detail view: the task's card with events (BoardActivity.eventsCard).
 	const openEvents = useCallback(
 		(s: BoardNav.BoardState, taskId: string): void => {
-			const target = BoardActivity.eventsCard(
-				shown,
-				taskId,
-				BoardNav.taskById(s, taskId)?.shortId,
-			);
+			const shortId = BoardNav.taskById(s, taskId)?.shortId;
+			const target = BoardActivity.eventsCard(shown, taskId, shortId);
 			if (!target) {
-				setNotice({ text: "no events", tone: "success" });
+				setNotice({
+					text: BoardActivity.noEvents(shown, taskId, shortId, s.tabs.loose),
+					tone: "info",
+				});
 				return;
 			}
 			set(BoardNav.withTaskEvents(s, taskId, target.id));

@@ -36,7 +36,7 @@ import { CardHeader } from "./card-header";
 import { blockOnSurface, PROSE_MEASURE } from "./detail";
 import { elapsed } from "./elapsed";
 import { ErrorBoundary } from "./error-boundary";
-import { StatusBar } from "./footer";
+import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
 import { clicks, PermissionBlock } from "./permission-block";
@@ -416,10 +416,7 @@ export const EventView = ({
 			/>
 			{pane}
 			{notice ? (
-				<StatusBar
-					text={notice.text}
-					fg={notice.tone === "success" ? theme.done : theme.failed}
-				/>
+				<StatusBar text={notice.text} fg={noticeFg(notice.tone, theme)} />
 			) : (
 				<StatusBar hints={hints} />
 			)}

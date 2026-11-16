@@ -145,6 +145,65 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 		).toBeUndefined();
 	});
 
+	it("noEvents names an in-flight or open card without a tab, with its last detail line", () => {
+		const none = new Map<string, unknown>();
+		const quiet = card({
+			id: "run",
+			taskId: "t1",
+			label: "probe",
+			detail: ["running", "kabane runs attach run"],
+		});
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([quiet]),
+				"t1",
+				undefined,
+				none,
+			),
+		).toBe("probe has no events here · kabane runs attach run");
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([{ ...quiet, detail: [] }]),
+				"t1",
+				undefined,
+				none,
+			),
+		).toBe("probe has no events here");
+		const idle = { ...quiet, status: "completed" as const };
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([idle]),
+				"t1",
+				undefined,
+				none,
+			),
+		).toBe("no events");
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([idle]),
+				"t1",
+				undefined,
+				new Map([["run", quiet]]),
+			),
+		).toBe("probe has no events here · kabane runs attach run");
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([{ ...quiet, tab: true }]),
+				"t1",
+				undefined,
+				none,
+			),
+		).toBe("no events");
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([]),
+				"t1",
+				undefined,
+				none,
+			),
+		).toBe("no events");
+	});
+
 	it("anyRunning is true only for a live running or pending card", () => {
 		expect(BoardActivity.anyRunning(activity)).toBe(true);
 		expect(
