@@ -1,8 +1,11 @@
 /** @jsxImportSource @opentui/react */
 // The board reads and answers through the ActivitySource a host hands it, over a real tracker.
 // `!` lands on the owning card and a digit reaches the source once the question has been read.
-// The question lives where its asker keeps it (the loop's own store, in the CLI); here the source
-// holds it, since the port is all the board sees of it.
+// The board cannot import the loop, so the source here is a recording of the port contract: it
+// lists one question until it is answered, and records every call the board makes. The real
+// store behind the port, which stamps the acting human on the answer (the port carries no actor),
+// is covered by `extensions/loop/src/activity.test.ts`, "lists only loop questions with their
+// card and lane, and answers through the port" (`LoopActivity.source`).
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,15 +52,20 @@ it("! lands on the card's tab and a digit there answers the question through the
 		hasEvents: true,
 		tab: true,
 	};
-	const answers: { id: string; answer: string }[] = [];
+	type Call =
+		| { call: "questions" }
+		| { call: "answer"; questionId: string; answer: string };
+	const calls: Call[] = [];
+	const answers = () => calls.filter((c) => c.call === "answer");
 	const askedAt = new Date().toISOString();
 	const source: ActivitySource = {
 		load: async () => ok([card]),
 		card: async () => ok(card),
 		events: async () => ok([]),
-		questions: async () =>
-			ok(
-				answers.length > 0 || !child
+		questions: async () => {
+			calls.push({ call: "questions" });
+			return ok(
+				answers().length > 0 || !child
 					? []
 					: [
 							{
@@ -74,9 +82,10 @@ it("! lands on the card's tab and a digit there answers the question through the
 								askedAt,
 							},
 						],
-			),
-		answer: async (id, answer) => {
-			answers.push({ id, answer });
+			);
+		},
+		answer: async (questionId, answer) => {
+			calls.push({ call: "answer", questionId, answer });
 			return ok(`answered ${answer}`);
 		},
 	};
@@ -96,7 +105,7 @@ it("! lands on the card's tab and a digit there answers the question through the
 		// Landed this instant: a digit pressed now was not aimed at a question read on screen.
 		mockInput.pressKey("1");
 		await until((f) => f.includes("just asked"));
-		expect(answers).toEqual([]);
+		expect(answers()).toEqual([]);
 		now += BoardNav.ARM_MS;
 		mockInput.pressKey("1");
 		const answered = await until((f) => f.includes("answered Yes"));
@@ -106,7 +115,21 @@ it("! lands on the card's tab and a digit there answers the question through the
 				.find((row) => row.includes("answered Yes"))
 				?.trim(),
 		).toBe("answered Yes");
-		expect(answers).toEqual([{ id: QUESTION_ID, answer: "Yes" }]);
+		// Answered once, with the question's id and the chosen option's label.
+		expect(answers()).toEqual([
+			{ call: "answer", questionId: QUESTION_ID, answer: "Yes" },
+		]);
+		// Then the board reads the questions again, and the answered one is gone from it.
+		const answeredAt = calls.findIndex((c) => c.call === "answer");
+		const cleared = await until(
+			(f) =>
+				calls.slice(answeredAt + 1).some((c) => c.call === "questions") &&
+				!f.includes("?1"),
+		);
+		expect(
+			calls.slice(answeredAt + 1).some((c) => c.call === "questions"),
+		).toBe(true);
+		expect(cleared).not.toContain("?1");
 	} finally {
 		destroy();
 	}
