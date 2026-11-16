@@ -161,6 +161,7 @@ private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` ge
   admits exactly that shape. Every official extension under `extensions/` is bundled too; the
   build fails when one of those directories is missing from the bundle, which means the CLI's
   list does not import it.
+- `types/extension.d.ts`: the extension contract's declarations, exported as `kabane/extension`.
 - `templates/dispatch/`, repository README and LICENSE, and generated package.json.
 - Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
   board manifest. OpenTUI installs its platform-native optional dependency; React must not

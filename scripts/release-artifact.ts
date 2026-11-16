@@ -159,9 +159,13 @@ const inspectExtractedPackage = (
 		!names.includes("bin/kabane.js") ||
 		names.some(
 			(name) =>
-				!["package.json", "README.md", "LICENSE", "bin/kabane.js"].includes(
-					name,
-				) &&
+				![
+					"package.json",
+					"README.md",
+					"LICENSE",
+					"bin/kabane.js",
+					"types/extension.d.ts",
+				].includes(name) &&
 				!/^bin\/chunk-[a-z0-9]{8}\.js$/.test(name) &&
 				!name.startsWith("templates/"),
 		)

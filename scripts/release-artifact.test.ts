@@ -9,6 +9,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
+import { z } from "zod";
+import { build, DIST } from "./build";
 import {
 	inspectArchive,
 	integrity,
@@ -103,6 +105,9 @@ for (const name of [
 	"bin/nested/chunk-07j278pm.js",
 	"chunk-07j278pm.js",
 	"src/index.ts",
+	"types/other.d.ts",
+	"types/nested/extension.d.ts",
+	"types/extension.d.ts.map",
 ])
 	test(`unexpected file shape fails: ${name}`, async () => {
 		const checked = await inspect(
@@ -135,6 +140,34 @@ test("chunks retain machine-path scanning and cannot replace the entry", async (
 	if (!missingEntry.result.ok)
 		expect(missingEntry.result.error.message).toBe(UNEXPECTED_SHAPE);
 });
+/** `npm pack` the built dist into a new directory and validate the archive it writes. */
+const packBuild = async () => {
+	const dir = join(WORK, String(sequence++));
+	mkdirSync(dir);
+	const packed = Bun.spawnSync(
+		["npm", "pack", "--json", "--pack-destination", dir],
+		{ cwd: DIST, stdout: "pipe", stderr: "pipe" },
+	);
+	if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
+	const [first] = z
+		.array(z.object({ filename: z.string() }))
+		.parse(JSON.parse(packed.stdout.toString()));
+	if (!first) throw new Error("npm pack printed no tarball");
+	return inspectArchive(join(dir, first.filename), join(dir, "unpacked"), [
+		join(import.meta.dir, ".."),
+	]);
+};
+test("the real build packs into an archive the check admits, and a stray type file is refused", async () => {
+	await build();
+	const checked = await packBuild();
+	if (!checked.ok) throw checked.error;
+	expect(checked.value.name).toBe("kabane");
+	writeFileSync(join(DIST, "types/other.d.ts"), "export {};\n");
+	const stray = await packBuild();
+	rmSync(join(DIST, "types/other.d.ts"));
+	expect(stray.ok).toBe(false);
+	if (!stray.ok) expect(stray.error.message).toBe(UNEXPECTED_SHAPE);
+}, 120_000);
 for (const member of [
 	{ name: "package/../../escape", text: "bad" },
 	{ name: "/absolute", text: "bad" },
