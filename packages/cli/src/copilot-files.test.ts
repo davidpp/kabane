@@ -243,7 +243,29 @@ describe("CopilotFiles.read", () => {
 		expect(prompt).toContain(
 			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
 		);
+		expect(prompt).toContain(
+			"pass only what the human asked for: the loop's settings (kabane_configGet key loop) supply the rest",
+		);
+		expect(prompt).toContain(
+			"report its message as it is and do not retry with other flags",
+		);
+		expect(prompt).toContain("report the run id it prints");
+		expect(prompt).toContain("`kabane loop status <runId>`");
+		expect(prompt).toContain("`kabane loop stop <runId>`");
+		expect(prompt).toContain(
+			"The run's sessions change the code, not you, and a question one of them asks is the human's to answer.",
+		);
+		// Setting one up reads the advice first, proposes, and waits for a yes before it writes.
 		expect(prompt).toContain("kabane loop advise <id>");
+		expect(prompt).toContain("It starts nothing");
+		expect(prompt).toContain(
+			"an agent:<name> tag only for an agent the harness already has",
+		);
+		expect(prompt).toContain(
+			"Your proposal is your own suggestion: wait for a yes",
+		);
+		expect(prompt).toContain("keeping each subtask's other tags");
+		expect(prompt).toContain("start the run as STARTING A LOOP RUN says");
 		expect(prompt).toContain(
 			"Never change the implementer or the verifier unless asked",
 		);
