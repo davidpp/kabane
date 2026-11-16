@@ -209,7 +209,7 @@ export const startRun = async (
 			runtime: runtime.name,
 			session: Runs.STARTING,
 			inputs,
-			state: "running",
+			state: "live",
 			startedAt: new Date().toISOString(),
 		},
 		actor,

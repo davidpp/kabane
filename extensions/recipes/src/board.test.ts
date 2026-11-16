@@ -178,16 +178,17 @@ const sourceWith = (runtime: Runtime) =>
 
 describe("RecipeActivity", () => {
 	it("maps each run state to the card the board draws, on the run's issue", () => {
-		const statuses = (["running", "waiting", "idle", "ended"] as const).map(
-			(state) => {
-				const card = RecipeActivity.card({
-					run: run("01M7JT0TFJB7MF38VYDWCG0001", { state }),
-					shortId: issue.shortId,
-				});
-				return [state, card.status, card.actions?.map((a) => a.id) ?? []];
-			},
-		);
+		const statuses = (
+			["live", "running", "waiting", "idle", "ended"] as const
+		).map((state) => {
+			const card = RecipeActivity.card({
+				run: run("01M7JT0TFJB7MF38VYDWCG0001", { state }),
+				shortId: issue.shortId,
+			});
+			return [state, card.status, card.actions?.map((a) => a.id) ?? []];
+		});
 		expect(statuses).toEqual([
+			["live", "paused", ["stop"]],
 			["running", "running", ["stop"]],
 			["waiting", "paused", ["stop"]],
 			["idle", "completed", ["stop"]],
@@ -354,14 +355,15 @@ describe("reconcile on a run recorded as starting", () => {
 	it("does not report ended a run whose start recorded its session meanwhile", async () => {
 		const listed = run("01M7JT0TFJB7MF38VYDWCG0602", {
 			session: Runs.STARTING,
+			state: "live",
 		});
 		value(await Runs.insert(host, listed, "t"));
 		// The start writes its session after the listing read the row, before reconcile ends it.
 		value(await Runs.setSession(host, listed.id, "research-cg0602", "t"));
 		const hc = finding(new Map());
 		const [now] = value(await reconcile(host, hc.runtime, [listed], "t"));
-		expect(now?.state).toBe("running");
-		expect((await stored(listed.id))?.state).toBe("running");
+		expect(now?.state).toBe("live");
+		expect((await stored(listed.id))?.state).toBe("live");
 		expect(hc.got).toEqual([]);
 	});
 
@@ -499,7 +501,7 @@ describe("RecipeDispatcher", () => {
 			recipe: { name: "research" },
 			target: { kind: "issue", id: issue.id },
 			inputs: { depth: "thorough", rounds: 3 },
-			state: "running",
+			state: "live",
 		});
 		expect(notice).toBe(
 			`started run ${stored?.id} (research on ${issue.shortId}) · kabane runs attach ${stored?.id}`,

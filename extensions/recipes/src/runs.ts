@@ -5,9 +5,12 @@ import type { Db, Host, KabaneModule, Result } from "@cabane/extension";
 import { err, ok, trySync } from "./result";
 
 export namespace Runs {
-	/** What a run is doing, read from its runtime; kabane never decides that it succeeded. */
-	export type State = "running" | "waiting" | "idle" | "ended";
-	const STATES = ["running", "waiting", "idle", "ended"] as const;
+	/**
+	 * What a run is doing, as its program reported it to its runtime; kabane never decides that it
+	 * succeeded. `live` is a program still there that has reported nothing.
+	 */
+	export type State = "live" | "running" | "waiting" | "idle" | "ended";
+	const STATES = ["live", "running", "waiting", "idle", "ended"] as const;
 
 	export type Run = {
 		id: string;
@@ -192,7 +195,7 @@ export namespace Runs {
 
 	/**
 	 * The handle the runtime returned for a run recorded as `STARTING`. A run whose session is
-	 * still `STARTING` is `running` again: a listing may have ended it while its start was still
+	 * still `STARTING` is `live` again: a listing may have ended it while its start was still
 	 * on its way (`endStarting`), and the next reconcile reads its real state. A run whose session
 	 * a reconcile already recovered keeps the state it read.
 	 */
@@ -205,7 +208,7 @@ export namespace Runs {
 		host.store.write((tx) => {
 			tx.db.run(
 				`UPDATE ${TABLE} SET session = ?,
-				   state = CASE WHEN session = ? THEN 'running' ELSE state END,
+				   state = CASE WHEN session = ? THEN 'live' ELSE state END,
 				   ended_at = CASE WHEN session = ? THEN NULL ELSE ended_at END, updated_at = ?,
 				   updated_by = ?, version = version + 1 WHERE id = ?`,
 				[session, STARTING, STARTING, new Date().toISOString(), actor, id],
