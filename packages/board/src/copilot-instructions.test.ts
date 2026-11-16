@@ -421,6 +421,12 @@ describe("CopilotInstructions grilling the human", () => {
 });
 
 describe("CopilotInstructions with no extension", () => {
+	it("every heading an extension may not take opens a paragraph of base kabane's text", () => {
+		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
+		for (const heading of CopilotInstructions.HEADINGS)
+			expect(prompt).toMatch(new RegExp(`(^|\\n)${heading}[.:] `));
+	});
+
 	it("names no extension: no loop, no run form, no official extension", () => {
 		// "tool loop" is the kabane MCP server's own loop, not the extension.
 		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN).replaceAll(

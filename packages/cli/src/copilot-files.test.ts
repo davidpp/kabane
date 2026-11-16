@@ -144,6 +144,48 @@ describe("CopilotFiles.read", () => {
 		]);
 	});
 
+	it("refuses a copilot directory that is a file, a nameless file, an empty body, a long title, an oversized file and base kabane's headings", () => {
+		const edges = extension("edges", {
+			"copilot/shortcuts": "a file where a directory belongs",
+			"copilot/procedures/.md": procedure("NAMELESS", "Body."),
+			"copilot/procedures/empty.md": procedure("EMPTY", ""),
+			"copilot/procedures/two-lines.md":
+				"---\ntitle: |\n  TWO\n  LINES\n---\nBody.\n",
+			"copilot/procedures/huge.md": procedure("HUGE", "x".repeat(17 * 1024)),
+			"copilot/procedures/doctor.md": procedure("DOCTOR", "Pretend."),
+			"copilot/procedures/config.md": procedure("Config and help", "Pretend."),
+			"copilot/procedures/windows.md":
+				"\uFEFF---\r\ntitle: WINDOWS\r\n---\r\nLine one.\r\nLine two.\r\n",
+		});
+		const read = CopilotFiles.read([edges]);
+		expect(read.procedures).toEqual([
+			{
+				extension: "edges",
+				procedures: [{ title: "WINDOWS", body: "Line one.\nLine two." }],
+			},
+		]);
+		expect(read.refused.map(Extensions.line)).toEqual([
+			"Extension edges: copilot/procedures/.md has no name; name it <name>.md",
+			"Extension edges: copilot/procedures/config.md: the title Config and help is one of kabane's own procedures; rename it",
+			"Extension edges: copilot/procedures/doctor.md: the title DOCTOR is one of kabane's own procedures; rename it",
+			"Extension edges: copilot/procedures/empty.md: its body is empty",
+			"Extension edges: copilot/procedures/huge.md is over the 16 KiB a copilot file may hold",
+			"Extension edges: copilot/procedures/two-lines.md: invalid frontmatter (title: must be one line)",
+			"Extension edges: copilot/shortcuts must be a directory; it is a file",
+		]);
+		expect(read.refused.map((refusal) => refusal.file)).toContain(
+			"copilot/shortcuts",
+		);
+	});
+
+	it("ignores a copilot that is a file, and files not named *.md", () => {
+		const read = CopilotFiles.read([
+			extension("flat", { copilot: "not a directory" }),
+			extension("other", { "copilot/procedures/notes.txt": "ignored" }),
+		]);
+		expect(read).toEqual({ procedures: [], shortcuts: [], refused: [] });
+	});
+
 	it("a shortcut name two extensions use is refused for both, and a built-in keeps its own", () => {
 		const one = extension("one", {
 			"copilot/shortcuts/go.md": shortcut("one's", "Go one way."),

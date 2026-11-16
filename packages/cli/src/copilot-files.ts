@@ -6,7 +6,7 @@
  * becomes the extension's directory and nothing else is substituted. A file that cannot be used is refused on its own,
  * with one line naming the extension and the file, and the rest loads.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { CopilotInstructions } from "@cabane/board/copilot-instructions";
 import { err, ok, type Result, trySync } from "@cabane/core";
@@ -16,28 +16,45 @@ import type { Extensions } from "./extensions";
 
 // Strict, so a file has no field for a harness mode, an allow list or an MCP entry: a procedure
 // cannot carry a permission policy in its type.
-const ProcedureFields = z.object({ title: z.string().trim().min(1) }).strict();
+const ProcedureFields = z
+	.object({
+		title: z
+			.string()
+			.trim()
+			.min(1)
+			.refine((title) => !title.includes("\n"), "must be one line"),
+	})
+	.strict();
 const ShortcutFields = z.object({ hint: z.string().trim().min(1) }).strict();
 
 const PROCEDURES = join("copilot", "procedures");
 const SHORTCUTS = join("copilot", "shortcuts");
 const PLACEHOLDER = "{{extension}}";
+/** Far above any procedure kabane or the loop ships (the longest is under 5 KiB). */
+const MAX_BYTES = 16 * 1024;
 
 // A function, not a string: a replacement string reads `$&` or `$$` in the path as a pattern.
 const fill = (text: string, dir: string): string =>
 	text.replaceAll(PLACEHOLDER, () => dir);
 
 export namespace CopilotFiles {
+	/** A refused file, or copilot directory, by its path under the extension's directory. */
+	export type Refusal = Extensions.Refusal & { file: string };
+
 	type Read = {
 		procedures: CopilotInstructions.Contribution[];
 		shortcuts: CopilotShortcut[];
-		refused: Extensions.Refusal[];
+		refused: Refusal[];
 	};
 
 	// The markdown files of one of an extension's copilot directories, by name, so the copilot
-	// reads them in the same order on every device. An absent directory contributes nothing.
+	// reads them in the same order on every device. An absent directory contributes nothing, and
+	// so does every file not named *.md.
 	const markdown = (dir: string, sub: string): Result<string[]> => {
-		if (!existsSync(join(dir, sub))) return ok([]);
+		const stat = trySync(() => statSync(join(dir, sub)));
+		if (!stat.ok) return ok([]);
+		if (!stat.value.isDirectory())
+			return err(new Error(`${sub} must be a directory; it is a file`));
 		const entries = trySync(() => readdirSync(join(dir, sub)));
 		if (!entries.ok)
 			return err(new Error(`${sub} cannot be listed; make it readable`));
@@ -50,15 +67,24 @@ export namespace CopilotFiles {
 	};
 
 	// The YAML between the file's opening `---` and the next, checked against `fields`, and the
-	// body after it with the placeholder filled.
+	// body after it with the placeholder filled. A byte-order mark and CRLF line ends are read as
+	// an editor meant them.
 	const parse = <T>(
 		dir: string,
 		file: string,
 		fields: z.ZodType<T>,
 	): Result<{ fields: T; body: string }> => {
+		if (basename(file) === ".md")
+			return err(new Error(`${file} has no name; name it <name>.md`));
+		const size = trySync(() => statSync(join(dir, file)).size);
+		if (size.ok && size.value > MAX_BYTES)
+			return err(
+				new Error(`${file} is over the 16 KiB a copilot file may hold`),
+			);
 		const raw = trySync(() => readFileSync(join(dir, file), "utf8"));
 		if (!raw.ok) return err(new Error(`${file} cannot be read`));
-		const [first, ...rest] = raw.value.split("\n");
+		const text = raw.value.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+		const [first, ...rest] = text.split("\n");
 		const end = rest.findIndex((line) => line.trimEnd() === "---");
 		if (first?.trimEnd() !== "---" || end === -1)
 			return err(
@@ -84,6 +110,61 @@ export namespace CopilotFiles {
 		return ok({ fields: parsed.data, body });
 	};
 
+	// A title that reads like one of base kabane's headings would let a file pass for its text.
+	const procedureOf = (
+		dir: string,
+		file: string,
+	): Result<CopilotInstructions.Procedure> => {
+		const read = parse(dir, file, ProcedureFields);
+		if (!read.ok) return read;
+		const title = fill(read.value.fields.title, dir);
+		if (CopilotInstructions.HEADINGS.includes(title.toUpperCase()))
+			return err(
+				new Error(
+					`${file}: the title ${title} is one of kabane's own procedures; rename it`,
+				),
+			);
+		if (read.value.body === "")
+			return err(new Error(`${file}: its body is empty`));
+		return ok({ title, body: read.value.body });
+	};
+
+	const shortcutOf = (dir: string, file: string): Result<CopilotShortcut> => {
+		const read = parse(dir, file, ShortcutFields);
+		if (!read.ok) return read;
+		if (read.value.body === "" || read.value.body.includes("\n"))
+			return err(
+				new Error(
+					`${file}: its body must be one line, the template dropped into the prompt`,
+				),
+			);
+		return ok({
+			name: basename(file, ".md"),
+			hint: read.value.fields.hint,
+			template: read.value.body,
+		});
+	};
+
+	// Each file of `sub` through `one`, refusing what it refuses.
+	const each = <T>(
+		{ name, directory }: Extensions.Directory,
+		sub: string,
+		one: (dir: string, file: string) => Result<T>,
+		refuse: (refusal: Refusal) => void,
+	): { file: string; value: T }[] => {
+		const files = markdown(directory, sub);
+		if (!files.ok) {
+			refuse({ name, file: sub, reason: files.error.message });
+			return [];
+		}
+		return files.value.flatMap((file) => {
+			const read = one(directory, file);
+			if (read.ok) return [{ file, value: read.value }];
+			refuse({ name, file, reason: read.error.message });
+			return [];
+		});
+	};
+
 	/**
 	 * The procedures and shortcuts of each directory extension, in the order given. A shortcut a
 	 * built-in already names is refused, and so is every shortcut of a name two extensions use,
@@ -96,48 +177,22 @@ export namespace CopilotFiles {
 			file: string;
 			shortcut: CopilotShortcut;
 		}[] = [];
-		const refused: Extensions.Refusal[] = [];
-		const refuse = (name: string, reason: string) =>
-			refused.push({ name, reason });
-		for (const { name, directory } of extensions) {
-			const own: CopilotInstructions.Procedure[] = [];
-			const files = markdown(directory, PROCEDURES);
-			if (!files.ok) refuse(name, files.error.message);
-			for (const file of files.ok ? files.value : []) {
-				const read = parse(directory, file, ProcedureFields);
-				if (read.ok)
-					own.push({
-						title: fill(read.value.fields.title, directory),
-						body: read.value.body,
-					});
-				else refuse(name, read.error.message);
-			}
-			if (own.length > 0) procedures.push({ extension: name, procedures: own });
-			const shortcuts = markdown(directory, SHORTCUTS);
-			if (!shortcuts.ok) refuse(name, shortcuts.error.message);
-			for (const file of shortcuts.ok ? shortcuts.value : []) {
-				const read = parse(directory, file, ShortcutFields);
-				if (!read.ok) {
-					refuse(name, read.error.message);
-					continue;
-				}
-				if (read.value.body === "" || read.value.body.includes("\n")) {
-					refuse(
-						name,
-						`${file}: its body must be one line, the template dropped into the prompt`,
-					);
-					continue;
-				}
-				offered.push({
-					owner: name,
-					file,
-					shortcut: {
-						name: basename(file, ".md"),
-						hint: read.value.fields.hint,
-						template: read.value.body,
-					},
+		const refused: Refusal[] = [];
+		const refuse = (refusal: Refusal) => refused.push(refusal);
+		for (const extension of extensions) {
+			const own = each(extension, PROCEDURES, procedureOf, refuse);
+			if (own.length > 0)
+				procedures.push({
+					extension: extension.name,
+					procedures: own.map(({ value }) => value),
 				});
-			}
+			for (const { file, value } of each(
+				extension,
+				SHORTCUTS,
+				shortcutOf,
+				refuse,
+			))
+				offered.push({ owner: extension.name, file, shortcut: value });
 		}
 		const shortcuts: CopilotShortcut[] = [];
 		for (const { owner, file, shortcut } of offered) {
@@ -146,15 +201,17 @@ export namespace CopilotFiles {
 					other.owner !== owner && other.shortcut.name === shortcut.name,
 			);
 			if (CopilotInstructions.SHORTCUTS.some((s) => s.name === shortcut.name))
-				refuse(
-					owner,
-					`${file}: /${shortcut.name} is a built-in shortcut, which wins; rename the file`,
-				);
+				refuse({
+					name: owner,
+					file,
+					reason: `${file}: /${shortcut.name} is a built-in shortcut, which wins; rename the file`,
+				});
 			else if (others.length > 0)
-				refuse(
-					owner,
-					`${file}: /${shortcut.name} is also a shortcut of ${others.map((other) => other.owner).join(", ")}, so neither is offered; rename one`,
-				);
+				refuse({
+					name: owner,
+					file,
+					reason: `${file}: /${shortcut.name} is also a shortcut of ${others.map((other) => other.owner).join(", ")}, so neither is offered; rename one`,
+				});
 			else shortcuts.push(shortcut);
 		}
 		return { procedures, shortcuts, refused };

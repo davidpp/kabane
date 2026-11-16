@@ -68,6 +68,17 @@ DOCTOR. \`kabane doctor\` reports what kabane wrote, in its settings, this proje
 Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its severity, even after a yes: give the human its command, \`kabane doctor --fix kabane/mcp-entry-stale-<harness>\`, to run themselves, because it rewrites that harness's MCP entries, which are theirs. Report every group in one pass, auto first. Findings are not errors, so do not present them as failures. Only this procedure repairs drift: never run a fix as a side effect of another request, and never re-run doctor to retry a fix that failed; report its message as it is.`;
 
 	/** Device and build context for the config-and-help procedure. */
+	/** Base kabane's own headings, which an extension's procedure may not take as its title. */
+	export const HEADINGS: readonly string[] = [
+		"LINKING A TASK TO AN EXTERNAL ISSUE",
+		"CONFIG AND HELP",
+		"SETTING UP A DISPATCH SKILL",
+		"GRILLING",
+		"DOCTOR",
+		"KABANE ON THIS MACHINE",
+		"DISPATCH TEMPLATE STAMP",
+	];
+
 	/** One procedure an extension's `copilot/procedures/<name>.md` contributes, `{{extension}}` filled. */
 	export type Procedure = { title: string; body: string };
 
