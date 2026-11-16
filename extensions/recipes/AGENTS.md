@@ -37,7 +37,10 @@ runtime reads: for hc, the terminal's name, which the adapter builds from the re
 run id. What a user reads calls `session` the run's terminal (the `TERMINAL` column of `kabane
 runs`, "in hc terminal …" from `kabane run`), because hc is the only runtime; `--json` and
 `docs/recipes.md`'s field table say `session`. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
-until `start` returns, so a start that fails still leaves an ended run. `kabane runs` leaves a run
+until `start` returns, so a start that fails still leaves an ended run. `read`, `send`, `attach` and
+`stop` refuse a run whose session is still `STARTING` before any runtime call, and reconcile skips
+it. The hc adapter also refuses an empty or blank terminal in every method before it spawns hc,
+because hc reads `""` as no terminal given and picks one from the caller's scope. `kabane runs` leaves a run
 in a runtime it does not have as recorded, and `read`, `send` and `attach` on a run whose runtime
 has no terminal fail with one line naming the runtime.
 

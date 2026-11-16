@@ -286,6 +286,24 @@ test("a run in a runtime this kabane lacks keeps its recorded state, and its ver
 		});
 });
 
+test("a run with no session yet is refused by every verb before hc is called", () => {
+	const { kabane, seed } = setup();
+	kabane(["runs"]);
+	seed("01M7JT0TFJB7MF38VYDWCG0FFF", { session: "" });
+	// Without hc on PATH a call that reached the runtime would fail naming hc instead.
+	const refused = (verb: string, to = verb) => ({
+		code: 1,
+		stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0FFF has no session yet: its start has not finished, so there is nothing to ${to}`,
+	});
+	for (const verb of ["stop", "read", "attach"])
+		expect(kabane(["runs", verb, "fff"], { path: NO_HC })).toMatchObject(
+			refused(verb, verb === "attach" ? "attach to" : verb),
+		);
+	expect(kabane(["runs", "send", "fff", "yes"], { path: NO_HC })).toMatchObject(
+		refused("send", "send to"),
+	);
+});
+
 // Reads one terminal through the real hc, by a name no terminal has: hc answers not found and
 // nothing of the human's is touched. Skipped where hc is not installed.
 test.skipIf(Bun.which("hc") === null)(

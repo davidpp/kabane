@@ -104,13 +104,27 @@ export namespace HcRuntime {
 		);
 	};
 
+	/**
+	 * Why `terminal` cannot be handed to hc, or undefined when it names one. hc reads an empty
+	 * terminal as none given and picks one from the caller's scope, which may be the human's own.
+	 */
+	const unnamed = (terminal: string): string | undefined =>
+		terminal.trim() === ""
+			? "No terminal named: kabane never runs hc without the terminal it started"
+			: undefined;
+
 	/** The runtime over the `hc` on PATH; `z` is the host's, which reads hc's JSON. */
 	export const runtime = (z: Host["z"]): Runtime => {
+		/** Why hc cannot act on `terminal`: it is unnamed, or hc is not on PATH. */
+		const refused = (terminal: string): string | undefined =>
+			unnamed(terminal) ?? missing();
+
 		const call = async (
 			command: string,
+			terminal: string,
 			args: readonly string[],
 		): Promise<Result<string>> => {
-			const blocked = missing();
+			const blocked = refused(terminal);
 			if (blocked !== undefined) return err(new Error(blocked));
 			const ran = await exec([command, ...args]);
 			if (!ran.ok) return ran;
@@ -124,7 +138,7 @@ export namespace HcRuntime {
 			missing: () => missing(),
 			start: async ({ run, title, argv, cwd, labels }) => {
 				const name = terminalName(run, title);
-				const started = await call("run", [
+				const started = await call("run", name, [
 					"--bg",
 					"--json",
 					"--no-parent",
@@ -142,7 +156,7 @@ export namespace HcRuntime {
 				return started.ok ? ok(name) : started;
 			},
 			get: async (terminal) => {
-				const blocked = missing();
+				const blocked = refused(terminal);
 				if (blocked !== undefined) return err(new Error(blocked));
 				const ran = await exec(["get", "--json", terminal]);
 				if (!ran.ok) return ran;
@@ -150,17 +164,17 @@ export namespace HcRuntime {
 				if (ran.value.code !== 0) return err(failure(z, "get", ran.value));
 				return seen(z, ran.value.stdout);
 			},
-			read: (terminal) => call("read", [terminal]),
+			read: (terminal) => call("read", terminal, [terminal]),
 			send: async (terminal, text) => {
-				const sent = await call("send", ["--json", terminal, text]);
+				const sent = await call("send", terminal, ["--json", terminal, text]);
 				return sent.ok ? ok(undefined) : sent;
 			},
 			stop: async (terminal) => {
-				const stopped = await call("kill", ["--json", terminal]);
+				const stopped = await call("kill", terminal, ["--json", terminal]);
 				return stopped.ok ? ok(undefined) : stopped;
 			},
 			attach: async (terminal) => {
-				const blocked = missing();
+				const blocked = refused(terminal);
 				if (blocked !== undefined) return err(new Error(blocked));
 				return tryCatch(
 					() =>
