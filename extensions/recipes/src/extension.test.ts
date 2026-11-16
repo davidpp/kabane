@@ -286,14 +286,14 @@ test("a run in a runtime this kabane lacks keeps its recorded state, and its ver
 		});
 });
 
-test("a run with no session yet is refused by every verb before hc is called", () => {
+test("a run with no terminal yet is refused by every verb before hc is called", () => {
 	const { kabane, seed } = setup();
 	kabane(["runs"]);
 	seed("01M7JT0TFJB7MF38VYDWCG0FFF", { session: "" });
 	// Without hc on PATH a call that reached the runtime would fail naming hc instead.
 	const refused = (verb: string, to = verb) => ({
 		code: 1,
-		stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0FFF has no session yet: its start has not finished, so there is nothing to ${to}`,
+		stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0FFF has no terminal yet: its start has not finished, so there is nothing to ${to}`,
 	});
 	for (const verb of ["stop", "read", "attach"])
 		expect(kabane(["runs", verb, "fff"], { path: NO_HC })).toMatchObject(
@@ -322,7 +322,7 @@ test.skipIf(Bun.which("hc") === null)(
 		expect(kabane(["runs", "read", "hhh"])).toMatchObject({
 			code: 1,
 			stderr:
-				"Error: Run 01M7JT0TFJB7MF38VYDWCG0HHH never started in hc: there is no hc session to read",
+				"Error: Run 01M7JT0TFJB7MF38VYDWCG0HHH never started in hc: there is no terminal to read",
 		});
 		const all = JSON.parse(kabane(["runs", "--all", "--json"]).stdout).runs as {
 			id: string;

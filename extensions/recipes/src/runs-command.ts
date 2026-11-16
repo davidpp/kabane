@@ -156,7 +156,7 @@ const settle = async (
 	if (run.state !== "ended")
 		return answer(
 			host.outcome.failure(
-				`Run ${run.id} has no session yet: its start has not finished, so there is nothing to ${object(verb)}`,
+				`Run ${run.id} has no terminal yet: its start has not finished, so there is nothing to ${object(verb)}`,
 			),
 		);
 	return answer(
@@ -166,7 +166,7 @@ const settle = async (
 					`Run ${run.id} never started in ${run.runtime}; it is ended.`,
 				)
 			: host.outcome.failure(
-					`Run ${run.id} never started in ${run.runtime}: there is no ${run.runtime} session to ${object(verb)}`,
+					`Run ${run.id} never started in ${run.runtime}: there is no terminal to ${object(verb)}`,
 				),
 	);
 };
