@@ -6,6 +6,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	readlinkSync,
 	realpathSync,
 	rmSync,
 	symlinkSync,
@@ -147,6 +148,32 @@ test("a real .claude/skills/dispatch directory is reported, a symlink is not", (
 	expect(ids()).toEqual(["dispatch-skill-location:route"]);
 });
 
+test("a project with .claude/ and no skill link is told, and --fix dispatch/dispatch-skill-unlinked links it", () => {
+	const { root, ids, kabane } = setup();
+	const link = join(root, ".claude/skills/dispatch");
+	rmSync(link);
+	expect(ids()).toEqual(["dispatch-skill-unlinked:mention"]);
+	const fixed = JSON.parse(
+		kabane("doctor", "--fix", "dispatch/dispatch-skill-unlinked", "--json")
+			.stdout,
+	);
+	expect(fixed.fixes[0].result.ok).toBe(true);
+	expect(readlinkSync(link)).toBe("../../.agents/skills/dispatch");
+	expect(ids()).toEqual([]);
+});
+
+test("a broken skill link is told and has no fix; without .claude/ the missing link is not", () => {
+	const { root, ids, findings } = setup();
+	const link = join(root, ".claude/skills/dispatch");
+	rmSync(link);
+	symlinkSync("../../elsewhere", link);
+	expect(ids()).toEqual(["dispatch-skill-unlinked:mention"]);
+	const broken = findings().find(({ source }) => source === "dispatch");
+	expect(broken?.summary).toContain("Replace it");
+	rmSync(join(root, ".claude"), { recursive: true });
+	expect(ids()).toEqual([]);
+});
+
 test("CRLF keeps the skill's stamp readable", () => {
 	const { root, ids } = setup();
 	writeFileSync(
@@ -161,6 +188,7 @@ test("an edited grill copy is reported and --fix dispatch/grill-skill-behind res
 	const template = readFileSync(join(EXTENSION, "templates/grill/SKILL.md"));
 	const path = join(root, ".agents/skills/grill/SKILL.md");
 	write(path, template.toString());
+	expect(ids()).toEqual(["grill-skill-unlinked:mention"]);
 	symlinkSync("../../.agents/skills/grill", join(root, ".claude/skills/grill"));
 	expect(ids()).toEqual([]);
 	writeFileSync(path, `${template}\nA project edit.\n`);

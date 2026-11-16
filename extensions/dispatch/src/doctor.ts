@@ -7,8 +7,10 @@ import {
 	copyFileSync,
 	existsSync,
 	lstatSync,
+	mkdirSync,
 	readFileSync,
 	realpathSync,
+	symlinkSync,
 } from "node:fs";
 import { join, relative } from "node:path";
 import type { Result } from "@cabane/core";
@@ -24,6 +26,46 @@ export namespace DispatchDoctor {
 
 	const isRealDirectory = (path: string): boolean =>
 		existsSync(path) && lstatSync(path).isDirectory();
+
+	const isAbsent = (path: string): boolean =>
+		!trySync(() => lstatSync(path)).ok;
+
+	/**
+	 * Codex, Pi, opencode and Gemini read .agents/skills; Claude Code reads only .claude/skills.
+	 * A project with a .claude/ directory uses Claude Code, so a skill under .agents/skills with no
+	 * .claude/skills link is one its Claude sessions never list. The procedures create that link
+	 * only when .claude/ exists, and this checks the same condition.
+	 */
+	const claudeLink = (root: string, name: string): Doctor.Finding[] => {
+		const link = join(root, ".claude/skills", name);
+		if (
+			!isRealDirectory(join(root, ".claude")) ||
+			!existsSync(join(root, ".agents/skills", name, "SKILL.md")) ||
+			existsSync(join(link, "SKILL.md"))
+		)
+			return [];
+		const target = `../../.agents/skills/${name}`;
+		const shown = relative(root, link);
+		const absent = isAbsent(link);
+		return [
+			{
+				id: `${name}-skill-unlinked`,
+				path: link,
+				severity: "mention",
+				summary: absent
+					? `.agents/skills/${name} has no ${shown} link, so Claude Code, which reads only .claude/skills, does not list the ${name} skill. --fix dispatch/${name}-skill-unlinked links ${shown} to ${target}.`
+					: `${shown} does not lead to .agents/skills/${name}/SKILL.md, so Claude Code does not list the ${name} skill. Replace it with a link to ${target}.`,
+				...(absent && {
+					fix: async () =>
+						trySync(() => {
+							mkdirSync(join(root, ".claude/skills"), { recursive: true });
+							symlinkSync(target, link);
+							return `Linked ${shown} to ${target}`;
+						}),
+				}),
+			},
+		];
+	};
 
 	const stampReader = (host: Host): StampOf => {
 		const FrontmatterSchema = host.z.object({
@@ -70,7 +112,7 @@ export namespace DispatchDoctor {
 				path: claudeDir,
 				severity: "route",
 				summary:
-					".claude/skills/dispatch is a directory, so only Claude Code reads it; the skill belongs in .agents/skills/dispatch with .claude/skills/dispatch as a symlink to it. /setup-dispatch offers the move and waits for a yes.",
+					".claude/skills/dispatch is a directory, so Codex, Pi and Gemini do not read it; the skill belongs in .agents/skills/dispatch with .claude/skills/dispatch as a symlink to it. /setup-dispatch offers the move and waits for a yes.",
 				route: SETUP,
 			});
 		const shown = relative(root, path);
@@ -146,7 +188,9 @@ export namespace DispatchDoctor {
 			const findings: Doctor.Finding[] = [];
 			for (const [id, check] of [
 				["dispatch", () => dispatchSkill(root, stampOf)],
+				["dispatch-link", () => claudeLink(root, "dispatch")],
 				["grill", () => grillSkill(root)],
+				["grill-link", () => claudeLink(root, "grill")],
 			] as const) {
 				const found = trySync(check);
 				if (found.ok) findings.push(...found.value);
