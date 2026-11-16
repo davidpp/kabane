@@ -126,9 +126,9 @@ const truncate = (text: string, max: number): string =>
 	text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 
 // The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. Paused shows ⏸
-// with no churn and its first detail line after `paused`; a stale running card (the host's crashed-runner heuristic) keeps the badge but drops
-// the animation and dims to muted. Exported pure so the badge text/width contract is assertable
-// without a renderer.
+// with no churn and its first detail line after `paused`; a stale running card (the host's
+// crashed-runner heuristic) keeps the badge but drops the animation and dims to muted. Exported pure
+// so the badge text/width contract is assertable without a renderer.
 export const cardBadge = (
 	card: ActivityCard,
 	frame: string,
