@@ -119,12 +119,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 		layer: "extension",
 		// An extension brings its own harness client and bundles it (JCAB-316:2).
 		dependencies: ["@cabane/acp"],
-		devDependencies: [
-			"@cabane/checklist",
-			"@cabane/core",
-			"@cabane/extension",
-			"@cabane/sqlite",
-		],
+		devDependencies: ["@cabane/checklist", "@cabane/core", "@cabane/extension"],
 	},
 	"@cabane/dispatch": {
 		layer: "extension",
@@ -306,25 +301,36 @@ function isTestSupport(path: string, rule: Rule | undefined): boolean {
 	return /\.test\.[^/]+$/.test(path) || !!rule?.testSupport?.includes(path);
 }
 
+// Core's test support, as the export subpaths other packages import and the files core reaches
+// by relative path. A directory entry covers everything under it.
+const CORE_TEST_SUPPORT = [
+	{ subpath: "testing", file: "testing", directory: true },
+	{ subpath: "git-fixture", file: "scope/git-fixture", directory: false },
+];
+
 function importsCoreTestSupport(
 	pkg: Workspace,
 	file: string,
 	specifier: string,
 ): boolean {
 	if (
-		specifier === "@cabane/core/testing" ||
-		specifier.startsWith("@cabane/core/testing/")
+		CORE_TEST_SUPPORT.some(
+			({ subpath, directory }) =>
+				specifier === `@cabane/core/${subpath}` ||
+				(directory && specifier.startsWith(`@cabane/core/${subpath}/`)),
+		)
 	)
 		return true;
 	if (pkg.name !== "@cabane/core" || !specifier.startsWith(".")) return false;
 	const target = relative(pkg.directory, resolve(dirname(file), specifier))
 		.split(sep)
 		.join("/");
-	return (
-		target === "testing" ||
-		target === "testing.ts" ||
-		target === "testing.js" ||
-		target.startsWith("testing/")
+	return CORE_TEST_SUPPORT.some(
+		({ file: support, directory }) =>
+			target === support ||
+			target === `${support}.ts` ||
+			target === `${support}.js` ||
+			(directory && target.startsWith(`${support}/`)),
 	);
 }
 

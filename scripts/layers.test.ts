@@ -418,6 +418,7 @@ for (const specifier of [
 	"@cabane/core/testing",
 	"@cabane/core/testing/issue-corpus",
 	"@cabane/core/testing/fixtures/issue-corpus/issues.json",
+	"@cabane/core/git-fixture",
 ]) {
 	test.each([
 		`import "${specifier}";`,
@@ -448,6 +449,9 @@ test.each([
 	"../testing/issue-corpus-harness",
 	"../storage/../testing/issue-corpus-seed.ts",
 	"@cabane/core/testing",
+	"../scope/git-fixture",
+	"../scope/git-fixture.ts",
+	"@cabane/core/git-fixture",
 ])("core production files reject their own test support: %s", (specifier) => {
 	const root = workspace();
 	manifest(root, "packages/core", "@cabane/core");
@@ -468,13 +472,13 @@ test("tests and listed support permit core test support; similar names are produ
 		write(
 			root,
 			`packages/core/${file}`,
-			'import "@cabane/core/testing";\nimport "./testing/issue-corpus-harness";',
+			'import "@cabane/core/testing";\nimport "./testing/issue-corpus-harness";\nimport "@cabane/core/git-fixture";',
 		);
 	}
 	write(
 		root,
 		"packages/core/index.ts",
-		'import "./testing-other";\nimport "@cabane/core/testing-other";',
+		'import "./testing-other";\nimport "@cabane/core/testing-other";\nimport "@cabane/core/git-fixtures";',
 	);
 	expect(checkLayers(root)).toEqual([]);
 	write(
