@@ -17,6 +17,7 @@ import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Doctor, type Extension, Settings } from "@cabane/extension";
 import { LoopDoctor } from "./doctor";
+import { Lenses } from "./lenses";
 
 let folder = "";
 let home = "";
@@ -177,4 +178,29 @@ test("open issues tagged with an unmapped tier are counted; closed ones and mapp
 	expect(found[0]?.summary).toBe(
 		"tier fast names no model for claude (loop.tiers.claude.fast); 2 open issues tagged for it ask for it and get claude's own default; tier frontier names no model for codex (loop.tiers.codex.frontier); 1 open issue tagged for it asks for it and gets codex's own default",
 	);
+});
+
+test("repair keeps a real Claude skill's active lens ahead of the legacy copy", async () => {
+	skill();
+	const claude = join(
+		root,
+		".claude/skills/dispatch/references/lenses/security.md",
+	);
+	write(claude, "Current security.\n");
+	write(legacy("security"), "Old security.\n");
+	const active = () =>
+		Lenses.directories(root)
+			.map((dir) => join(dir, "security.md"))
+			.find(existsSync);
+	expect(active()).toBe(claude);
+	const report = await Doctor.run(
+		[{ name: "loop", doctor: LoopDoctor.doctor }],
+		ctx(),
+		{ fix: true },
+	);
+	expect(report.fixes[0]?.result.ok).toBe(false);
+	expect(active()).toBe(claude);
+	expect(readFileSync(claude, "utf8")).toBe("Current security.\n");
+	expect(existsSync(skillLens("security"))).toBe(false);
+	expect(readFileSync(legacy("security"), "utf8")).toBe("Old security.\n");
 });

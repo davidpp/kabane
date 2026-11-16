@@ -51,6 +51,18 @@ export namespace LoopDoctor {
 		for (const file of markdownIn(from)) {
 			const source = join(from, file);
 			const target = join(to, file);
+			const conflict = Lenses.directories(root)
+				.slice(0, -1)
+				.map((directory) => join(directory, file))
+				.find(
+					(path) =>
+						existsSync(path) &&
+						!readFileSync(source).equals(readFileSync(path)),
+				);
+			if (conflict) {
+				refused.push(`${file} (${relative(root, conflict)})`);
+				continue;
+			}
 			if (!existsSync(target)) {
 				renameSync(source, target);
 				moved.push(file);
@@ -72,7 +84,7 @@ export namespace LoopDoctor {
 		if (refused.length === 0) return ok(done);
 		return err(
 			new Error(
-				`${done ? `${done}; ` : ""}refused ${refused.join(", ")}: ${relative(root, to)} already has a lens by that name with other content; merge them by hand`,
+				`${done ? `${done}; ` : ""}refused ${refused.join(", ")}: a higher-priority lens directory already has that name with other content; merge them by hand`,
 			),
 		);
 	};
