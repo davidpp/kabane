@@ -166,6 +166,7 @@ export const run = async (
 	env: NodeJS.ProcessEnv = process.env,
 	cwd: string = process.cwd(),
 ): Promise<Outcome> => {
+	Extensions.forgetStop();
 	const [name, ...rest] = argv;
 	// A human at a terminal gets the board (setup first on a new device); a
 	// pipe or an agent still gets help, as it always has.

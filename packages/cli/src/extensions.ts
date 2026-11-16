@@ -433,6 +433,11 @@ export namespace Extensions {
 	/** The extension whose data modules stopped database access in this process, if any. */
 	export const stopped = (): string | undefined => stoppedBy;
 
+	/** A command starts with no stop remembered: one process can run several (tests, a caller of `run`). */
+	export const forgetStop = (): void => {
+		stoppedBy = undefined;
+	};
+
 	/**
 	 * The one line a process that opens the database stops with when `name`'s data modules
 	 * cannot be registered: the extension, why, and the two ways out.

@@ -305,6 +305,22 @@ it("stops on an installed extension whose manifest cannot be read, and treats an
 		`${manifest} has no valid "kabane" field; add "kabane": { "extension": "<entry>", "api": 1 }, or remove it from "extensions"`,
 	);
 
+	// The stop is remembered for its own command only: a later command in the same process that
+	// does not open the database still reports that extension's refusal.
+	const later = spyOn(console, "error").mockImplementation(() => {});
+	try {
+		await kabane(["list"]);
+		later.mockClear();
+		await kabane(["config", "get", "extensions"]);
+		expect(
+			later.mock.calls.filter((call) =>
+				String(call[0]).includes("Extension notes"),
+			),
+		).toHaveLength(1);
+	} finally {
+		later.mockRestore();
+	}
+
 	// The enabled name "absent" has no directory: no stop, and commands that load extensions refuse it.
 	const cleared = await kabane([
 		"config",
