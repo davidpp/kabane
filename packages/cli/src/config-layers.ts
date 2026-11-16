@@ -8,8 +8,8 @@
  *   it never puts a file in the repo and survives the project's scope id changing.
  *
  * Before local was keyed by path it was `scopes.<scopeId>.<namespace>` in `config.json`. Those
- * blocks are still read, as local just under the file, and never written: a scope id changes
- * during a project's life, and nothing syncs `config.json` to give the id a reach a path lacks.
+ * blocks are still read, as local just under the file. Normal settings writes use the local
+ * file; doctor can move a legacy block there and remove it from config.json.
  *
  * A local file is written whole through a rename, since the board, MCP and the CLI can write at
  * once. Only namespaces have a shared or local layer, and no namespace may take a device key's

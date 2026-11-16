@@ -422,7 +422,7 @@ When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XD
 1.0.0-beta.0 read a project's settings from the repo only: the loop from `.kabane/loop.json`, the
 pin from `.kabane/scope`, which `kabane init --scope` wrote. Now your settings for a project and
 your pin are kept under `KABANE_HOME`, outside the repo, and the repo's files are written only when
-you name them. Nothing you already have is moved or rewritten.
+you name them. Updating itself does not move or rewrite these settings files.
 
 - **What stays, and is still read.** `.kabane/loop.json` is the *shared* layer, for everyone who
   clones the repo, and `.kabane/scope` is the repo's pin. Kabane never moves or deletes either.
@@ -437,8 +437,11 @@ you name them. Nothing you already have is moved or rewritten.
 - **From a source build since 1.0.0-beta.0.** Those builds called the layers `user`, `scope` and
   `project`, and kept local settings under `scopes.<scope id>` in `config.json`. The old names are
   still accepted on input, but JSON output says `global`, `local` and `shared`. The `scopes`
-  blocks are still read, as local just under the new file, and never written: to move a value,
-  set it again with `--layer local` and remove the old one by hand.
+  blocks are still read, as local just under the new file. `kabane doctor` reports them.
+  `kabane doctor --fix` moves this project's blocks into its local files and removes the old
+  blocks from `config.json` when the destination is absent or identical. A different local
+  value refuses the move. Other checkouts sharing that scope then lose the old block; review
+  their settings before applying this repair. Blocks for other scopes are reported for manual migration.
 - **Running processes.** A board, `kabane mcp` or loop runner started by an older version does
   not read the new files. It misses local and global settings the new CLI writes, and a pin
   written without `--shared`, so it can file tasks under another scope than new processes do.

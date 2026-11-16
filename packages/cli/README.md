@@ -81,7 +81,9 @@ key by key:
 `--layer user`, `--layer project` and `--layer scope`, the names before these, still mean global,
 shared and local. Local settings from before kabane kept them by path, under
 `scopes.<scope id>` in `config.json`, are still read as local, just under the file; kabane never
-writes or moves them.
+writes new values there. `kabane doctor --fix` can move this project's blocks into its local
+files and remove them from `config.json`; other checkouts sharing that scope lose those
+legacy settings, so review their configuration first.
 
 A write lands in the layer it names even when a higher one sets the same key, so it can change
 nothing yet. `set` and `unset` then say which layer still decides and its value; an unset that
