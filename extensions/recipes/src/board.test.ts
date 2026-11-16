@@ -1,5 +1,5 @@
 // The board's ports over a real tracker and the extension's real run table: the card a run maps to
-// in each state, the tab's lines, stop, and the triggers and dispatch of `a`. The runtime is a
+// in each state, stop, and the triggers and dispatch of `a`. The runtime is a
 // script of what hc would answer, because a test never starts a terminal (AGENTS.md, "Verify");
 // the real hc path is the sandbox check.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -90,10 +90,9 @@ const hostFor = (basePath: string): Host => ({
 	defineTool,
 });
 
-/** What hc would answer, by terminal: its state, its screen, and every start and stop asked. */
+/** What hc would answer, by terminal: its state, and every start and stop asked. */
 const scripted = () => {
 	const states = new Map<string, Runs.State>();
-	const screens = new Map<string, string>();
 	const started: Runtime.Start[] = [];
 	const stopped: string[] = [];
 	const got: string[] = [];
@@ -115,14 +114,8 @@ const scripted = () => {
 			states.set(session, "ended");
 			return ok(undefined);
 		},
-		read: async (session) => {
-			const screen = screens.get(session);
-			return screen === undefined
-				? err(new Error(`hc read failed (exit 3): no terminal ${session}`))
-				: ok(screen);
-		},
 	};
-	return { runtime, states, screens, started, stopped, got };
+	return { runtime, states, started, stopped, got };
 };
 
 let issue: { id: string; shortId: string; title: string };
@@ -209,8 +202,6 @@ describe("RecipeActivity", () => {
 			label: "research",
 			taskId: issue.id,
 			taskShortId: issue.shortId,
-			tab: true,
-			hasEvents: true,
 			detail: [
 				"waiting",
 				"depth=quick",
@@ -218,6 +209,8 @@ describe("RecipeActivity", () => {
 				"kabane runs attach 01M7JT0TFJB7MF38VYDWCG0001",
 			],
 		});
+		// No tab: kabane does not render the terminal, `kabane runs attach` shows it.
+		expect([card.tab, card.hasEvents]).toEqual([undefined, undefined]);
 	});
 
 	it("offers no stop on a run of another machine or one still starting", () => {
@@ -293,52 +286,6 @@ describe("RecipeActivity", () => {
 				.filter((card) => card.status === "completed")
 				.map((card) => card.id.slice(-2)),
 		).toEqual(["11", "10", "09", "08", "07", "06", "05", "04", "03"]);
-	});
-
-	it("shows the terminal's screen on the tab, then only the lines it gained", async () => {
-		const hc = scripted();
-		const one = run("01M7JT0TFJB7MF38VYDWCG0300");
-		value(await Runs.insert(host, one, "t"));
-		hc.states.set(one.session, "running");
-		hc.screens.set(one.session, "one\ntwo\n\n\n");
-		const source = sourceWith(hc.runtime);
-		const first = value((await source.events?.(one.id, 0)) ?? ok([]));
-		expect(first.map((e) => [e.seq, e.type, e.summary])).toEqual([
-			[1, "output", "one"],
-			[2, "output", "two"],
-		]);
-		expect(value((await source.events?.(one.id, 2)) ?? ok([]))).toEqual([]);
-		hc.screens.set(one.session, "two\nthree\nfour\n");
-		const scrolled = value((await source.events?.(one.id, 2)) ?? ok([]));
-		expect(scrolled.map((e) => [e.seq, e.summary])).toEqual([
-			[3, "three"],
-			[4, "four"],
-		]);
-		hc.screens.set(one.session, "redrawn\n");
-		const redrawn = value((await source.events?.(one.id, 4)) ?? ok([]));
-		expect(redrawn.map((e) => [e.type, e.summary])).toEqual([
-			["notice", "the screen was redrawn"],
-			["output", "redrawn"],
-		]);
-	});
-
-	it("says where a run is on another machine, and shows a gone terminal's last state once", async () => {
-		const hc = scripted();
-		const away = run("01M7JT0TFJB7MF38VYDWCG0400", { machine: "elsewhere" });
-		const gone = run("01M7JT0TFJB7MF38VYDWCG0401", { state: "idle" });
-		value(await Runs.insert(host, away, "t"));
-		value(await Runs.insert(host, gone, "t"));
-		hc.states.set(gone.session, "idle");
-		const source = sourceWith(hc.runtime);
-		const there = value((await source.events?.(away.id, 0)) ?? ok([]));
-		expect(there.map((e) => e.summary)).toEqual([
-			`run ${away.id} is running on elsewhere: read its terminal there, with kabane runs read ${away.id}`,
-		]);
-		const last = value((await source.events?.(gone.id, 0)) ?? ok([]));
-		expect(last.map((e) => e.summary)).toEqual([
-			`run ${gone.id} is idle; its terminal is gone`,
-		]);
-		expect(value((await source.events?.(gone.id, 1)) ?? ok([]))).toEqual([]);
 	});
 
 	it("stops a run from its card through the runtime and reports the state after", async () => {
@@ -430,16 +377,12 @@ describe("reconcile on a run recorded as starting", () => {
 		expect(hc.got).not.toContain(Runs.STARTING);
 	});
 
-	it("says on the board that a run with no terminal never started once it is ended, and is starting before", async () => {
+	it("refuses to stop a run with no terminal: it never started once it is ended, and is starting before", async () => {
 		const never = run("01M7JT0TFJB7MF38VYDWCG0604", {
 			session: Runs.STARTING,
 		});
 		value(await Runs.insert(host, never, "t"));
 		const source = sourceWith(finding(new Map()).runtime);
-		const tab = value((await source.events?.(never.id, 0)) ?? ok([]));
-		expect(tab.map((e) => e.summary)).toEqual([
-			`run ${never.id} never started in hc; it is ended`,
-		]);
 		const stop = await (source.act?.(never.id, "stop", {}) ?? ok(""));
 		expect(stop.ok ? "" : stop.error.message).toBe(
 			`run ${never.id} never started in hc; it is ended: nothing to stop`,
@@ -450,10 +393,10 @@ describe("reconcile on a run recorded as starting", () => {
 		});
 		value(await Runs.insert(host, waiting, "t"));
 		const plain = sourceWith(scripted().runtime);
-		const starting = value((await plain.events?.(waiting.id, 0)) ?? ok([]));
-		expect(starting.map((e) => e.summary)).toEqual([
-			`run ${waiting.id} is still starting`,
-		]);
+		const starting = await (plain.act?.(waiting.id, "stop", {}) ?? ok(""));
+		expect(starting.ok ? "" : starting.error.message).toBe(
+			`run ${waiting.id} is still starting: nothing to stop`,
+		);
 	});
 });
 

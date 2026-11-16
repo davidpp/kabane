@@ -1,11 +1,11 @@
-// The recipe runs as board activity: a run that names an issue is a card on that issue, its tab is
-// the terminal's screen, and its one action stops it. Every listing reads this machine's
-// unfinished runs from the runtime first, as `kabane runs` does. A run without a target is not on
-// the board.
+// The recipe runs as board activity: a run that names an issue is a card on that issue with its
+// state and the command that attaches to its terminal, and its one action stops it. The card has
+// no tab: kabane does not render a terminal, `kabane runs attach` shows it in hc. Every listing
+// reads this machine's unfinished runs from the runtime first, as `kabane runs` does. A run
+// without a target is not on the board.
 import { hostname } from "node:os";
 import type {
 	ActivityCard,
-	ActivityEvent,
 	ActivitySource,
 	ActivityStatus,
 	CardAction,
@@ -78,8 +78,6 @@ export namespace RecipeActivity {
 				`on ${run.machine}`,
 				attach(run.id),
 			],
-			hasEvents: true,
-			tab: true,
 			...(reachable(run, here) ? { actions: [STOP] } : {}),
 		};
 	};
@@ -99,121 +97,12 @@ export namespace RecipeActivity {
 		return targeted.filter((run) => !finished(run) || recent.has(run));
 	};
 
-	/**
-	 * The lines `next` adds after `prev`: the screen scrolled, so the longest tail of `prev` that
-	 * heads `next` is what it already showed. Null when no tail does: the screen was redrawn.
-	 */
-	const appended = (
-		prev: readonly string[],
-		next: readonly string[],
-	): string[] | null => {
-		if (prev.length === 0) return [...next];
-		for (let k = Math.min(prev.length, next.length); k > 0; k--) {
-			const tail = prev.slice(prev.length - k);
-			if (tail.every((line, at) => line === next[at])) return next.slice(k);
-		}
-		return null;
-	};
-
-	/** The screen as lines, without the blank rows below its last text. */
-	const lines = (screen: string): string[] => {
-		const all = screen.split("\n").map((line) => line.trimEnd());
-		while (all.length > 0 && all[all.length - 1] === "") all.pop();
-		return all;
-	};
-
 	type Deps = {
 		host: Host;
 		runtime: Runtime;
 		/** The board's project; null outside one, where there is nothing to list. */
 		project: () => Promise<Result<ProjectScope | null>>;
 		actor: string;
-	};
-
-	/** What the tab showed of a card last, so a poll adds only what changed. */
-	type Shown = { seq: number; lines: string[]; noted: boolean };
-
-	/**
-	 * The tab's events for a run: the terminal's screen through the runtime's `read`, then on each
-	 * poll only the lines it gained; one notice instead when this machine cannot read it.
-	 */
-	const tab = (runtime: Runtime) => {
-		const shown = new Map<string, Shown>();
-
-		/** One notice, the first time the tab asks, and nothing after. */
-		const note = (id: string, afterSeq: number, text: string) => {
-			const last = shown.get(id);
-			if (afterSeq > 0 && last?.noted) return ok([]);
-			const seq = (last?.seq ?? afterSeq) + 1;
-			shown.set(id, { seq, lines: last?.lines ?? [], noted: true });
-			return ok<ActivityEvent[]>([
-				{
-					seq,
-					at: new Date().toISOString(),
-					type: "notice",
-					severity: "info",
-					summary: text,
-				},
-			]);
-		};
-
-		const screen = async (
-			run: Runs.Run,
-			afterSeq: number,
-		): Promise<Result<ActivityEvent[]>> => {
-			const here = hostname();
-			if (run.machine !== here)
-				return note(
-					run.id,
-					afterSeq,
-					`run ${run.id} is ${run.state} on ${run.machine}: read its terminal there, with kabane runs read ${run.id}`,
-				);
-			if (run.session === Runs.STARTING)
-				return note(run.id, afterSeq, `run ${run.id} ${starting(run)}`);
-			if (run.runtime !== runtime.name || runtime.read === undefined)
-				return note(
-					run.id,
-					afterSeq,
-					`run ${run.id} is ${run.state} in ${run.runtime}, which has no terminal to read here`,
-				);
-			const read = await runtime.read(run.session);
-			// A terminal that is gone leaves the run's last state.
-			if (!read.ok)
-				return note(
-					run.id,
-					afterSeq,
-					`run ${run.id} is ${run.state}; its terminal is gone`,
-				);
-			const last = afterSeq === 0 ? undefined : shown.get(run.id);
-			const next = lines(read.value);
-			const added = appended(last?.lines ?? [], next);
-			const fresh = added ?? next;
-			let seq = last?.seq ?? afterSeq;
-			const at = new Date().toISOString();
-			const events: ActivityEvent[] = [
-				...(added === null
-					? [
-							{
-								seq: ++seq,
-								at,
-								type: "notice",
-								severity: "info" as const,
-								summary: "the screen was redrawn",
-							},
-						]
-					: []),
-				...fresh.map((line) => ({
-					seq: ++seq,
-					at,
-					type: "output",
-					summary: line,
-				})),
-			];
-			shown.set(run.id, { seq, lines: next, noted: false });
-			return ok(events);
-		};
-
-		return screen;
 	};
 
 	export const source = ({
@@ -223,7 +112,6 @@ export namespace RecipeActivity {
 		actor,
 	}: Deps): ActivitySource => {
 		const shortIds = new Map<string, string>();
-		const screen = tab(runtime);
 
 		const shortIdOf = async (id: string): Promise<string> => {
 			const known = shortIds.get(id);
@@ -278,12 +166,6 @@ export namespace RecipeActivity {
 				if (!run.ok) return run;
 				if (run.value?.target === undefined) return ok(null);
 				return ok(card(await targeted(run.value)));
-			},
-			events: async (id, afterSeq) => {
-				const run = await one(id);
-				if (!run.ok) return run;
-				if (run.value === null) return ok([]);
-				return screen(run.value, afterSeq);
 			},
 			act: async (id, actionId) => {
 				if (actionId !== STOP_ACTION)

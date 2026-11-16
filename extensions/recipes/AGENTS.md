@@ -11,7 +11,7 @@ those runs. `docs/recipes.md` is what a user reads.
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a recipe from explicit inputs (scope, root, dir, recipe, target, inputs, harness, actor) and reads no cwd, TTY or setting; `kabane run`, which resolves those and calls it; the dispatcher calls it too |
 | `src/runs-command.ts` | `kabane runs`: the listing and `reconcile`, which the board shares, `attach`, `read`, `send`, `stop` |
-| `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, their tab's screen lines and the stop action |
+| `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun` |
 | `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored |
 | `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, the optional `find` that recovers an interrupted start's session, and the optional terminal operations `read`, `send`, `attach` |
@@ -93,13 +93,11 @@ a target are cards: a run without one belongs to a jobs view, not the issue boar
 
 Listing and `card` run `reconcile` first, as `kabane runs` does; retention follows the loop's
 source (every run in flight, the newest finished up to ten, where `idle` counts as finished as
-the board draws it). `events` is the screen through
-`Runtime.read`: the board's event view only appends, so a poll returns the lines the screen
-gained (the longest tail of the last screen that heads the new one is already shown), or a
-"redrawn" notice and the whole screen when none does. That state is in memory, per card, reset
-when the tab opens (`afterSeq` 0). A program that redraws its screen in place on every frame,
-such as a full-screen harness with a timer, will repeat it; that is unverified with a real
-`claude`. The only action is `stop`; answering stays in a terminal.
+the board draws it). A card has no tab and no events (JCAB-483): kabane does not render a
+harness's terminal. The card carries the state and `kabane runs attach <id>`; hc shows the
+session. `Runtime.read` stays for `kabane runs read`. The only action is `stop`, which the board
+reaches only from a card's tab, so until it runs a card's actions from the issue's detail
+(JCAB-496) a run is stopped with `kabane runs stop`; answering stays in a terminal.
 
 Triggers are `recipe:<name>`. Inputs pass as declared; the board's form opens only when every
 input has a default and is a choice, number or boolean, and otherwise `dispatch` gets no
@@ -127,7 +125,7 @@ hc rm <terminal>                            # each terminal you started
 
 The board in the sandbox, on your own tmux socket: start a run as above, then
 `tmux -L <yours> new-session -d -s board -x 100 -y 30 'bun run sandbox board'`; `enter` on the
-issue shows the card, `o` its tab, `x` stops it, `a` on the issue starts a recipe. A recipe the
+issue shows the card with its attach command, `a` on the issue starts a recipe. A recipe the
 board starts gets a new terminal: label it at once.
 
 The tests never start a terminal: hc has one core per user, and it holds the human's own
