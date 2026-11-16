@@ -364,12 +364,6 @@ a silent UTC.
 
 ## Updating
 
-Scripts reading `kabane mcp install --json` must accept `reports[].status: "stale"`
-for an existing entry whose launch differs from this installation. It previously returned
-`present`; the exit code remains 0 and the entry is unchanged. Text now says
-`registered with another command` instead of `already installed` for that state.
-Use `--force` or the named doctor repair only when you want to re-point it.
-
 ### Hearing about a release
 
 The board says when a release your install would update to is out: a line over its footer,
@@ -420,6 +414,12 @@ In the board, `/doctor` has the copilot run the same report and act on it: it ap
 `auto` fixes without asking, tells you each `mention` and `suggest` and waits for your yes,
 and offers the procedure a `route` names. It never rewrites a harness's MCP entry itself; it
 gives you the `kabane doctor --fix` command to run.
+
+Scripts reading `kabane mcp install --json` must accept `reports[].status: "stale"`
+for an existing entry whose launch differs from this installation. It previously returned
+`present`; the exit code remains 0 and the entry is unchanged. Text now says
+`registered with another command` instead of `already installed` for that state.
+Use `--force` or the named doctor repair only when you want to re-point it.
 
 ### Standalone binaries
 

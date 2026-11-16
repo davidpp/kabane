@@ -194,7 +194,10 @@ test("malformed config is reported without opening a database", () => {
 	expect(cli()).toContain("config.json");
 	expect(JSON.parse(cli("--json")).findings).toEqual(
 		expect.arrayContaining([
-			expect.objectContaining({ source: "kabane", id: "check-failed" }),
+			expect.objectContaining({
+				source: "kabane",
+				id: "settings-check-failed",
+			}),
 			expect.objectContaining({
 				source: "project",
 				id: "dispatch-skill-missing",
@@ -330,7 +333,11 @@ test("an unreadable store leaves the other doctor findings in text and JSON", ()
 	const report = JSON.parse(cli("--json"));
 	expect(report.findings).toEqual(
 		expect.arrayContaining([
-			expect.objectContaining({ id: "store-unavailable", severity: "mention" }),
+			expect.objectContaining({
+				id: "store-unavailable",
+				severity: "mention",
+				path: join(home, DB_NAME),
+			}),
 			expect.objectContaining({ id: "dispatch-skill-missing" }),
 		]),
 	);
@@ -339,6 +346,9 @@ test("an unreadable store leaves the other doctor findings in text and JSON", ()
 
 test("a named missing fix is visible even with no findings", () => {
 	const { cli } = setup();
+	expect(cli("--fix", "nope")).toBe(
+		"nope: No finding matches nope. Run kabane doctor to see current source/id handles.",
+	);
 	expect(cli("--fix", "kabane/nope")).toContain(
 		"No finding matches kabane/nope",
 	);

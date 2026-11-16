@@ -176,7 +176,7 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 
 			path: differing[0]?.path,
 			severity: "mention",
-			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives shown in the guide. It may hold the project's own edits, or come from an older kabane. Compare the blocks and preserve deliberate project edits.`,
+			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} differs from the current block in the guide. It may hold the project's own edits, or come from an older kabane. Compare the blocks and preserve deliberate project edits.`,
 			route: `Read the current Tracker block at ${TRACKER_GUIDE}`,
 		},
 	];

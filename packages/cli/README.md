@@ -62,8 +62,7 @@ kabane list
   are discovered without importing their code. The host
   checks the manifest and API before importing the entry, whose dependencies resolve from
   its own `node_modules`. A refused extension prints one line naming the problem and how
-  to repair or disable it; the others still load. Manifests naming `modules` are refused
-  until data-module loading is supported. The bundled `loop` remains available without a
+  to repair or disable it; the others still load. The bundled `loop` remains available without a
   directory; a directory named `loop` overrides it, with a notice on stderr.
 
 ### Settings layers
@@ -312,6 +311,10 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
 | `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; existing entries are unchanged, with `stale` for a different launch command (`present` for the current one); `--force` or `doctor --fix kabane/mcp-entry-stale-<harness>` re-points it; `--print` prints snippets, also the fallback when none is found |
+
+Doctor and `mcp install` read Claude registrations from `$CLAUDE_CONFIG_DIR/.claude.json`
+when `CLAUDE_CONFIG_DIR` is nonempty, otherwise from `~/.claude.json`. This includes
+both user entries and the current project’s local entries.
 
 Updates are latest-stable only within the installed major (`0.x`: same minor). Source links,
 file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse mutation;
