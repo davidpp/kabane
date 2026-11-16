@@ -85,10 +85,14 @@ const seedRepo = (): void => {
 	);
 };
 
+// Claude Code reads CLAUDE_CONFIG_DIR before HOME: a contributor's own would take setup's install
+// out of the sandbox and into their real Claude config.
+const { CLAUDE_CONFIG_DIR: _own, ...inherited } = process.env;
+
 const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv =>
 	harnesses
 		? {
-				...process.env,
+				...inherited,
 				HOME: SANDBOX,
 				CODEX_HOME: join(SANDBOX, ".codex"),
 				KABANE_HOME,
