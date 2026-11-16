@@ -441,9 +441,13 @@ These are refused, each on its own, and the rest of the extension loads:
 - a shortcut named like a built-in (the built-in wins), and a shortcut name two extensions both
   use (neither is offered).
 
-The board's footer tells a refused file apart from a refused extension. One refused file is named
-with its reason; several are counted, with the extensions they belong to, and `kabane doctor`
-lists each one as a `copilot-file-*` finding under its extension, with the file's path.
+The board's footer has one row, cut at the terminal's width, so it leads with what a reader needs.
+One refused extension is spelled out: "Extension dead refused: package.json is missing", with paths
+relative to its directory. One refused file leads with where to read about it: "kabane doctor: notes
+file copilot/procedures/bare.md has no frontmatter…". More than one refusal of any kind is only
+counted: "kabane doctor: refused 1 extension, 3 files". `kabane doctor` lists each refused extension
+as an `extension-refused` finding and each refused file as a `copilot-file-*` finding under its
+extension, with the file's path.
 
 ### `OpenRequests`
 

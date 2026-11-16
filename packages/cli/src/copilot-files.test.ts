@@ -319,14 +319,14 @@ it("an enabled directory's files reach the board's copilot, and a refused one it
 		]);
 		const notice = await wired.announcer?.announce();
 		expect(notice?.ok && notice.value).toBe(
-			"Extension notes file refused: copilot/shortcuts/split.md: /split is a built-in shortcut, which wins",
+			"kabane doctor: notes file copilot/shortcuts/split.md: /split is a built-in shortcut, which wins",
 		);
 	} finally {
 		wired.copilot.close();
 	}
 });
 
-it("several refused files are counted by extension and sent to doctor, apart from refused extensions", async () => {
+it("more than one refusal of any kind is counted after the pointer to doctor, and one extension is spelled out without its absolute path", async () => {
 	const home = join(ROOT, "several");
 	const loaded = (name: string, files: Record<string, string>) =>
 		extension(
@@ -343,6 +343,8 @@ it("several refused files are counted by extension and sent to doctor, apart fro
 	loaded("notes", { "copilot/procedures/bare.md": "No frontmatter.\n" });
 	loaded("clash", { "copilot/shortcuts/go.md": shortcut("clash", "Go.") });
 	loaded("twin", { "copilot/shortcuts/go.md": shortcut("twin", "Go.") });
+	// An extension with no manifest: its refusal starts with its directory's absolute path.
+	mkdirSync(join(home, "extensions", "dead"), { recursive: true });
 	writeFileSync(
 		configPath(home),
 		JSON.stringify({
@@ -356,7 +358,7 @@ it("several refused files are counted by extension and sent to doctor, apart fro
 	const ctx = await openContext(home, home, args);
 	if (!ctx.ok) throw ctx.error;
 	const all = await Extensions.loadAll(
-		["notes", "clash", "twin", "gone"],
+		["notes", "clash", "twin", "dead"],
 		home,
 	);
 	const wired = await boardDeps(args, ctx.value, "claude", {
@@ -369,19 +371,32 @@ it("several refused files are counted by extension and sent to doctor, apart fro
 		refusals: all.refused,
 		directories: all.directories,
 	});
+	const dead = await boardDeps(args, ctx.value, "claude", {
+		refusals: all.refused,
+	});
+	// The board's announcement row: the text, then its dismiss hint, cut at the width.
+	const row = (text: string | false | null | undefined, width: number) =>
+		`${text} · esc dismiss`.slice(0, width - 1);
 	try {
-		const notice = await wired.announcer?.announce();
-		expect(notice?.ok && notice.value).toBe(
-			"3 copilot files refused in notes, clash, twin; run kabane doctor for each",
-		);
+		const files = await wired.announcer?.announce();
+		expect(files?.ok && files.value).toBe("kabane doctor: refused 3 files");
 		const mixed = await both.announcer?.announce();
-		expect(mixed?.ok && mixed.value).toStartWith(
-			"Extension gone refused: not installed",
+		const text = mixed?.ok && mixed.value;
+		expect(text).toBe("kabane doctor: refused 1 extension, 3 files");
+		for (const width of [40, 80, 100]) {
+			expect(row(text, width)).toContain("kabane doctor: refused 1 extension");
+			expect(row(text, width)).not.toContain("/");
+		}
+		expect(row(text, 80)).toContain("3 files");
+		const alone = await dead.announcer?.announce();
+		const single = alone?.ok && alone.value;
+		expect(single).toStartWith(
+			"Extension dead refused: package.json is missing",
 		);
-		expect(mixed?.ok && mixed.value).toContain("; 3 copilot files refused");
-		expect(mixed?.ok && mixed.value).not.toContain("--help");
+		expect(row(single, 40)).toBe("Extension dead refused: package.json is");
 	} finally {
 		wired.copilot.close();
 		both.copilot.close();
+		dead.copilot.close();
 	}
 });
