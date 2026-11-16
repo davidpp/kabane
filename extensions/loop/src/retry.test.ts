@@ -12,6 +12,7 @@ import { Retry } from "./retry";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 const done: RunStore.Claim = {
 	taskId: "t1",
@@ -176,9 +177,9 @@ const retried = async (agent: { resume: boolean; used: number }) => {
 		basePath: home,
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
-		overrides: {
+		overrides: TestHarnesses.overrides({
 			gemini: { command: process.execPath, args: [join(home, "agent.mjs")] },
-		},
+		}),
 		tree: async () => "tree",
 		tickMs: 5,
 	});

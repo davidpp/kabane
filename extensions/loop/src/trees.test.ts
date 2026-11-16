@@ -22,6 +22,7 @@ import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { ClaimTrees } from "./trees";
 import { Worktree } from "./worktree";
 
@@ -188,12 +189,12 @@ const drive = async (
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		git,
-		overrides: {
+		overrides: TestHarnesses.overrides({
 			gemini:
 				harness === "scripted"
 					? { command: process.execPath, args: [agent, home, script] }
 					: { command: "/nonexistent/harness" },
-		},
+		}),
 		tickMs: 5,
 	});
 	if (!ended.ok) throw ended.error;

@@ -2,6 +2,7 @@
 // trace and a run.json save. A save replaces `ctx.run` and writes it before the step goes on,
 // which is what lets a run resume after its runner dies.
 import type { Harnesses } from "@cabane/acp";
+import type { LoopConfig } from "./config";
 import type { Dispatch } from "./dispatch";
 import type { Gates } from "./gates";
 import type { Land } from "./land";
@@ -20,10 +21,10 @@ export namespace RunState {
 		/** This process's pid, recorded so readers can tell a live run from an orphaned one. */
 		pid: number;
 		/**
-		 * Launch overrides per harness, over the run's `loop.harnesses` setting for that harness: what
-		 * a caller driving the runner in process (a test) launches instead.
+		 * What a caller driving the runner in process (a test) launches instead, over the run's
+		 * `loop.harnesses`: one for every harness, so no session falls through to a real adapter.
 		 */
-		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
+		overrides?: LoopConfig.Own;
 		/** The mode every session starts in; the harness's own auto mode when absent. */
 		mode?: Harnesses.Mode;
 		/** Aborting it stops the run the way an inbox `stop` does. */

@@ -573,8 +573,11 @@ export namespace Claims {
 		});
 		const place = briefTree(ctx.run, worktree);
 		// Every session, a lens's and the fixer's as much as an implementer's, launches through here.
-		const overrides =
-			ctx.deps.overrides?.[harness] ?? ctx.run.config.harnesses[harness];
+		const overrides = LoopConfig.launchOverrides(
+			ctx.run.config,
+			harness,
+			ctx.deps.overrides,
+		);
 		const handle = Dispatch.begin(
 			{
 				parent: plan.parent,

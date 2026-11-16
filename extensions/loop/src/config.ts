@@ -307,6 +307,39 @@ export namespace LoopConfig {
 
 	export type Config = z.output<typeof Schema>;
 
+	/** Launch overrides for every harness, as a caller driving the runner in process gives them. */
+	export type Own = Readonly<Record<Harnesses.Id, Harnesses.Overrides>>;
+
+	/**
+	 * What a session on `harness` launches instead of its pinned adapter: the runner's `own`
+	 * overrides when it was given them, else the run's `loop.harnesses`; neither, the adapter.
+	 */
+	export const launchOverrides = (
+		config: Pick<Config, "harnesses">,
+		harness: Harnesses.Id,
+		own?: Own,
+	): Harnesses.Overrides | undefined =>
+		own?.[harness] ?? config.harnesses[harness];
+
+	/** The command and arguments a session on `harness` runs, and the setting that names them. */
+	export const launch = (
+		config: Pick<Config, "harnesses">,
+		harness: Harnesses.Id,
+		own?: Own,
+	): { command: string; args: string[]; from: string } => {
+		const { command, args } = Harnesses.resolve(
+			harness,
+			launchOverrides(config, harness, own),
+		);
+		const from =
+			own !== undefined
+				? "the runner's own overrides"
+				: config.harnesses[harness]
+					? `loop.harnesses.${harness}`
+					: "the pinned adapter";
+		return { command, args, from };
+	};
+
 	/**
 	 * Sessions running at once: what the budget says, else 2 when subtask claims are `isolated`
 	 * (a worktree each) and 1 when they share one tree.

@@ -23,6 +23,7 @@ import { Runner } from "./runner";
 import { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -172,12 +173,12 @@ const drive = async (
 		kabaneBin: "/nonexistent/kabane",
 		pid: process.pid,
 		git,
-		overrides: {
+		overrides: TestHarnesses.overrides({
 			gemini: {
 				command: process.execPath,
 				args: [agent, home, join(root, "prompts.jsonl"), done],
 			},
-		},
+		}),
 		tickMs: 5,
 		...input,
 	});
@@ -451,6 +452,7 @@ describe("A checkpoint on a task with a checklist", () => {
 				basePath: home,
 				kabaneBin: "/nonexistent/kabane",
 				pid: process.pid,
+				overrides: TestHarnesses.overrides(),
 				git,
 			},
 			run.value,

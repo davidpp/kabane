@@ -900,7 +900,7 @@ export namespace Loop {
 	};
 
 	export type RunDeps = Deps & {
-		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
+		overrides?: LoopConfig.Own;
 		/** The device config's `harness.mode`. */
 		mode?: Harnesses.Mode;
 	};
