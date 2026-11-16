@@ -109,10 +109,10 @@
         "@cabane/outcome": "workspace:*",
         "@cabane/questions": "workspace:*",
         "@cabane/sqlite": "workspace:*",
+        "@modelcontextprotocol/sdk": "1.30.0",
         "zod": "3.25.76",
       },
       "devDependencies": {
-        "@modelcontextprotocol/sdk": "1.30.0",
         "@opentui/react": "0.8.2",
         "@types/bun": "1.4.0",
         "@types/react": "19.2.7",
