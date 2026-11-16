@@ -56,7 +56,12 @@ export namespace McpClients {
 	};
 
 	/** A `kabane` entry found in a harness config file, and which file and key held it. */
-	type Registration = { at: string; launch: Launch; scope?: "user" | "local" };
+	type Registration = {
+		path: string;
+		at: string;
+		launch: Launch;
+		scope?: "user" | "local";
+	};
 
 	const ConfigSchema = z.record(z.unknown());
 
@@ -75,11 +80,15 @@ export namespace McpClients {
 	};
 
 	// An entry without a command (an HTTP server) is not one `mcp install` writes.
-	const serverIn = (servers: unknown, at: string): Registration[] => {
+	const serverIn = (
+		servers: unknown,
+		path: string,
+		at: string,
+	): Registration[] => {
 		const map = ConfigSchema.safeParse(servers);
 		if (!map.success) return [];
 		const launch = LaunchSchema.safeParse(map.data[SERVER_NAME]);
-		return launch.success ? [{ at, launch: launch.data }] : [];
+		return launch.success ? [{ path, at, launch: launch.data }] : [];
 	};
 
 	// User scope, then the project's local scope, which Claude keys by the project's path.
@@ -90,6 +99,7 @@ export namespace McpClients {
 			return config.ok ? ok([]) : config;
 		const found: Registration[] = serverIn(
 			config.value.mcpServers,
+			path,
 			`${path} mcpServers`,
 		).map((registration) => ({ ...registration, scope: "user" }));
 		const projects = ConfigSchema.safeParse(config.value.projects);
@@ -99,6 +109,7 @@ export namespace McpClients {
 				found.push(
 					...serverIn(
 						project.data.mcpServers,
+						path,
 						`${path} projects["${where.projectRoot}"].mcpServers`,
 					).map((registration): Registration => ({
 						...registration,
@@ -117,7 +128,9 @@ export namespace McpClients {
 		const config = readConfig(path, Bun.TOML.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
-		return ok(serverIn(config.value.mcp_servers, `${path} [mcp_servers]`));
+		return ok(
+			serverIn(config.value.mcp_servers, path, `${path} [mcp_servers]`),
+		);
 	};
 
 	const geminiRegistrations = (where: Where): Result<Registration[]> => {
@@ -125,7 +138,7 @@ export namespace McpClients {
 		const config = readConfig(path, Bun.JSONC.parse);
 		if (!config.ok || config.value === undefined)
 			return config.ok ? ok([]) : config;
-		return ok(serverIn(config.value.mcpServers, `${path} mcpServers`));
+		return ok(serverIn(config.value.mcpServers, path, `${path} mcpServers`));
 	};
 
 	const REGISTRATIONS: Record<Id, (where: Where) => Result<Registration[]>> = {

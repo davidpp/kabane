@@ -61,6 +61,7 @@ const idPart = (value: string): string =>
 const drift = (
 	namespace: Settings.Namespace,
 	source: Settings.Source,
+	path = source.label,
 ): Doctor.Finding[] =>
 	Settings.drift(namespace.schema, source.value).map((finding) => {
 		const key = [namespace.name, ...finding.path];
@@ -84,7 +85,7 @@ const drift = (
 			].join("-"),
 
 			severity: "mention",
-			path: source.label,
+			path,
 			summary: `${shown} in ${source.layer}: ${detail}. Edit ${source.label} to remove or correct this key${finding.replacement ? "; review the suggested replacement before removing the old key" : ""}.`,
 		};
 	});
@@ -149,7 +150,9 @@ const legacySettings = (
 			const namespace = namespaces.find((ns) => ns.name === name);
 			const label = `${path} (scopes.${scope}.${name})`;
 			if (namespace)
-				findings.push(...drift(namespace, { layer: "local", label, value }));
+				findings.push(
+					...drift(namespace, { layer: "local", label, value }, path),
+				);
 			const destination =
 				namespace && scope === where.scopeId && where.localRoot !== undefined
 					? ConfigLayers.localFile(home, where.localRoot, name)

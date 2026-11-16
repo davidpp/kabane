@@ -256,3 +256,14 @@ test("settings diagnostics name usable keys and a concrete edit", () => {
 	expect(text).toContain("setting is no longer used");
 	expect(text).toContain("to remove or correct this key");
 });
+
+test("legacy setting drift reports the file path separately from its key", () => {
+	const { home, config, cli } = setup();
+	config({ scopes: { pinned: { loop: { notASetting: true } } } });
+	const report = JSON.parse(cli("--json"));
+	const finding = report.findings.find((item: { id: string }) =>
+		item.id.startsWith("unknown-setting-local"),
+	);
+	expect(finding.path).toBe(join(home, "config.json"));
+	expect(finding.summary).toContain("scopes.pinned.loop");
+});

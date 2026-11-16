@@ -84,7 +84,7 @@ export const install = async (
 		findings.push({
 			id,
 
-			path: other[0]?.at,
+			path: other[0]?.path,
 			// An entry that still starts another kabane, a source checkout say, may be deliberate.
 			severity: dead.length > 0 ? "mention" : "suggest",
 			summary:

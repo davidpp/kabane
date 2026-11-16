@@ -161,7 +161,11 @@ test("an entry left on a version mise removed is mentioned with the harness, bot
 			`kabane doctor --fix kabane/${finding.id}`,
 		);
 	}
-	expect(found.value[1]?.path).toContain(".codex/config.toml");
+	expect(found.value.map(({ path }) => path)).toEqual([
+		join(s.home, ".claude.json"),
+		join(s.home, ".codex/config.toml"),
+		join(s.home, ".gemini/settings.json"),
+	]);
 });
 
 test("Claude's local scope for this project is read beside its user scope", async () => {
