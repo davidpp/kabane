@@ -243,7 +243,7 @@ release, which follows the download redirect, stays a human check.
 1. Review the proposed exact action pins in `.github/workflows/release.yml`, Node
    **24.21.0** and npm **12.2.0**. These versions/pins were checked against official
    distribution/registry/GitHub refs; availability is not approval to execute a release.
-   Keep Bun **1.4.0** from `.bun-version`. npm trusted publishing requires CLI >=11.5.1
+   Keep Bun **1.4.1** from `.bun-version`. npm trusted publishing requires CLI >=11.5.1
    and Node >=22.14.0; npm12.2.0 also requires a sufficiently recent Node24.
 2. Configure GitHub environment **`npm-release`**, required reviewers and an appropriate
    self-review/bypass policy. A solo maintainer needs a reviewer arrangement that can
