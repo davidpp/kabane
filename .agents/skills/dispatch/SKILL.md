@@ -121,14 +121,20 @@ keeps later conflicts small and unblocks dependents sooner. As each agent finish
    commits: the handoff is the agent's account, and git is the evidence. An issue with no
    handoff, or one whose handoff shows no evidence, goes back to its agent with that said, before
    any merge.
-2. Integrate the branch the way this session's local instructions say to. When they say
-   nothing, open a pull request. When two agents' additive edits conflict, keep both.
-   When a test module conflicts, it is usually two helpers with the same name: keep one helper
-   and both sets of tests.
-3. Run the full gate on the merged result, not just on the branch:
-   the Gate section of AGENTS.md, in full.
-4. Remove the agent's working copy, keep the manual checks its handoff lists as not verified,
-   and mark the issue done with `kabane_done`.
+2. Land the branch from the main checkout, with the handoff's summary in a file:
+   `bun run land <branch> -- --title "<issue title> (<id>)" --body-file <file>`. It pushes the
+   branch, opens its pull request against main, turns on auto-merge and prints the PR's URL;
+   running it again on the same branch is safe. The issue counts as merged, and its dependents
+   may start, only once `gh pr view <url> --json state` says `MERGED`.
+   - A PR whose `gate` check fails goes back to its agent, with the failing log.
+   - A PR that conflicts with main: rebase the branch in the agent's worktree and run
+     `bun run land <branch>` again. When two agents' additive edits conflict, keep both. When a
+     test module conflicts, it is usually two helpers with the same name: keep one helper and
+     both sets of tests.
+3. The PR's required `gate` check is the full gate on the merged result: CI runs the Gate
+   section of AGENTS.md on the PR, and the agent already ran it on its branch.
+4. Once the PR has merged, remove the agent's working copy and its branch, keep the manual
+   checks its handoff lists as not verified, and mark the issue done with `kabane_done`.
 5. Dispatch whatever that merge unblocked, and tell any agent that was working against a stub.
 
 Anything an agent reports outside its scope, whether a bug it noticed or a workaround it
