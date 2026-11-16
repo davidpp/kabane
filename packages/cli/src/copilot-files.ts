@@ -2,8 +2,8 @@
  * What an enabled directory extension adds to the board's copilot, read from markdown files in its
  * directory rather than from its code: `copilot/procedures/<name>.md` (frontmatter `title`) is
  * appended to the copilot's instructions, and `copilot/shortcuts/<name>.md` (frontmatter `hint`,
- * a one-line body) is offered as `/<name>`. `{{extension}}` in a body becomes the extension's
- * directory and nothing else is substituted. A file that cannot be used is refused on its own,
+ * a one-line body) is offered as `/<name>`. `{{extension}}` in a body or a procedure's title
+ * becomes the extension's directory and nothing else is substituted. A file that cannot be used is refused on its own,
  * with one line naming the extension and the file, and the rest loads.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -22,6 +22,10 @@ const ShortcutFields = z.object({ hint: z.string().trim().min(1) }).strict();
 const PROCEDURES = join("copilot", "procedures");
 const SHORTCUTS = join("copilot", "shortcuts");
 const PLACEHOLDER = "{{extension}}";
+
+// A function, not a string: a replacement string reads `$&` or `$$` in the path as a pattern.
+const fill = (text: string, dir: string): string =>
+	text.replaceAll(PLACEHOLDER, () => dir);
 
 export namespace CopilotFiles {
 	type Read = {
@@ -70,11 +74,13 @@ export namespace CopilotFiles {
 				new Error(`${file}: invalid frontmatter (${where}${issue?.message})`),
 			);
 		}
-		const body = rest
-			.slice(end + 1)
-			.join("\n")
-			.trim()
-			.replaceAll(PLACEHOLDER, dir);
+		const body = fill(
+			rest
+				.slice(end + 1)
+				.join("\n")
+				.trim(),
+			dir,
+		);
 		return ok({ fields: parsed.data, body });
 	};
 
@@ -100,7 +106,10 @@ export namespace CopilotFiles {
 			for (const file of files.ok ? files.value : []) {
 				const read = parse(directory, file, ProcedureFields);
 				if (read.ok)
-					own.push({ title: read.value.fields.title, body: read.value.body });
+					own.push({
+						title: fill(read.value.fields.title, directory),
+						body: read.value.body,
+					});
 				else refuse(name, read.error.message);
 			}
 			if (own.length > 0) procedures.push({ extension: name, procedures: own });

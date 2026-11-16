@@ -76,6 +76,32 @@ describe("CopilotFiles.read", () => {
 		]);
 	});
 
+	it("fills {{extension}} with the path as it is, `$&` and `$$` included, in titles too", () => {
+		const odd = extension(
+			"odd",
+			{
+				"copilot/procedures/odd.md": procedure(
+					"FROM {{extension}}",
+					"Run {{extension}}/bin.",
+				),
+			},
+			join(ROOT, "e10$&x", "a$$b"),
+		);
+		expect(odd.directory).toContain("e10$&x/a$$b/odd");
+		const read = CopilotFiles.read([odd]);
+		expect(read.procedures).toEqual([
+			{
+				extension: "odd",
+				procedures: [
+					{
+						title: `FROM ${odd.directory}`,
+						body: `Run ${odd.directory}/bin.`,
+					},
+				],
+			},
+		]);
+	});
+
 	it("an extension without copilot files contributes nothing", () => {
 		const read = CopilotFiles.read([extension("bare", { "index.ts": "" })]);
 		expect(read).toEqual({ procedures: [], shortcuts: [], refused: [] });
