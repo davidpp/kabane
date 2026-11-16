@@ -199,8 +199,12 @@ const launch = async (
 		},
 	});
 	if (!started.ok) {
-		await Runs.setState(host, id, "ended", ctx.actor);
-		return host.outcome.failure(started.error);
+		const ended = await Runs.setState(host, id, "ended", ctx.actor);
+		return host.outcome.failure(
+			ended.ok
+				? started.error
+				: `${started.error.message}; the run row ${id} is still recorded as running: ${ended.error.message}`,
+		);
 	}
 	const warnings: string[] = [];
 	if (target !== undefined) {
