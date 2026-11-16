@@ -162,7 +162,9 @@ Nothing else is answered from the board.
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
 with its description. A recipe whose inputs all have a default and are choices, numbers or
 booleans opens a form first; `enter` starts it with those values, and the footer names the
-new run. A recipe with a required input that has no default cannot start from the board: the
+new run. A recipe with any free-text input opens no form: `enter` starts it at once with every
+input's default, and the card's header shows the values it got. To give other values, start it
+with `kabane run <recipe> --target <id> --input name=value`. A recipe with a required input that has no default cannot start from the board: the
 footer gives the `kabane run` command that does. A recipe file that does not parse is listed
 with its error and does not start.
 
