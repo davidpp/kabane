@@ -5,7 +5,8 @@ fills it in, starts your coding harness on it in a background terminal and retur
 `kabane runs` shows what each run is doing and lets you read it, answer it, take it over or
 stop it.
 
-Recipes are the `recipes` extension. Without it, kabane has no `run` or `runs` command.
+Recipes are the `recipes` extension. Without it, kabane has no `run` or `runs` command, and the
+board shows no run and offers no recipe.
 
 ## Install
 
@@ -136,6 +137,35 @@ of runs with these fields:
 | `inputs` | the input values the run started with |
 | `state` | `running`, `waiting`, `idle` or `ended` |
 | `startedAt`, `endedAt` | ISO timestamps; `endedAt` once the run has ended |
+
+## On the board
+
+A run that works on an issue is a card on that issue, for the board's project. The issue's row
+and header show the recipe's name and the run's state; the header also shows its inputs, its
+machine and `kabane runs attach <id>` to copy. The board reads each state from the terminal,
+as `kabane runs` does, and draws it this way:
+
+| State | On the board |
+|---|---|
+| `running` | in flight, with a spinner |
+| `waiting` | paused (`⏸`): the agent waits on you; answer it with `kabane runs attach` or `kabane runs send` |
+| `idle`, `ended` | finished; the card's detail says which |
+
+Every unfinished run is listed, and the newest ended ones up to ten runs in all. A run with no
+target is not on the board: `kabane runs` lists it.
+
+`o` on the issue opens the card's tab: the terminal's screen, followed while the run is in
+flight, a new line at a time. A screen that the program redraws whole starts again under "the
+screen was redrawn". A run on another machine shows where it runs instead, and a terminal that
+is gone shows the run's last state. `x` on the tab stops the run, as `kabane runs stop` does.
+Nothing else is answered from the board.
+
+`a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
+with its description. A recipe whose inputs all have a default and are choices, numbers or
+booleans opens a form first; `enter` starts it with those values, and the footer names the
+new run. A recipe with a required input that has no default cannot start from the board: the
+footer gives the `kabane run` command that does. A recipe file that does not parse is listed
+with its error and does not start.
 
 ## Settings
 
