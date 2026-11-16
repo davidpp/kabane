@@ -140,13 +140,31 @@ test("chunks retain machine-path scanning and cannot replace the entry", async (
 	if (!missingEntry.result.ok)
 		expect(missingEntry.result.error.message).toBe(UNEXPECTED_SHAPE);
 });
+/**
+ * npm with a home, cache, logs and user config of its own under WORK, offline: the pack reads
+ * nothing from the contributor's npm setup and writes nothing to their home.
+ */
+const NPM_HOME = join(WORK, "npm-home");
+mkdirSync(NPM_HOME);
+writeFileSync(join(NPM_HOME, ".npmrc"), "");
+const npmEnv = {
+	PATH: process.env.PATH,
+	HOME: NPM_HOME,
+	npm_config_userconfig: join(NPM_HOME, ".npmrc"),
+	npm_config_cache: join(NPM_HOME, "cache"),
+	npm_config_logs_dir: join(NPM_HOME, "logs"),
+	npm_config_offline: "true",
+	npm_config_update_notifier: "false",
+	npm_config_fund: "false",
+	npm_config_audit: "false",
+};
 /** `npm pack` the built dist into a new directory and validate the archive it writes. */
 const packBuild = async () => {
 	const dir = join(WORK, String(sequence++));
 	mkdirSync(dir);
 	const packed = Bun.spawnSync(
 		["npm", "pack", "--json", "--pack-destination", dir],
-		{ cwd: DIST, stdout: "pipe", stderr: "pipe" },
+		{ cwd: DIST, env: npmEnv, stdout: "pipe", stderr: "pipe" },
 	);
 	if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
 	const [first] = z
