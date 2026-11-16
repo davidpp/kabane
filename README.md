@@ -25,11 +25,12 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 | `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
 | `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP |
 
-The optional [loop extension](docs/loop.md#install), installed separately, runs issues through coding harnesses, with model tiers,
-subtask routing and advice on run settings.
-The optional [dispatch extension](extensions/dispatch/README.md), installed separately, gives a
-project the dispatch and grill skills and the copilot's `/setup-dispatch`, and checks with
-`kabane doctor` that a project's copies are current.
+Kabane bundles no extension. Two live in `extensions/`, each built and installed on its own:
+the [loop](docs/loop.md) runs issues through coding harnesses on your machine, and
+[dispatch](extensions/dispatch/README.md) gives your projects the dispatch and grill skills and
+the copilot's `/setup-dispatch`. [`docs/extensions.md`](docs/extensions.md) installs and enables
+them, and [`docs/writing-an-extension.md`](docs/writing-an-extension.md) walks through writing
+your own.
 
 ## Install
 
@@ -224,6 +225,10 @@ one per checkout. By default setup finds no agents, so nothing is registered in 
 Claude Code, Codex or Gemini config. `--harnesses` gives the harnesses a sandbox HOME, so
 the install step runs for real, but a harness may not be logged in there: try the copilot
 without it.
+
+The sandbox links the checkout's `extensions/loop` and `extensions/dispatch` into its home,
+installed but not enabled. `bun run sandbox config set extensions loop,dispatch --layer global`
+turns them on.
 
 `--scripted` points the sandbox's copilot at `packages/acp/scripts/scripted-agent.ts`, an
 ACP agent that needs no login and answers on cue. Open the copilot with `tab` and send

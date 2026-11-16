@@ -191,10 +191,10 @@ expands into editable text, so you can read what will be sent before sending it.
 
 The [dispatch extension](../extensions/dispatch/README.md) adds `/setup-dispatch`, which writes
 a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks into
-kabane issues, and a grill skill: ask the copilot to "grill me" and it walks you through the
-questions agents left open, one at a time. Without it, the copilot offers neither. A skill an
+kabane issues. It also adds the grill skill: ask the copilot to "grill me" and it walks you
+through the questions agents left open, one at a time. Without it, the copilot offers neither. A skill an
 earlier kabane wrote keeps working without the extension; `kabane doctor` then says it cannot
-tell whether that skill is current.
+tell whether that skill is current. [Extensions](extensions.md) says how to install it.
 
 `/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
 

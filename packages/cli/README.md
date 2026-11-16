@@ -64,7 +64,8 @@ kabane list
   its own `node_modules` when kabane runs through Bun. For the compiled binary, an
   extension must be a bundle with its dependencies inlined: the binary cannot resolve
   external on-disk packages using conditional or subpath `exports`. A refused extension prints one line naming the problem and how
-  to repair or disable it; the others still load. The optional [loop](../../docs/loop.md) must be installed as a directory too.
+  to repair or disable it; the others still load. Kabane bundles none: the loop and dispatch
+  extensions are installed as directories too ([extensions](../../docs/extensions.md)).
 
 ### Settings layers
 

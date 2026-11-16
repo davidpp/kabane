@@ -5,31 +5,18 @@ A kabane extension that gives a project two agent skills, and keeps them current
 - **dispatch**, which a coding session follows to turn an ask into kabane issues and into
   shipped work. The board's copilot fills it for the project with `/setup-dispatch`.
 - **grill**, which walks you through the questions agents left open with `kabane_ask`, one at a
-  time. Ask the copilot to "grill me"; any harness with the kabane MCP can follow it.
+  time. Ask the copilot to "grill me". The skill is the extension's `templates/grill/SKILL.md`;
+  ask the copilot to install it in a project and it copies it to `.agents/skills/grill/`, where
+  any coding session with the kabane MCP can follow it.
 
 Base kabane works without it: with the extension not enabled, the copilot neither offers
 `/setup-dispatch` nor knows about these skills.
 
 ## Install
 
-The extension is a directory extension, built separately from kabane. From a kabane source
-checkout with dependencies installed:
-
-```bash
-bun run --cwd extensions/dispatch build
-mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch"
-cp -R extensions/dispatch/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch/"
-```
-
-Add `"dispatch"` to the `extensions` array in `$KABANE_HOME/config.json` (default
-`~/.kabane/config.json`), keeping any extensions already there. If the list is empty,
-`kabane config set extensions dispatch --layer global` enables it. Restart a running board or
-MCP server after installing or enabling it.
-
-The artifact holds the templates and the copilot's files; the compiled binary loads only the
-built `dist/`. A source checkout can instead be symlinked from `extensions/dispatch` into
-`$KABANE_HOME/extensions/dispatch` when kabane runs through Bun. `bun run sandbox` makes that link
-in its disposable home.
+Build it from a kabane checkout and install it under `$KABANE_HOME/extensions/dispatch`, as
+[the extensions guide](../../docs/extensions.md) says. The build holds the templates and the
+copilot's files. `kabane dispatch stamp` answers once it is enabled.
 
 Upgrading from a kabane that shipped these skills itself changes nothing in your projects: a
 skill `/setup-dispatch` wrote then keeps working, and its stamp compares equal against this
