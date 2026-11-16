@@ -43,8 +43,6 @@ export {
 export { Deadline, DeadlineSchema, TimeZoneSchema } from "./deadline";
 // Display configs (for UI consumers like dashboard)
 export {
-	AGENT_ACTIVITY_TYPE_DISPLAY,
-	AGENT_SESSION_STATE_DISPLAY,
 	CONTEXT_KIND_DISPLAY,
 	type DisplayConfig,
 	TASK_PRIORITY_DISPLAY,
@@ -73,44 +71,15 @@ export {
 	type ProjectUpdate,
 	ProjectUpdateSchema,
 } from "./project";
-// Question-body convention (S4b — ask_question onto sessions)
+// Question-body convention: a question's answerable metadata in its body
 export {
-	type AnswerQuestionInput,
-	AnswerQuestionInputSchema,
-	answeredQuestion,
-	answersContext,
 	formatQuestionBody,
-	isAnswerTo,
 	type ParsedQuestion,
 	type PermissionRequestMeta,
 	parseQuestionBody,
 	type QuestionMeta,
 	QuestionMetaSchema,
 } from "./question-body";
-// Agent session schemas (S4a)
-export {
-	ACTIVITY_SEVERITIES,
-	ACTIVITY_TYPES,
-	type ActivitySeverity,
-	ActivitySeveritySchema,
-	type ActivityType,
-	ActivityTypeSchema,
-	type AgentActivity,
-	type AgentActivityDraft,
-	AgentActivityDraftSchema,
-	AgentActivitySchema,
-	type AgentSession,
-	type AgentSessionDraft,
-	AgentSessionDraftSchema,
-	AgentSessionSchema,
-	SESSION_STATES,
-	type SessionCard,
-	SessionCardSchema,
-	type SessionQuery,
-	SessionQuerySchema,
-	type SessionState,
-	SessionStateSchema,
-} from "./session";
 // Sync schemas
 export {
 	type ParkedFailure,

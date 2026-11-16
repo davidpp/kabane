@@ -14,7 +14,7 @@ import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
-import { answersContext, formatQuestionBody } from "../schemas";
+import { formatQuestionBody } from "../schemas";
 import { configureTestRuntime } from "../testing";
 import { columnExists, TABLES } from "./helpers";
 import { Planner } from "./index";
@@ -73,6 +73,11 @@ const tableNames = (at = base) =>
 	);
 
 const NOW = "2026-07-18T12:00:00.000Z";
+
+/** The version before `session-outcomes`, which drops the session tables. */
+const SESSION_OUTCOMES = Migrations.LIST.findIndex(
+	(m) => m.name === "session-outcomes",
+);
 
 describe("Migrations on a fresh database", () => {
 	beforeEach(async () => {
@@ -310,10 +315,22 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 			if (!stamped.ok) throw stamped.error;
 		});
 		const task = must(await Planner.addTask(base, { title: "t" }));
-		const start = async () =>
-			must(
-				await Planner.startSession(base, { taskId: task.id, agent: "claude" }),
-			).id;
+		let sessions = 0;
+		const start = async () => {
+			const id = `s${++sessions}`;
+			await withDb((db) =>
+				db.run(
+					`INSERT INTO agent_sessions (id, task_id, agent, state, started_at, last_activity_at)
+					 VALUES (?, ?, 'claude', 'active', ?, ?)`,
+					[id, task.id, NOW, NOW],
+				),
+			);
+			return id;
+		};
+		const setState = (id: string, state: string) =>
+			withDb((db) =>
+				db.run("UPDATE agent_sessions SET state = ? WHERE id = ?", [state, id]),
+			);
 		// Rows as the build before this migration stored them, without the
 		// columns later migrations add.
 		let seq = 0;
@@ -326,7 +343,7 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 			const id = `a${String(++seq).padStart(2, "0")}`;
 			await withDb((db) =>
 				db.run(
-					`INSERT INTO ${TABLES.agent_activities}
+					`INSERT INTO agent_activities
 					   (id, session_id, type, ephemeral, context, body, created_at)
 					 VALUES (?, ?, ?, 0, ?, ?, ?)`,
 					[id, sessionId, type, context ?? null, body, NOW],
@@ -336,7 +353,7 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 		};
 		// What `answerQuestion` wrote before this build, for every question.
 		const decide = (sessionId: string, questionId: string, body: string) =>
-			add(sessionId, "decision", body, answersContext(questionId));
+			add(sessionId, "decision", body, `answers ${questionId}`);
 
 		const done = await start();
 		const approved = await add(done, "question", relayed("Write a.ts"));
@@ -367,15 +384,15 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 		);
 		const rewordedAnswer = await decide(done, reworded, "Yes");
 		const deliberate = await add(done, "decision", "Going with SQLite");
-		must(await Planner.endSession(base, done, { state: "complete" }));
+		await setState(done, "complete");
 
 		const stopped = await start();
 		const cancelled = await add(stopped, "question", relayed("Write c.ts"));
-		must(await Planner.endSession(base, stopped, { state: "error" }));
+		await setState(stopped, "error");
 
 		const live = await start();
 		const waiting = await add(live, "question", relayed("Write d.ts"));
-		must(await Planner.updateSessionState(base, live, "awaiting_input"));
+		await setState(live, "awaiting_input");
 
 		const kept = [
 			asked,
@@ -390,9 +407,7 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 		const ids = async () =>
 			withDb((db) =>
 				db
-					.query<{ id: string }, []>(
-						`SELECT id FROM ${TABLES.agent_activities}`,
-					)
+					.query<{ id: string }, []>("SELECT id FROM agent_activities")
 					.all()
 					.map((r) => r.id)
 					.sort(),
@@ -401,13 +416,24 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 			[...kept, approved, approval, cancelled].sort(),
 		);
 
-		await mustInit(base);
-		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		// Up to the version before `session-outcomes`, which drops the tables.
+		const upTo = (version: number) =>
+			withDb((db) => must(Migrate.run(db, Migrations.LIST.slice(0, version))));
+		await upTo(SESSION_OUTCOMES);
+		expect(await versionRows()).toEqual(
+			ALL_VERSIONS.slice(0, SESSION_OUTCOMES),
+		);
 		expect(await ids()).toEqual([...kept].sort());
-		const session = must(await Planner.getSession(base, live));
-		expect(session?.state).toBe("awaiting_input");
+		const state = await withDb((db) =>
+			db
+				.query<{ state: string }, [string]>(
+					"SELECT state FROM agent_sessions WHERE id = ?",
+				)
+				.get(live),
+		);
+		expect(state?.state).toBe("awaiting_input");
 
-		await mustInit(base);
+		await upTo(SESSION_OUTCOMES);
 		expect(await ids()).toEqual([...kept].sort());
 	});
 });

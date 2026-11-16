@@ -6,7 +6,7 @@ import type { Db, DbProvider } from "../db/port";
 import { TABLES } from "../db/tables";
 import type { KabaneModule } from "../module";
 import { Runtime } from "../runtime";
-import { formatQuestionBody, type TaskDraft, type TaskEntry } from "../schemas";
+import type { TaskDraft, TaskEntry } from "../schemas";
 import { configureTestRuntime, TEST_DB_NAME } from "../testing";
 import { steeringSections } from "./assemble-context";
 import { Planner } from "./index";
@@ -353,103 +353,17 @@ describe("Planner — assembleContext", () => {
 		expect(discussionIdx).toBe(-1); // no comments → no Discussion section at all
 	});
 
-	// ── Discussion (S4+ session path) ───────────────────────────────────
+	// ── Discussion on a task a session ran on ───────────────────────────
 
-	it("Discussion uses durable session activities when the task has sessions", async () => {
-		const id = await createTask({ title: "With sessions", kind: "issue" });
-		const started = await Planner.startSession(TEST_BASE, {
-			taskId: id,
-			agent: "claude",
-		});
-		if (!started.ok) throw new Error("failed to start session");
-		await Planner.addActivity(TEST_BASE, {
-			sessionId: started.value.id,
-			type: "progress",
-			body: "PROGRESS_NOISE",
-		});
-		await Planner.addActivity(TEST_BASE, {
-			sessionId: started.value.id,
-			type: "decision",
-			body: "DURABLE_DECISION",
+	const sessionRef = (taskId: string) =>
+		Planner.addWorkLog(TEST_BASE, {
+			taskId,
+			refs: [{ uri: "session:01SESSION", label: "claude" }],
+			addedBy: "claude",
+			addedByType: "ai",
 		});
 
-		const md = await assemble(id);
-		expect(md).toContain("## Discussion");
-		expect(md).toContain("DURABLE_DECISION");
-		expect(md).toContain("claude");
-		// progress is not durable → excluded
-		expect(md).not.toContain("PROGRESS_NOISE");
-	});
-
-	it("lists a human's choice as a decision with its question and author, and no tool approval or skipped question", async () => {
-		const id = await createTask({ title: "Answered", kind: "issue" });
-		const started = await Planner.startSession(TEST_BASE, {
-			taskId: id,
-			agent: "claude",
-		});
-		if (!started.ok) throw started.error;
-		const sessionId = started.value.id;
-		const ask = async (body: string): Promise<string> => {
-			const q = await Planner.addActivity(TEST_BASE, {
-				sessionId,
-				type: "question",
-				body,
-			});
-			if (!q.ok) throw q.error;
-			return q.value.id;
-		};
-		const approval = await ask(
-			formatQuestionBody("claude asks to run: Write a.ts", {
-				choices: ["Yes", "No"],
-				allowFreeform: false,
-				permission: {
-					toolCallId: "toolu_01",
-					title: "Write a.ts",
-					options: [
-						{ id: "allow", label: "Yes", kind: "allow_once" },
-						{ id: "reject", label: "No", kind: "reject_once" },
-					],
-				},
-			}),
-		);
-		const skipped = await ask(
-			formatQuestionBody("Any optional notes?", { skipAnswer: "skip" }),
-		);
-		const real = await ask(
-			formatQuestionBody("Plain text or markdown?", {
-				choices: ["Plain text", "Markdown"],
-				skipAnswer: "skip",
-				allowFreeform: false,
-			}),
-		);
-		configureTestRuntime({ actor: () => "cabane://actor/human/ada" });
-		try {
-			for (const [questionId, answer] of [
-				[approval, "Yes"],
-				[skipped, "skip"],
-				[real, "Markdown"],
-			] as const) {
-				const answered = await Planner.answerQuestion(TEST_BASE, {
-					questionId,
-					answer,
-				});
-				if (!answered.ok) throw answered.error;
-			}
-		} finally {
-			configureTestRuntime();
-		}
-
-		const md = await assemble(id);
-		expect(md).toMatch(
-			/\*\*cabane:\/\/actor\/human\/ada\*\* \(decision, [^)]+\):\nPlain text or markdown\?\n→ Markdown/,
-		);
-		expect(md).not.toContain("asks to run");
-		expect(md).not.toContain("Any optional notes?");
-		expect(md).not.toContain("→ skip");
-		expect(md.match(/\(decision,/g)?.length).toBe(1);
-	});
-
-	it("session path keeps ALL human comments merged with durable activities", async () => {
+	it("keeps every human comment and outcome entry, and no AI comment, on a task whose work log holds a session ref", async () => {
 		const id = await createTask({
 			title: "Sessions + comments",
 			kind: "issue",
@@ -460,32 +374,31 @@ describe("Planner — assembleContext", () => {
 			authorType: "human",
 			content: "HUMAN_COMMENT",
 		});
-		// An AI comment must NOT surface on the session path (only humans do).
+		// An AI comment does not surface once a session ran: its outcomes are typed.
 		await Planner.addComment(TEST_BASE, {
 			taskId: id,
 			author: "bot",
 			authorType: "ai",
 			content: "AI_COMMENT",
 		});
-		const started = await Planner.startSession(TEST_BASE, {
+		const logged = await sessionRef(id);
+		if (!logged.ok) throw logged.error;
+		const finding = await Planner.addEntry(TEST_BASE, {
 			taskId: id,
-			agent: "claude",
+			kind: "outcome.finding",
+			author: "claude",
+			authorType: "ai",
+			content: "Severity: P1\nSESSION_FINDING",
 		});
-		if (!started.ok) throw new Error("failed to start session");
-		await Planner.addActivity(TEST_BASE, {
-			sessionId: started.value.id,
-			type: "finding",
-			severity: "P1",
-			body: "SESSION_FINDING",
-		});
+		if (!finding.ok) throw finding.error;
 
 		const md = await assemble(id);
 		expect(md).toContain("## Discussion");
+		expect(md).toContain("**claude** (outcome.finding, ai, ");
 		expect(md).toContain("SESSION_FINDING");
-		// Human steering is the load-bearing content — always present.
 		expect(md).toContain("HUMAN_COMMENT");
-		// AI comments are the session-less heuristic only, never the session path.
 		expect(md).not.toContain("AI_COMMENT");
+		expect(md).toContain("claude (session:01SESSION)");
 	});
 
 	// ── ShortId resolution & errors ─────────────────────────────────────
@@ -591,13 +504,13 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 		);
 	});
 
-	it("keeps a typed AI entry on an issue with a session, where plain AI comments drop", async () => {
+	it("keeps a typed AI entry on an issue whose work log holds a session ref, where plain AI comments drop", async () => {
 		const id = await createTask({ title: "Session", kind: "issue" });
-		const started = await Planner.startSession(TEST_BASE, {
+		const logged = await Planner.addWorkLog(TEST_BASE, {
 			taskId: id,
-			agent: "claude",
+			refs: [{ uri: "session:01SESSION", label: "claude" }],
 		});
-		if (!started.ok) throw started.error;
+		if (!logged.ok) throw logged.error;
 		await entry(id, "finding", "TYPED_FINDING");
 		await aiComment(id, "PLAIN_AI");
 

@@ -417,7 +417,7 @@ describe("bounded selected context", () => {
 		"comments",
 		"logs",
 		"refs",
-		"activities",
+		"outcomes",
 		"neighbor",
 		"file",
 	] as const)
@@ -487,22 +487,18 @@ describe("bounded selected context", () => {
 						})
 					).ok,
 				).toBe(true);
-			if (source === "activities") {
-				const session = await Planner.startSession(tracker.home, {
-					taskId: id,
-					agent: "new-session",
-				});
-				if (!session.ok) return;
+			if (source === "outcomes")
 				expect(
 					(
-						await Planner.addActivity(tracker.home, {
-							sessionId: session.value.id,
-							type: "decision",
-							body: "NEW_DECISION",
+						await Planner.addEntry(tracker.home, {
+							taskId: id,
+							kind: "outcome.decision",
+							author: "new-session",
+							authorType: "ai",
+							content: "NEW_DECISION",
 						})
 					).ok,
 				).toBe(true);
-			}
 			if (source === "neighbor" && neighborId)
 				expect(
 					(
@@ -524,8 +520,6 @@ describe("bounded selected context", () => {
 		"task_comments",
 		"task_work_log",
 		"task_context_refs",
-		"agent_sessions",
-		"agent_activities",
 		"task_links",
 	] as const)
 		it(`selected ${source} failure cannot claim completeness; excluded sources do not block`, async () => {
@@ -534,7 +528,7 @@ describe("bounded selected context", () => {
 					.ok,
 			).toBe(true);
 			const selected =
-				source === "task_comments" || source.startsWith("agent_")
+				source === "task_comments"
 					? "discussion"
 					: source === "task_work_log"
 						? "priorWork"
@@ -557,7 +551,7 @@ describe("bounded selected context", () => {
 				(await Planner.assembleContext(tracker.home, id, { deref: false })).ok,
 			).toBe(true);
 		});
-	it("many sessions/logs preserve all human chronology, bound durable machine history, tolerate folded noise", async () => {
+	it("many sessions/logs preserve all human chronology, keep every outcome, drop the AI comments of a task a session ran on", async () => {
 		for (let index = 0; index < 25; index++) {
 			expect(
 				(
@@ -573,31 +567,32 @@ describe("bounded selected context", () => {
 				(
 					await Planner.addWorkLog(tracker.home, {
 						taskId: id,
-						refs: [{ uri: `commit:${index}` }],
+						refs: [
+							{ uri: `commit:${index}` },
+							{ uri: `session:S${index}`, label: `agent_${index}` },
+						],
 						note: `LOG_${index}`,
 					})
 				).ok,
 			).toBe(true);
-			const session = await Planner.startSession(tracker.home, {
-				taskId: id,
-				agent: `agent_${index}`,
-			});
-			if (!session.ok) return;
 			expect(
 				(
-					await Planner.addActivity(tracker.home, {
-						sessionId: session.value.id,
-						type: "decision",
-						body: `DECISION_${index}`,
+					await Planner.addEntry(tracker.home, {
+						taskId: id,
+						kind: "outcome.decision",
+						author: `agent_${index}`,
+						authorType: "ai",
+						content: `DECISION_${index}`,
 					})
 				).ok,
 			).toBe(true);
 			expect(
 				(
-					await Planner.addActivity(tracker.home, {
-						sessionId: session.value.id,
-						type: "progress",
-						body: `NOISE_${index}`,
+					await Planner.addComment(tracker.home, {
+						taskId: id,
+						author: `agent_${index}`,
+						authorType: "ai",
+						content: `NOISE_${index}`,
 					})
 				).ok,
 			).toBe(true);
@@ -614,33 +609,12 @@ describe("bounded selected context", () => {
 			previous = position;
 			expect(result.value.markdown).toContain(`LOG_${index}`);
 		}
-		expect(
-			result.value.markdown.match(/\*\*[^\n]+\*\* \(decision,/g),
-		).toHaveLength(20);
+		// Typed entries are never capped; concise pagination bounds the output.
+		for (let index = 0; index < 25; index++)
+			expect(result.value.markdown).toMatch(
+				new RegExp(`DECISION_${index}(\\n|$)`),
+			);
 		expect(result.value.markdown).not.toContain("NOISE_");
-		const first = await Planner.getContextPage(tracker.home, id, {
-			sections: ["discussion"],
-		});
-		if (!first.ok || !first.value.nextCursor) return;
-		const sessions = await Planner.querySessions(tracker.home, { taskId: id });
-		if (!sessions.ok || !sessions.value[0]) return;
-		expect(
-			(
-				await Planner.addActivity(tracker.home, {
-					sessionId: sessions.value[0].id,
-					type: "progress",
-					body: "MORE_FOLDED_NOISE",
-				})
-			).ok,
-		).toBe(true);
-		expect(
-			(
-				await Planner.getContextPage(tracker.home, id, {
-					sections: ["discussion"],
-					cursor: first.value.nextCursor,
-				})
-			).ok,
-		).toBe(true);
 	});
 	it("neighbor errors are required for selected position, unlike full legacy fallback", async () => {
 		const neighbor = await Planner.addTask(tracker.home, { title: "Neighbor" });

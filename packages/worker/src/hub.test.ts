@@ -32,7 +32,9 @@ describe("CabaneHub boot", () => {
 		const tables = await h.tables();
 		expect(tables).toContain("tasks");
 		expect(tables).toContain("tasks_fts");
-		expect(tables).toContain("agent_sessions");
+		// Core keeps no agent session: migration session-outcomes drops both.
+		expect(tables).not.toContain("agent_sessions");
+		expect(tables).not.toContain("agent_activities");
 		expect(tables).toContain("sync_oplog");
 		// The module pass's bookkeeping, created outside the numbered migrations.
 		expect(tables).toContain("module_declarations");
@@ -113,7 +115,7 @@ describe("Db port conformance over Durable Object SQLite", () => {
 });
 
 describe("storage over Durable Object SQLite", () => {
-	it("adds, links, searches, sessions, and assembles a brief", async () => {
+	it("adds, links, searches, records an outcome and a session ref, and assembles a brief", async () => {
 		const h = hub("smoke");
 		unwrap(await h.boot());
 
@@ -149,27 +151,21 @@ describe("storage over Durable Object SQLite", () => {
 			const found = unwrap(await Planner.searchTasks(HUB_BASE, "Durable"));
 			expect(found.map((t) => t.id)).toContain(parent.id);
 
-			const session = unwrap(
-				await Planner.startSession(HUB_BASE, {
+			unwrap(
+				await Planner.addWorkLog(HUB_BASE, {
 					taskId: child.id,
-					agent: "claude",
+					refs: [{ uri: "session:01HUB", label: "claude" }],
 				}),
 			);
 			unwrap(
-				await Planner.addActivity(HUB_BASE, {
-					sessionId: session.id,
-					type: "finding",
-					severity: "P2",
-					body: "the adapter is a pass-through",
+				await Planner.addEntry(HUB_BASE, {
+					taskId: child.id,
+					kind: "outcome.finding",
+					author: "claude",
+					authorType: "ai",
+					content: "Severity: P2\nthe adapter is a pass-through",
 				}),
 			);
-			const ended = unwrap(
-				await Planner.endSession(HUB_BASE, session.id, {
-					state: "complete",
-					summary: "done",
-				}),
-			);
-			expect(ended.state).toBe("complete");
 
 			unwrap(
 				await Planner.addComment(HUB_BASE, {
@@ -183,6 +179,9 @@ describe("storage over Durable Object SQLite", () => {
 			const brief = unwrap(await Planner.assembleContext(HUB_BASE, child.id));
 			expect(brief).toContain("Write the Durable Object adapter");
 			expect(brief).toContain("keep the public names");
+			expect(brief).toContain("**claude** (outcome.finding, ai, ");
+			expect(brief).toContain("the adapter is a pass-through");
+			expect(brief).toContain("claude (session:01HUB)");
 		});
 
 		expect(await h.taskCount()).toBe(2);
