@@ -11,7 +11,7 @@ why some internal names still use it.
 
 ## Prerequisites
 
-- **Bun 1.4 or later.** The repo pins `1.4.0` in `.bun-version`. `bun --version` to check.
+- **Bun 1.4.1 or later.** The repo pins `1.4.1` in `.bun-version`. `bun --version` to check.
 - **git**, for detecting project scopes. You do not need to clone Kabane for local use.
 - **Optional: a coding harness.** Claude Code, Codex or Gemini CLI on your PATH, logged in.
   Setup wires any it finds, and the board's copilot runs one.
