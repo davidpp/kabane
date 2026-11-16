@@ -29,6 +29,7 @@ import {
 	Settings,
 } from "@cabane/extension";
 import { handoffModule } from "@cabane/handoff";
+import { outcomeModule } from "@cabane/outcome";
 import { questionsModule } from "@cabane/questions";
 import { SqliteDb } from "@cabane/sqlite";
 import {
@@ -52,7 +53,12 @@ export type Command = Extension.Command<Ctx>;
  * the effective one for this invocation (`--as` wins over the config).
  */
 /** The data modules every device registers, in the order their sections render. */
-export const MODULES = [questionsModule, handoffModule, checklistModule];
+export const MODULES = [
+	questionsModule,
+	handoffModule,
+	outcomeModule,
+	checklistModule,
+];
 
 export const configureRuntime = (
 	config: Config,

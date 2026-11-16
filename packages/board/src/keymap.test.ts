@@ -99,8 +99,8 @@ const LOOP = "loop:r1";
 const QUESTION: BoardTabs.Question = {
 	taskId: "p",
 	taskShortId: "MILL-2",
-	sessionId: "s1",
-	questionActivityId: "q1",
+	cardId: "loop:r1",
+	id: "q1",
 	question: "LRU or TTL?",
 	choices: ["LRU", "TTL"],
 	multiSelect: false,
@@ -116,7 +116,6 @@ const TABS: BoardTabs.Tabs = {
 			LOOP,
 			{
 				finished: true,
-				sessionIds: ["s1"],
 				taskId: "p",
 				lanes: ["claude:MILL-3", "codex:MILL-4"],
 			},
@@ -128,7 +127,7 @@ const TABS: BoardTabs.Tabs = {
 // The same card still running, offering stop, its session waiting on a question with no answers.
 const FREEFORM: BoardTabs.Question = {
 	...QUESTION,
-	questionActivityId: "q2",
+	id: "q2",
 	question: "What should the cache key be?",
 	choices: [],
 	multiSelect: false,
@@ -142,7 +141,6 @@ const RUNNING: BoardTabs.Tabs = {
 			LOOP,
 			{
 				finished: false,
-				sessionIds: ["s1"],
 				taskId: "p",
 				actions: [{ id: "stop", key: "x", label: "stop" }],
 			},

@@ -41,6 +41,7 @@ import {
 	type ToolContext,
 } from "@cabane/core";
 import { handoffModule } from "@cabane/handoff";
+import { outcomeModule } from "@cabane/outcome";
 import { questionsModule } from "@cabane/questions";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
@@ -90,7 +91,7 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 		super(ctx, env);
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		const configured = Runtime.configure({
-			modules: [questionsModule, handoffModule, checklistModule],
+			modules: [questionsModule, handoffModule, outcomeModule, checklistModule],
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
 			timezone: () => (zone.ok ? zone.value : "UTC"),

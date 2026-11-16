@@ -1,14 +1,14 @@
 // The work running on the board's tasks, as every surface that lists it sees it: the host's cards
 // plus the copilot's own, the questions they wait on, and what the human does to them (answers a
 // question, runs a card's action, closes its tab, opens its events).
+import { err } from "@cabane/core";
 import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { useCallback, useEffect, useMemo } from "react";
 import { BoardActivity } from "./activity";
 import type { BoardStore } from "./board-store";
 import { CopilotLog } from "./copilot-log";
-import { BoardData } from "./data";
 import { BoardNav } from "./nav";
-import { flash, reported, type SetNotice } from "./notice";
+import { reported, type SetNotice } from "./notice";
 import { BoardTabs } from "./tabs";
 
 const ACTIVITY_EFFECTS = [
@@ -35,7 +35,6 @@ export type RunActivity = {
 };
 
 export const useRunActivity = ({
-	basePath,
 	activity,
 	activitySource,
 	copilotLog,
@@ -89,19 +88,17 @@ export const useRunActivity = ({
 		[shown, setNotice, set],
 	);
 
-	// A banner's question answered: core writes the decision, the banner says what was answered until
-	// the human leaves, and the reload takes the question off every badge. The host hears it first, so
-	// one that keeps who answered has it before its work sees the answer; a failed note does not hold
-	// the answer back. A failed write takes back the answer the digit set on the banner.
+	// The source writes the answer; a failed write takes back the optimistic banner state.
 	const answer = useCallback(
 		async (
 			s: BoardNav.BoardState,
 			questionId: string,
 			text: string,
 		): Promise<void> => {
-			await source.answering?.(questionId);
-			const res = await BoardData.answerQuestion(basePath, questionId, text);
-			setNotice(flash(res, `answered ${text}`));
+			const res = source.answer
+				? await source.answer(questionId, text)
+				: err(new Error(`${questionId} takes no answers`));
+			setNotice(reported(res));
 			update((prev) =>
 				(res.ok ? BoardTabs.withAnswered : BoardTabs.withoutAnswer)(
 					prev,
@@ -111,7 +108,7 @@ export const useRunActivity = ({
 			);
 			await reload(s);
 		},
-		[basePath, reload, source, update, setNotice],
+		[reload, source, update, setNotice],
 	);
 
 	// `w` closed a finished card's tab: the host forgets it, so a relaunch does not bring it back. The

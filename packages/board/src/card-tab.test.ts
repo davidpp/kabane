@@ -364,8 +364,8 @@ describe("a question that offers no answers", () => {
 	const asked: BoardTabs.Question = {
 		taskId: "t3",
 		taskShortId: "JREP-3",
-		sessionId: "s-loop",
-		questionActivityId: "q-free",
+		cardId: "loop:r1",
+		id: "q-free",
 		question: "What should the cache key be?",
 		choices: [],
 		multiSelect: false,
@@ -377,7 +377,7 @@ describe("a question that offers no answers", () => {
 		press(
 			BoardTabs.withActivity(
 				BoardNav.init([], { scoped: false }),
-				[card({ sessionIds: ["s-loop"] })],
+				[card()],
 				[asked],
 			),
 			"}",
@@ -410,7 +410,7 @@ describe("a question that offers no answers", () => {
 		press(
 			BoardTabs.withActivity(
 				BoardNav.init([], { scoped: false }),
-				[card({ sessionIds: ["s-loop"] })],
+				[card()],
 				[{ ...asked, choices: ["path", "hash"], allowFreeform }],
 			),
 			"}",
@@ -438,8 +438,8 @@ describe("a multi-select question", () => {
 	const asked: BoardTabs.Question = {
 		taskId: "t4",
 		taskShortId: "JREP-4",
-		sessionId: "s-loop",
-		questionActivityId: "q-multi",
+		cardId: "loop:r1",
+		id: "q-multi",
 		question: "Which tags apply? (1 of 2)",
 		choices: ["Alpha", "Beta", "Gamma", "skip", "decline"],
 		multiSelect: true,
@@ -451,7 +451,7 @@ describe("a multi-select question", () => {
 		press(
 			BoardTabs.withActivity(
 				BoardNav.init([], { scoped: false }),
-				[card({ sessionIds: ["s-loop"] })],
+				[card()],
 				[question],
 			),
 			"}",
@@ -498,11 +498,7 @@ describe("a multi-select question", () => {
 		const s = onTab();
 		const clicked = BoardNav.reduceMouse(s, { type: "answer", index: 1 }).state;
 		expect(BoardTabs.pickedOf(clicked.tabs, asked)).toEqual([1]);
-		const gone = BoardTabs.withActivity(
-			clicked,
-			[card({ sessionIds: ["s-loop"] })],
-			[],
-		);
+		const gone = BoardTabs.withActivity(clicked, [card()], []);
 		expect(gone.tabs.picked.size).toBe(0);
 	});
 });

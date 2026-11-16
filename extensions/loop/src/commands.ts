@@ -1305,25 +1305,6 @@ export namespace Loop {
 			at: new Date().toISOString(),
 		});
 
-	/**
-	 * Note that `deps.actor` is answering `questionId`, when a loop session waits on it: what the
-	 * board does before it writes an answer of its own. Any other question is not the loop's to note.
-	 * A question of a run whose runner died is withdrawn and refused, as `answer` refuses it.
-	 */
-	export const answering = async (
-		deps: AnswerDeps,
-		questionId: string,
-	): Promise<Result<void>> => {
-		const dead = await stranded(deps, questionId);
-		if (!dead.ok) return dead;
-		if (dead.value) return err(strandedError(dead.value, questionId));
-		const found = await waiting(deps.basePath, questionId);
-		if (!found.ok) return found;
-		return found.value
-			? note(deps, found.value.runId, questionId)
-			: ok(undefined);
-	};
-
 	export const answer = async (
 		deps: AnswerDeps,
 		questionId: string,

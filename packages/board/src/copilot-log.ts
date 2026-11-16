@@ -303,7 +303,8 @@ export namespace CopilotLog {
 		// The copilot's card never asks for a tab, so every action and dismissal is the host's.
 		...(host.act ? { act: host.act.bind(host) } : {}),
 		...(host.dismiss ? { dismiss: host.dismiss.bind(host) } : {}),
-		...(host.answering ? { answering: host.answering.bind(host) } : {}),
+		...(host.questions ? { questions: host.questions.bind(host) } : {}),
+		...(host.answer ? { answer: host.answer.bind(host) } : {}),
 	});
 
 	export type Footer = { text: string; tone: "running" | "done" | "error" };

@@ -74,9 +74,15 @@ compiler erases it. The types are listed after the values.
 | `getLinksForTask` | 2 | `kabane_linkList` | `host.record.links` |
 | `getUpstreamLinksForTask` | 1 | `kabane_upstreamList` | `host.record.upstreamLinks` |
 | `getWorkLogs` | 1 | `kabane_logList` | `host.record.workLogs` |
-| `startSession`, `getSession`, `endSession` | 1, 1, 2 | none | JCAB-316:7 |
-| `addActivity`, `getActivities` | 3, 3 | none | JCAB-316:7 |
-| `getNeedsInput`, `answerQuestion` | 2, 3 | none | JCAB-316:7 |
+| `startSession`, `getSession`, `endSession` | 1, 1, 2 | none | Split: outcomes and question port (JCAB-329), loop-owned sessions (JCAB-340), legacy migration (JCAB-343) |
+| `addActivity`, `getActivities` | 3, 3 | none | Split: outcomes and question port (JCAB-329), loop-owned sessions (JCAB-340), legacy migration (JCAB-343) |
+| `getNeedsInput`, `answerQuestion` | 2, 3 | none | Split: outcomes and question port (JCAB-329), loop-owned sessions (JCAB-340), legacy migration (JCAB-343) |
+
+JCAB-316:7 decided Split: issue outcomes become replicated timeline entries, the session is a
+`session:` URI in the work log, and its stream stays with the runtime that drove it. JCAB-329
+builds `@cabane/outcome` and the activity question/answer port; JCAB-340 moves the loop's
+sessions and stream to its store; JCAB-343 migrates legacy outcomes and removes core session
+storage.
 
 ### Types
 
@@ -86,7 +92,8 @@ From the published contract types: `Task`, `TaskLink`, `TaskPriority`, `TaskStat
 `ActivityToolDetail`, `CardAction`, `Dispatcher`, `NoticeSeverity`, `PanelLine`, `PanelPart`,
 `SettingField`, `TriggerDescriptor`, `TriggerInput`. `CardHeader` and `CardHeaderProps` go with
 the component header. `Risk` moved with `lint/` (JCAB-338). `AgentActivity`, `ParsedQuestion` and
-`PermissionRequestMeta` wait on JCAB-316:7.
+`PermissionRequestMeta` follow the settled Split: the loop owns its session and question types
+(JCAB-340), and the legacy core types leave after migration (JCAB-343).
 
 ## The record half of `host` follows the MCP tools
 

@@ -26,8 +26,8 @@ const question = (
 ): BoardActivity.AwaitingQuestion => ({
 	taskId: "t1",
 	taskShortId: "JREP-1",
-	sessionId: "s-loop",
-	questionActivityId: "q1",
+	cardId: "loop:r1",
+	id: "q1",
 	question: "Keep the old cache?",
 	choices: ["Keep", "Drop"],
 	multiSelect: false,
@@ -45,7 +45,6 @@ const loop = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	taskShortId: "JREP-1",
 	startedAt: "2026-11-04T10:00:00.000Z",
 	detail: [],
-	sessionIds: ["s-loop"],
 	...over,
 });
 
@@ -115,7 +114,7 @@ describe("ProgramStatus.reports", () => {
 			...idle,
 			questions: [
 				question({ permission: true }),
-				question({ questionActivityId: "q2", sessionId: "s-other" }),
+				question({ id: "q2", cardId: "other" }),
 			],
 			cards: [loop()],
 		});

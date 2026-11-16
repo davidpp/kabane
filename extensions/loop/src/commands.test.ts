@@ -683,23 +683,6 @@ describe("Loop.answer", () => {
 		expect(after.ok && after.value).toEqual([]);
 	});
 
-	it("answering notes who answers a loop session's question, and nothing for any other", async () => {
-		const deps = { home, basePath: home, actor: HUMAN };
-		const { questionId } = await blocked("run-1");
-		expect(await Loop.answering(deps, questionId)).toEqual({
-			ok: true,
-			value: undefined,
-		});
-		expect(await Loop.answering(deps, "not-a-loop-question")).toEqual({
-			ok: true,
-			value: undefined,
-		});
-		const inbox = RunStore.readInbox(home, "run-1", 0);
-		expect(inbox.ok && inbox.value.entries).toMatchObject([
-			{ kind: "answered", questionId, by: HUMAN },
-		]);
-	});
-
 	it("refuses a question whose runner died, withdraws it from core's queue, and lists it as withdrawn", async () => {
 		const deps = { home, basePath: home, actor: HUMAN };
 		const { run, sessionId } = await orphaned("dead-run");
@@ -723,8 +706,6 @@ describe("Loop.answer", () => {
 		expect(!answered.ok && answered.error.message).toContain(
 			`kabane loop resume ${run.id}`,
 		);
-		const noted = await Loop.answering(deps, questionId);
-		expect(!noted.ok && noted.error.message).toContain("runner died");
 		// Closed as withdrawn, not answered: a task's detail, which reads ended sessions too, no
 		// longer pins it.
 		const closing = async () => {

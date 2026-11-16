@@ -148,8 +148,8 @@ export function parseQuestionBody(body: string): ParsedQuestion {
  * reconcile) and the storage state machine's unanswered-question check. Exact
  * match (not substring) so re-answers and multi-question batches stay unambiguous.
  */
-export function answersContext(questionActivityId: string): string {
-	return `answers ${questionActivityId}`;
+export function answersContext(questionId: string): string {
+	return `answers ${questionId}`;
 }
 
 /**
@@ -166,9 +166,9 @@ export type AnswerQuestionInput = z.input<typeof AnswerQuestionInputSchema>;
 /** True iff an activity's `context` answers the given question activity. */
 export function isAnswerTo(
 	context: string | undefined | null,
-	questionActivityId: string,
+	questionId: string,
 ): boolean {
-	return context === answersContext(questionActivityId);
+	return context === answersContext(questionId);
 }
 
 /** The question among `activities` that an activity with `context` answers, if any. */

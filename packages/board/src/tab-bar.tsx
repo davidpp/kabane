@@ -203,7 +203,7 @@ export const TabBar = ({
 type QuestionBannerProps = {
 	question: BoardTabs.Question;
 	// The asking session's task, as the human reads it.
-	taskShortId: string;
+	taskShortId?: string;
 	// Settled, and with what when this board answered it.
 	answered: boolean;
 	answer?: string;
@@ -267,7 +267,7 @@ const QuestionBanner = ({
 				>
 					{closed ? "closed" : answered ? "✓ answered" : "waiting on you"}
 				</span>
-				{` · ${question.agent} asks about ${taskShortId}`}
+				{` · ${question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`}
 				{more > 0 ? <span fg={theme.accent}>{` · +${more} more`}</span> : null}
 			</text>
 			<text bg={bg} fg={theme.text}>
@@ -339,7 +339,7 @@ export const CardTabQuestion = ({
 }): ReactNode => {
 	const asked = BoardTabs.cardQuestion(tabs);
 	if (!asked) return null;
-	const answer = tabs.answered.get(asked.questionActivityId);
+	const answer = tabs.answered.get(asked.id);
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
 			<QuestionBanner

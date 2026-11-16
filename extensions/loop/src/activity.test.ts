@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { formatQuestionBody, Planner } from "@cabane/core";
 import { LoopActivity } from "./activity";
 import { LoopConfig } from "./config";
 import { RunStore } from "./store";
@@ -53,7 +53,7 @@ const run = (overrides: Partial<RunStore.Run> = {}): RunStore.Run => {
 };
 
 describe("LoopActivity", () => {
-	it("a run is a tabbed card on its parent, owning the sessions it claimed", () => {
+	it("a run is a tabbed card on its parent, with one lane per claim", () => {
 		expect(LoopActivity.card(run())).toEqual({
 			id: "KAB-1-abc",
 			kind: "loops",
@@ -67,7 +67,6 @@ describe("LoopActivity", () => {
 			error: "stalled (no progress across 3 session ends)",
 			hasEvents: true,
 			tab: true,
-			sessionIds: ["s1", "s2"],
 			lanes: ["claude:KAB-2", "claude:KAB-2#2"],
 			laneNoun: "agents",
 		});
@@ -392,4 +391,97 @@ describe("LoopActivity", () => {
 			"2026-10-11T00:00:00.000Z",
 		);
 	});
+});
+
+it("lists only loop questions with their card and lane, and answers through the port", async () => {
+	const initialized = await Planner.init(home);
+	if (!initialized.ok) throw initialized.error;
+	const task = await Planner.addTask(home, {
+		title: "choose storage",
+		kind: "issue",
+	});
+	if (!task.ok) throw task.error;
+	const session = await Planner.startSession(home, {
+		taskId: task.value.id,
+		agent: "claude",
+		externalRef: RunStore.sessionRef("KAB-1-abc"),
+	});
+	if (!session.ok) throw session.error;
+	const question = await Planner.addActivity(home, {
+		sessionId: session.value.id,
+		type: "question",
+		body: formatQuestionBody("Which store?", {
+			choices: ["SQLite", "Files"],
+			allowFreeform: false,
+		}),
+	});
+	if (!question.ok) throw question.error;
+	const unrelated = await Planner.startSession(home, {
+		taskId: task.value.id,
+		agent: "other",
+	});
+	if (!unrelated.ok) throw unrelated.error;
+	const otherQuestion = await Planner.addActivity(home, {
+		sessionId: unrelated.value.id,
+		type: "question",
+		body: "Not a loop question",
+	});
+	if (!otherQuestion.ok) throw otherQuestion.error;
+	const created = RunStore.create(
+		home,
+		run({
+			status: "running",
+			pid: process.pid,
+			exit: undefined,
+			claims: [claim(session.value.id, "claude:KAB-2")],
+		}),
+	);
+	if (!created.ok) throw created.error;
+	const source = LoopActivity.source({
+		home,
+		basePath: home,
+		actor: ACTOR,
+		kabaneBin: "/nonexistent/kabane",
+	});
+	expect(await source.questions?.()).toEqual({
+		ok: true,
+		value: [
+			{
+				id: question.value.id,
+				cardId: "KAB-1-abc",
+				lane: "claude:KAB-2",
+				taskId: task.value.id,
+				...(task.value.shortId ? { taskShortId: task.value.shortId } : {}),
+				question: "Which store?",
+				choices: ["SQLite", "Files"],
+				multiSelect: false,
+				allowFreeform: false,
+				asker: "claude",
+				askedAt: question.value.createdAt,
+			},
+		],
+	});
+	expect(await source.answer?.(question.value.id, "SQLite")).toEqual({
+		ok: true,
+		value: "answered SQLite",
+	});
+	const activities = await Planner.getActivities(home, session.value.id);
+	if (!activities.ok) throw activities.error;
+	expect(
+		activities.value.find((entry) => entry.type === "decision"),
+	).toMatchObject({
+		body: "SQLite",
+		context: `answers ${question.value.id}`,
+	});
+	const inbox = RunStore.readInbox(home, "KAB-1-abc", 0);
+	if (!inbox.ok) throw inbox.error;
+	expect(inbox.value.entries).toEqual([
+		{
+			kind: "answered",
+			questionId: question.value.id,
+			by: ACTOR,
+			at: expect.any(String),
+		},
+	]);
+	expect(await source.questions?.()).toEqual({ ok: true, value: [] });
 });

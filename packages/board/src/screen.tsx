@@ -452,7 +452,7 @@ const DetailScreen = ({
 				}
 				cards={taskCards.length > 0 ? taskCards : undefined}
 				questions={activity.questionsByTaskId.get(taskId)}
-				pinned={banner?.question.questionActivityId}
+				pinned={banner?.question.id}
 				tab={BoardNav.detailTab(state.view)}
 				onTab={(tab) => input.dispatchMouse({ type: "detailTab", tab })}
 				scrollRef={refs.scroll}
