@@ -111,7 +111,10 @@ plain AI comments.
 Core kept sessions in `agent_sessions` and `agent_activities` until migration 11,
 `session-outcomes` (`storage/session-outcomes.ts`), moved each durable activity (`response`,
 `decision`, `finding`, `verification`, `handoff`) to a shared entry and each session to a work-log
-ref, both under the source row's id, and dropped both tables; the stream went with them. A
+ref, both under the source row's id with every column taken from the source rows (never the
+device's actor or clock, so copies migrated apart converge), and dropped both tables; the stream
+went with them. A missing session table, or an id already held by a different row, fails the
+migration and nothing is dropped. A
 device's first push after it migrates sends rows that never left it before, and a device on
 schema 10 or older stops its pull at the first op from schema 11 until it upgrades.
 

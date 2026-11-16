@@ -196,8 +196,10 @@ The migration has three ordered steps, so existing records remain readable throu
    Migration `session-outcomes` (`storage/session-outcomes.ts`) writes each durable activity
    (`response`, `decision`, `finding`, `verification`, `handoff`) as a shared `outcome.summary`,
    `outcome.decision`, `outcome.finding`, `outcome.verification` or `handoff` entry, and each
-   session as a `session:` ref in its issue's work log, both under the source row's id, so a
-   re-run writes nothing and two devices that migrate copies of one database converge. The
+   session as a `session:` ref in its issue's work log, both under the source row's id and with
+   every column taken from the source rows, so a re-run writes nothing and two devices that
+   migrate copies of one database converge. A missing session table or an id another row
+   holds fails the migration before anything is dropped. The
    stream (progress, questions, answers, withdrawals) is dropped with `agent_sessions` and
    `agent_activities`. The brief keeps every typed entry; a task whose work log holds a
    `session:` ref keeps none of its AI comments, any other its last three, a rule every device

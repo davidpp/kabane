@@ -547,6 +547,39 @@ old version's processes and back the database up as that section says.
 - **A database from before 0.1.0.** One created by a source build older than the first
   release, and not opened since, is refused: open it once with 1.0.0-beta.0, then update.
 
+### Upgrading: agent sessions leave the database
+
+Kabane no longer keeps agent sessions in its own tables. What a session decided, found, verified,
+handed off or summed up becomes an entry on the issue's timeline, and the session itself a
+`session:` ref in the issue's work log. The new version moves them the first time it opens the
+database and then removes the two session tables. **Back up `kabane.db` before that first
+boot**, with every board, `kabane mcp`, loop runner and `kabane sync` of the old version stopped,
+as [subsequent updates](#subsequent-updates) describes: removing the tables cannot be undone
+without that backup.
+
+- **What is kept.** Every decision (a human's answer reads as its question, then `→` the choice,
+  under who chose), finding, verification, handoff and session summary, with its author and
+  time, as an `outcome.decision`, `outcome.finding`, `outcome.verification`, `handoff` or
+  `outcome.summary` entry. The board shows them on the issue's comments tab, and the brief in
+  its Discussion. Each session is a line in the issue's log, under the agent that ran it.
+- **What is lost.** Everything else a session recorded along the way: a question still open on
+  a session that was running when you upgrade, progress notes, tool-approval answers,
+  withdrawn questions, and the action and error lines the board's log showed. A finding or
+  other row written as ephemeral is lost too, including the latest one the brief used to show.
+  A loop run started since the loop kept its own sessions is not affected: its questions and
+  events are in its own run directory.
+- **The brief.** An issue with a `session:` ref leaves out its plain AI comments, as an issue
+  with a session did before; the outcome entries are always in it.
+- **Sync.** The moved entries and refs replicate: the first push after the upgrade sends rows
+  that never left the device before. A device still on the old version stops pulling at the
+  first change an updated device pushes and catches up once updated. Two devices that upgrade
+  copies of one database write identical rows, so syncing them keeps one of each.
+- **When it refuses.** A database missing one of the two session tables, or already holding a
+  different row under an id the move would write, is not migrated: kabane says what it found
+  and changes nothing.
+- **No going back.** The old version refuses a database the new version has opened. Going back
+  takes the backup.
+
 ### One-time upgrade from 0.1.0
 
 Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
