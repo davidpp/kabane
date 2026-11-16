@@ -166,9 +166,10 @@ A card without a tab is acted on from its task's detail instead. There `x` cance
 runs the `stop` of the newest such card that offers one (the footer says `X stop <label>`), whatever
 its status: an idle run reports `completed` and can still be stopped. With no card offering `stop`,
 `X` does nothing. Its other actions answer under their own
-key where the detail has none (`h/l`, `j/k`, `g/G`, `J/K`, `space`, `enter`, `r`, `o`, `O`, `v`,
-`y`, `m`, `a`, `n`, `s`, `x`, `b`, `d`, `u`, `q`, the digits, the everywhere keys); one with
-`lane: true` is not offered there, as the detail has no lane to aim it at.
+key unless the detail already uses that key: `h/l`, `j/k`, `g/G`, `J/K`, `space`, `enter`, `esc`,
+`r`, `o`, `O`, `v`, `y`, `m`, `a`, `n`, `s`, `x`, `X`, `b`, `q`, the digits and the everywhere keys
+(the detail scrolls on `⌃d`/`⌃u`, so plain `d` and `u` are free). One with `lane: true` is not
+offered there, as the detail has no lane to aim it at.
 
 An action with `input` opens the prompt: the copilot's own input (`PromptField`, the same textarea,
 bindings and `up` history as the copilot pane), in a raised panel above the copilot's row that says
