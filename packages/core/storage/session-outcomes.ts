@@ -13,6 +13,9 @@
  * and two devices that migrate copies of one database write the same rows,
  * which the append-only sync family keeps once.
  *
+ * A database missing one of the two tables fails the migration with what to
+ * fix; its transaction rolls back and nothing is dropped.
+ *
  * The tables are retired, so they are named as strings (`migrations.ts`). One
  * statement per row, few parameters each: the hub's engine refuses `BEGIN`,
  * `SAVEPOINT` and more than 100 bound parameters.
@@ -66,6 +69,13 @@ type SessionRow = {
 const ANSWERS = "answers ";
 
 const AGENT_ACTOR = "cabane://actor/agent/";
+
+/** Fail the migration: thrown inside its transaction, which rolls back. */
+const refuse = (what: string): never => {
+	throw new Error(
+		`session-outcomes: ${what}; nothing was changed. Back up kabane.db, fix that, then open kabane again.`,
+	);
+};
 
 /** The text of the question a decision answers in its own session, if it answers one. */
 const answeredQuestion = (db: Db, a: ActivityRow): string | undefined => {
@@ -205,23 +215,34 @@ const moveSessions = (db: Db): void => {
 	}
 };
 
-const holdsSessions = (db: Db): boolean =>
-	db
-		.query<{ n: number }, []>(
-			`SELECT count(*) AS n FROM sqlite_master
-			  WHERE type = 'table' AND name IN ('${SESSIONS}', '${ACTIVITIES}')`,
-		)
-		.get()?.n === 2;
+/** Which of the two tables the database lacks; migration 1 created both. */
+const missingTables = (db: Db): string[] => {
+	const present = new Set(
+		db
+			.query<{ name: string }, []>(
+				`SELECT name FROM sqlite_master
+				  WHERE type = 'table' AND name IN ('${SESSIONS}', '${ACTIVITIES}')`,
+			)
+			.all()
+			.map((row) => row.name),
+	);
+	return [SESSIONS, ACTIVITIES].filter((table) => !present.has(table));
+};
 
 export namespace SessionOutcomes {
 	/**
 	 * Move the outcomes and the sessions onto the record. The migration drops
-	 * the tables right after, in the same transaction. Migration 1 creates both
-	 * tables, so every database has them; one that lost them by other means has
-	 * nothing to move.
+	 * the tables right after, in the same transaction. A database without both
+	 * tables is refused rather than read as having no sessions: migration 1
+	 * creates both, so one is missing only by damage, and dropping the other
+	 * would lose what it holds.
 	 */
 	export const migrate = (db: Db): void => {
-		if (!holdsSessions(db)) return;
+		const missing = missingTables(db);
+		if (missing.length > 0)
+			refuse(
+				`this database has no ${missing.join(" and no ")} table, which migration 1 creates`,
+			);
 		moveOutcomes(db);
 		moveSessions(db);
 	};

@@ -449,3 +449,38 @@ describe("Migration session-outcomes through sync", () => {
 		).toEqual(["01S1"]);
 	});
 });
+
+describe("Migration session-outcomes loses nothing quietly", () => {
+	const version = async (base: string) =>
+		withDb(
+			base,
+			(db) =>
+				db
+					.query<{ v: number }, []>(
+						`SELECT max(version) AS v FROM ${TABLES.schema_migrations}`,
+					)
+					.get()?.v,
+		);
+
+	it("refuses a database that has agent_sessions but no agent_activities, and drops nothing", async () => {
+		const base = await before("partial");
+		const { other } = await seedLegacy(base);
+		await withDb(base, (db) => db.run("DROP TABLE agent_activities"));
+
+		const init = await Planner.init(base);
+
+		expect(init.ok).toBe(false);
+		if (!init.ok)
+			expect(init.error.message).toContain(
+				"session-outcomes: this database has no agent_activities table",
+			);
+		expect(await version(base)).toBe(BEFORE);
+		expect(await tableNames(base)).toContain("agent_sessions");
+		expect((await rows(base, "agent_sessions")).map((r) => r.id)).toEqual([
+			"01S1",
+			"01S2",
+			"01S3",
+		]);
+		expect(await outcomesOf(base, other.id)).toEqual([]);
+	});
+});
