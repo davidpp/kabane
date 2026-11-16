@@ -82,7 +82,7 @@ a target are cards: a run without one belongs to a jobs view, not the issue boar
 |---|---|---|
 | `running` | `running` | in flight, animated |
 | `waiting` | `paused` | in flight without a spinner: the harness waits on the human. The board draws a paused card as `⏸ <label> · paused` and drops its detail (JCAB-475) |
-| `idle`, `ended` | `completed` | finished; `detail[0]` is the run state |
+| `idle`, `ended` | `completed` | finished; `detail[0]` is the run state, though the board draws no badge or header line for a finished card, so only `kabane runs` tells the two apart |
 
 Listing and `card` run `reconcile` first, as `kabane runs` does; retention follows the loop's
 source (every unfinished run, the newest ended up to ten). `events` is the screen through

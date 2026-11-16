@@ -140,16 +140,14 @@ of runs with these fields:
 
 ## On the board
 
-A run that works on an issue is a card on that issue, for the board's project. The issue's row
-and header show the recipe's name and the run's state; the header also shows its inputs, its
-machine and `kabane runs attach <id>` to copy. The board reads each state from the terminal,
-as `kabane runs` does, and draws it this way:
+A run that works on an issue is a card on that issue, for the board's project. The board reads
+each state from the terminal, as `kabane runs` does, and draws it this way:
 
 | State | On the board |
 |---|---|
-| `running` | in flight, with a spinner |
-| `waiting` | paused (`⏸`): the agent waits on you; answer it with `kabane runs attach` or `kabane runs send` |
-| `idle`, `ended` | finished; the card's detail says which |
+| `running` | in flight, with a spinner: the issue's row shows the recipe's name and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
+| `waiting` | paused: row and header show only `⏸ <recipe> · paused`. The agent waits on you: find the run's id with `kabane runs`, then answer it with `kabane runs attach <id>` or `kabane runs send <id>` |
+| `idle`, `ended` | finished: no badge on the row or line in the header, only the card's tab. `kabane runs --all` says which of the two it is |
 
 Every unfinished run is listed, and the newest ended ones up to ten runs in all. A run with no
 target is not on the board: `kabane runs` lists it.
