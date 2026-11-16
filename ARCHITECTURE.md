@@ -68,7 +68,7 @@ Kabane's layers, from the bottom:
 |---|---|---|
 | core | `@cabane/core` | The record, its sync, the module seam and the MCP tool definitions. Runs in Bun and in Workers. |
 | storage adapter | `@cabane/sqlite` | The `Db` port over `bun:sqlite`, for devices. |
-| data module | `@cabane/questions`, `@cabane/checklist`, `@cabane/handoff` | One feature's own record, as a `KabaneModule`. |
+| data module | `@cabane/questions`, `@cabane/checklist`, `@cabane/handoff`, `@cabane/outcome` | One feature's own record, as a `KabaneModule`. |
 | extension contract | `@cabane/extension` | The types an extension and the host exchange, and the argument, outcome and settings helpers every command is written with. |
 | harness client | `@cabane/acp` | Driving a coding harness over ACP: the harness registry, the session runner, tool calls, elicitation forms. |
 | client | `@cabane/board` | A UI over the record. |
@@ -152,7 +152,7 @@ The verdicts for what core holds today that is not obviously the record:
 | `mcp/server.ts`, `createMcpServer` | yes: it composes the tool list both hosts serve | yes: the CLI and the hub | yes | yes | Stays. |
 | `mcp/server.ts`, `serveStdio` | no | no: the CLI alone (`packages/cli/src/commands/mcp.ts:38`) | no: `StdioServerTransport` at `server.ts:22` | yes | Moves to the CLI (JCAB-328). |
 | `mcp/server.ts`, `handleHttpRequest` | no | no: the hub alone (`packages/worker/src/hub.ts:137`) | yes | yes | Moves to the worker (JCAB-328). |
-| `storage/sessions.ts` | partly: its rows outlive the process but never leave the device; `SYNC_TABLES` (`schemas/sync.ts:28-36`) omits `agent_sessions` and `agent_activities` | yes: the board and the loop | yes | partly: the harness keeps the session's transcript | Open: JCAB-316:7. |
+| `storage/sessions.ts` | partly: its rows outlive the process but never leave the device; `SYNC_TABLES` (`schemas/sync.ts:28-36`) omits `agent_sessions` and `agent_activities` | yes: the board and the loop | yes | partly: the harness keeps the session's transcript | Split: outcomes and session URIs remain; session storage leaves in JCAB-343. |
 
 ### Core reaches a device's files through a port with a no-op default
 
@@ -169,31 +169,27 @@ returns the pointer `derefFile` already falls back to, so the hub, which wires n
 `Bun.file`. JCAB-328 owns the port, since it already moves core's other device-only calls to the
 hosts; with it and JCAB-326, `bun` leaves the hub's `tsconfig.json`.
 
-### What core keeps of an agent session is open, and each outcome moves a different amount
+### What core keeps of an agent session: outcomes and a URI
 
-JCAB-316:7 asks what kabane keeps of an agent session; JCAB-329 carries out the answer. The rows
-mix the session's own stream (tool activity, progress, permission prompts) with outcomes about
-the issue (findings, decisions, verification, handoffs), which `assembleContext` folds into the
-brief as the durable machine signal. Two things depend on the answer: the session rows of the
-inventory in `wiki/extension-api.md`, and the loop's loading from outside kabane's build. Once the
-rest of the loop goes through `host` (JCAB-339), its last `Planner` calls are the seven session
-calls (`startSession`, `getSession`, `endSession`, `addActivity`, `getActivities`,
-`getNeedsInput`, `answerQuestion`), which have no path on `host`, and a loop that bundled its own
-copy of core would run them on a `Runtime` nobody configured. So JCAB-329 blocks JCAB-340, the
-loop's side of the answer, and JCAB-340 blocks JCAB-326. What each outcome does to the layers:
+JCAB-316:7 settled **Split**. Outcomes about the issue become timeline entries, which core
+already holds and replicates. The session becomes a `session:` URI in the work log. Its stream
+stays with whatever drove it: the loop's own store, a harness, or a World. `host` carries no
+session API (JCAB-316:2).
 
-- **Split** (the recommendation on the question, and the maintainer's lean in the planning
-  conversation: "should we just hold uri and not the data itself? but questions and decisions
-  are related to the issue, similar to what you would see in a human tracker like linear"). The
-  outcomes become timeline entries, which core already holds and replicates. The session becomes
-  a `session:` URI in the work log, which core already takes. The stream stays with whatever
-  drove it: the loop's own store, a harness. `storage/sessions.ts` leaves core, and the board's
-  live lanes read from whoever drives the session. `host.record` needs no session operation.
-- **A first-party data module, replicated or device-only.** The tables leave core for a module;
-  the durable fold becomes that module's `contextSections`. The loop reaches sessions through the
-  module's tools on `host.record.call`.
-- **Sessions stay in core, unsynced.** `storage/sessions.ts` stays as a named exception to
-  questions 1 and 4, and `host.record` needs session operations that no MCP tool offers today.
+The migration has three ordered steps, so existing records remain readable throughout:
+
+1. JCAB-329 declares `outcome.decision`, `outcome.finding`, `outcome.verification` and
+   `outcome.summary` in the first-party data module `@cabane/outcome`, all projected into
+   Discussion. `handoff` stays with `@cabane/handoff`. Both hosts register outcome after handoff.
+   The board reads questions and sends answers through `ActivitySource.questions` and `answer`;
+   question ids and card ids are namespaced by the source merger. A question names its card and
+   optional lane directly, so cards carry no session ids. The loop temporarily adapts core's
+   session questions to that port.
+2. JCAB-340 moves the loop's sessions, stream and questions into its own store. It writes
+   outcomes through `host.record.comment` and session URIs through `host.record.log`.
+3. JCAB-343 migrates existing outcomes to timeline entries, drops `agent_sessions` and
+   `agent_activities`, removes `storage/sessions.ts`, and changes the brief's fold. Until then,
+   the board's detail log still reads session activities, preserving outcomes already written.
 
 ## Ports
 
@@ -425,7 +421,7 @@ argument by argument, the loop needed these, and JCAB-336 added the tools and in
 | `getWorkLogs` (`claims.ts:384`) | a task id | as above | `kabane_logList` |
 | `Checklist.list`, `Checklist.progress` (`checklists.ts:27`, `:39`) | a task id; the store | the checklist module has write tools only | `kabane_checklist` (live items); progress is computed per task from it |
 | `addWorkLog` (`checks.ts:377`, `claims.ts:342`, `parent.ts:76`) | `addedBy: "loop:<runId>"`, `addedByType` | `kabane_log` stamps the connected actor | nothing: the run is already named by its `loop:<runId>` ref (`parent.ts:78`), so the loop writes under `ctx.actor` and puts the run in the ref's label |
-| `startSession`, `getSession`, `endSession`, `addActivity`, `getActivities`, `getNeedsInput`, `answerQuestion` | sessions and their questions | no session tool | waits on JCAB-316:7, above |
+| `startSession`, `getSession`, `endSession`, `addActivity`, `getActivities`, `getNeedsInput`, `answerQuestion` | sessions and their questions | no session tool | no host session API; the loop moves in JCAB-340 and core drops these in JCAB-343 |
 
 The other calls map to a tool as they are: `getTask` and `resolveTaskId` to `get` (the result
 carries the ULID), `updateTask` with `state` and `assignee` to `edit`, `addComment` to `comment`
@@ -671,7 +667,7 @@ This follows the 2026-11-04 research note except in three places:
 | A host depends on no extension | `packages/cli/package.json` lists `@cabane/loop`, which `OFFICIAL` in `packages/cli/src/extensions.ts` bundles; JCAB-318's table lists the edge as an exception tied to JCAB-326 | JCAB-326 |
 | Core keeps only what passes the four questions | Plan lint moved to `extensions/loop/src/lint/`; core no longer exports it | JCAB-338, done |
 | | `scope/detect.ts`, `self.ts`, `serveStdio`, `handleHttpRequest` | JCAB-328 |
-| | `storage/sessions.ts` | JCAB-316:7, then JCAB-329 |
+| | `storage/sessions.ts` | JCAB-343, after JCAB-340 |
 | | `file:` deref reads with `Bun.file` (`storage/assemble-context.ts:187`) | JCAB-328 |
 | Core needs no Bun types | Plan lint moved into the loop; `packages/worker/tsconfig.json` still lists `bun` for core's file-ref deref | JCAB-338 (lint), done; JCAB-328 (deref) |
 | Base kabane does not describe an extension | The dispatch and grill templates in `packages/acp/templates/` | JCAB-327 |

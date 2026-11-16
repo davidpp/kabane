@@ -4,7 +4,9 @@
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
 import {
+	accessSync,
 	closeSync,
+	constants,
 	existsSync,
 	openSync,
 	readFileSync,
@@ -351,6 +353,91 @@ export namespace Loop {
 		);
 	};
 
+	// The subtasks, or the single issue, a run would still work: open issues, findings included.
+	const openWork = (plan: LoopPlan.Plan): LoopPlan.Node[] =>
+		plan.nodes.filter(
+			(n) =>
+				LoopPlan.isWork(n) &&
+				n.task.kind === "issue" &&
+				!LoopPlan.isClosed(n.task),
+		);
+
+	/**
+	 * Every harness a run of `plan` would open a session on, in registry order: the implementer
+	 * (a single issue, the fixer), each open subtask's route, and the verifier when lenses run.
+	 * What `loop advise` prints the launch of, and what `prepare` checks.
+	 */
+	export const harnessesUsed = (
+		plan: LoopPlan.Plan,
+		config: LoopConfig.Config,
+	): Harnesses.Id[] => {
+		const used = new Set<Harnesses.Id>([
+			config.implementer,
+			...openWork(plan).map((n) => Route.of(n.task.tags, config).harness),
+			...(config.lenses.length > 0
+				? [config.verifier ?? config.implementer]
+				: []),
+		]);
+		return Harnesses.IDS.filter((id) => used.has(id));
+	};
+
+	/**
+	 * `config` with the `loop.harnesses` command of each harness in `used` one a session can launch: a relative path made absolute
+	 * against the project, since a session spawns in a tree of its own that has none of the
+	 * project's ignored files (a local build in `dist/`), so run.json holds the file checked here.
+	 * Refuses args with no command once the layers have merged (`Harnesses.resolve` would put them
+	 * after the adapter's `npx`, with no adapter; each layer alone may hold either), and a command
+	 * that is not there or not executable, which every session would fail to spawn, the run
+	 * stalling only after its attempts. A bare name stays a PATH lookup.
+	 */
+	const launchable = (
+		config: LoopConfig.Config,
+		projectDir: string,
+		used: readonly Harnesses.Id[],
+	): Result<LoopConfig.Config> => {
+		const harnesses = { ...config.harnesses };
+		for (const id of used) {
+			const launch = harnesses[id];
+			if (launch === undefined) continue;
+			const key = `loop.harnesses.${id}`;
+			const fix = `in the layer \`kabane config get loop.harnesses --layers\` names`;
+			const { command } = launch;
+			if (command === undefined) {
+				if (launch.args !== undefined)
+					return err(
+						new Error(
+							`${key}.args is set with no ${key}.command, so ${id} would run npx with those arguments and no adapter: set the command beside them, or unset them, ${fix}`,
+						),
+					);
+				continue;
+			}
+			if (!command.includes("/")) {
+				if (Bun.which(command) === null)
+					return err(
+						new Error(
+							`${key}.command ${command} is not on PATH, so no ${id} session could start: correct or unset it ${fix}`,
+						),
+					);
+				continue;
+			}
+			const path = resolve(projectDir, command);
+			if (!existsSync(path))
+				return err(
+					new Error(
+						`${key}.command ${command} is not there (${path}; a leading ~ is not expanded), so no ${id} session could start: correct or unset it ${fix}`,
+					),
+				);
+			if (!trySync(() => accessSync(path, constants.X_OK)).ok)
+				return err(
+					new Error(
+						`${key}.command ${path} is not executable, so no ${id} session could start: chmod +x it, or correct or unset it ${fix}`,
+					),
+				);
+			harnesses[id] = { ...launch, command: path };
+		}
+		return ok({ ...config, harnesses });
+	};
+
 	/** What a run would start with: the plan as it stands, the checkout, the resolved config. */
 	export type Prepared = {
 		plan: LoopPlan.Plan;
@@ -389,11 +476,18 @@ export namespace Loop {
 			},
 		);
 		if (!config.ok) return config;
+		const launches = launchable(
+			config.value,
+			projectDir.value,
+			harnessesUsed(plan.value, config.value),
+		);
+		if (!launches.ok) return launches;
+		const resolved = launches.value;
 		// Whether there is anything to do depends on the config: checks can run on done work.
 		const checked = await checkParent(
 			deps,
 			plan.value,
-			config.value,
+			resolved,
 			projectRoot.value,
 		);
 		if (!checked.ok) return checked;
@@ -401,9 +495,9 @@ export namespace Loop {
 			plan: plan.value,
 			projectDir: projectDir.value,
 			projectRoot: projectRoot.value,
-			config: config.value,
+			config: resolved,
 			isolated: LoopAdvice.isolated(
-				config.value,
+				resolved,
 				Worktree.inRepo(projectDir.value),
 			),
 		});
@@ -433,6 +527,8 @@ export namespace Loop {
 		isolated: boolean;
 		advice: LoopAdvice.Recommendation[];
 		subtasks: Routed[];
+		/** `harnessesUsed`: each harness the run would open a session on. */
+		harnesses: Harnesses.Id[];
 	};
 
 	const ROUTING_TAG = /^(tier|agent):/;
@@ -602,14 +698,7 @@ export namespace Loop {
 		const { advice } = await adviceOf(deps, prepared.value);
 		const git = deps.git ?? Worktree.git;
 		const subtasks = await Promise.all(
-			plan.nodes
-				.filter(
-					(n) =>
-						LoopPlan.isWork(n) &&
-						n.task.kind === "issue" &&
-						!LoopPlan.isClosed(n.task),
-				)
-				.map((n) => routedOf(config, projectDir, git, n.task)),
+			openWork(plan).map((n) => routedOf(config, projectDir, git, n.task)),
 		);
 		return ok({
 			parent: plan.parent.shortId ?? plan.parent.id,
@@ -618,6 +707,7 @@ export namespace Loop {
 			isolated,
 			advice,
 			subtasks,
+			harnesses: harnessesUsed(plan, config),
 		});
 	};
 
@@ -900,7 +990,7 @@ export namespace Loop {
 	};
 
 	export type RunDeps = Deps & {
-		overrides?: Partial<Record<Harnesses.Id, Harnesses.Overrides>>;
+		overrides?: LoopConfig.Own;
 		/** The device config's `harness.mode`. */
 		mode?: Harnesses.Mode;
 	};
@@ -1214,25 +1304,6 @@ export namespace Loop {
 			by: deps.actor,
 			at: new Date().toISOString(),
 		});
-
-	/**
-	 * Note that `deps.actor` is answering `questionId`, when a loop session waits on it: what the
-	 * board does before it writes an answer of its own. Any other question is not the loop's to note.
-	 * A question of a run whose runner died is withdrawn and refused, as `answer` refuses it.
-	 */
-	export const answering = async (
-		deps: AnswerDeps,
-		questionId: string,
-	): Promise<Result<void>> => {
-		const dead = await stranded(deps, questionId);
-		if (!dead.ok) return dead;
-		if (dead.value) return err(strandedError(dead.value, questionId));
-		const found = await waiting(deps.basePath, questionId);
-		if (!found.ok) return found;
-		return found.value
-			? note(deps, found.value.runId, questionId)
-			: ok(undefined);
-	};
 
 	export const answer = async (
 		deps: AnswerDeps,

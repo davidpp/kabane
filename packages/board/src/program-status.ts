@@ -111,7 +111,7 @@ export namespace ProgramStatus {
 			id: recordId(card.id),
 			title: cardTitle(card),
 			blockers: input.questions
-				.filter((q) => card.sessionIds?.includes(q.sessionId))
+				.filter((q) => q.cardId === card.id)
 				.map(questionBlocker),
 			working:
 				(card.status === "running" || card.status === "pending") && !card.stale,

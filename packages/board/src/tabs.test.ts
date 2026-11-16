@@ -53,7 +53,7 @@ const card = (over: Partial<ActivityCard> = {}): ActivityCard => ({
 	detail: [],
 	hasEvents: true,
 	tab: true,
-	sessionIds: ["s-loop"],
+
 	...over,
 });
 
@@ -62,8 +62,8 @@ const question = (
 ): BoardTabs.Question => ({
 	taskId: "t3",
 	taskShortId: "JREP-3",
-	sessionId: "s-loop",
-	questionActivityId: "q-loop",
+	cardId: "loop:r1",
+	id: "q-loop",
 	question: "Evict by LRU or by TTL?",
 	choices: ["LRU", "TTL"],
 	multiSelect: false,
@@ -78,8 +78,8 @@ const LOOP_Q = question();
 const SOLO_Q = question({
 	taskId: "t9",
 	taskShortId: "JREP-9",
-	sessionId: "s-solo",
-	questionActivityId: "q-solo",
+	cardId: "solo",
+	id: "q-solo",
 	question: "Pin 0.5.10 or take the minor?",
 	choices: ["Pin", "Take"],
 	multiSelect: false,
@@ -214,6 +214,29 @@ describe("! walks every unanswered question, oldest first", () => {
 		expect(effect).toEqual({
 			type: "notice",
 			notice: { text: "nothing is waiting on you", tone: "success" },
+		});
+	});
+
+	it("skips a question with no task or open tab and reaches the next question", () => {
+		const hidden = { ...SOLO_Q, taskId: undefined, taskShortId: undefined };
+		const result = press(withLoop([card()], [hidden, LOOP_Q]), "!");
+		expect(BoardTabs.cardQuestion(result.state.tabs)).toEqual(LOOP_Q);
+		expect(result.effect).toEqual({
+			type: "notice",
+			notice: { text: "skipped 1 without a task or tab", tone: "success" },
+		});
+		const wrapped = press(result.state, "!");
+		expect(BoardTabs.cardQuestion(wrapped.state.tabs)).toEqual(LOOP_Q);
+		expect(wrapped.effect).toEqual(result.effect);
+	});
+	it("reports when every waiting question has no task or open tab", () => {
+		const hidden = { ...SOLO_Q, taskId: undefined, taskShortId: undefined };
+		const state = withLoop([], [hidden]);
+		const result = press(state, "!");
+		expect(result.state).toBe(state);
+		expect(result.effect).toEqual({
+			type: "notice",
+			notice: { text: "skipped 1 without a task or tab", tone: "success" },
 		});
 	});
 
@@ -383,7 +406,7 @@ describe("a card's tab answers its question in place", () => {
 
 	it("shows the oldest of several first, counts the rest, and the poll moves it on once answered", () => {
 		const later = question({
-			questionActivityId: "q-loop-2",
+			id: "q-loop-2",
 			question: "Keep the old index?",
 			choices: ["Keep", "Drop"],
 			multiSelect: false,
@@ -679,7 +702,7 @@ describe("a question that just appeared holds the digits until it has been read"
 
 	it("a question that replaces the one in hand starts its own window", () => {
 		const later = question({
-			questionActivityId: "q-loop-2",
+			id: "q-loop-2",
 			question: "Keep the old index?",
 			choices: ["Keep", "Drop"],
 			multiSelect: false,
@@ -760,4 +783,22 @@ describe("what the footer offers", () => {
 			unanswered: true,
 		});
 	});
+});
+
+// Questions are owned by cards even when they do not refer to a tracker task.
+it("routes a taskless question to its owning card and answers through its id", () => {
+	const {
+		taskId: _taskId,
+		taskShortId: _taskShortId,
+		...taskless
+	} = question();
+	const state = BoardTabs.withActivity(base(), [card()], [taskless]);
+	const landed = press(state, "!");
+	expect(landed.state.tabs.active).toBe("loop:r1");
+	expect(press(landed.state, "1").effect).toEqual({
+		type: "answerQuestion",
+		questionId: "q-loop",
+		answer: "LRU",
+	});
+	expect(press(landed.state, "o").state.tabs.active).toBe("loop:r1");
 });

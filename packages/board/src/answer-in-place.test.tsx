@@ -1,11 +1,16 @@
 /** @jsxImportSource @opentui/react */
-// A question a tabbed card's session asked, answered from the card's tab against a real tracker:
-// `!` lands on the tab, a digit writes the decision through `Planner.answerQuestion`, and the host
-// hears who answered first. The host is the smallest ActivitySource that lists one tabbed card.
+// The board reads and answers through an ActivitySource backed by a real tracker.
+// `!` lands on the owning card and a digit reaches the source once the question has been read.
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { formatQuestionBody, isAnswerTo, ok, Planner } from "@cabane/core";
+import {
+	formatQuestionBody,
+	isAnswerTo,
+	ok,
+	parseQuestionBody,
+	Planner,
+} from "@cabane/core";
 import type { ActivityCard, ActivitySource } from "@cabane/extension";
 import { App } from "./app";
 import { BoardNav } from "./nav";
@@ -63,16 +68,45 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		detail: [],
 		hasEvents: true,
 		tab: true,
-		sessionIds: [sessionId],
 	};
 	const noted: string[] = [];
 	const source: ActivitySource = {
 		load: async () => ok([card]),
 		card: async () => ok(card),
 		events: async () => ok([]),
-		answering: async (id) => {
+		questions: async () => {
+			const rows = await Planner.getNeedsInput(BASE);
+			if (!rows.ok) return rows;
+			return ok(
+				rows.value.flatMap(({ session, task, question }) => {
+					if (!question) return [];
+					const parsed = parseQuestionBody(question.body);
+					return [
+						{
+							id: question.id,
+							cardId: card.id,
+							...(task
+								? { taskId: task.id, taskShortId: task.shortId ?? task.id }
+								: {}),
+							question: parsed.question,
+							choices: parsed.choices,
+							multiSelect: parsed.multiSelect,
+							allowFreeform: parsed.allowFreeform,
+							permission: Boolean(parsed.permission),
+							asker: session.agent,
+							askedAt: question.createdAt,
+						},
+					];
+				}),
+			);
+		},
+		answer: async (id, answer) => {
 			noted.push(id);
-			return ok(undefined);
+			const result = await Planner.answerQuestion(BASE, {
+				questionId: id,
+				answer,
+			});
+			return result.ok ? ok(`answered ${answer}`) : result;
 		},
 	};
 	let now = 0;
@@ -94,7 +128,13 @@ it("! lands on the card's tab and a digit there answers the question in core, on
 		expect(noted).toEqual([]);
 		now += BoardNav.ARM_MS;
 		mockInput.pressKey("1");
-		await until((f) => f.includes("answered Yes"));
+		const answered = await until((f) => f.includes("answered Yes"));
+		expect(
+			answered
+				.split("\n")
+				.find((row) => row.includes("answered Yes"))
+				?.trim(),
+		).toBe("answered Yes");
 		const activities = await Planner.getActivities(BASE, sessionId);
 		if (!activities.ok) throw activities.error;
 		const decision = activities.value.find(

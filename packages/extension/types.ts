@@ -23,6 +23,7 @@ export type {
 	ActivityCard,
 	ActivityDiff,
 	ActivityEvent,
+	ActivityQuestion,
 	ActivitySource,
 	ActivityStatus,
 	ActivityToolDetail,

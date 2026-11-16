@@ -10,6 +10,7 @@ import { LoopPlan } from "./plan";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 
@@ -243,7 +244,9 @@ describe("Runner inbox handling", () => {
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			signal: controller.signal,
-			overrides: { claude: { command: "/nonexistent/harness" } },
+			overrides: TestHarnesses.overrides({
+				claude: { command: "/nonexistent/harness" },
+			}),
 			tree: async () => "tree",
 			tickMs: 5,
 		});

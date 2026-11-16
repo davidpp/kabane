@@ -421,12 +421,21 @@ const routedLines = (s: Loop.Routed): string[] => [
 	...s.notes.map((note) => `    note: ${note}`),
 ];
 
+// What each harness the run would open a session on (`Loop.harnessesUsed`) launches, the pinned
+// adapter or what `loop.harnesses` names instead, so what spends quota shows before `loop start`.
+const launches = (a: Loop.Advised): string[] =>
+	a.harnesses.map((id) => {
+		const { command, args, from } = LoopConfig.launch(a.config, id);
+		return `  ${id} launches ${[command, ...args].join(" ")} (${from})`;
+	});
+
 const advisedText = (a: Loop.Advised): string => {
 	const flags = a.advice.flatMap(asFlags);
 	const settings = a.advice.flatMap(asSetting);
 	return [
 		`${a.parent} in ${a.projectDir}`,
 		`  implementer ${a.config.implementer}  model ${a.config.model ?? "unset"}  tiers ${LoopConfig.tierNames(a.config).join(", ")}`,
+		...launches(a),
 		"advised:",
 		...a.advice.map(
 			(r) =>

@@ -12,6 +12,7 @@ import { Elicitation } from "./elicitation";
 import { loop, start } from "./extension";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 
@@ -41,7 +42,7 @@ const RUNNER = [
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: { claude: { command: "/nonexistent/harness" } } }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -469,6 +470,9 @@ describe("kabane loop advise", () => {
 									claude: { fast: "claude-haiku-4-5" },
 									codex: { frontier: "gpt-5.5" },
 								},
+								harnesses: {
+									codex: { command: "/bin/echo", args: ["--local"] },
+								},
 							},
 						},
 					]),
@@ -478,8 +482,13 @@ describe("kabane loop advise", () => {
 		expect(advised.exitCode).toBe(0);
 		const lines = advised.text.split("\n");
 		// The project is no git repository, so a run works in place: one shared tree.
-		expect(lines.slice(1, 8)).toEqual([
+		// Each harness a session would open on, the one loop.harnesses replaces and the one it does not.
+		expect(lines[2]).toMatch(
+			/^ {2}claude launches npx -y @agentclientprotocol\/claude-agent-acp@\S+ \(the pinned adapter\)$/,
+		);
+		expect([lines[1], ...lines.slice(3, 10)]).toEqual([
 			"  implementer claude  model unset  tiers frontier, balanced, fast",
+			"  codex launches /bin/echo --local (loop.harnesses.codex)",
 			"advised:",
 			`  budget.concurrency 1 (now 1, the default in a shared tree): src/parser.ts referenced by ${header.shortId}, ${body.shortId} — potential merge conflict if run in parallel`,
 			'  gates test="bun run test" (now none): package.json scripts, using bun from the lockfile',
@@ -487,7 +496,7 @@ describe("kabane loop advise", () => {
 			'  start with: --concurrency 1 --gate test="bun run test"',
 			'  no start flag, a setting: loop.setup "bun install"',
 		]);
-		expect(lines.slice(8)).toEqual([
+		expect(lines.slice(10)).toEqual([
 			"subtasks:",
 			`  ${header.shortId}  header`,
 			"    tier:fast  claude  model claude-haiku-4-5 (tier fast)",
@@ -506,5 +515,133 @@ describe("kabane loop advise", () => {
 		expect(refused.text).toStartWith(
 			"Error: Unknown loop start flag: --work-tree\n",
 		);
+	});
+
+	describe("loop.harnesses", () => {
+		// `advise` on a parent with one subtask, under these settings layers, lowest first.
+		const adviseUnder = async (
+			...layers: { layer: "global" | "local"; value: unknown }[]
+		) => {
+			const parent = await Planner.addTask(home, {
+				title: "parent",
+				kind: "issue",
+				state: "next",
+			});
+			if (!parent.ok) throw parent.error;
+			const child = await Planner.addTask(home, {
+				title: "child",
+				kind: "issue",
+				state: "next",
+				parentTaskId: parent.value.id,
+			});
+			if (!child.ok) throw child.error;
+			const command = loop.commands?.find((c) => c.name === "loop");
+			if (!command) throw new Error("no loop command");
+			return command.run(
+				parseArgs(["advise", parent.value.shortId ?? parent.value.id]),
+				{
+					home,
+					store: home,
+					cwd: home,
+					actor: "cabane://actor/human/test",
+					harnessMode: "auto",
+					settings: Settings.port(async () =>
+						ok(layers.map((l) => ({ ...l, label: l.layer }))),
+					),
+				},
+			);
+		};
+
+		it("refuses args with no command once the layers merge, and takes a command from another layer", async () => {
+			const args = {
+				layer: "global" as const,
+				value: { harnesses: { claude: { args: ["--verbose"] } } },
+			};
+			const refused = await adviseUnder(args);
+			expect(refused.exitCode).not.toBe(0);
+			expect(refused.text).toContain(
+				"loop.harnesses.claude.args is set with no loop.harnesses.claude.command",
+			);
+			const taken = await adviseUnder(args, {
+				layer: "local",
+				value: { harnesses: { claude: { command: "/bin/echo" } } },
+			});
+			expect(taken.exitCode).toBe(0);
+			expect(taken.text).toContain(
+				"  claude launches /bin/echo --verbose (loop.harnesses.claude)",
+			);
+		});
+
+		it("refuses a command that is not there or not executable, by path or on PATH", async () => {
+			writeFileSync(join(home, "acp.txt"), "not a program\n");
+			for (const [command, says] of [
+				[
+					"/nonexistent/acp",
+					"/nonexistent/acp is not there (/nonexistent/acp; a leading ~ is not expanded)",
+				],
+				[
+					"~/acp",
+					`~/acp is not there (${join(home, "~/acp")}; a leading ~ is not expanded)`,
+				],
+				["no-such-acp-adapter", "no-such-acp-adapter is not on PATH"],
+				["./acp.txt", `${join(home, "acp.txt")} is not executable`],
+			] as const) {
+				const refused = await adviseUnder({
+					layer: "local",
+					value: { harnesses: { claude: { command } } },
+				});
+				expect(refused.exitCode).not.toBe(0);
+				expect(refused.text).toContain(
+					`loop.harnesses.claude.command ${says}, so no claude session could start`,
+				);
+			}
+		});
+
+		it("leaves alone a broken entry for a harness the run does not use", async () => {
+			const advised = await adviseUnder({
+				layer: "global",
+				value: { harnesses: { codex: { command: "/nonexistent/codex-acp" } } },
+			});
+			expect(advised.exitCode).toBe(0);
+			expect(advised.text).not.toContain("codex");
+		});
+
+		it("stores a relative command in the run's config as the absolute path it checked", async () => {
+			mkdirSync(join(home, "dist"));
+			writeFileSync(join(home, "dist", "acp"), "#!/bin/sh\n", { mode: 0o755 });
+			const absolute = join(home, "dist", "acp");
+			const layer = {
+				layer: "local" as const,
+				value: { harnesses: { claude: { command: "./dist/acp" } } },
+			};
+			const advised = await adviseUnder(layer);
+			expect(advised.text).toContain(
+				`  claude launches ${absolute} (loop.harnesses.claude)`,
+			);
+			const parent = await Planner.addTask(home, {
+				title: "started",
+				kind: "issue",
+				state: "next",
+			});
+			if (!parent.ok) throw parent.error;
+			await Loop.start(
+				{
+					home,
+					basePath: home,
+					kabaneBin: "/nonexistent/kabane",
+					cwd: home,
+					settings: Settings.port(async () =>
+						ok([{ ...layer, label: "local" }]),
+					),
+					runner: () => ["/nonexistent/runner"],
+				},
+				{ parent: parent.value.id },
+			);
+			const runs = RunStore.list(home);
+			if (!runs.ok) throw runs.error;
+			expect(runs.value.map((r) => r.config.harnesses)).toEqual([
+				{ claude: { command: absolute } },
+			]);
+		});
 	});
 });

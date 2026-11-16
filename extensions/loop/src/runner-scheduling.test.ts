@@ -25,6 +25,7 @@ import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 
 let home = "";
 beforeEach(async () => {
@@ -73,7 +74,9 @@ const deps = () => ({
 	basePath: home,
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
-	overrides: { gemini: { command: "/nonexistent/harness" } },
+	overrides: TestHarnesses.overrides({
+		gemini: { command: "/nonexistent/harness" },
+	}),
 	tree: async () => "tree",
 	tickMs: 5,
 	settings: Settings.port(async () => ok([])),
@@ -175,7 +178,9 @@ describe("Runner scheduling", () => {
 		const running = Runner.run(run.id, {
 			...deps(),
 			signal: controller.signal,
-			overrides: { gemini: { command: process.execPath, args: [agent] } },
+			overrides: TestHarnesses.overrides({
+				gemini: { command: process.execPath, args: [agent] },
+			}),
 		});
 		try {
 			await until(() => {
@@ -258,7 +263,9 @@ describe("Runner scheduling", () => {
 			const running = Runner.run(run.id, {
 				...deps(),
 				signal: controller.signal,
-				overrides: { gemini: { command: process.execPath, args: [agent] } },
+				overrides: TestHarnesses.overrides({
+					gemini: { command: process.execPath, args: [agent] },
+				}),
 			});
 			try {
 				await until(
@@ -342,7 +349,9 @@ describe("Runner scheduling", () => {
 		const running = Runner.run(run.id, {
 			...deps(),
 			signal: controller.signal,
-			overrides: { gemini: { command: process.execPath, args: [agent] } },
+			overrides: TestHarnesses.overrides({
+				gemini: { command: process.execPath, args: [agent] },
+			}),
 		});
 		try {
 			await until(() => existsSync(join(home, `${a.shortId}.prompt`)));
@@ -399,7 +408,9 @@ describe("Runner scheduling", () => {
 		writeFileSync(join(home, `${a.shortId}.release`), "");
 		const ended = await Runner.run(run.id, {
 			...deps(),
-			overrides: { gemini: { command: process.execPath, args: [agent] } },
+			overrides: TestHarnesses.overrides({
+				gemini: { command: process.execPath, args: [agent] },
+			}),
 		});
 		if (!ended.ok) throw ended.error;
 		expect(ended.value.exit?.reason).toBe("stalled");
@@ -466,7 +477,9 @@ describe("Runner scheduling", () => {
 			const running = Runner.run(run.id, {
 				...deps(),
 				signal: controller.signal,
-				overrides: { gemini: { command: process.execPath, args: [agent] } },
+				overrides: TestHarnesses.overrides({
+					gemini: { command: process.execPath, args: [agent] },
+				}),
 			});
 			try {
 				await until(() => existsSync(join(home, `${a.shortId}.prompt`)));
@@ -541,7 +554,9 @@ describe("A single-issue run's claim", () => {
 		const running = Runner.run(run.id, {
 			...deps(),
 			signal: controller.signal,
-			overrides: { gemini: { command: process.execPath, args: [agent] } },
+			overrides: TestHarnesses.overrides({
+				gemini: { command: process.execPath, args: [agent] },
+			}),
 		});
 		await until(() => existsSync(join(home, `${issue.shortId}.prompt`)));
 		const during = await Planner.getTask(home, issue.id);
@@ -576,7 +591,9 @@ describe("A single issue given a subtask during its run", () => {
 		const running = Runner.run(run.id, {
 			...deps(),
 			signal: controller.signal,
-			overrides: { gemini: { command: process.execPath, args: [agent] } },
+			overrides: TestHarnesses.overrides({
+				gemini: { command: process.execPath, args: [agent] },
+			}),
 		});
 		const release = (task: Task, change: TaskUpdate) => {
 			writeFileSync(
@@ -664,7 +681,9 @@ describe("A single issue given a subtask while a lens reviews it", () => {
 		const running = Runner.run(run.id, {
 			...deps(),
 			signal: controller.signal,
-			overrides: { gemini: { command: process.execPath, args: [agent] } },
+			overrides: TestHarnesses.overrides({
+				gemini: { command: process.execPath, args: [agent] },
+			}),
 		});
 		try {
 			await until(() => existsSync(join(home, `${issue.shortId}.prompt`)));

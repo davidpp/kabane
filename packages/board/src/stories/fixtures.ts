@@ -219,7 +219,6 @@ export namespace Fixtures {
 		detail: [],
 		hasEvents: true,
 		tab: true,
-		sessionIds: [`s${n}`],
 	});
 
 	/**
@@ -404,8 +403,8 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 	): BoardTabs.Question => ({
 		taskId: `t${n}`,
 		taskShortId: `JREP-${n}`,
-		sessionId: "s1",
-		questionActivityId: `q${n}`,
+		cardId: "loop:r1",
+		id: `q${n}`,
 		question: `Install dependencies ${n}?`,
 		choices,
 		multiSelect: false,

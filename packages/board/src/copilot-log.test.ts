@@ -310,8 +310,8 @@ describe("CopilotLog", () => {
 			{
 				taskId: "t1",
 				taskShortId: "MILL-1",
-				sessionId: "s",
-				questionActivityId: "q",
+				cardId: "c",
+				id: "q",
 				question: "?",
 				choices: [],
 				multiSelect: false,
@@ -392,6 +392,17 @@ describe("CopilotLog", () => {
 			at: T1,
 		});
 		expect(CopilotLog.usageLabel(empty)).toBeNull();
+	});
+
+	it("passes host questions and answers through alongside the copilot", async () => {
+		const host: ActivitySource = {
+			load: async () => ok([]),
+			questions: async () => ok([]),
+			answer: async (id, answer) => ok(`${id}: ${answer}`),
+		};
+		const source = CopilotLog.source(host, () => started());
+		expect(await source.questions?.()).toEqual(ok([]));
+		expect(await source.answer?.("loop:q", "Yes")).toEqual(ok("loop:q: Yes"));
 	});
 
 	it("source layers the copilot card over the host source and serves its events after a seq", async () => {

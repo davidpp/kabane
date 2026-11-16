@@ -17,6 +17,7 @@ import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { Worktree } from "./worktree";
 
 // `start`'s refusals, which all come before a runner is spawned, and `restart`, whose runner is
@@ -45,6 +46,7 @@ const deps = () => ({
 const CONFIG: LoopConfig.Config = {
 	implementer: "claude",
 	tiers: {},
+	harnesses: {},
 	budget: { concurrency: 1, continuations: 0, currency: "USD" },
 	stallAfter: 1,
 	gates: {},
@@ -498,7 +500,7 @@ const RUNNER = [
 	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: { claude: { command: "/nonexistent/harness" } } }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -681,23 +683,6 @@ describe("Loop.answer", () => {
 		expect(after.ok && after.value).toEqual([]);
 	});
 
-	it("answering notes who answers a loop session's question, and nothing for any other", async () => {
-		const deps = { home, basePath: home, actor: HUMAN };
-		const { questionId } = await blocked("run-1");
-		expect(await Loop.answering(deps, questionId)).toEqual({
-			ok: true,
-			value: undefined,
-		});
-		expect(await Loop.answering(deps, "not-a-loop-question")).toEqual({
-			ok: true,
-			value: undefined,
-		});
-		const inbox = RunStore.readInbox(home, "run-1", 0);
-		expect(inbox.ok && inbox.value.entries).toMatchObject([
-			{ kind: "answered", questionId, by: HUMAN },
-		]);
-	});
-
 	it("refuses a question whose runner died, withdraws it from core's queue, and lists it as withdrawn", async () => {
 		const deps = { home, basePath: home, actor: HUMAN };
 		const { run, sessionId } = await orphaned("dead-run");
@@ -721,8 +706,6 @@ describe("Loop.answer", () => {
 		expect(!answered.ok && answered.error.message).toContain(
 			`kabane loop resume ${run.id}`,
 		);
-		const noted = await Loop.answering(deps, questionId);
-		expect(!noted.ok && noted.error.message).toContain("runner died");
 		// Closed as withdrawn, not answered: a task's detail, which reads ended sessions too, no
 		// longer pins it.
 		const closing = async () => {
@@ -828,6 +811,7 @@ describe("Loop.stop", () => {
 			config: {
 				implementer: "claude",
 				tiers: {},
+				harnesses: {},
 				budget: { concurrency: 1, continuations: 0, currency: "USD" },
 				stallAfter: 1,
 				gates: {},

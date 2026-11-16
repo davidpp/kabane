@@ -23,6 +23,9 @@ The CLI imports the board (`startBoard`, `startSetup`, `BoardCopilot`, the `Acti
 port types; `@cabane/acp/form-field` owns form types and validation. `src/ports.ts` keeps the
 board-only ports and no-op defaults. `src/copilot.ts` implements `BoardCopilot` over ACP;
 `src/mailbox.ts` and `src/copilot-instructions.ts` support it. The host supplies `kabaneBin`.
+`ActivitySource.questions` supplies agent questions and `answer` records their answers; the board
+does not read or answer them through core sessions. Legacy session activity remains in the detail
+log until JCAB-343 migrates outcomes.
 `Header` returns data: `src/card-header.tsx` polls it and lays out its rows, sharing tone mapping
 with trigger previews. Base kabane's copilot text and setup screen name no extension: an
 extension's procedures and shortcuts arrive in `CopilotInstructions.Setup`, read by the host from

@@ -24,6 +24,7 @@ import { Runner } from "./runner";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
+import { TestHarnesses } from "./test-harnesses";
 import { Worktree } from "./worktree";
 
 let root = "";
@@ -113,6 +114,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			basePath: home,
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
+			overrides: TestHarnesses.overrides(),
 			git,
 		},
 		now: () => new Date(),
@@ -480,7 +482,9 @@ describe("Runner final checks", () => {
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			git,
-			overrides: { claude: { command: "/nonexistent/harness" } },
+			overrides: TestHarnesses.overrides({
+				claude: { command: "/nonexistent/harness" },
+			}),
 			tickMs: 5,
 		});
 		if (!ended.ok) throw ended.error;
@@ -562,9 +566,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				kabaneBin: "/nonexistent/kabane",
 				pid: process.pid,
 				git,
-				overrides: {
+				overrides: TestHarnesses.overrides({
 					gemini: { command: process.execPath, args: [agent, home] },
-				},
+				}),
 				tickMs: 5,
 			});
 			if (!ended.ok) throw ended.error;
@@ -743,9 +747,9 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			kabaneBin: "/nonexistent/kabane",
 			pid: process.pid,
 			git,
-			overrides: {
+			overrides: TestHarnesses.overrides({
 				gemini: { command: process.execPath, args: [agent, home, prompts] },
-			},
+			}),
 			tickMs: 5,
 		});
 		if (!ended.ok) throw ended.error;

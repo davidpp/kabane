@@ -136,6 +136,41 @@ Inside a project, `config set` writes the local layer by default; outside one it
 global. Use `--layer shared` for settings the project shares, or `--layer global` for
 your defaults across projects. A higher layer still wins.
 
+## Launch a harness from your own build
+
+A run launches each harness through its pinned ACP adapter. To run a local adapter build
+or a wrapper script instead, name its command, and its arguments if it takes any, under
+`loop.harnesses.<harness>`:
+
+```bash
+kabane config set loop.harnesses.claude.command /path/to/claude-agent-acp
+# a list takes commas; after --, an argument may start with a dash
+kabane config set loop.harnesses.claude.args -- --verbose,--debug
+```
+
+The dotted key splits its value on commas, so an argument that holds a comma itself goes
+in through the whole object instead, which replaces every harness's entry in that layer:
+
+```bash
+kabane config set loop.harnesses '{"claude":{"command":"/path/to/claude-agent-acp","args":["--allow","a,b"]}}'
+```
+
+The arguments replace the adapter's; a command with no arguments runs with none. Every
+session of the run on that harness uses it: implementers, the review triage, the lenses,
+the fixer and the rechecks.
+
+`command` and `args` resolve key by key through the layers, so a command in your local
+layer can sit over arguments in the global one. Once they merge, `args` with no `command`
+is refused: it would run the adapter's `npx` with your arguments and no adapter. So is a
+command no session could start: a bare name must be on PATH, and a path must be an
+executable file. A relative path is read against the project when the run starts, and the
+run launches that absolute path, since each session works in a tree of its own without the
+project's ignored files; a leading `~` is not expanded.
+
+`kabane loop advise` prints what each harness the run would use launches, the pinned
+adapter or your command, and each session's `launch` event in the run's trace names the
+command it ran.
+
 ## Pick models with tiers
 
 With the loop extension enabled, `kabane doctor` suggests pinning an unset `loop.model`

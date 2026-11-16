@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Settings } from "@cabane/extension";
 import { LoopConfig } from "./config";
+import { TestHarnesses } from "./test-harnesses";
 
 // The loop's settings schema through the resolver every namespace shares. Where each layer is
 // stored is the CLI's (config-layers.test.ts); this is what the loop accepts in one.
@@ -33,6 +34,7 @@ describe("LoopConfig.SettingsSchema", () => {
 		expect(config.ok && config.value.value).toEqual({
 			implementer: "claude",
 			tiers: {},
+			harnesses: {},
 			budget: {
 				continuations: 3,
 				currency: "USD",
@@ -191,6 +193,57 @@ describe("LoopConfig.SettingsSchema", () => {
 		// A device key is not a loop setting either, so a checked-in file cannot reach the hub.
 		expect(refusal({ sync: { url: "https://elsewhere" } })).toBe(
 			`Invalid loop settings in ${PROJECT}:\n  sync: not a loop setting`,
+		);
+	});
+});
+
+describe("LoopConfig harnesses", () => {
+	it("takes a launch command and arguments per harness, and refuses a key either does not name", () => {
+		const config = resolve(
+			{ harnesses: { claude: { command: "/opt/acp/claude" } } },
+			{ harnesses: { claude: { args: ["--local"] } } },
+		);
+		expect(config.ok && config.value.value.harnesses).toEqual({
+			claude: { command: "/opt/acp/claude", args: ["--local"] },
+		});
+		expect(refusal({ harnesses: { claud: { command: "x" } } })).toContain(
+			"harnesses.claud",
+		);
+		// A misspelt key dropped would launch the adapter the human meant to replace.
+		expect(refusal({ harnesses: { claude: { comand: "x" } } })).toContain(
+			"comand",
+		);
+	});
+
+	it("launches the runner's own overrides over the run's setting, and the setting over the pinned adapter", () => {
+		const setting = { command: "/opt/acp/claude", args: ["--local"] };
+		const own = TestHarnesses.overrides({
+			claude: { command: "/opt/own", args: ["--own"] },
+		});
+		const config = { harnesses: { claude: setting } };
+		expect(LoopConfig.launchOverrides(config, "claude", own)).toEqual(
+			own.claude,
+		);
+		expect(LoopConfig.launchOverrides(config, "claude")).toEqual(setting);
+		expect(LoopConfig.launchOverrides({ harnesses: {} }, "claude")).toBe(
+			undefined,
+		);
+		expect(LoopConfig.launch(config, "claude")).toEqual({
+			command: "/opt/acp/claude",
+			args: ["--local"],
+			from: "loop.harnesses.claude",
+		});
+		// What `config unset loop.harnesses.claude.command` leaves.
+		expect(
+			LoopConfig.launch({ harnesses: { claude: {} } }, "claude").from,
+		).toBe("the pinned adapter");
+		const pinned = LoopConfig.launch({ harnesses: {} }, "claude");
+		expect([pinned.command, pinned.from]).toEqual([
+			"npx",
+			"the pinned adapter",
+		]);
+		expect(pinned.args.join(" ")).toContain(
+			"@agentclientprotocol/claude-agent-acp",
 		);
 	});
 });

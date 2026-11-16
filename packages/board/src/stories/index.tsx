@@ -829,9 +829,7 @@ export const STORIES: readonly Story[] = [
 						...BoardTabs.NONE,
 						open: [card.id],
 						active: card.id,
-						cards: new Map([
-							[card.id, { finished: false, sessionIds: ["s1"] }],
-						]),
+						cards: new Map([[card.id, { finished: false }]]),
 						queue: [question, Fixtures.question(3, ["Yes", "No"])],
 					}}
 					onAnswer={() => {}}

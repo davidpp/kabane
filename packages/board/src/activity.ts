@@ -1,30 +1,17 @@
 // In-flight activity seam for the board: host activity cards (via the ActivitySource port) plus
-// awaiting-input questions read straight from the tracker. Same posture as BoardData (data.ts) —
-// direct reads, NO server. app.tsx fetches this in the same 5s poll as loadBoard and threads the
-// result down as props.
-import { ok, Planner, parseQuestionBody, type Result } from "@cabane/core";
-import { type ActivityCard, type ActivitySource } from "@cabane/extension";
+// awaiting-input questions supplied by that same port. app.tsx fetches this in the same 5s poll
+// as loadBoard and threads the result down as props.
+import { ok, type Result } from "@cabane/core";
+import {
+	type ActivityCard,
+	type ActivityQuestion,
+	type ActivitySource,
+} from "@cabane/extension";
 import { isInFlight } from "./ports";
 
 export namespace BoardActivity {
-	export type AwaitingQuestion = {
-		taskId: string;
-		taskShortId: string;
-		sessionId: string;
-		questionActivityId: string;
-		/** Human-readable question text (metadata fence stripped). */
-		question: string;
-		/** The answers the asker offered, in order; empty for a freeform question. */
-		choices: readonly string[];
-		/** Any number of `choices` may be picked: toggled with digits, sent with `enter`. */
-		multiSelect: boolean;
-		/** A typed answer is taken as well as, or in place of, the choices. */
-		allowFreeform: boolean;
-		/** The question relays a harness's permission request rather than asking one of its own. */
-		permission?: boolean;
-		/** Who asks: the session's agent. */
+	export type AwaitingQuestion = Omit<ActivityQuestion, "asker"> & {
 		agent: string;
-		askedAt: string;
 	};
 
 	export type ActivityMap = {
@@ -34,6 +21,7 @@ export namespace BoardActivity {
 		inFlightByTaskId: Map<string, ActivityCard[]>;
 		// In-flight cards keyed by task shortId, for hosts that only know the label.
 		inFlightByShortId: Map<string, ActivityCard[]>;
+		// Questions without a task share the empty key so they remain in the attention queue.
 		questionsByTaskId: Map<string, AwaitingQuestion[]>;
 	};
 
@@ -66,31 +54,16 @@ export namespace BoardActivity {
 	// Load everything in flight. Reads are lenient — the board is a glance surface, so a failing
 	// activity source must not blank the questions.
 	export const loadActivity = async (
-		basePath: string,
 		source: ActivitySource,
 	): Promise<Result<ActivityMap>> => {
 		const cards = await source.load();
 		const activity = indexCards(cards.ok ? cards.value : []);
 
-		// Same storage call the tracker's `needsInput` surface uses — one row per unanswered question
-		// activity, joined to its session + task.
-		const needsInput = await Planner.getNeedsInput(basePath);
-		if (!needsInput.ok) return needsInput;
-		for (const row of needsInput.value) {
-			if (!row.task || !row.question) continue;
-			const parsed = parseQuestionBody(row.question.body);
-			push(activity.questionsByTaskId, row.task.id, {
-				taskId: row.task.id,
-				taskShortId: row.task.shortId ?? row.task.id.slice(0, 8),
-				sessionId: row.session.id,
-				questionActivityId: row.question.id,
-				question: parsed.question,
-				choices: parsed.choices,
-				multiSelect: parsed.multiSelect,
-				allowFreeform: parsed.allowFreeform,
-				...(parsed.permission ? { permission: true } : {}),
-				agent: row.session.agent,
-				askedAt: row.question.createdAt,
+		const questions = await source.questions?.();
+		for (const { asker, ...question } of questions?.ok ? questions.value : []) {
+			push(activity.questionsByTaskId, question.taskId ?? "", {
+				...question,
+				agent: asker,
 			});
 		}
 

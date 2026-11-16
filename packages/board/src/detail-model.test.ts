@@ -120,84 +120,52 @@ const askedTwice = (): BoardData.DetailRecords =>
 		],
 	});
 
+const awaiting = (id = "q2", question = "Which tab opens first?") => ({
+	taskId: "t1",
+	cardId: "s1",
+	id,
+	question,
+	taskShortId: "MILL-1",
+	choices: [],
+	multiSelect: false,
+	allowFreeform: true,
+	agent: "claude",
+	askedAt: "2026-10-10T00:00:00.000Z",
+});
+
 describe("openQuestions", () => {
-	it("pins the questions nothing answers yet, and only those", () => {
-		expect(DetailModel.openQuestions(askedTwice())).toEqual([
-			{ id: "q2", question: "Which tab opens first?" },
+	it("has no questions without the host's queue", () => {
+		expect(DetailModel.openQuestions()).toEqual([]);
+	});
+	it("stops pinning a question when the host removes it from awaiting", () => {
+		const first = awaiting();
+		const second = awaiting("h1", "Ship it?");
+		expect(DetailModel.openQuestions([first, second])).toEqual([
+			{ id: "q2", question: first.question },
+			{ id: "h1", question: second.question },
+		]);
+		expect(DetailModel.openQuestions([second])).toEqual([
+			{ id: "h1", question: second.question },
 		]);
 	});
-
-	it("takes an answer of any type as answering its question", () => {
-		const answered = records({
-			sessions: [
-				{
-					session,
-					activities: [
-						activity({ id: "q1", type: "question", body: "Edit a.ts?" }),
-						activity({
-							id: "a1",
-							type: "answer",
-							body: "Yes",
-							context: "answers q1",
-						}),
-					],
-				},
-			],
-		});
-		expect(DetailModel.openQuestions(answered)).toEqual([]);
-	});
-
-	it("adds the host's questions the records do not carry, once each", () => {
-		const open = DetailModel.openQuestions(askedTwice(), [
-			{
-				taskId: "t1",
-				sessionId: "s1",
-				questionActivityId: "q2",
-				question: "Which tab opens first?",
-				taskShortId: "MILL-1",
-				choices: [],
-				multiSelect: false,
-				allowFreeform: true,
-				agent: "claude",
-				askedAt: "2026-10-10T00:00:00.000Z",
-			},
-			{
-				taskId: "t1",
-				sessionId: "s9",
-				questionActivityId: "h1",
-				question: "Ship it?",
-				taskShortId: "MILL-1",
-				choices: [],
-				multiSelect: false,
-				allowFreeform: true,
-				agent: "claude",
-				askedAt: "2026-10-10T00:00:00.000Z",
-			},
-		]);
-		expect(open.map((q) => q.id)).toEqual(["q2", "h1"]);
-	});
-
-	it("still pins the host's questions while the records load", () => {
+	it("adds the host's questions once each", () => {
+		const first = awaiting();
+		const second = awaiting("h1", "Ship it?");
 		expect(
-			DetailModel.openQuestions(undefined, [
-				{
-					taskId: "t1",
-					sessionId: "s9",
-					questionActivityId: "h1",
-					question: "Ship it?",
-					taskShortId: "MILL-1",
-					choices: [],
-					multiSelect: false,
-					allowFreeform: true,
-					agent: "claude",
-					askedAt: "2026-10-10T00:00:00.000Z",
-				},
-			]),
-		).toEqual([{ id: "h1", question: "Ship it?" }]);
+			DetailModel.openQuestions([first, second, first, second]).map(
+				(q) => q.id,
+			),
+		).toEqual(["q2", "h1"]);
 	});
-
+	it("pins the host's questions without needing records", () => {
+		expect(DetailModel.openQuestions([awaiting("h1", "Ship it?")])).toEqual([
+			{ id: "h1", question: "Ship it?" },
+		]);
+	});
 	it("leaves the question pinned in a banner over the view to the banner", () => {
-		expect(DetailModel.openQuestions(askedTwice(), [], "q2")).toEqual([]);
+		expect(
+			DetailModel.openQuestions([awaiting(), awaiting("h1", "Ship it?")], "q2"),
+		).toEqual([{ id: "h1", question: "Ship it?" }]);
 	});
 });
 
@@ -662,6 +630,20 @@ describe("lifted", () => {
 });
 
 describe("log", () => {
+	it("keeps an unanswered session question in the log when the port does not pin it", () => {
+		expect(
+			DetailModel.log(askedTwice()).find((line) => line.id === "q2"),
+		).toMatchObject({ kind: "question", text: "Which tab opens first?" });
+	});
+
+	it("leaves a question pinned under a merged source's id out of the log", () => {
+		expect(
+			DetailModel.log(askedTwice(), [awaiting("loop:q2")]).some(
+				(line) => line.id === "q2",
+			),
+		).toBe(false);
+	});
+
 	it("puts every session activity and work log on one line, newest first, and leaves the pinned question out", () => {
 		const lines = DetailModel.log(
 			records({
@@ -689,6 +671,7 @@ describe("log", () => {
 				],
 				workLogs: [workLog({ id: "w1", note: "landed the tabs" })],
 			}),
+			[awaiting()],
 		);
 		expect(lines.map((l) => l.id)).toEqual(["w1", "e1", "f1", "d1", "q1"]);
 		const byId = new Map(lines.map((l) => [l.id, l]));
@@ -756,6 +739,7 @@ describe("log", () => {
 		];
 		const lines = DetailModel.log(
 			records({ workLogs: [workLog({ id: "w1" })] }),
+			[],
 			[...DetailModel.LOG_SOURCES, extra],
 		);
 		expect(lines.map((l) => l.id)).toEqual(["x", "w1"]);
