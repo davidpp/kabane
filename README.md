@@ -83,6 +83,9 @@ check, and `kabane update` opens no tracker DB and rewires no MCP entry.
 After an update, `kabane doctor` reports what kabane wrote that the new version has moved past:
 settings, a project's dispatch and grill skills, a harness's MCP entry. `kabane doctor --fix`
 repairs what needs no decision; `/doctor` in the board's copilot walks you through the rest.
+Doctor opens the tracker and applies pending database migrations even without `--fix`.
+Back up the database before its first run after an update; an older version may require
+restoring that backup.
 See [updating and data compatibility](docs/getting-started.md#updating).
 
 ## Quick start

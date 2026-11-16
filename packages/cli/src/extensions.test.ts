@@ -507,7 +507,7 @@ for (const openFirst of [false, true]) {
 			const during = await host.record.list({});
 			return { name: "stages", doctor: async () => {
 				const after = await host.record.list({});
-				return [{ id: "stages", source: "stages", severity: "mention", summary: JSON.stringify({ during: during.ok ? "live" : during.error.message, after: after.ok }) }];
+				return host.result.ok([{ id: "stages", severity: "mention", summary: JSON.stringify({ during: during.ok ? "live" : during.error.message, after: after.ok }) }]);
 			} };
 		}`,
 		);
@@ -522,12 +522,12 @@ for (const openFirst of [false, true]) {
 		const ctx = before ?? (await open());
 		const check = all.loaded[0]?.doctor;
 		if (!check) throw new Error("Missing doctor check");
-		const findings = await check(ctx);
-		if (!Array.isArray(findings)) throw new Error("Expected findings");
-		expect(findings[0]?.summary).toContain(
+		const found = await check(ctx);
+		if (!found.ok) throw found.error;
+		expect(found.value[0]?.summary).toContain(
 			"standalone commands do not open it automatically",
 		);
-		expect(findings[0]?.summary).toContain('"after":true');
+		expect(found.value[0]?.summary).toContain('"after":true');
 	});
 }
 

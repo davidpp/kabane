@@ -55,6 +55,10 @@ instructions live in `@cabane/board` (see [the board README](../board/README.md#
   Rules); `toElicitationRequest` is the form-to-fields mapping it applies.
 - `CopilotInstructions` — `actorUri`, `SERVER_NAME`, `DISPATCH_TEMPLATE` and `GRILL_TEMPLATE`.
   The paths resolve beside this package's templates, also used by the loop.
+  A project's filled dispatch `SKILL.md` keeps `metadata.kabane-template: dispatch@<hash12>`
+  in its YAML frontmatter: the hash identifies the shipped template, not the project's edits.
+  Preserve it when editing; a missing or older stamp makes doctor offer `/setup-dispatch`
+  to review and refresh the skill.
 - `FormField` and the form types — typed answer validation shared by the board and the loop.
   `@cabane/acp/form-field` is a light entry point with no ACP SDK on its import path.
 

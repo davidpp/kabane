@@ -191,6 +191,10 @@ describe("outcomeOf", () => {
 			id: "codex",
 			status: "already",
 		});
+		expect(outcomeOf({ harness: "claude", status: "stale" })).toEqual({
+			id: "claude",
+			status: "already",
+		});
 		expect(outcomeOf({ harness: "gemini", status: "missing" }).status).toBe(
 			"failed",
 		);

@@ -12,11 +12,11 @@ packages/
 ├── core/      # @cabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
 ├── sqlite/    # @cabane/sqlite — Db adapter over bun:sqlite (local devices)
 ├── acp/       # @cabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union and form fields
-├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports), args, outcomes
+├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports, doctor checks), args, outcomes
 ├── questions/ # @cabane/questions — data module: decisions agents ask humans (kabane_ask, kabane_questions, kabane_answer)
 ├── checklist/ # @cabane/checklist — data module: the steps of one issue (kabane_checklist, kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
 ├── handoff/   # @cabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
-├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, mcp (stdio)
+├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, doctor, mcp (stdio)
 ├── board/     # @cabane/board  — OpenTUI kanban and ACP copilot; consumes extension ports, no-op defaults
 └── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
 extensions/

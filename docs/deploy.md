@@ -438,8 +438,11 @@ claude mcp list | grep kabane
 
 Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `kabane: <bun>
 <installed kabane bin> mcp --as cabane://actor/agent/claude - ✔ Connected`. It
-runs `claude mcp add -s user`; an existing `kabane` entry, local or hub, is left alone and
-reported as already installed, and `--force` replaces it. Without `--harness` the same
+runs `claude mcp add -s user` for a new entry. Existing entries are left alone: a launch
+matching this installation (or a hub URL) is reported as already installed; a different
+local command is `stale` (`registered with another command` in text). `--force`, or
+`kabane doctor --fix kabane/mcp-entry-stale-<harness>`, re-points a stale entry here.
+Claude replacements preserve each existing user/local scope. Without `--harness` the same
 command covers Codex and Gemini CLI too. `kabane mcp install --print` shows the config
 it would register, for pasting into a client with no registration CLI.
 

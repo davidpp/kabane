@@ -23,7 +23,12 @@ test("reports unknown device and other-project namespace keys without changing f
 		if (!report.ok) throw report.error;
 		expect(
 			report.value.some((finding) =>
-				finding.summary.includes("device.mystery"),
+				finding.summary.startsWith("mystery in global:"),
+			),
+		).toBe(true);
+		expect(
+			report.value.every(
+				(finding) => !finding.summary.includes("device.mystery"),
 			),
 		).toBe(true);
 		expect(

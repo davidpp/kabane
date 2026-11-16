@@ -13,23 +13,29 @@ import { join, relative } from "node:path";
 import { Templates } from "@cabane/acp/templates";
 import { ok, type Result, trySync } from "@cabane/core";
 import type { Doctor, Extension } from "@cabane/extension";
+import { z } from "zod";
 import { projectAt } from "../context";
 import { McpClients } from "../mcp-clients";
 
 const SOURCE = "project";
 const SETUP = "/setup-dispatch";
+const TRACKER_GUIDE =
+	"https://github.com/davidpp/kabane/blob/main/docs/getting-started.md";
+
+const FrontmatterSchema = z.object({
+	metadata: z.object({ "kabane-template": z.string() }).optional(),
+});
 
 /** `metadata.kabane-template` from a skill's YAML frontmatter, if it has one. */
 const stampOf = (skill: string): string | undefined => {
-	const frontmatter = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(skill)?.[1];
-	if (frontmatter === undefined) return undefined;
-	const parsed = trySync(() => Bun.YAML.parse(frontmatter));
-	if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null)
-		return undefined;
-	const metadata = (parsed.value as { metadata?: unknown }).metadata;
-	if (typeof metadata !== "object" || metadata === null) return undefined;
-	const stamp = (metadata as Record<string, unknown>)["kabane-template"];
-	return typeof stamp === "string" ? stamp : undefined;
+	const [first, ...rest] = skill.split("\n");
+	if (first?.trimEnd() !== "---") return undefined;
+	const end = rest.findIndex((line) => line.trimEnd() === "---");
+	if (end === -1) return undefined;
+	const parsed = trySync(() => Bun.YAML.parse(rest.slice(0, end).join("\n")));
+	if (!parsed.ok) return undefined;
+	const fields = FrontmatterSchema.safeParse(parsed.value);
+	return fields.success ? fields.data.metadata?.["kabane-template"] : undefined;
 };
 
 const isRealDirectory = (path: string): boolean =>
@@ -45,7 +51,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 		return [
 			{
 				id: "dispatch-skill-missing",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary:
 					"No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch.",
@@ -56,7 +62,7 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 	if (isRealDirectory(claudeDir))
 		findings.push({
 			id: "dispatch-skill-location",
-			source: SOURCE,
+
 			path: claudeDir,
 			severity: "route",
 			summary:
@@ -66,22 +72,33 @@ const dispatchSkill = (root: string): Doctor.Finding[] => {
 	const shown = relative(root, path);
 	const stamp = stampOf(readFileSync(path, "utf8"));
 	const current = Templates.stamp("dispatch");
+	if (!current.ok)
+		return [
+			...findings,
+			{
+				id: "dispatch-template-unavailable",
+
+				path: Templates.dir("dispatch"),
+				severity: "mention",
+				summary: `Cannot read the shipped dispatch template: ${current.error.message}. Restore the templates directory from this kabane installation.`,
+			},
+		];
 	if (stamp === undefined)
 		findings.push({
 			id: "dispatch-skill-unstamped",
-			source: SOURCE,
+
 			path,
 			severity: "route",
-			summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current}, keeping the project's own edits, and shows the diff before writing.`,
+			summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current.value}, keeping the project's own edits, and shows the diff before writing.`,
 			route: SETUP,
 		});
-	else if (stamp !== current)
+	else if (stamp !== current.value)
 		findings.push({
 			id: "dispatch-skill-behind",
-			source: SOURCE,
+
 			path,
 			severity: "route",
-			summary: `${shown} was filled from ${stamp}; the template is now ${current}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
+			summary: `${shown} was filled from ${stamp}; the template is now ${current.value}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
 			route: SETUP,
 		});
 	return findings;
@@ -105,21 +122,22 @@ const grillSkill = (root: string): Doctor.Finding[] => {
 	return [
 		{
 			id: "grill-skill-behind",
-			source: SOURCE,
+
 			path: behind[0],
 			severity: "mention",
 			summary: `${shown} differs from the grill skill this kabane ships. --fix ${SOURCE}/grill-skill-behind copies the template over it, replacing any edits of the project's own.`,
-			fix: async () => {
-				for (const path of behind) copyFileSync(template, path);
-				return ok(`Copied the grill skill template to ${shown}`);
-			},
+			fix: async () =>
+				trySync(() => {
+					for (const path of behind) copyFileSync(template, path);
+					return `Copied the grill skill template to ${shown}`;
+				}),
 		},
 	];
 };
 
 /** The `## Tracker` section of `text`: up to the next heading of the same or a higher level. */
 const trackerSection = (text: string): string | undefined => {
-	const lines = text.split("\n");
+	const lines = text.split(/\r?\n/);
 	const start = lines.findIndex((line) => /^## Tracker\s*$/.test(line));
 	if (start === -1) return undefined;
 	const end = lines.findIndex(
@@ -143,10 +161,11 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 		return [
 			{
 				id: "tracker-block-missing",
-				source: SOURCE,
+
 				severity: "suggest",
 				summary:
-					"No CLAUDE.md, AGENTS.md or GEMINI.md here has a ## Tracker section; agents use kabane unprompted only when the project tells them to. docs/getting-started.md gives the block to add.",
+					"No CLAUDE.md, AGENTS.md or GEMINI.md here has a ## Tracker section; agents use kabane unprompted only when the project tells them to. Add the current block from the linked guide.",
+				route: `Read the Tracker block at ${TRACKER_GUIDE} and add it to the project instruction file.`,
 			},
 		];
 	const differing = sections.filter(({ section }) => section !== block);
@@ -154,10 +173,11 @@ const trackerBlock = (root: string, block: string): Doctor.Finding[] => {
 	return [
 		{
 			id: "tracker-block-differs",
-			source: SOURCE,
+
 			path: differing[0]?.path,
 			severity: "mention",
-			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives (docs/getting-started.md). It may hold the project's own edits, or come from an older kabane.`,
+			summary: `The ## Tracker section of ${differing.map(({ name }) => name).join(", ")} is not the block this kabane gives shown in the guide. It may hold the project's own edits, or come from an older kabane. Compare the blocks and preserve deliberate project edits.`,
+			route: `Read the current Tracker block at ${TRACKER_GUIDE}`,
 		},
 	];
 };
@@ -171,9 +191,21 @@ export const project = async (
 	const { root } = here.value;
 	// first-run carries the board's setup screen; main loads it lazily, and so does this check.
 	const { TRACKER_BLOCK } = await import("../first-run");
-	return trySync(() => [
-		...dispatchSkill(root),
-		...grillSkill(root),
-		...trackerBlock(root, TRACKER_BLOCK),
-	]);
+	const findings: Doctor.Finding[] = [];
+	for (const [id, check] of [
+		["dispatch", () => dispatchSkill(root)],
+		["grill", () => grillSkill(root)],
+		["tracker", () => trackerBlock(root, TRACKER_BLOCK)],
+	] as const) {
+		const found = trySync(check);
+		if (found.ok) findings.push(...found.value);
+		else
+			findings.push({
+				id: `${id}-check-failed`,
+
+				severity: "mention",
+				summary: found.error.message,
+			});
+	}
+	return ok(findings);
 };

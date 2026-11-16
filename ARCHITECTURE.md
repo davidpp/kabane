@@ -488,7 +488,7 @@ type Extension = {
 	looks?: Settings.Looks;
 	commands?: readonly Extension.Command[];
 	board?: (ctx: Extension.Ctx) => Promise<Extension.BoardPorts>;
-	doctor?: (ctx: Extension.Ctx) => Promise<Doctor.Finding[] | Result<Doctor.Finding[]>>;
+	doctor?: (ctx: Extension.Ctx) => Promise<Result<Doctor.Finding[]>>;
 	mcp?: (ctx: Extension.Ctx) => Promise<{ instructions?: string; tools?: readonly ToolDef[] }>;
 };
 ```

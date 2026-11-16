@@ -61,7 +61,15 @@ export const install = async (
 	const findings: Doctor.Finding[] = [];
 	for (const harness of harnesses) {
 		const found = McpClients.registrations(harness, where);
-		if (!found.ok) return found;
+		if (!found.ok) {
+			findings.push({
+				id: `mcp-config-unreadable-${harness}`,
+
+				severity: "mention",
+				summary: `${harness}: ${found.error.message}. Repair this config so its MCP registration can be checked.`,
+			});
+			continue;
+		}
 		const expected = McpClients.launchFor(launcher, harness);
 		const other = found.value.filter(
 			(r) => !McpClients.sameLaunch(r.launch, expected),
@@ -75,8 +83,8 @@ export const install = async (
 		const command = `kabane doctor --fix kabane/${id}`;
 		findings.push({
 			id,
-			source: "kabane",
-			path: other[0]?.at,
+
+			path: other[0]?.path,
 			// An entry that still starts another kabane, a source checkout say, may be deliberate.
 			severity: dead.length > 0 ? "mention" : "suggest",
 			summary:

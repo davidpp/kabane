@@ -199,6 +199,15 @@ directory undoes it. When `.agents/skills/dispatch/` already exists, it shows th
 writes nothing without your yes. A dispatch skill an earlier kabane wrote as a real
 directory at `.claude/skills/dispatch/` keeps working; the copilot offers to move it and
 leave the link, shows the diff, and moves or writes nothing without your yes.
+
+The written `SKILL.md` records its template origin as `metadata.kabane-template` in
+YAML frontmatter, with a value such as `dispatch@<12-character hash>`. Doctor compares
+that stamp with the shipped template, not with your edited skill's content. Keep the
+line when editing: removing it makes the origin unknown and doctor offers
+`/setup-dispatch`; an older stamp means the shipped template changed. Do not replace it
+with a current hash by hand: `/setup-dispatch` reviews and refreshes the skill while
+preserving project edits.
+
 `/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
 
 Ask the copilot to "grill me" and it walks you through the questions agents left open, one
@@ -355,6 +364,12 @@ a silent UTC.
 
 ## Updating
 
+Scripts reading `kabane mcp install --json` must accept `reports[].status: "stale"`
+for an existing entry whose launch differs from this installation. It previously returned
+`present`; the exit code remains 0 and the entry is unchanged. Text now says
+`registered with another command` instead of `already installed` for that state.
+Use `--force` or the named doctor repair only when you want to re-point it.
+
 ### Hearing about a release
 
 The board says when a release your install would update to is out: a line over its footer,
@@ -381,11 +396,20 @@ harness's MCP entry that launches a kabane you no longer have. `kabane doctor` l
 one with its fix, and enabled extensions add their own checks:
 
 ```bash
-kabane doctor                        # report; changes nothing
+kabane doctor                        # report drift without applying its repairs
 kabane doctor --fix                  # apply the findings that need no decision (severity auto)
-kabane doctor --fix kabane/<id>      # apply one other finding, by the source/id the report shows
+kabane doctor --fix <source>/<id>    # apply a named fix: copy the source/id from the report
 kabane doctor --json                 # the same report, for scripts and agents
 ```
+
+Doctor opens an existing tracker to let extensions inspect issues. Like other commands,
+it applies pending database migrations on the first run after an update, even without
+`--fix`. Back up the database before that first run; returning to an older version may
+require restoring that backup. Reporting findings does not apply their offered repairs.
+
+The source identifies the check owner: `kabane` for settings and MCP, `project` for
+project files, and an extension name such as `loop`. For example,
+`kabane doctor --fix project/grill-skill-behind` applies that offered project repair.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
@@ -426,7 +450,7 @@ When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XD
 1.0.0-beta.0 read a project's settings from the repo only: the loop from `.kabane/loop.json`, the
 pin from `.kabane/scope`, which `kabane init --scope` wrote. Now your settings for a project and
 your pin are kept under `KABANE_HOME`, outside the repo, and the repo's files are written only when
-you name them. Nothing you already have is moved or rewritten.
+you name them. Updating itself does not move or rewrite these settings files.
 
 - **What stays, and is still read.** `.kabane/loop.json` is the *shared* layer, for everyone who
   clones the repo, and `.kabane/scope` is the repo's pin. Kabane never moves or deletes either.
@@ -441,8 +465,11 @@ you name them. Nothing you already have is moved or rewritten.
 - **From a source build since 1.0.0-beta.0.** Those builds called the layers `user`, `scope` and
   `project`, and kept local settings under `scopes.<scope id>` in `config.json`. The old names are
   still accepted on input, but JSON output says `global`, `local` and `shared`. The `scopes`
-  blocks are still read, as local just under the new file, and never written: to move a value,
-  set it again with `--layer local` and remove the old one by hand.
+  blocks are still read, as local just under the new file. `kabane doctor` reports them.
+  `kabane doctor --fix` moves this project's blocks into its local files and removes the old
+  blocks from `config.json` when the destination is absent or identical. A different local
+  value refuses the move. Other checkouts sharing that scope then lose the old block; review
+  their settings before applying this repair. Blocks for other scopes are reported for manual migration.
 - **Running processes.** A board, `kabane mcp` or loop runner started by an older version does
   not read the new files. It misses local and global settings the new CLI writes, and a pin
   written without `--shared`, so it can file tasks under another scope than new processes do.

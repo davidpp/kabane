@@ -24,11 +24,13 @@ exposes only the mode, never sessions.
 
 ## Doctor checks
 
-An extension can provide `doctor(ctx)`, returning `Doctor.Finding[]` or a
+An extension can provide `doctor(ctx)`, returning
 `Result<Doctor.Finding[]>`. The host runs enabled sources in display order. Checks finish before any fixes run. A thrown or returned
 check error becomes a `mention` finding named `check-failed` for that source.
 
-Each finding has a stable kebab-case `id`, unique within its `source`, a `summary`,
+The runner assigns `source` from its registered source name; a check cannot supply it.
+Duplicate IDs under one source become a mention with no repair, retaining both diagnostics.
+Each finding has a stable kebab-case `id`, unique within its source, a `summary`,
 and a severity:
 
 - `auto`: a mechanical repair, eligible for `fix: true`.
@@ -43,13 +45,11 @@ contains `findings` and `fixes`, each attempted fix carrying its source, id and
 result. Failed fixes do not stop later fixes. `Doctor.toJson(report)` removes
 closures, adds `fixable`, and turns fix errors into message strings.
 
-The host’s settings diagnostics report unknown and retired keys
-without changing the raw layer. Its IDs include category, layer and full setting
-path, escaping characters that would otherwise collide. It follows the same Zod
-preprocessing as settings validation. A dropped key is a `mention`; when a newly
-added, declared sibling has the same JSON value, it infers a rename and reports
-`auto`. That inference is a heuristic, not a migration guarantee. The caller owns
-storage and attaches any repair closures; drift detection does not write files.
+`Settings.drift(schema, raw)` returns unknown or retired keys as structured path
+segments, plus an inferred replacement path when preprocessing introduces a declared
+sibling with the same JSON value. It never changes the raw layer. This inference is
+a heuristic, not a migration guarantee. The storage owner constructs findings and
+chooses severity and any repair; inferred renames alone are informational.
 
 `ports.ts` exports the activity, dispatch, header, panel, settings field and copilot shortcut
 types through `@cabane/extension`. `StopAction` is the literal type `"stop"`; consumers use

@@ -12,20 +12,19 @@ const ctx: Extension.Ctx = {
 };
 
 const finding = (
-	source: string,
 	id: string,
 	severity: Doctor.Finding["severity"] = "mention",
-): Doctor.Finding => ({ source, id, severity, summary: id });
+): Doctor.Finding => ({ id, severity, summary: id });
 
 describe("Doctor", () => {
-	it("merges array and Result checks in source order and isolates both failure forms", async () => {
+	it("merges Result checks in source order and isolates both failure forms", async () => {
 		const report = await Doctor.run(
 			[
 				{
 					name: "a",
 					doctor: async (received) => {
 						expect(received).toBe(ctx);
-						return [finding("a", "one"), finding("a", "two")];
+						return ok([finding("one"), finding("two")]);
 					},
 				},
 				{
@@ -33,7 +32,7 @@ describe("Doctor", () => {
 					doctor: () => Promise.reject(new Error("cannot read")),
 				},
 				{ name: "error", doctor: async () => err(new Error("missing file")) },
-				{ name: "b", doctor: async () => ok([finding("b", "three")]) },
+				{ name: "b", doctor: async () => ok([finding("three")]) },
 			],
 			ctx,
 		);
@@ -56,7 +55,7 @@ describe("Doctor", () => {
 		const applied: string[] = [];
 		const findings = (["auto", "mention", "suggest", "route"] as const).map(
 			(severity) => ({
-				...finding("src", severity, severity),
+				...finding(severity, severity),
 				fix: async () => {
 					applied.push(severity);
 					return ok(`repaired ${severity}`);
@@ -64,7 +63,7 @@ describe("Doctor", () => {
 			}),
 		);
 		const sources: Doctor.Source[] = [
-			{ name: "src", doctor: async () => findings },
+			{ name: "src", doctor: async () => ok(findings) },
 		];
 		await Doctor.run(sources, ctx);
 		expect(applied).toEqual([]);
@@ -88,25 +87,26 @@ describe("Doctor", () => {
 			[
 				{
 					name: "src",
-					doctor: async () => [
-						{
-							...finding("src", "returned", "auto"),
-							fix: async () => err(new Error("write failed")),
-						},
-						{
-							...finding("src", "thrown", "auto"),
-							fix: () => Promise.reject("permission denied"),
-						},
-						{
-							...finding("src", "last", "auto"),
-							path: "config.json",
-							fix: async () => ok("updated"),
-						},
-						{
-							...finding("src", "route", "route"),
-							route: "run /setup-dispatch",
-						},
-					],
+					doctor: async () =>
+						ok([
+							{
+								...finding("returned", "auto"),
+								fix: async () => err(new Error("write failed")),
+							},
+							{
+								...finding("thrown", "auto"),
+								fix: () => Promise.reject("permission denied"),
+							},
+							{
+								...finding("last", "auto"),
+								path: "config.json",
+								fix: async () => ok("updated"),
+							},
+							{
+								...finding("route", "route"),
+								route: "run /setup-dispatch",
+							},
+						]),
 				},
 			],
 			ctx,
@@ -120,13 +120,72 @@ describe("Doctor", () => {
 			ok("updated"),
 		]);
 		expect(json.findings[0]).toEqual({
-			...finding("src", "returned", "auto"),
+			...finding("returned", "auto"),
+			source: "src",
 			fixable: true,
 		});
 		expect(json.findings[3]).toEqual({
-			...finding("src", "route", "route"),
+			...finding("route", "route"),
+			source: "src",
 			route: "run /setup-dispatch",
 			fixable: false,
 		});
 	});
+});
+
+it("accounts for unmatched selectors and findings without fixes", async () => {
+	const report = await Doctor.run(
+		[{ name: "src", doctor: async () => ok([finding("manual")]) }],
+		ctx,
+		{ fix: ["src/absent", "src/manual"] },
+	);
+	expect(Doctor.toJson(report).fixes).toEqual([
+		{
+			source: "src",
+			id: "absent",
+			result: {
+				ok: false,
+				error: expect.stringContaining("No finding matches src/absent"),
+			},
+		},
+		{
+			source: "src",
+			id: "manual",
+			result: {
+				ok: false,
+				error: expect.stringContaining("has no mechanical fix"),
+			},
+		},
+	]);
+});
+
+it("owns source names and refuses duplicate handles before applying fixes", async () => {
+	let repairs = 0;
+	const forged = {
+		...finding("same", "auto"),
+		source: "kabane",
+		fix: async () => {
+			repairs++;
+			return ok("changed");
+		},
+	};
+	const report = await Doctor.run(
+		[
+			{ name: "extension", doctor: async () => ok([forged]) },
+			{ name: "extension", doctor: async () => ok([forged]) },
+		],
+		ctx,
+		{ fix: ["extension/same"] },
+	);
+	expect(report.findings).toHaveLength(1);
+	expect(report.findings[0]).toMatchObject({
+		source: "extension",
+		id: "same",
+		severity: "mention",
+	});
+	expect(report.findings[0]?.summary).toContain(
+		"Duplicate finding id extension/same",
+	);
+	expect(repairs).toBe(0);
+	expect(report.fixes[0]?.result.ok).toBe(false);
 });

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { Planner } from "@cabane/core";
-import { Doctor, failure, flagList, success, usage } from "@cabane/extension";
+import { ok, Planner } from "@cabane/core";
+import { Doctor, flagList, success, usage } from "@cabane/extension";
 import { configPath, loadConfig } from "../config";
 import {
 	activateContextRecord,
@@ -14,7 +14,8 @@ import { activateHostRecord, hostHarnessMode } from "../host";
 const USAGE = "kabane doctor [--fix [<source/id>...]] [--json]";
 
 const text = (report: Doctor.Report): string => {
-	if (report.findings.length === 0) return "No findings.";
+	if (report.findings.length === 0 && report.fixes.length === 0)
+		return "No findings.";
 	const lines: string[] = [];
 	for (const severity of ["auto", "mention", "suggest", "route"] as const) {
 		const findings = report.findings.filter(
@@ -46,50 +47,64 @@ export const doctor: Command = {
 		)
 			return usage("Unexpected doctor arguments", USAGE);
 		activateHostRecord(ctx.home);
+		const unavailable: Doctor.Finding[] = [];
 		if (existsSync(configPath(ctx.home))) {
 			const config = loadConfig(ctx.home);
 			// Settings diagnostics report invalid config; it must not prevent the other checks.
 			if (config.ok) {
 				const configured = configureRuntime(config.value, config.value.actor);
-				if (!configured.ok) return failure(configured.error);
-				const initialized = await Planner.init(ctx.home);
-				if (!initialized.ok) return failure(initialized.error);
-				ctx = {
-					...ctx,
-					config: config.value,
-					actor: config.value.actor,
-					harnessMode: hostHarnessMode(ctx.home, config.value),
-				};
-				activateContextRecord(ctx, args);
+				const initialized = configured.ok
+					? await Planner.init(ctx.home)
+					: configured;
+				if (initialized.ok) {
+					ctx = {
+						...ctx,
+						config: config.value,
+						actor: config.value.actor,
+						harnessMode: hostHarnessMode(ctx.home, config.value),
+					};
+					activateContextRecord(ctx, args);
+				} else
+					unavailable.push({
+						id: "store-unavailable",
+						severity: "mention",
+						path: ctx.store,
+						summary: `Cannot open the store: ${initialized.error.message}. Restore a readable database before running checks that query issues.`,
+					});
 			}
 		}
 		const selected = [...flagList(args, "fix"), ...args.positionals];
-		const sources: Doctor.Source[] = [kabane];
+		const sources: Doctor.Source[] = [...kabane];
 		const enabled = Extensions.enabled(ctx.home);
 		// A refused extension is that extension's finding; the rest still run their checks.
 		const { loaded, refused } = enabled.ok
 			? await Extensions.loadAll(enabled.value, ctx.home)
 			: { loaded: [], refused: [] };
 		sources.push(...Extensions.doctors(loaded));
+		for (const refusal of refused)
+			sources.push({
+				name: refusal.name,
+				doctor: async () =>
+					ok([
+						{
+							id: "extension-refused",
+							severity: "mention",
+							summary: Extensions.line(refusal),
+						},
+					]),
+			});
+		if (!enabled.ok)
+			unavailable.push({
+				id: "extensions-unavailable",
+				severity: "mention",
+				summary: enabled.error.message,
+			});
+		sources.push({ name: "kabane", doctor: async () => ok(unavailable) });
 		const report = await Doctor.run(
 			sources,
 			ctx,
 			"fix" in args.flags ? { fix: selected.length > 0 ? selected : true } : {},
 		);
-		for (const refusal of refused)
-			report.findings.push({
-				id: "extension-refused",
-				source: refusal.name,
-				severity: "mention",
-				summary: Extensions.line(refusal),
-			});
-		if (!enabled.ok)
-			report.findings.push({
-				id: "extensions-unavailable",
-				source: "kabane",
-				severity: "mention",
-				summary: enabled.error.message,
-			});
 		return success(Doctor.toJson(report), text(report));
 	},
 };

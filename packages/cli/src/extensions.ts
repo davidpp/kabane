@@ -91,7 +91,6 @@ const ExtensionShape = z.object({
 const Findings = z.array(
 	z.object({
 		id: z.string().min(1),
-		source: z.string().min(1),
 		path: z.string().optional(),
 		severity: z.enum(["auto", "mention", "suggest", "route"]),
 		summary: z.string(),
@@ -100,7 +99,6 @@ const Findings = z.array(
 	}),
 );
 const DoctorReport = z.union([
-	Findings,
 	z.object({ ok: z.literal(true), value: Findings }),
 	z.object({ ok: z.literal(false), error: z.instanceof(Error) }),
 ]);
