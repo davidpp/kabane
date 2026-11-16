@@ -62,8 +62,7 @@ kabane list
   are discovered without importing their code. The host
   checks the manifest and API before importing the entry, whose dependencies resolve from
   its own `node_modules`. A refused extension prints one line naming the problem and how
-  to repair or disable it; the others still load. Manifests naming `modules` are refused
-  until data-module loading is supported. The bundled `loop` remains available without a
+  to repair or disable it; the others still load. The bundled `loop` remains available without a
   directory; a directory named `loop` overrides it, with a notice on stderr.
 
 ### Settings layers
