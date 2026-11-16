@@ -274,16 +274,16 @@ it("an installed extension's description comes from its package.json, read witho
 		}),
 	);
 	install(home, "plain", 'export default () => ({name: "plain"});');
-	expect(Extensions.description(home, "described")).toBe(
+	expect(await Extensions.description(home, "described")).toBe(
 		"Keeps notes beside issues.",
 	);
-	expect(Extensions.description(home, "plain")).toBeUndefined();
-	expect(Extensions.description(home, "absent")).toBeUndefined();
+	expect(await Extensions.description(home, "plain")).toBeUndefined();
+	expect(await Extensions.description(home, "absent")).toBeUndefined();
 	expect(await Bun.file(join(home, "ran")).exists()).toBe(false);
 	const loop = await Bun.file(
 		join(import.meta.dir, "../../../extensions/loop/package.json"),
 	).json();
-	expect(Extensions.description(home, "loop")).toBe(loop.description);
+	expect(await Extensions.description(home, "loop")).toBe(loop.description);
 	expect(loop.description).toContain("`a` on an issue opens its run form");
 });
 

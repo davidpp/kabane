@@ -334,10 +334,12 @@ export const boardDeps = async (
 			mode: ctx.harnessMode,
 			setup: {
 				configPath: configPath(ctx.home),
-				extensions: Extensions.available(ctx.home).map((name) => {
-					const description = Extensions.description(ctx.home, name);
-					return description === undefined ? { name } : { name, description };
-				}),
+				extensions: await Promise.all(
+					Extensions.available(ctx.home).map(async (name) => {
+						const description = await Extensions.description(ctx.home, name);
+						return description === undefined ? { name } : { name, description };
+					}),
+				),
 				procedures: contributed.procedures,
 				shortcuts: contributed.shortcuts,
 			},

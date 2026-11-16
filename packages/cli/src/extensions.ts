@@ -16,7 +16,6 @@ import {
 	type Host,
 	type Settings,
 } from "@cabane/extension";
-import { description as loopDescription } from "@cabane/loop/package.json";
 import { z } from "zod";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
@@ -173,14 +172,17 @@ export namespace Extensions {
 	};
 	/**
 	 * What an installed extension says it adds: the `description` of its `package.json`, read as
-	 * JSON and never imported. The bundled loop's comes from its package.json at build time.
+	 * JSON and never imported. The bundled loop's comes from its package.json, bundled at build time
+	 * and imported only here, so a command that lists no extension loads nothing of the loop.
 	 */
-	export const description = (
+	export const description = async (
 		home: string,
 		name: string,
-	): string | undefined => {
+	): Promise<string | undefined> => {
 		if (!installed(home, name))
-			return name === "loop" ? loopDescription : undefined;
+			return name === "loop"
+				? (await import("@cabane/loop/package.json")).description
+				: undefined;
 		const text = trySync(() =>
 			readFileSync(join(directory(home, name), "package.json"), "utf8"),
 		);
