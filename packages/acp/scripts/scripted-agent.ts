@@ -20,7 +20,11 @@
  *
  * A loop run's review triage brief (it opens with TRIAGE) is answered with a review plan, so a
  * loop run reaches its lenses through a triage live: every lens it lists but the last in one
- * group at tier fast, and the last skipped.
+ * group at tier fast, and the last skipped. Its implementing session's brief (it opens with "You
+ * are one implementing session", or "the" for a single issue) gets one commit of a file in the
+ * session's directory, then kabane_done on its issue through the kabane MCP server session/new
+ * named, so the run's gates, merge and lenses follow. A lens, a recheck and the fixer are echoed,
+ * which files and closes nothing.
  *
  * After an ask is answered it says what it received, so a flow is checkable end to end. Its first
  * reply in a session opens by saying what it is, since the pane's title names the harness id the
@@ -35,6 +39,7 @@ import {
 	ndJsonStream,
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
+import { z } from "zod";
 import type { AcpClient } from "../src/client";
 
 type Update = Parameters<typeof AcpClient.toUpdate>[0];
@@ -346,6 +351,147 @@ const runTriage = async (ctx: Context, text: string): Promise<boolean> => {
 	return false;
 };
 
+// `Brief.instructions` in extensions/loop/src/brief.ts: a loop run's implementing session is told
+// which issue is its own in its first two lines.
+const IMPLEMENTING =
+	/^You are (?:one|the) implementing session of kabane loop run [^\n]*\n\nYour (?:subtask|issue) is (\S+?)\. /;
+
+// What session/new handed the session: where it works, and the MCP servers a harness connects to.
+type Opened = { cwd: string; servers: readonly Server[] };
+type Server = {
+	command: string;
+	args: string[];
+	env: { name: string; value: string }[];
+};
+const opened = new Map<string, Opened>();
+
+const JsonRpcReply = z.object({
+	id: z.unknown().optional(),
+	result: z.unknown().optional(),
+	error: z.object({ message: z.string() }).optional(),
+});
+
+const parsed = (line: string): unknown => {
+	try {
+		return JSON.parse(line);
+	} catch {
+		return undefined;
+	}
+};
+
+/**
+ * One tool call over the MCP server the session was given, as a harness makes it: spawn it, the
+ * initialize handshake, `tools/call`, then close it. What the call answered, or why it failed.
+ */
+const callTool = async (
+	server: Server,
+	name: string,
+	args: Record<string, unknown>,
+): Promise<string> => {
+	const proc = Bun.spawn([server.command, ...server.args], {
+		env: {
+			...process.env,
+			...Object.fromEntries(server.env.map((e) => [e.name, e.value])),
+		},
+		stdin: "pipe",
+		stdout: "pipe",
+		stderr: "ignore",
+	});
+	const send = async (message: Record<string, unknown>) => {
+		await proc.stdin.write(
+			`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`,
+		);
+		await proc.stdin.flush();
+	};
+	const lines = (async function* () {
+		let buffered = "";
+		for await (const chunk of proc.stdout.pipeThrough(
+			new TextDecoderStream(),
+		)) {
+			buffered += chunk;
+			let at = buffered.indexOf("\n");
+			while (at >= 0) {
+				yield buffered.slice(0, at);
+				buffered = buffered.slice(at + 1);
+				at = buffered.indexOf("\n");
+			}
+		}
+	})();
+	// Read with next(), not for-await: leaving a for-await early would close the stream for the
+	// second reply.
+	const reply = async (id: number) => {
+		for (let next = await lines.next(); !next.done; next = await lines.next()) {
+			const message = JsonRpcReply.safeParse(parsed(next.value));
+			if (message.success && message.data.id === id) return message.data;
+		}
+		return undefined;
+	};
+	await send({
+		id: 1,
+		method: "initialize",
+		params: {
+			protocolVersion: "2025-06-18",
+			capabilities: {},
+			clientInfo: { name: "kabane-scripted", version: "0.0.0" },
+		},
+	});
+	const ready = await reply(1);
+	await send({ method: "notifications/initialized" });
+	await send({
+		id: 2,
+		method: "tools/call",
+		params: { name, arguments: args },
+	});
+	const called = ready ? await reply(2) : undefined;
+	proc.kill();
+	if (!ready) return "the MCP server did not initialize";
+	if (!called) return `${name} got no answer`;
+	if (called.error) return `${name} failed: ${called.error.message}`;
+	return `${name} answered ${JSON.stringify(called.result)}`;
+};
+
+const git = async (
+	cwd: string,
+	args: string[],
+): Promise<string | undefined> => {
+	const proc = Bun.spawn(["git", ...args], {
+		cwd,
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+	return (await proc.exited) === 0
+		? undefined
+		: `git ${args[0]} failed: ${(await new Response(proc.stderr).text()).trim()}`;
+};
+
+/**
+ * A loop run's implementer: one commit in its working directory, then kabane_done on its issue
+ * through the kabane MCP server the run gave the session. A lens or a recheck needs no keyword: its
+ * echo ends the turn having filed nothing.
+ */
+const runImplementing = async (ctx: Context, id: string): Promise<boolean> => {
+	const session = opened.get(ctx.sessionId);
+	const server = session?.servers[0];
+	if (!session || !server) {
+		await say(ctx, `No working directory or MCP server for ${id}: left open.`);
+		return false;
+	}
+	const file = `scripted-${id}.txt`;
+	await Bun.write(`${session.cwd}/${file}`, `${id}: a scripted change\n`);
+	const failed =
+		(await git(session.cwd, ["add", file])) ??
+		(await git(session.cwd, ["commit", "-q", "-m", `${id}: scripted change`]));
+	if (failed) {
+		await say(ctx, `${failed}: ${id} left open.`);
+		return false;
+	}
+	await say(
+		ctx,
+		`Committed ${file}. ${await callTool(server, "kabane_done", { id })}`,
+	);
+	return false;
+};
+
 const INTRO =
 	"Scripted agent (packages/acp/scripts/scripted-agent.ts), not claude: the sandbox runs it under claude's harness id.\n\n";
 const introduced = new Set<string>();
@@ -357,6 +503,8 @@ const turn = async (ctx: Context, text: string): Promise<boolean> => {
 		await say(ctx, INTRO);
 	}
 	if (text.startsWith(TRIAGE)) return runTriage(ctx, text);
+	const implementing = IMPLEMENTING.exec(text)?.[1];
+	if (implementing) return runImplementing(ctx, implementing);
 	const keyword = keywordOf(text);
 	switch (keyword) {
 		case "ask form":
@@ -389,9 +537,16 @@ const app = agent({ name: "kabane-scripted" })
 		agentCapabilities: { loadSession: false },
 		agentInfo: { name: "kabane-scripted", version: "0.0.0" },
 	}))
-	.onRequest(methods.agent.session.new, () => ({
-		sessionId: `scripted-${crypto.randomUUID()}`,
-	}))
+	.onRequest(methods.agent.session.new, (c) => {
+		const sessionId = `scripted-${crypto.randomUUID()}`;
+		opened.set(sessionId, {
+			cwd: c.params.cwd,
+			servers: c.params.mcpServers.flatMap((server) =>
+				"command" in server ? [server] : [],
+			),
+		});
+		return { sessionId };
+	})
 	.onNotification(methods.agent.session.cancel, () => {
 		cancelled = true;
 	})
