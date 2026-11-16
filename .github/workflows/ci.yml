@@ -6,10 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A newer push supersedes every job for the same PR or branch.
+# A newer push supersedes a PR's run; every main commit keeps its own verdict.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
