@@ -1,5 +1,6 @@
-// Each copilot file the board refuses, as a finding of the extension it belongs to: the board's
-// announcer has room for one line, so this is where every refused file is listed by name.
+// Each copilot file the board refuses, and a package.json description it does not show, as a
+// finding of the extension it belongs to: the board's announcer has room for one line, so this is
+// where every refused file is listed by name.
 import { join } from "node:path";
 import { ok } from "@cabane/core";
 import type { Doctor } from "@cabane/extension";
@@ -21,20 +22,33 @@ const idOf = (file: string): string => {
 /** One source per directory extension, named like it, so the runner files each finding under it. */
 export const copilotFiles = (
 	directories: readonly Extensions.Directory[],
+	home: string,
 ): Doctor.Source[] => {
 	const { refused } = CopilotFiles.read(directories);
 	return directories.map(({ name, directory }) => ({
 		name,
-		doctor: async () =>
-			ok(
-				refused
-					.filter((refusal) => refusal.name === name)
-					.map((refusal): Doctor.Finding => ({
-						id: idOf(refusal.file),
-						severity: "mention",
-						path: join(directory, refusal.file),
-						summary: Extensions.line(refusal),
-					})),
-			),
+		doctor: async () => {
+			const files = refused
+				.filter((refusal) => refusal.name === name)
+				.map((refusal): Doctor.Finding => ({
+					id: idOf(refusal.file),
+					severity: "mention",
+					path: join(directory, refusal.file),
+					summary: Extensions.line(refusal),
+				}));
+			const description = CopilotFiles.description(
+				await Extensions.description(home, name),
+			);
+			if (description.ok) return ok(files);
+			return ok([
+				...files,
+				{
+					id: "package-description",
+					severity: "mention",
+					path: join(directory, "package.json"),
+					summary: Extensions.line({ name, reason: description.error.message }),
+				},
+			]);
+		},
 	}));
 };

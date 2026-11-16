@@ -81,7 +81,10 @@ export const doctor: Command = {
 		const { loaded, refused, directories } = enabled.ok
 			? await Extensions.loadAll(enabled.value, ctx.home)
 			: { loaded: [], refused: [], directories: [] };
-		sources.push(...Extensions.doctors(loaded), ...copilotFiles(directories));
+		sources.push(
+			...Extensions.doctors(loaded),
+			...copilotFiles(directories, ctx.home),
+		);
 		for (const refusal of refused)
 			sources.push({
 				name: refusal.name,

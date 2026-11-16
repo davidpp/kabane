@@ -12,7 +12,7 @@ import { CopilotInstructions } from "@cabane/board/copilot-instructions";
 import { err, ok, type Result, trySync } from "@cabane/core";
 import type { CopilotShortcut } from "@cabane/extension";
 import { z } from "zod";
-import type { Extensions } from "./extensions";
+import { Extensions } from "./extensions";
 
 // Strict, so a file has no field for a harness mode, an allow list or an MCP entry: a procedure
 // cannot carry a permission policy in its type.
@@ -32,6 +32,8 @@ const SHORTCUTS = join("copilot", "shortcuts");
 const PLACEHOLDER = "{{extension}}";
 /** Far above any procedure kabane or the loop ships (the longest is under 5 KiB). */
 const MAX_BYTES = 16 * 1024;
+/** One sentence's worth; a longer description is dropped whole, never cut mid-word. */
+const MAX_DESCRIPTION = 200;
 
 // A function, not a string: a replacement string reads `$&` or `$$` in the path as a pattern.
 const fill = (text: string, dir: string): string =>
@@ -110,6 +112,47 @@ export namespace CopilotFiles {
 		return ok({ fields: parsed.data, body });
 	};
 
+	/**
+	 * A package.json description as the copilot may be shown it: at most 200 characters, and naming
+	 * none of base kabane's headings, so an installed directory cannot write into kabane's text.
+	 */
+	export const description = (
+		raw: string | undefined,
+	): Result<string | undefined> => {
+		if (raw === undefined) return ok(undefined);
+		if (raw.length > MAX_DESCRIPTION)
+			return err(
+				new Error(
+					`package.json: its description is over ${MAX_DESCRIPTION} characters, so the copilot is not shown it; shorten it to one sentence`,
+				),
+			);
+		const text = CopilotInstructions.asHeading(raw);
+		const heading = CopilotInstructions.HEADINGS.find((h) => text.includes(h));
+		if (heading !== undefined)
+			return err(
+				new Error(
+					`package.json: its description contains kabane's heading ${heading}, so the copilot is not shown it; reword it`,
+				),
+			);
+		return ok(raw);
+	};
+
+	/**
+	 * Every installed extension, enabled or not, with the description the copilot may be shown. A
+	 * dropped one leaves the name alone; doctor reports it for an enabled directory extension.
+	 */
+	export const installed = (
+		home: string,
+	): Promise<CopilotInstructions.Installed[]> =>
+		Promise.all(
+			Extensions.available(home).map(async (name) => {
+				const checked = description(await Extensions.description(home, name));
+				return checked.ok && checked.value !== undefined
+					? { name, description: checked.value }
+					: { name };
+			}),
+		);
+
 	// A title that reads like one of base kabane's headings would let a file pass for its text.
 	const procedureOf = (
 		dir: string,
@@ -118,7 +161,11 @@ export namespace CopilotFiles {
 		const read = parse(dir, file, ProcedureFields);
 		if (!read.ok) return read;
 		const title = fill(read.value.fields.title, dir);
-		if (CopilotInstructions.HEADINGS.includes(title.toUpperCase()))
+		if (
+			CopilotInstructions.HEADINGS.includes(
+				CopilotInstructions.asHeading(title),
+			)
+		)
 			return err(
 				new Error(
 					`${file}: the title ${title} is one of kabane's own procedures; rename it`,

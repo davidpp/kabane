@@ -32,6 +32,14 @@ const OFFICIAL: Readonly<Record<string, () => Promise<Extension>>> = {
 	loop: async () => (await import("@cabane/loop")).loop,
 };
 
+/**
+ * What each bundled extension says it adds, from its package.json, imported only when asked so a
+ * command that lists no extension loads nothing of it. JCAB-326 removes this with `OFFICIAL`.
+ */
+const BUNDLED_DESCRIPTIONS: Readonly<Record<string, () => Promise<string>>> = {
+	loop: async () => (await import("@cabane/loop/package.json")).description,
+};
+
 const Manifest = z.object({
 	kabane: z.object({
 		extension: z.string().min(1),
@@ -179,10 +187,12 @@ export namespace Extensions {
 		home: string,
 		name: string,
 	): Promise<string | undefined> => {
-		if (!installed(home, name))
-			return name === "loop"
-				? (await import("@cabane/loop/package.json")).description
+		if (!installed(home, name)) {
+			const bundled = Object.hasOwn(BUNDLED_DESCRIPTIONS, name)
+				? BUNDLED_DESCRIPTIONS[name]
 				: undefined;
+			return bundled ? await bundled() : undefined;
+		}
 		const text = trySync(() =>
 			readFileSync(join(directory(home, name), "package.json"), "utf8"),
 		);

@@ -330,12 +330,7 @@ export const boardDeps = async (
 			mode: ctx.harnessMode,
 			setup: {
 				configPath: configPath(ctx.home),
-				extensions: await Promise.all(
-					Extensions.available(ctx.home).map(async (name) => {
-						const description = await Extensions.description(ctx.home, name);
-						return description === undefined ? { name } : { name, description };
-					}),
-				),
+				extensions: await CopilotFiles.installed(ctx.home),
 				procedures: contributed.procedures,
 				shortcuts: contributed.shortcuts,
 			},
