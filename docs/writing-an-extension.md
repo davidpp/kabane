@@ -17,9 +17,9 @@ board's copilot procedures and `/` shortcuts, and a second entry, `modules`, dec
 extension keeps in the tracker's database.
 
 The walkthrough below builds the `notes` extension that kabane's own tests install
-(`packages/cli/src/extension-fixture.ts`), without the two verbs that exist only to test
-transactions: a `kabane notes` command that keeps notes on a task in a table of its own. Every
-command on this page was run against kabane built from this repository, through Bun and as the
+(`packages/cli/src/extension-fixture.ts`): a `kabane notes` command that keeps notes on a task in
+a table of its own. It leaves out the two verbs that exist only to test transactions, and keeps
+the task id in a constant so the file typechecks. It runs the same through Bun and on the
 standalone binary.
 
 ## Make the directory and its manifest
