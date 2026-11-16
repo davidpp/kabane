@@ -9,10 +9,11 @@ those runs. `docs/recipes.md` is what a user reads.
 | `src/extension.ts` | the `(host) => Extension` factory: the `recipes.harness` setting, both commands, the `hc-missing` doctor finding |
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`, `render`: frontmatter, placeholders, and the errors that name the file |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
-| `src/run-command.ts` | `kabane run`: scope, target, preamble, run row, start, the `run:<id>` ref |
+| `src/run-command.ts` | `startRun`, which starts a recipe from explicit inputs (scope, root, dir, recipe, target, inputs, harness, actor) and reads no cwd, TTY or setting; `kabane run`, which resolves those and calls it. Export it when a second caller needs it |
 | `src/runs-command.ts` | `kabane runs`: the listing and its reconcile, `attach`, `read`, `send`, `stop` |
 | `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored |
-| `src/runtime-hc.ts` | the runtime adapter; the only file that runs `hc` |
+| `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
+| `src/runtime-hc.ts` | the hc runtime; the only file that runs `hc` |
 | `modules.ts` | the modules entry: registers the run table, imports only `src/runs.ts` |
 
 ## It takes types from kabane and no value
@@ -26,9 +27,19 @@ are development dependencies for types and for the tests' own result helpers.
 
 JCAB-444:1 put the run table in the extension's own module: it ships with `recipes`, is absent
 when the extension is disabled, and a device without it, the hub included, parks its ops. It is
-`row-lww` on `updated_at` and not `childOfTasks`: a run names its issue in `target_id` without
-belonging to it, and a target is optional. Moving the row to a first-party package changes
-`src/runs.ts` and `modules.ts` only.
+`row-lww` on `updated_at` and not `childOfTasks`: a run names what it works on in `target_kind` and
+`target_id` without belonging to it, and a target is optional. Both columns are null or both are
+set; a read gives them as one `target: { kind, id }`, and `kabane run` writes kind `issue`. Moving
+the row to a first-party package changes `src/runs.ts` and `modules.ts` only.
+
+`runtime` is the runtime's name and `session` its own handle for what it started, which only that
+runtime reads: for hc, the terminal's name, which the adapter builds from the recipe name and the
+run id. What a user reads calls `session` the run's terminal (the `TERMINAL` column of `kabane
+runs`, "in hc terminal …" from `kabane run`), because hc is the only runtime; `--json` and
+`docs/recipes.md`'s field table say `session`. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
+until `start` returns, so a start that fails still leaves an ended run. `kabane runs` leaves a run
+in a runtime it does not have as recorded, and `read`, `send` and `attach` on a run whose runtime
+has no terminal fail with one line naming the runtime.
 
 `machine` is `os.hostname()`. Only this machine's unfinished runs are reconciled; the others
 show their last recorded state.

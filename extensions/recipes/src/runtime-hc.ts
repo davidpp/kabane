@@ -1,29 +1,22 @@
 // The runtime adapter: the one file that runs `hc` (herdr core). It starts a program in a
-// terminal that outlives kabane, reads its state and screen, types into it and ends it. Swapping
-// hc for another runtime replaces this file and keeps `Runtime`.
+// terminal that outlives kabane, reads its state and screen, types into it and ends it. A run's
+// session is the terminal's name.
 import type { Host, Result } from "@cabane/extension";
 import { err, ok, tryCatch, trySync } from "./result";
 import type { Runs } from "./runs";
+import type { Runtime } from "./runtime";
 
 export namespace HcRuntime {
-	type Start = {
-		argv: readonly string[];
-		cwd: string;
-		/** The terminal's name: 1 to 32 of a-z, 0-9, - and _, unique among live terminals. */
-		name: string;
-		labels: Readonly<Record<string, string>>;
-	};
-
-	export type Runtime = {
-		/** Why the runtime cannot start anything here, or undefined. */
-		missing(): string | undefined;
-		start(start: Start): Promise<Result<{ terminal: string }>>;
-		get(terminal: string): Promise<Result<Runs.State>>;
-		read(terminal: string): Promise<Result<string>>;
-		send(terminal: string, text: string): Promise<Result<void>>;
-		stop(terminal: string): Promise<Result<void>>;
-		/** Put this terminal on it until the human detaches; resolves to hc's exit code. */
-		attach(terminal: string): Promise<Result<number>>;
+	/**
+	 * The terminal's name: 1 to 32 of a-z, 0-9, - and _, unique among live terminals. The title's
+	 * first 22 such characters, then the run id's last six, so `kabane runs` matches it to its run.
+	 */
+	export const terminalName = (run: string, title: string): string => {
+		const head = title
+			.toLowerCase()
+			.replace(/[^a-z0-9_-]+/g, "-")
+			.slice(0, 22);
+		return `${head || "run"}-${run.slice(-6).toLowerCase()}`;
 	};
 
 	/** `hc get --json`, the fields the state is read from. */
@@ -127,8 +120,10 @@ export namespace HcRuntime {
 		};
 
 		return {
+			name: "hc",
 			missing: () => missing(),
-			start: async ({ argv, cwd, name, labels }) => {
+			start: async ({ run, title, argv, cwd, labels }) => {
+				const name = terminalName(run, title);
 				const started = await call("run", [
 					"--bg",
 					"--json",
@@ -144,7 +139,7 @@ export namespace HcRuntime {
 					"--",
 					...argv,
 				]);
-				return started.ok ? ok({ terminal: name }) : started;
+				return started.ok ? ok(name) : started;
 			},
 			get: async (terminal) => {
 				const blocked = missing();

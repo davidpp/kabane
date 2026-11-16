@@ -12,17 +12,18 @@ export namespace Runs {
 	export type Run = {
 		id: string;
 		recipe: { name: string; hash: string };
-		/** The target issue's id, when the recipe has one. */
-		target?: string;
+		/** What the run works on, when the recipe has a target; slice 1 writes `issue`. */
+		target?: { kind: string; id: string };
 		/** The scope's URI. */
 		scope: string;
 		/** The folder the run started in, relative to the scope root ("" at the root). */
 		dir: string;
 		machine: string;
 		cwd: string;
-		runtime: "hc";
-		/** The runtime's name for the terminal. */
-		terminal: string;
+		/** The runtime's name, such as `hc`. */
+		runtime: string;
+		/** The runtime's own handle for what it started, which only that runtime reads. */
+		session: string;
 		inputs: Record<string, unknown>;
 		state: State;
 		startedAt: string;
@@ -45,13 +46,14 @@ export namespace Runs {
 						   id TEXT PRIMARY KEY,
 						   recipe TEXT NOT NULL,
 						   recipe_hash TEXT NOT NULL,
+						   target_kind TEXT,
 						   target_id TEXT,
 						   scope_uri TEXT NOT NULL,
 						   dir TEXT NOT NULL,
 						   machine TEXT NOT NULL,
 						   cwd TEXT NOT NULL,
 						   runtime TEXT NOT NULL,
-						   terminal TEXT NOT NULL,
+						   session TEXT NOT NULL,
 						   inputs TEXT NOT NULL,
 						   state TEXT NOT NULL,
 						   started_at TEXT NOT NULL,
@@ -81,13 +83,14 @@ export namespace Runs {
 			id: z.string(),
 			recipe: z.string(),
 			recipe_hash: z.string(),
+			target_kind: z.string().nullable(),
 			target_id: z.string().nullable(),
 			scope_uri: z.string(),
 			dir: z.string(),
 			machine: z.string(),
 			cwd: z.string(),
-			runtime: z.literal("hc"),
-			terminal: z.string(),
+			runtime: z.string(),
+			session: z.string(),
 			inputs: z.string(),
 			state: z.enum(STATES),
 			started_at: z.string(),
@@ -101,6 +104,12 @@ export namespace Runs {
 				new Error(`${TABLE}: a row kabane cannot read: ${row.error.message}`),
 			);
 		const { data } = row;
+		if ((data.target_kind === null) !== (data.target_id === null))
+			return err(
+				new Error(
+					`${TABLE}: run ${data.id} has a target_kind or a target_id without the other`,
+				),
+			);
 		const json = trySync((): unknown => JSON.parse(data.inputs));
 		const inputs = json.ok
 			? z.record(z.unknown()).safeParse(json.value)
@@ -114,13 +123,15 @@ export namespace Runs {
 		return ok({
 			id: data.id,
 			recipe: { name: data.recipe, hash: data.recipe_hash },
-			...(data.target_id === null ? {} : { target: data.target_id }),
+			...(data.target_kind === null || data.target_id === null
+				? {}
+				: { target: { kind: data.target_kind, id: data.target_id } }),
 			scope: data.scope_uri,
 			dir: data.dir,
 			machine: data.machine,
 			cwd: data.cwd,
 			runtime: data.runtime,
-			terminal: data.terminal,
+			session: data.session,
 			inputs: inputs.data,
 			state: data.state,
 			startedAt: data.started_at,
@@ -148,20 +159,22 @@ export namespace Runs {
 	): Promise<Result<Run>> =>
 		host.store.write((tx) => {
 			tx.db.run(
-				`INSERT INTO ${TABLE} (id, recipe, recipe_hash, target_id, scope_uri, dir, machine, cwd,
-				   runtime, terminal, inputs, state, started_at, ended_at, updated_at, updated_by)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO ${TABLE} (id, recipe, recipe_hash, target_kind, target_id, scope_uri, dir,
+				   machine, cwd, runtime, session, inputs, state, started_at, ended_at, updated_at,
+				   updated_by)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					run.id,
 					run.recipe.name,
 					run.recipe.hash,
-					run.target ?? null,
+					run.target?.kind ?? null,
+					run.target?.id ?? null,
 					run.scope,
 					run.dir,
 					run.machine,
 					run.cwd,
 					run.runtime,
-					run.terminal,
+					run.session,
 					JSON.stringify(run.inputs),
 					run.state,
 					run.startedAt,
@@ -172,6 +185,25 @@ export namespace Runs {
 			);
 			const captured = tx.afterWrite(TABLE, "insert", run.id);
 			return captured.ok ? ok(run) : captured;
+		});
+
+	/** The session of a run recorded before its runtime started it. */
+	export const STARTING = "";
+
+	/** The handle the runtime returned for a run recorded as `STARTING`. */
+	export const setSession = (
+		host: Store,
+		id: string,
+		session: string,
+		actor: string,
+	): Promise<Result<void>> =>
+		host.store.write((tx) => {
+			tx.db.run(
+				`UPDATE ${TABLE} SET session = ?, updated_at = ?, updated_by = ?,
+				   version = version + 1 WHERE id = ?`,
+				[session, new Date().toISOString(), actor, id],
+			);
+			return tx.afterWrite(TABLE, "update", id);
 		});
 
 	/** A run's new state; `ended` also stamps when it ended. */

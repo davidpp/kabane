@@ -61,3 +61,15 @@ it("names hc when it is not on PATH", () => {
 		"hc (herdr core) is not on PATH",
 	);
 });
+
+it("names a terminal from the title and the run id's last six, within hc's rules", () => {
+	expect(HcRuntime.terminalName("01M7JT0TFJB7MF38VYDWCG8PKX", "research")).toBe(
+		"research-cg8pkx",
+	);
+	const long = HcRuntime.terminalName(
+		"01M7JT0TFJB7MF38VYDWCG8PKX",
+		"Preliminary Research: the long one",
+	);
+	expect(long).toBe("preliminary-research-t-cg8pkx");
+	expect(long).toMatch(/^[a-z0-9_-]{1,32}$/);
+});

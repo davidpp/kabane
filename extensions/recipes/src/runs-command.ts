@@ -1,12 +1,13 @@
 // `kabane runs [--all]` and `kabane runs attach|read|send|stop <id>`. A run's state is what its
-// terminal says: every listing reads this machine's unfinished runs from the runtime first and
-// writes back the ones that moved. A run started on another machine shows what was last recorded.
+// runtime says: every listing reads this machine's unfinished runs from the runtime first and
+// writes back the ones that moved. A run started on another machine, or in a runtime this kabane
+// does not have, shows what was last recorded.
 import { hostname } from "node:os";
 import type { Extension, Host, Outcome, Result } from "@cabane/extension";
 import { ok } from "./result";
 import { projectOf } from "./run-command";
 import { Runs } from "./runs";
-import type { HcRuntime } from "./runtime-hc";
+import type { Runtime } from "./runtime";
 
 const USAGE =
 	"kabane runs [--all] | kabane runs attach|read|stop <id> | kabane runs send <id> <text>";
@@ -20,21 +21,27 @@ const age = (iso: string, now = Date.now()): string => {
 	return `${Math.floor(seconds / 86_400)}d`;
 };
 
-/** Each unfinished run of this machine, with the state its terminal reports now. */
+/** Each unfinished run of this machine, with the state its runtime reports now. */
 const reconcile = async (
 	host: Host,
-	runtime: HcRuntime.Runtime,
+	runtime: Runtime,
 	runs: Runs.Run[],
 	actor: string,
 ): Promise<Result<Runs.Run[]>> => {
 	const here = hostname();
 	const current: Runs.Run[] = [];
 	for (const run of runs) {
-		if (run.machine !== here || run.state === "ended") {
+		// A run still starting has no session to read yet.
+		if (
+			run.machine !== here ||
+			run.state === "ended" ||
+			run.runtime !== runtime.name ||
+			run.session === Runs.STARTING
+		) {
 			current.push(run);
 			continue;
 		}
-		const seen = await runtime.get(run.terminal);
+		const seen = await runtime.get(run.session);
 		if (!seen.ok) return seen;
 		if (seen.value === run.state) {
 			current.push(run);
@@ -99,9 +106,70 @@ const resolve = async (
 	return { ok: true, value: run };
 };
 
+/** `attach`, `read`, `send` or `stop` on one run of this machine. */
+type Operation = { run: Runs.Run; verb: string; words: string[] };
+
+const operate = async (
+	host: Host,
+	runtime: Runtime,
+	actor: string,
+	{ run, verb, words }: Operation,
+): Promise<Outcome> => {
+	if (run.runtime !== runtime.name)
+		return host.outcome.failure(
+			`Run ${run.id} runs in ${run.runtime}, which this kabane does not have`,
+		);
+	const lacks = (operation: string) =>
+		host.outcome.failure(
+			`Run ${run.id} runs in ${run.runtime}, which has no terminal to ${operation}`,
+		);
+	if (verb === "read") {
+		if (runtime.read === undefined) return lacks("read");
+		const screen = await runtime.read(run.session);
+		return screen.ok
+			? host.outcome.success(
+					{ run: run.id, screen: screen.value },
+					screen.value.trimEnd(),
+				)
+			: host.outcome.failure(screen.error);
+	}
+	if (verb === "send") {
+		if (words.length === 0)
+			return host.outcome.usage("runs send needs the text to type", USAGE);
+		if (runtime.send === undefined) return lacks("send to");
+		const text = words.join(" ");
+		const sent = await runtime.send(run.session, text);
+		return sent.ok
+			? host.outcome.success(
+					{ run: run.id, sent: text },
+					`Sent to ${run.session}.`,
+				)
+			: host.outcome.failure(sent.error);
+	}
+	if (verb === "stop") {
+		const stopped = await runtime.stop(run.session);
+		if (!stopped.ok) return host.outcome.failure(stopped.error);
+		const now = await reconcile(host, runtime, [run], actor);
+		if (!now.ok) return host.outcome.failure(now.error);
+		const state = now.value[0]?.state ?? run.state;
+		return host.outcome.success(
+			{ run: run.id, state },
+			`Stopped ${run.session}; run ${run.id} is ${state}.`,
+		);
+	}
+	if (runtime.attach === undefined) return lacks("attach to");
+	const attached = await runtime.attach(run.session);
+	if (!attached.ok) return host.outcome.failure(attached.error);
+	return attached.value === 0
+		? host.outcome.success({ run: run.id }, "")
+		: host.outcome.failure(
+				`${run.runtime} attach exited with ${attached.value}`,
+			);
+};
+
 export const runsCommand = (
 	host: Host,
-	runtime: HcRuntime.Runtime,
+	runtime: Runtime,
 ): Extension.Command => {
 	const listing = async (
 		ctx: Extension.Ctx,
@@ -117,15 +185,14 @@ export const runsCommand = (
 				: ok(stored.value);
 		if (!runs.ok) return host.outcome.failure(runs.error);
 		const shown = runs.value.filter((run) => all || run.state !== "ended");
+		// An issue target shows its short id; any other kind shows its id.
 		const targets = new Map<string, string>();
-		for (const run of shown)
-			if (run.target !== undefined && !targets.has(run.target)) {
-				const task = await host.record.get({ id: run.target });
+		for (const { target } of shown)
+			if (target?.kind === "issue" && !targets.has(target.id)) {
+				const task = await host.record.get({ id: target.id });
 				targets.set(
-					run.target,
-					task.ok && task.value
-						? (task.value.shortId ?? run.target)
-						: run.target,
+					target.id,
+					task.ok && task.value ? (task.value.shortId ?? target.id) : target.id,
 				);
 			}
 		if (shown.length === 0)
@@ -140,8 +207,10 @@ export const runsCommand = (
 			run.id,
 			run.machine === here ? run.state : `${run.state} (on ${run.machine})`,
 			run.recipe.name,
-			run.target === undefined ? "-" : (targets.get(run.target) ?? run.target),
-			run.terminal,
+			run.target === undefined
+				? "-"
+				: (targets.get(run.target.id) ?? run.target.id),
+			run.session,
 			age(run.startedAt),
 		]);
 		return host.outcome.success(
@@ -170,44 +239,11 @@ export const runsCommand = (
 				);
 			const found = await resolve(host, scope, key, verb);
 			if (!found.ok) return found.outcome;
-			const run = found.value;
-			if (verb === "read") {
-				const screen = await runtime.read(run.terminal);
-				return screen.ok
-					? host.outcome.success(
-							{ run: run.id, screen: screen.value },
-							screen.value.trimEnd(),
-						)
-					: host.outcome.failure(screen.error);
-			}
-			if (verb === "send") {
-				if (words.length === 0)
-					return host.outcome.usage("runs send needs the text to type", USAGE);
-				const text = words.join(" ");
-				const sent = await runtime.send(run.terminal, text);
-				return sent.ok
-					? host.outcome.success(
-							{ run: run.id, sent: text },
-							`Sent to ${run.terminal}.`,
-						)
-					: host.outcome.failure(sent.error);
-			}
-			if (verb === "stop") {
-				const stopped = await runtime.stop(run.terminal);
-				if (!stopped.ok) return host.outcome.failure(stopped.error);
-				const now = await reconcile(host, runtime, [run], ctx.actor);
-				if (!now.ok) return host.outcome.failure(now.error);
-				const state = now.value[0]?.state ?? run.state;
-				return host.outcome.success(
-					{ run: run.id, state },
-					`Stopped ${run.terminal}; run ${run.id} is ${state}.`,
-				);
-			}
-			const attached = await runtime.attach(run.terminal);
-			if (!attached.ok) return host.outcome.failure(attached.error);
-			return attached.value === 0
-				? host.outcome.success({ run: run.id }, "")
-				: host.outcome.failure(`hc attach exited with ${attached.value}`);
+			return operate(host, runtime, ctx.actor, {
+				run: found.value,
+				verb,
+				words,
+			});
 		},
 	};
 };
