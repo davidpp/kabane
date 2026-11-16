@@ -7,10 +7,13 @@ import { z } from "zod";
 /**
  * What each coding harness needs to register this device's MCP server: the
  * binary to look for, the argv that adds, finds and removes the `kabane`
- * entry, where its config file keeps that entry, the config snippet a human
- * pastes instead, and the project file it reads its instructions from. One
- * table, so the install and the printed snippets cannot drift apart. Nothing
- * here spawns: a harness's own `mcp get` health-checks the server, starting it.
+ * entry, the config snippet a human pastes instead, and its project instruction
+ * file live in TABLE. REGISTRATIONS separately reads existing config files:
+ * registration commands and readable locations are not one-to-one (Claude
+ * holds user and per-project local entries in the same file). Keeping writes
+ * through the harness CLI distinct from read-only enumeration makes that
+ * boundary explicit. Both tables cover Id. Nothing here spawns: a harness's
+ * own `mcp get` health-checks the server, starting it.
  */
 export namespace McpClients {
 	/**
