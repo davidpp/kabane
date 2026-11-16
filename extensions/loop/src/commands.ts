@@ -4,7 +4,9 @@
 // stopped, with its claims and its worktree.
 import { spawn } from "node:child_process";
 import {
+	accessSync,
 	closeSync,
+	constants,
 	existsSync,
 	openSync,
 	readFileSync,
@@ -352,16 +354,22 @@ export namespace Loop {
 	};
 
 	/**
-	 * Refuses `loop.harnesses` args with no command once the layers have merged: `Harnesses.resolve`
-	 * would put them after the adapter's `npx`, with no adapter. Each layer alone may hold either.
-	 * Refuses a command that is not there too, a bare name off PATH or a path relative to the
-	 * project: every session would fail to spawn, and the run would stall only after its attempts.
+	 * `config` with each `loop.harnesses` command a session can launch: a relative path made absolute
+	 * against the project, since a session spawns in a tree of its own that has none of the
+	 * project's ignored files (a local build in `dist/`), so run.json holds the file checked here.
+	 * Refuses args with no command once the layers have merged (`Harnesses.resolve` would put them
+	 * after the adapter's `npx`, with no adapter; each layer alone may hold either), and a command
+	 * that is not there or not executable, which every session would fail to spawn, the run
+	 * stalling only after its attempts. A bare name stays a PATH lookup.
 	 */
 	const launchable = (
 		config: LoopConfig.Config,
 		projectDir: string,
-	): Result<void> => {
-		for (const [id, launch] of Object.entries(config.harnesses)) {
+	): Result<LoopConfig.Config> => {
+		const harnesses = { ...config.harnesses };
+		for (const id of Harnesses.IDS) {
+			const launch = harnesses[id];
+			if (launch === undefined) continue;
 			const key = `loop.harnesses.${id}`;
 			const fix = `in the layer \`kabane config get loop.harnesses --layers\` names`;
 			const { command } = launch;
@@ -374,17 +382,31 @@ export namespace Loop {
 					);
 				continue;
 			}
-			const found = command.includes("/")
-				? existsSync(resolve(projectDir, command))
-				: Bun.which(command) !== null;
-			if (!found)
+			if (!command.includes("/")) {
+				if (Bun.which(command) === null)
+					return err(
+						new Error(
+							`${key}.command ${command} is not on PATH, so no ${id} session could start: correct or unset it ${fix}`,
+						),
+					);
+				continue;
+			}
+			const path = resolve(projectDir, command);
+			if (!existsSync(path))
 				return err(
 					new Error(
-						`${key}.command ${command} is ${command.includes("/") ? "not there" : "not on PATH"}, so no ${id} session could start: correct or unset it ${fix}`,
+						`${key}.command ${command} is not there (${path}; a leading ~ is not expanded), so no ${id} session could start: correct or unset it ${fix}`,
 					),
 				);
+			if (!trySync(() => accessSync(path, constants.X_OK)).ok)
+				return err(
+					new Error(
+						`${key}.command ${path} is not executable, so no ${id} session could start: chmod +x it, or correct or unset it ${fix}`,
+					),
+				);
+			harnesses[id] = { ...launch, command: path };
 		}
-		return ok(undefined);
+		return ok({ ...config, harnesses });
 	};
 
 	/** What a run would start with: the plan as it stands, the checkout, the resolved config. */
@@ -427,11 +449,12 @@ export namespace Loop {
 		if (!config.ok) return config;
 		const launches = launchable(config.value, projectDir.value);
 		if (!launches.ok) return launches;
+		const resolved = launches.value;
 		// Whether there is anything to do depends on the config: checks can run on done work.
 		const checked = await checkParent(
 			deps,
 			plan.value,
-			config.value,
+			resolved,
 			projectRoot.value,
 		);
 		if (!checked.ok) return checked;
@@ -439,9 +462,9 @@ export namespace Loop {
 			plan: plan.value,
 			projectDir: projectDir.value,
 			projectRoot: projectRoot.value,
-			config: config.value,
+			config: resolved,
 			isolated: LoopAdvice.isolated(
-				config.value,
+				resolved,
 				Worktree.inRepo(projectDir.value),
 			),
 		});

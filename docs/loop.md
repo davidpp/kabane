@@ -155,8 +155,10 @@ the fixer and the rechecks.
 `command` and `args` resolve key by key through the layers, so a command in your local
 layer can sit over arguments in the global one. Once they merge, `args` with no `command`
 is refused: it would run the adapter's `npx` with your arguments and no adapter. So is a
-command that is not there: a bare name must be on PATH, and a path, relative to the
-project, must exist.
+command no session could start: a bare name must be on PATH, and a path must be an
+executable file. A relative path is read against the project when the run starts, and the
+run launches that absolute path, since each session works in a tree of its own without the
+project's ignored files; a leading `~` is not expanded.
 
 `kabane loop advise` prints what each harness the run would use launches, the pinned
 adapter or your command, and each session's `launch` event in the run's trace names the

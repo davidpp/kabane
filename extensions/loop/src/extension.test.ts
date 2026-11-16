@@ -572,20 +572,67 @@ describe("kabane loop advise", () => {
 			);
 		});
 
-		it("refuses a command that is not there, by path or on PATH", async () => {
-			for (const [command, why] of [
-				["/nonexistent/acp", "not there"],
-				["no-such-acp-adapter", "not on PATH"],
+		it("refuses a command that is not there or not executable, by path or on PATH", async () => {
+			writeFileSync(join(home, "acp.txt"), "not a program\n");
+			for (const [command, says] of [
+				[
+					"/nonexistent/acp",
+					"/nonexistent/acp is not there (/nonexistent/acp; a leading ~ is not expanded)",
+				],
+				[
+					"~/acp",
+					`~/acp is not there (${join(home, "~/acp")}; a leading ~ is not expanded)`,
+				],
+				["no-such-acp-adapter", "no-such-acp-adapter is not on PATH"],
+				["./acp.txt", `${join(home, "acp.txt")} is not executable`],
 			] as const) {
 				const refused = await adviseUnder({
 					layer: "local",
-					value: { harnesses: { gemini: { command } } },
+					value: { harnesses: { claude: { command } } },
 				});
 				expect(refused.exitCode).not.toBe(0);
 				expect(refused.text).toContain(
-					`loop.harnesses.gemini.command ${command} is ${why}, so no gemini session could start`,
+					`loop.harnesses.claude.command ${says}, so no claude session could start`,
 				);
 			}
+		});
+
+		it("stores a relative command in the run's config as the absolute path it checked", async () => {
+			mkdirSync(join(home, "dist"));
+			writeFileSync(join(home, "dist", "acp"), "#!/bin/sh\n", { mode: 0o755 });
+			const absolute = join(home, "dist", "acp");
+			const layer = {
+				layer: "local" as const,
+				value: { harnesses: { claude: { command: "./dist/acp" } } },
+			};
+			const advised = await adviseUnder(layer);
+			expect(advised.text).toContain(
+				`  claude launches ${absolute} (loop.harnesses.claude)`,
+			);
+			const parent = await Planner.addTask(home, {
+				title: "started",
+				kind: "issue",
+				state: "next",
+			});
+			if (!parent.ok) throw parent.error;
+			await Loop.start(
+				{
+					home,
+					basePath: home,
+					kabaneBin: "/nonexistent/kabane",
+					cwd: home,
+					settings: Settings.port(async () =>
+						ok([{ ...layer, label: "local" }]),
+					),
+					runner: () => ["/nonexistent/runner"],
+				},
+				{ parent: parent.value.id },
+			);
+			const runs = RunStore.list(home);
+			if (!runs.ok) throw runs.error;
+			expect(runs.value.map((r) => r.config.harnesses)).toEqual([
+				{ claude: { command: absolute } },
+			]);
 		});
 	});
 });
