@@ -267,9 +267,9 @@ waits for your yes before it tags anything or starts the run. It never changes t
 implementer or verifier unless you ask.
 
 The copilot knows how to start and set up a run from the loop's own procedure files, in
-`copilot/procedures/` of the loop's directory, so it can do either only when the loop is
-installed in `$KABANE_HOME/extensions/loop/` and enabled. Ask it to "run X with codex" and it
-runs `kabane loop start` for you.
+`copilot/procedures/` of the loop's directory. Kabane reads those files only from an extension
+loaded as a directory under `$KABANE_HOME/extensions/`; the loop that ships inside kabane adds
+none, so with it the copilot does not start runs for you. Start them with `kabane loop start`.
 
 ## How much review a run gets
 

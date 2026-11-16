@@ -402,6 +402,8 @@ It can also:
 - Explain commands and board keys, change Kabane settings, or enable an installed extension
   (`/setup`). A device setting, enabling an extension included, applies once the board restarts;
   an extension's own setting (`loop.*`) applies the next time it is read, with no restart.
+  When it enables an extension, it says what the extension adds, from the `description` in the
+  extension's `package.json`, and that enabling it starts nothing.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
@@ -421,13 +423,27 @@ Kabane's own instructions name no extension. An enabled extension loaded from
 - `copilot/shortcuts/<name>.md`, with frontmatter `hint`. Its body, one line, is the template
   `/<name>` drops into the prompt. The `/` list shows the built-in shortcuts first, then these.
 
-`{{extension}}` in a body is replaced with the absolute path of the extension's directory;
-nothing else is substituted. The frontmatter takes only that one key, so a file cannot set a
-harness mode, an allow list or an MCP entry. The board announces a file it refuses, with the
-extension and the file: frontmatter that is missing or invalid, a shortcut body that is not one
-line, a shortcut named like a built-in (the built-in wins), and a shortcut name two extensions
-both use (neither is offered). The rest loads. A bundled extension adds no files, so the copilot
-knows the loop's procedures only when the loop is loaded from its directory.
+`{{extension}}` in a body or a procedure's title is replaced with the absolute path of the
+extension's directory; nothing else is substituted. The frontmatter takes only that one key, so a
+file cannot set a harness mode, an allow list or an MCP entry. A byte-order mark is ignored and
+CRLF line ends read as LF. Files not named `*.md` are ignored, and so is a `copilot` that is a
+file rather than a directory. A bundled extension adds no files, so the copilot knows the loop's
+procedures only when the loop is loaded from its directory.
+
+These are refused, each on its own, and the rest of the extension loads:
+
+- `copilot/procedures` or `copilot/shortcuts` that is a file rather than a directory;
+- a file named only `.md`, or larger than 16 KiB;
+- frontmatter that is missing, not YAML, or holds a key other than `title` or `hint`;
+- a procedure with an empty body, a title of more than one line, or a title that is one of
+  kabane's own headings (`CONFIG AND HELP`, `DOCTOR`, …), so a file cannot pass for kabane's text;
+- a shortcut whose body is not one line;
+- a shortcut named like a built-in (the built-in wins), and a shortcut name two extensions both
+  use (neither is offered).
+
+The board's footer tells a refused file apart from a refused extension. One refused file is named
+with its reason; several are counted, with the extensions they belong to, and `kabane doctor`
+lists each one as a `copilot-file-*` finding under its extension, with the file's path.
 
 ### `OpenRequests`
 
