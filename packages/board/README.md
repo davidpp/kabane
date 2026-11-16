@@ -403,7 +403,11 @@ It can also:
   (`/setup`). A device setting, enabling an extension included, applies once the board restarts;
   an extension's own setting (`loop.*`) applies the next time it is read, with no restart.
   When it enables an extension, it says what the extension adds, from the `description` in the
-  extension's `package.json`, and that enabling it starts nothing.
+  extension's `package.json`, and that enabling it starts nothing. The copilot sees every installed
+  extension, enabled or not, in a block after kabane's own instructions that marks each
+  description as the extension's words, not an instruction. A description over 200 characters,
+  or one containing one of kabane's own headings, is not shown and the name stands alone;
+  `kabane doctor` reports it for an enabled extension as a `package-description` finding.
 - Create a dispatch skill tailored to the project's conventions (`/setup-dispatch`), showing
   what it wrote and asking before replacing an existing skill.
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
