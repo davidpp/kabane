@@ -451,5 +451,18 @@ describe("Planner — Projects", () => {
 			const result = await Planner.resolveProjectId(TEST_BASE, "JALL-999");
 			expect(result.ok).toBe(false);
 		});
+
+		it("matches no project on an id holding a LIKE wildcard", async () => {
+			const added = await Planner.addProject(TEST_BASE, { title: "Only one" });
+			if (!added.ok) throw added.error;
+			for (const id of ["%", "_", "0%", ""]) {
+				const result = await Planner.resolveProjectId(TEST_BASE, id);
+				expect(result.ok).toBe(false);
+				if (!result.ok)
+					expect(result.error.message).toBe(
+						`No project has the id "${id}": an id is a short id (JCAB-12), a ULID or a ULID prefix, letters and digits only.`,
+					);
+			}
+		});
 	});
 });

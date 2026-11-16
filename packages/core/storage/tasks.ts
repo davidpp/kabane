@@ -20,10 +20,12 @@ import {
 	generateId,
 	generateShortId,
 	normalizeOptionalScopeUri,
+	notAnIdMessage,
 	rowToTask,
 	SHORT_ID_PATTERN,
 	TABLES,
 	ULID_LENGTH,
+	ULID_PREFIX_PATTERN,
 } from "./helpers";
 import { Oplog } from "./oplog";
 import {
@@ -155,6 +157,9 @@ export namespace Planner {
 
 			return ok(result.value.id);
 		}
+
+		if (!ULID_PREFIX_PATTERN.test(input))
+			return err(new NotFoundError(notAnIdMessage("task", input)));
 
 		// ULID prefix match (fallback for legacy/debugging)
 		const result = await withDb(basePath, (db) => {

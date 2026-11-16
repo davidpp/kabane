@@ -2,6 +2,7 @@ import {
 	authorTypeOf,
 	defineTool,
 	err,
+	NotFoundError,
 	ok,
 	Planner,
 	quoted,
@@ -29,8 +30,8 @@ const lookupInput = (id: string): string => {
 	return ULID_SHAPED.test(trimmed) ? trimmed.toUpperCase() : trimmed;
 };
 
-/** The resolver's refusals of an id that names no single task, as opposed to a failed read. */
-const MISS = /^(No task found with ID|Ambiguous ID prefix)/;
+/** The resolver's refusal of a prefix that names several tasks; a miss is a `NotFoundError`. */
+const AMBIGUOUS = /^Ambiguous ID prefix/;
 
 /**
  * The one-line refusal: the caller's input and the cause escaped onto the same line, then
@@ -56,7 +57,9 @@ export const findIssue = async (
 	const resolved = await Planner.resolveTaskId(basePath, lookupInput(id));
 	if (!resolved.ok) {
 		const cause = resolved.error.message;
-		return unresolved(id, cause, MISS.test(cause));
+		const miss =
+			resolved.error instanceof NotFoundError || AMBIGUOUS.test(cause);
+		return unresolved(id, cause, miss);
 	}
 	const task = await Planner.getTask(basePath, resolved.value);
 	if (!task.ok) return task;

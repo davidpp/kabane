@@ -672,3 +672,22 @@ it("notifies a close only after its withdrawals commit", async () => {
 	unwrap(await Planner.updateTask(base, task.id, { state: "done" }));
 	expect(seen).toEqual(["done:withdrawn,withdrawn"]);
 });
+
+it("answers nothing through a handle whose issue part is a LIKE wildcard", async () => {
+	const task = await issue();
+	await ask(task.id);
+	for (const handle of ["%:1", "_:1"]) {
+		const result = await Questions.answer(base, {
+			question: handle,
+			answer: "SQLite",
+		});
+		expect(result.ok).toBe(false);
+		if (!result.ok)
+			expect(result.error.message).toBe(
+				`No task has the id "${handle.slice(0, 1)}": an id is a short id (JCAB-12), a ULID or a ULID prefix, letters and digits only.`,
+			);
+	}
+	expect(
+		unwrap(await Questions.list(base, { id: task.id })).map((q) => q.status),
+	).toEqual(["open", "open"]);
+});

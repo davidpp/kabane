@@ -53,6 +53,31 @@ it("types resolver absence without changing its messages or full-id passthrough"
 	});
 });
 
+it("matches no task on an id holding a LIKE wildcard, with one task or two", async () => {
+	const base = await createDevice("resolve-wildcards");
+	const refused = async () => {
+		for (const id of ["%", "_", "0%", ""]) {
+			const result = await Planner.resolveTaskId(base, id);
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error).toBeInstanceOf(NotFoundError);
+				expect(result.error.message).toBe(
+					`No task has the id "${id}": an id is a short id (JCAB-12), a ULID or a ULID prefix, letters and digits only.`,
+				);
+			}
+		}
+	};
+	const first = await Planner.addTask(base, { title: "Only one" });
+	if (!first.ok) throw first.error;
+	await refused();
+	const second = await Planner.addTask(base, { title: "Now two" });
+	if (!second.ok) throw second.error;
+	await refused();
+	expect(
+		await Planner.resolveTaskId(base, first.value.id.slice(0, 20)),
+	).toEqual({ ok: true, value: first.value.id });
+});
+
 describe("task scope edits over MCP", () => {
 	for (const scopeUri of ["review", "kabane://scope/review"]) {
 		it(`keeps the short id when edited with its own scope: ${scopeUri}`, async () => {
