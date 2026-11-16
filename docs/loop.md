@@ -148,6 +148,13 @@ kabane config set loop.harnesses.claude.command /path/to/claude-agent-acp
 kabane config set loop.harnesses.claude.args -- --verbose,--debug
 ```
 
+The dotted key splits its value on commas, so an argument that holds a comma itself goes
+in through the whole object instead, which replaces every harness's entry in that layer:
+
+```bash
+kabane config set loop.harnesses '{"claude":{"command":"/path/to/claude-agent-acp","args":["--allow","a,b"]}}'
+```
+
 The arguments replace the adapter's; a command with no arguments runs with none. Every
 session of the run on that harness uses it: implementers, the review triage, the lenses,
 the fixer and the rechecks.
