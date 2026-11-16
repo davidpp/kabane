@@ -41,6 +41,20 @@ export const ULID_LENGTH = 26;
  */
 export const SHORT_ID_PATTERN = /^[A-Z0-9]{2,4}-\d+$/i;
 
+/**
+ * What a ULID prefix can hold. Resolvers match a prefix with `LIKE`, where `%`
+ * and `_` are wildcards, so an input outside this names no row and never
+ * reaches the query.
+ */
+export const ULID_PREFIX_PATTERN = /^[0-9A-Z]+$/i;
+
+/** The refusal for an input no id can spell. */
+export const notAnIdMessage = (
+	entity: "task" | "project",
+	input: string,
+): string =>
+	`No ${entity} has the id "${input}": an id is a short id (JCAB-12), a ULID or a ULID prefix, letters and digits only.`;
+
 // ============================================================
 // Scope Normalization
 // ============================================================

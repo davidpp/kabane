@@ -9,6 +9,8 @@
 	"types": "index.ts",
 	"exports": {
 		".": "./index.ts",
+		"./client": "./src/client.ts",
+		"./tool-calls": "./src/tool-calls.ts",
 		"./form-field": "./src/form-field.ts",
 		"./harnesses": "./src/harnesses.ts",
 		"./instructions": "./src/instructions.ts"

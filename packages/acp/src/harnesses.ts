@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { err, ok, type Result, trySync } from "@cabane/core";
+import { err, ok, type Result, trySync } from "@cabane/core/result";
 import { z } from "zod";
 
 export namespace Harnesses {

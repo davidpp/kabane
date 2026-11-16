@@ -29,7 +29,10 @@ only type imports from them in production files.
 Command entry points resolve case-insensitive short ids and unique ULID prefixes through
 `host.record.get`; an ambiguous prefix is an error, while an absent task is `null`.
 Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
-come from `@cabane/acp`. The loop has no dependency on the board.
+come from `@cabane/acp/form-field`. Runtime imports use ACP capability subpaths, never
+its root barrel: the bundle includes the harness client and core's `result.ts` helpers,
+but no other core source, ACP instructions or templates. The build test checks emitted
+metafile inputs. The loop has no dependency on the board.
 
 The activity port reads the run store's `questions.jsonl`, assigning each question its run card
 id and claim lane. `Loop.answer` submits the human's answer and actor through `inbox.jsonl`;

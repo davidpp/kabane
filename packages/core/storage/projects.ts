@@ -20,10 +20,12 @@ import {
 	generateId,
 	generateShortId,
 	normalizeOptionalScopeUri,
+	notAnIdMessage,
 	rowToProject,
 	SHORT_ID_PATTERN,
 	TABLES,
 	ULID_LENGTH,
+	ULID_PREFIX_PATTERN,
 } from "./helpers";
 import { Oplog } from "./oplog";
 
@@ -61,6 +63,9 @@ export namespace Planner {
 			}
 			return ok(result.value.id);
 		}
+
+		if (!ULID_PREFIX_PATTERN.test(input))
+			return err(new Error(notAnIdMessage("project", input)));
 
 		// ULID prefix match
 		const result = await withDb(basePath, (db) => {

@@ -131,6 +131,13 @@ it("refuses a blank body and an id that names no single issue in one line, and w
 		isError: true,
 		text: `Error: Cannot find the issue "NOPE-404" ("No task found with ID: NOPE-404"): ${NEXT}`,
 	});
+	for (const refused of ["bad!", "%"])
+		expect(
+			await call("kabane_handoff", { id: refused, body: "### Summary" }),
+		).toEqual({
+			isError: true,
+			text: `Error: Cannot find the issue "${refused}" ("No task has the id \\"${refused}\\": an id is a short id (JCAB-12), a ULID or a ULID prefix, letters and digits only."): ${NEXT}`,
+		});
 	const ghost = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 	expect(
 		await call("kabane_handoff", { id: ghost, body: "### Summary" }),

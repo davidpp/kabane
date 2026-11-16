@@ -24,7 +24,7 @@ import {
 	type Stream,
 	type ToolCallContent,
 } from "@agentclientprotocol/sdk";
-import { err, ok, type Result, toError, tryCatch } from "@cabane/core";
+import { err, ok, type Result, toError, tryCatch } from "@cabane/core/result";
 import type {
 	CopilotElicitationAnswer,
 	CopilotFormField,

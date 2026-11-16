@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import {
+	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -9,6 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
+import { z } from "zod";
+import { build, DIST } from "./build";
 import {
 	inspectArchive,
 	integrity,
@@ -20,6 +23,8 @@ import {
 const UNEXPECTED_SHAPE = "Unexpected published package file shape.";
 const MAP_OR_MACHINE_PATH =
 	"Archive exceeds bounds or contains a source map/machine path.";
+const DUPLICATE_MEMBER =
+	"Archive repeats a member path; no extraction attempted.";
 const WORK = mkdtempSync(join(tmpdir(), "kabane-artifact-test-"));
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 const manifest = {
@@ -103,6 +108,9 @@ for (const name of [
 	"bin/nested/chunk-07j278pm.js",
 	"chunk-07j278pm.js",
 	"src/index.ts",
+	"types/other.d.ts",
+	"types/nested/extension.d.ts",
+	"types/extension.d.ts.map",
 ])
 	test(`unexpected file shape fails: ${name}`, async () => {
 		const checked = await inspect(
@@ -135,6 +143,55 @@ test("chunks retain machine-path scanning and cannot replace the entry", async (
 	if (!missingEntry.result.ok)
 		expect(missingEntry.result.error.message).toBe(UNEXPECTED_SHAPE);
 });
+/**
+ * npm with a home, cache, logs and user config of its own under WORK, offline: the pack reads
+ * nothing from the contributor's npm setup and writes nothing to their home.
+ */
+const NPM_HOME = join(WORK, "npm-home");
+mkdirSync(NPM_HOME);
+writeFileSync(join(NPM_HOME, ".npmrc"), "");
+const npmEnv = {
+	PATH: process.env.PATH,
+	HOME: NPM_HOME,
+	npm_config_userconfig: join(NPM_HOME, ".npmrc"),
+	npm_config_cache: join(NPM_HOME, "cache"),
+	npm_config_logs_dir: join(NPM_HOME, "logs"),
+	npm_config_offline: "true",
+	npm_config_update_notifier: "false",
+	npm_config_fund: "false",
+	npm_config_audit: "false",
+};
+/** `npm pack` a package directory into a new directory and validate the archive it writes. */
+const packBuild = async (packageDir: string) => {
+	const dir = join(WORK, String(sequence++));
+	mkdirSync(dir);
+	const packed = Bun.spawnSync(
+		["npm", "pack", "--json", "--pack-destination", dir],
+		{ cwd: packageDir, env: npmEnv, stdout: "pipe", stderr: "pipe" },
+	);
+	if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
+	const [first] = z
+		.array(z.object({ filename: z.string() }))
+		.parse(JSON.parse(packed.stdout.toString()));
+	if (!first) throw new Error("npm pack printed no tarball");
+	return inspectArchive(join(dir, first.filename), join(dir, "unpacked"), [
+		join(import.meta.dir, ".."),
+	]);
+};
+test("the real build packs into an archive the check admits, and a stray type file is refused", async () => {
+	// build() writes only packages/cli/dist; copy it at once so a build running elsewhere
+	// cannot change what is packed, and the stray file never lands in the repository.
+	await build();
+	const built = join(WORK, "built");
+	cpSync(DIST, built, { recursive: true });
+	const checked = await packBuild(built);
+	if (!checked.ok) throw checked.error;
+	expect(checked.value.name).toBe("kabane");
+	writeFileSync(join(built, "types/other.d.ts"), "export {};\n");
+	const stray = await packBuild(built);
+	expect(stray.ok).toBe(false);
+	if (!stray.ok) expect(stray.error.message).toBe(UNEXPECTED_SHAPE);
+}, 120_000);
 for (const member of [
 	{ name: "package/../../escape", text: "bad" },
 	{ name: "/absolute", text: "bad" },
@@ -145,6 +202,20 @@ for (const member of [
 	test(`unsafe archive member refuses extraction: ${member.name}/${member.type ?? 48}`, async () => {
 		const checked = await inspect(archive([...normal, member]));
 		expect(checked.result.ok).toBe(false);
+		expect(existsSync(checked.unpacked)).toBe(false);
+	});
+for (const name of ["package/types/extension.d.ts", "package/package.json"])
+	test(`a member path repeated in the archive refuses extraction: ${name}`, async () => {
+		const checked = await inspect(
+			archive([
+				...normal,
+				{ name: "package/types/extension.d.ts", text: "export {};" },
+				{ name, text: "{}" },
+			]),
+		);
+		expect(checked.result.ok).toBe(false);
+		if (!checked.result.ok)
+			expect(checked.result.error.message).toBe(DUPLICATE_MEMBER);
 		expect(existsSync(checked.unpacked)).toBe(false);
 	});
 test("gzip expansion is bounded before extraction", async () => {
