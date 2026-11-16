@@ -1,5 +1,10 @@
 import { expect, it } from "bun:test";
+import { err, ok, tryCatch, trySync } from "@cabane/core";
+import { z } from "zod";
+import { Kabane } from "./result";
 import { HcRuntime } from "./runtime-hc";
+
+Kabane.bind({ result: { ok, err, tryCatch, trySync } });
 
 // `hc get --json` output from hc 0.1.21, trimmed to the fields the state is read from. The first
 // two are a terminal running a shell one-liner kabane started (`status` stays null: a shell never
@@ -37,6 +42,27 @@ it("maps hc's terminal state and the program's status word to a run state", () =
 		from: "finished (killed)",
 	});
 	expect(HcRuntime.stateOf(null)).toEqual({ state: "ended", from: "gone" });
+});
+
+it("reads hc get's JSON through a schema, and refuses a shape hc does not print", () => {
+	expect(HcRuntime.seen(z, JSON.stringify(CLAUDE_WORKING))).toEqual(
+		ok({ state: "running", from: "live, status working, turn 13" }),
+	);
+	const renamed = HcRuntime.seen(
+		z,
+		JSON.stringify({ ...CLAUDE_WORKING, state: undefined, phase: "live" }),
+	);
+	expect(renamed.ok).toBe(false);
+	if (!renamed.ok)
+		expect(renamed.error.message).toContain("hc get --json printed a terminal");
+	const typed = HcRuntime.seen(
+		z,
+		JSON.stringify({ ...CLAUDE_WORKING, turn: "13" }),
+	);
+	expect(typed.ok).toBe(false);
+	const text = HcRuntime.seen(z, "not json");
+	expect(text.ok).toBe(false);
+	if (!text.ok) expect(text.error.message).toContain("hc get printed no JSON");
 });
 
 it("names hc when it is not on PATH", () => {

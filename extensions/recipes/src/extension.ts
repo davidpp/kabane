@@ -13,15 +13,13 @@ export const recipes = (host: Host): Extension => {
 			harness: host.z.array(host.z.string().min(1)).min(1).default(["claude"]),
 		})
 		.strict();
+	const runtime = HcRuntime.runtime(host.z);
 	return {
 		name: "recipes",
 		settings,
-		commands: [
-			runCommand(host, settings, HcRuntime.runtime),
-			runsCommand(host, HcRuntime.runtime),
-		],
+		commands: [runCommand(host, settings, runtime), runsCommand(host, runtime)],
 		doctor: async () => {
-			const missing = HcRuntime.runtime.missing();
+			const missing = runtime.missing();
 			return ok(
 				missing === undefined
 					? []

@@ -1,8 +1,8 @@
 // The runtime adapter: the one file that runs `hc` (herdr core). It starts a program in a
 // terminal that outlives kabane, reads its state and screen, types into it and ends it. Swapping
 // hc for another runtime replaces this file and keeps `Runtime`.
-import type { Result } from "@cabane/extension";
-import { err, ok, tryCatch } from "./result";
+import type { Host, Result } from "@cabane/extension";
+import { err, ok, tryCatch, trySync } from "./result";
 import type { Runs } from "./runs";
 
 export namespace HcRuntime {
@@ -37,6 +37,18 @@ export namespace HcRuntime {
 		reason?: string | null;
 	};
 
+	const terminalSchema = (z: Host["z"]) =>
+		z.object({
+			state: z.string(),
+			status: z.object({ state: z.string() }).nullish(),
+			turn: z.number().int().nonnegative().optional(),
+			reason: z.string().nullish(),
+		});
+
+	/** hc's error envelope on a failed `--json` call. */
+	const errorSchema = (z: Host["z"]) =>
+		z.object({ error: z.object({ message: z.string() }) });
+
 	/**
 	 * A terminal's run state; null is a terminal hc no longer has. `status.state` is the program's
 	 * own word (idle, working, done, blocked or error) and is null when it never said; `turn`
@@ -57,6 +69,21 @@ export namespace HcRuntime {
 		if (word === undefined)
 			return { state: (terminal.turn ?? 0) > 0 ? "idle" : "running", from };
 		return { state: "idle", from };
+	};
+
+	/** The run state `hc get --json` printed, or an err naming hc when it is not that shape. */
+	export const seen = (z: Host["z"], stdout: string): Result<Seen> => {
+		const json = trySync((): unknown => JSON.parse(stdout));
+		if (!json.ok)
+			return err(new Error(`hc get printed no JSON: ${stdout.slice(0, 200)}`));
+		const parsed = terminalSchema(z).safeParse(json.value);
+		return parsed.success
+			? ok(stateOf(parsed.data))
+			: err(
+					new Error(
+						`hc get --json printed a terminal kabane cannot read: ${parsed.error.message}`,
+					),
+				);
 	};
 
 	/** Why hc cannot be used, or undefined when it is on PATH. */
@@ -84,89 +111,80 @@ export namespace HcRuntime {
 			return { code, stdout, stderr };
 		});
 
-	/** hc's own message for a failed call: its JSON error, else what it printed. */
-	const failure = (command: string, ran: Ran): Error => {
+	/** hc's own message for a failed call: its JSON error, else the line it printed. */
+	const failure = (z: Host["z"], command: string, ran: Ran): Error => {
 		const text = (ran.stdout.trim() || ran.stderr.trim()).split("\n")[0] ?? "";
-		let message = text;
-		try {
-			const parsed = JSON.parse(text) as { error?: { message?: string } };
-			message = parsed.error?.message ?? text;
-		} catch {
-			// Not JSON: the line as printed.
-		}
+		const json = trySync((): unknown => JSON.parse(text));
+		const parsed = json.ok ? errorSchema(z).safeParse(json.value) : undefined;
+		const message = parsed?.success ? parsed.data.error.message : text;
 		return new Error(
 			`hc ${command} failed (exit ${ran.code})${message ? `: ${message}` : ""}`,
 		);
 	};
 
-	const call = async (
-		command: string,
-		args: readonly string[],
-	): Promise<Result<string>> => {
-		const blocked = missing();
-		if (blocked !== undefined) return err(new Error(blocked));
-		const ran = await exec([command, ...args]);
-		if (!ran.ok) return ran;
-		return ran.value.code === 0
-			? ok(ran.value.stdout)
-			: err(failure(command, ran.value));
-	};
-
-	export const runtime: Runtime = {
-		missing: () => missing(),
-		start: async ({ argv, cwd, name, labels }) => {
-			const started = await call("run", [
-				"--bg",
-				"--json",
-				"--no-parent",
-				"--cwd",
-				cwd,
-				"--name",
-				name,
-				...Object.entries(labels).flatMap(([key, value]) => [
-					"--label",
-					`${key}=${value}`,
-				]),
-				"--",
-				...argv,
-			]);
-			return started.ok ? ok({ terminal: name }) : started;
-		},
-		get: async (terminal) => {
+	/** The runtime over the `hc` on PATH; `z` is the host's, which reads hc's JSON. */
+	export const runtime = (z: Host["z"]): Runtime => {
+		const call = async (
+			command: string,
+			args: readonly string[],
+		): Promise<Result<string>> => {
 			const blocked = missing();
 			if (blocked !== undefined) return err(new Error(blocked));
-			const ran = await exec(["get", "--json", terminal]);
+			const ran = await exec([command, ...args]);
 			if (!ran.ok) return ran;
-			if (ran.value.code === NOT_FOUND) return ok(stateOf(null));
-			if (ran.value.code !== 0) return err(failure("get", ran.value));
-			try {
-				return ok(stateOf(JSON.parse(ran.value.stdout) as Terminal));
-			} catch {
-				return err(
-					new Error(
-						`hc get printed no JSON: ${ran.value.stdout.slice(0, 200)}`,
-					),
+			return ran.value.code === 0
+				? ok(ran.value.stdout)
+				: err(failure(z, command, ran.value));
+		};
+
+		return {
+			missing: () => missing(),
+			start: async ({ argv, cwd, name, labels }) => {
+				const started = await call("run", [
+					"--bg",
+					"--json",
+					"--no-parent",
+					"--cwd",
+					cwd,
+					"--name",
+					name,
+					...Object.entries(labels).flatMap(([key, value]) => [
+						"--label",
+						`${key}=${value}`,
+					]),
+					"--",
+					...argv,
+				]);
+				return started.ok ? ok({ terminal: name }) : started;
+			},
+			get: async (terminal) => {
+				const blocked = missing();
+				if (blocked !== undefined) return err(new Error(blocked));
+				const ran = await exec(["get", "--json", terminal]);
+				if (!ran.ok) return ran;
+				if (ran.value.code === NOT_FOUND) return ok(stateOf(null));
+				if (ran.value.code !== 0) return err(failure(z, "get", ran.value));
+				return seen(z, ran.value.stdout);
+			},
+			read: (terminal) => call("read", [terminal]),
+			send: async (terminal, text) => {
+				const sent = await call("send", ["--json", terminal, text]);
+				return sent.ok ? ok(undefined) : sent;
+			},
+			stop: async (terminal) => {
+				const stopped = await call("kill", ["--json", terminal]);
+				return stopped.ok ? ok(undefined) : stopped;
+			},
+			attach: async (terminal) => {
+				const blocked = missing();
+				if (blocked !== undefined) return err(new Error(blocked));
+				return tryCatch(
+					() =>
+						Bun.spawn(["hc", "attach", terminal], {
+							stdio: ["inherit", "inherit", "inherit"],
+						}).exited,
 				);
-			}
-		},
-		read: (terminal) => call("read", [terminal]),
-		send: async (terminal, text) => {
-			const sent = await call("send", ["--json", terminal, text]);
-			return sent.ok ? ok(undefined) : sent;
-		},
-		stop: async (terminal) => {
-			const stopped = await call("kill", ["--json", terminal]);
-			return stopped.ok ? ok(undefined) : stopped;
-		},
-		attach: async (terminal) => {
-			const blocked = missing();
-			if (blocked !== undefined) return err(new Error(blocked));
-			return tryCatch(
-				() =>
-					Bun.spawn(["hc", "attach", terminal], {
-						stdio: ["inherit", "inherit", "inherit"],
-					}).exited,
-			);
-		},
+			},
+		};
 	};
 }

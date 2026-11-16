@@ -2,11 +2,12 @@
 // extension and is absent when it is disabled; a device without it, the hub included, parks its
 // ops. Nothing outside this file knows the table, so moving the row elsewhere changes this file.
 import type { Db, Host, KabaneModule, Result } from "@cabane/extension";
-import { ok } from "./result";
+import { err, ok, trySync } from "./result";
 
 export namespace Runs {
 	/** What a run is doing, read from its runtime; kabane never decides that it succeeded. */
 	export type State = "running" | "waiting" | "idle" | "ended";
+	const STATES = ["running", "waiting", "idle", "ended"] as const;
 
 	export type Run = {
 		id: string;
@@ -71,38 +72,58 @@ export namespace Runs {
 		],
 	});
 
-	type Row = {
-		id: string;
-		recipe: string;
-		recipe_hash: string;
-		target_id: string | null;
-		scope_uri: string;
-		dir: string;
-		machine: string;
-		cwd: string;
-		runtime: string;
-		terminal: string;
-		inputs: string;
-		state: string;
-		started_at: string;
-		ended_at: string | null;
-	};
+	/** A stored row, which may have come from another device's ops: checked, never cast. */
+	const rowSchema = (z: Host["z"]) =>
+		z.object({
+			id: z.string(),
+			recipe: z.string(),
+			recipe_hash: z.string(),
+			target_id: z.string().nullable(),
+			scope_uri: z.string(),
+			dir: z.string(),
+			machine: z.string(),
+			cwd: z.string(),
+			runtime: z.literal("hc"),
+			terminal: z.string(),
+			inputs: z.string(),
+			state: z.enum(STATES),
+			started_at: z.string(),
+			ended_at: z.string().nullable(),
+		});
 
-	const fromRow = (row: Row): Run => ({
-		id: row.id,
-		recipe: { name: row.recipe, hash: row.recipe_hash },
-		...(row.target_id === null ? {} : { target: row.target_id }),
-		scope: row.scope_uri,
-		dir: row.dir,
-		machine: row.machine,
-		cwd: row.cwd,
-		runtime: "hc",
-		terminal: row.terminal,
-		inputs: JSON.parse(row.inputs) as Record<string, unknown>,
-		state: row.state as State,
-		startedAt: row.started_at,
-		...(row.ended_at === null ? {} : { endedAt: row.ended_at }),
-	});
+	const fromRow = (z: Host["z"], raw: unknown): Result<Run> => {
+		const row = rowSchema(z).safeParse(raw);
+		if (!row.success)
+			return err(
+				new Error(`${TABLE}: a row kabane cannot read: ${row.error.message}`),
+			);
+		const { data } = row;
+		const json = trySync((): unknown => JSON.parse(data.inputs));
+		const inputs = json.ok
+			? z.record(z.unknown()).safeParse(json.value)
+			: undefined;
+		if (!inputs?.success)
+			return err(
+				new Error(
+					`${TABLE}: run ${data.id} has inputs that are not a JSON object`,
+				),
+			);
+		return ok({
+			id: data.id,
+			recipe: { name: data.recipe, hash: data.recipe_hash },
+			...(data.target_id === null ? {} : { target: data.target_id }),
+			scope: data.scope_uri,
+			dir: data.dir,
+			machine: data.machine,
+			cwd: data.cwd,
+			runtime: data.runtime,
+			terminal: data.terminal,
+			inputs: inputs.data,
+			state: data.state,
+			startedAt: data.started_at,
+			...(data.ended_at === null ? {} : { endedAt: data.ended_at }),
+		});
+	};
 
 	const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
@@ -167,18 +188,29 @@ export namespace Runs {
 			return tx.afterWrite(TABLE, "update", id);
 		});
 
-	const select = (db: Db, where: string, params: string[]): Run[] =>
-		(
-			db
-				.query(
-					`SELECT * FROM ${TABLE} WHERE ${where} ORDER BY started_at DESC, id DESC`,
-				)
-				.all(...params) as Row[]
-		).map(fromRow);
+	const select = (
+		z: Host["z"],
+		db: Db,
+		where: string,
+		params: string[],
+	): Result<Run[]> => {
+		const rows = db
+			.query(
+				`SELECT * FROM ${TABLE} WHERE ${where} ORDER BY started_at DESC, id DESC`,
+			)
+			.all(...params);
+		const runs: Run[] = [];
+		for (const row of rows) {
+			const run = fromRow(z, row);
+			if (!run.ok) return run;
+			runs.push(run.value);
+		}
+		return ok(runs);
+	};
 
 	/** The scope's runs, newest first. */
 	export const list = (host: Host, scope: string): Promise<Result<Run[]>> =>
-		host.store.read((db) => ok(select(db, "scope_uri = ?", [scope])));
+		host.store.read((db) => select(host.z, db, "scope_uri = ?", [scope]));
 
 	/** The scope's runs whose id is `key` or ends with it, case aside. */
 	export const find = (
@@ -187,12 +219,10 @@ export namespace Runs {
 		key: string,
 	): Promise<Result<Run[]>> =>
 		host.store.read((db) =>
-			ok(
-				select(db, "scope_uri = ? AND (id = ? OR id LIKE ?)", [
-					scope,
-					key.toUpperCase(),
-					`%${key.toUpperCase().replace(/[%_]/g, "")}`,
-				]),
-			),
+			select(host.z, db, "scope_uri = ? AND (id = ? OR id LIKE ?)", [
+				scope,
+				key.toUpperCase(),
+				`%${key.toUpperCase().replace(/[%_]/g, "")}`,
+			]),
 		);
 }
