@@ -34,7 +34,9 @@ the row to a first-party package changes `src/runs.ts` and `modules.ts` only.
 
 `runtime` is the runtime's name and `session` its own handle for what it started, which only that
 runtime reads: for hc, the terminal's name, which the adapter builds from the recipe name and the
-run id. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
+run id. What a user reads calls `session` the run's terminal (the `TERMINAL` column of `kabane
+runs`, "in hc terminal …" from `kabane run`), because hc is the only runtime; `--json` and
+`docs/recipes.md`'s field table say `session`. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
 until `start` returns, so a start that fails still leaves an ended run. `kabane runs` leaves a run
 in a runtime it does not have as recorded, and `read`, `send` and `attach` on a run whose runtime
 has no terminal fail with one line naming the runtime.

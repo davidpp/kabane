@@ -114,7 +114,26 @@ time runs are listed:
 
 Kabane never says a run succeeded. `idle` means the agent stopped; what it did is what it
 wrote on the issue. A run started on another machine shows the state last recorded there and
-that machine's name, and `read`, `send`, `attach` and `stop` refuse it.
+that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in a runtime
+this kabane does not have is treated the same way, and `read`, `send` and `attach` on a runtime
+with no terminal fail with one line naming it.
+
+With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
+attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
+of runs with these fields:
+
+| Field | Meaning |
+|---|---|
+| `id` | the run's id |
+| `recipe` | `{ name, hash }`: the recipe and a hash of the file it started from |
+| `target` | `{ kind, id }`: what the run works on, absent when the recipe takes none. `kabane run` writes kind `issue` and the issue's full id |
+| `scope`, `dir`, `cwd` | the scope's URI, the folder relative to its root (`""` at the root), and that folder's full path |
+| `machine` | the host name of the machine the run started on |
+| `runtime` | what started the run: `hc` |
+| `session` | the runtime's own handle for it: for `hc`, the terminal's name |
+| `inputs` | the input values the run started with |
+| `state` | `running`, `waiting`, `idle` or `ended` |
+| `startedAt`, `endedAt` | ISO timestamps; `endedAt` once the run has ended |
 
 ## Settings
 
