@@ -42,7 +42,17 @@ const PermissionRequestMetaSchema = z.object({
 });
 export type PermissionRequestMeta = z.infer<typeof PermissionRequestMetaSchema>;
 
-/** Answerable metadata serialized into a question activity's body. */
+/**
+ * Answerable metadata serialized into a question activity's body.
+ *
+ * `questionIndex`, `totalQuestions`, `defaultAnswer`, `skipAnswer` and `permission` were the
+ * loop's, which keeps its own copy now (`extensions/loop/src/question-body.ts`), and nothing in
+ * kabane writes them. They stay because shipped migrations parse stored bodies through this
+ * schema: `drop-permission-decisions` recognises a relayed permission request by `permission`,
+ * and `session-outcomes` takes the text of each answered question from bodies that can carry
+ * any of them. Removing a field can change what those migrations do on a database that has not
+ * run them yet, and a shipped migration keeps the behaviour it shipped with.
+ */
 export const QuestionMetaSchema = z.object({
 	/** Predefined choices (rendered as buttons/pills). */
 	choices: z.array(z.string()).optional(),
