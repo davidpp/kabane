@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, it, spyOn } from "bun:test";
-import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	mkdirSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "@cabane/extension";
@@ -163,6 +170,9 @@ it("loads real directories and isolates import, API, factory name, and modules r
 	]);
 	expect(all.refused[1]?.reason).toContain("API 2; this kabane supports API 1");
 	expect(all.refused[3]?.reason).toContain("does not load data modules yet");
+	expect(all.directories).toEqual([
+		{ name: "hello", directory: realpathSync(dir) },
+	]);
 	expect(await Bun.file(join(home, "ran")).exists()).toBe(false);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	expect((await run(["--help"], env, home)).text).toContain("Say hello");
@@ -246,6 +256,41 @@ it("discovers symlinks and directory settings only when enabled, preserving bund
 	expect(word.ok && word.value.value).toBe("hello");
 	const options = await ConfigSettings.get(home, {}, "extensions");
 	expect(options.ok && options.value.options).toContain("linked");
+});
+
+it("an installed extension's description comes from its package.json, read without importing it", async () => {
+	const home = makeHome();
+	install(
+		home,
+		"described",
+		`import {writeFileSync} from "node:fs"; writeFileSync(${JSON.stringify(join(home, "ran"))}, "bad"); export default () => ({name: "described"});`,
+	);
+	const dir = join(home, "extensions", "described");
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({
+			description: "  Keeps notes\n beside issues. ",
+			kabane: { extension: "./index.ts", api: 1 },
+		}),
+	);
+	install(home, "plain", 'export default () => ({name: "plain"});');
+	expect(await Extensions.description(home, "described")).toBe(
+		"Keeps notes beside issues.",
+	);
+	expect(await Extensions.description(home, "plain")).toBeUndefined();
+	expect(await Extensions.description(home, "absent")).toBeUndefined();
+	expect(await Bun.file(join(home, "ran")).exists()).toBe(false);
+	const loop = await Bun.file(
+		join(import.meta.dir, "../../../extensions/loop/package.json"),
+	).json();
+	expect(await Extensions.description(home, "loop")).toBe(loop.description);
+	expect(loop.description).toContain("`a` on an issue opens its run form");
+});
+
+it("a bundled extension carries no directory, so it contributes no copilot files", async () => {
+	const all = await Extensions.loadAll(["loop"], makeHome());
+	expect(all.loaded.map((e) => e.name)).toEqual(["loop"]);
+	expect(all.directories).toEqual([]);
 });
 
 it("an enabled directory wins over the bundled extension", async () => {
@@ -545,3 +590,28 @@ it("gives standalone extension commands the host's cached harness mode", async (
 	);
 	expect(outcome.json).toEqual({ host: "default", context: "default" });
 });
+
+it("a compiled kabane still carries the bundled loop's description", () => {
+	const root = makeHome();
+	const entry = join(root, "describe.ts");
+	const binary = join(root, "describe");
+	writeFileSync(
+		entry,
+		`import { Extensions } from ${JSON.stringify(join(import.meta.dir, "extensions.ts"))}; console.log(await Extensions.description(${JSON.stringify(root)}, "loop"));`,
+	);
+	const build = Bun.spawnSync([
+		process.execPath,
+		"build",
+		"--compile",
+		entry,
+		"--outfile",
+		binary,
+	]);
+	expect(build.exitCode).toBe(0);
+	// Run from elsewhere, so nothing beside the source tree can stand in for the bundle.
+	const run = Bun.spawnSync([binary], { cwd: tmpdir() });
+	expect(run.exitCode).toBe(0);
+	expect(run.stdout.toString().trim()).toContain(
+		"`a` on an issue opens its run form",
+	);
+}, 120_000);

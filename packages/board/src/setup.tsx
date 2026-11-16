@@ -133,7 +133,7 @@ export const nextLines = (harness: string, shortId: string): string[] => [
 
 /** Where the rest of the config is changed, so no one has to learn its JSON keys first. */
 const LATER_LINE =
-	"later: /setup in the copilot picks its harness or turns on the loop";
+	"later: /setup in the copilot picks its harness or turns on an extension";
 
 /**
  * The welcome's wordmark, in opencode's block-glyph manner: each letter four cells of `█▀▄` over

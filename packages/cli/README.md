@@ -204,7 +204,9 @@ run `kabane config set extensions <name> --layer global` (comma-separated names 
 Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
 The entry's default export is a factory receiving `{ api: 1, kabane: { version, executable } }`
 and returning an extension whose `name` matches the directory. Its own `node_modules` resolve
-normally. A manifest naming `modules` is refused until data-module loading is supported.
+normally. A manifest naming `modules` is refused until data-module loading is supported. Markdown
+files under `copilot/` add procedures and `/` shortcuts to the board's copilot; the board's
+README describes them, under its copilot.
 
 Only enabled directories run code; a directory alone, a single `.ts` file, or a repository's
 files load nothing. Directory settings become known to `kabane config` only after enablement.

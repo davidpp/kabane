@@ -36,7 +36,8 @@ export namespace BoardCopilot {
 		overrides?: Harnesses.Overrides;
 		// The mode the session starts in; the harness's own auto mode when absent.
 		mode?: Harnesses.Mode;
-		// This device's config, which the copilot is told it may edit when asked to set kabane up.
+		// This device's config, which the copilot is told it may edit when asked to set kabane up,
+		// and the procedures and shortcuts its enabled extensions contribute.
 		setup: CopilotInstructions.Setup;
 		// How the harness is reached. Defaults to spawning it; tests pass an in-process transport,
 		// and it is the seam for a connection opened elsewhere.
@@ -563,7 +564,8 @@ export namespace BoardCopilot {
 			},
 			answerPermission: questions.answerPermission,
 			answerElicitation: questions.answerElicitation,
-			shortcuts: (): CopilotShortcut[] => [...CopilotInstructions.SHORTCUTS],
+			shortcuts: (): CopilotShortcut[] =>
+				CopilotInstructions.shortcuts(options.setup),
 			close: () => {
 				questions.unblockAll();
 				if (connection) AcpClient.close(connection);

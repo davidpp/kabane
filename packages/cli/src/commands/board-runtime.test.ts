@@ -165,7 +165,7 @@ test("a real directory board factory rejection reaches the announcer with load r
 		all.refused.push(Extensions.missing("missing", home));
 		const several = await wired.announcer?.announce();
 		expect(several?.ok && several.value).toBe(
-			"2 extensions refused: broken, missing; run kabane --help for why",
+			"kabane doctor: refused 2 extensions",
 		);
 	} finally {
 		wired.copilot.close();

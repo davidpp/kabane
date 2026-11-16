@@ -35,7 +35,8 @@ Several issues change this package; check main before you edit:
 
 - JCAB-326 ports the loop: values arrive on `host`, and the loop leaves the CLI's bundle. Plan
   lint now lives in `src/lint/` (JCAB-338); `src/advice.ts` and `src/commands.ts` use it.
-- JCAB-324 moves the copilot's loop procedure and shortcut into files in this extension.
+- The copilot's loop procedures are files in `copilot/procedures/`, which the host reads only
+  when the loop loads from a directory (`packages/board/README.md`, the copilot's instructions).
 
 Read before writing: `src/extension.ts`, `src/store.ts`, and the entry point you are changing
 in `src/commands.ts` with its test.

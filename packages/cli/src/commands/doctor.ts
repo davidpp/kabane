@@ -7,6 +7,7 @@ import {
 	type Command,
 	configureRuntime,
 } from "../context";
+import { copilotFiles } from "../doctor/copilot-files";
 import { kabane } from "../doctor/kabane";
 import { Extensions } from "../extensions";
 import { activateHostRecord, hostHarnessMode } from "../host";
@@ -77,10 +78,13 @@ export const doctor: Command = {
 		const sources: Doctor.Source[] = [...kabane];
 		const enabled = Extensions.enabled(ctx.home);
 		// A refused extension is that extension's finding; the rest still run their checks.
-		const { loaded, refused } = enabled.ok
+		const { loaded, refused, directories } = enabled.ok
 			? await Extensions.loadAll(enabled.value, ctx.home)
-			: { loaded: [], refused: [] };
-		sources.push(...Extensions.doctors(loaded));
+			: { loaded: [], refused: [], directories: [] };
+		sources.push(
+			...Extensions.doctors(loaded),
+			...copilotFiles(directories, ctx.home),
+		);
 		for (const refusal of refused)
 			sources.push({
 				name: refusal.name,

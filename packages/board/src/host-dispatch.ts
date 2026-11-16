@@ -20,7 +20,7 @@ export const isDispatchEffect = BoardNav.effectsOf(DISPATCH_EFFECTS);
 // on without knowing the config's keys.
 const noDispatcher = (copilot: Copilot | undefined): BoardNav.Notice => ({
 	text: copilot?.shortcuts().some((s) => s.name === "setup")
-		? "no extension dispatches here · /setup in the copilot turns on the loop"
+		? "no extension dispatches here · /setup in the copilot turns on an extension"
 		: "no dispatcher configured",
 	tone: "error",
 });
