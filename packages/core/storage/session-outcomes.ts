@@ -9,9 +9,11 @@
  * questions, answers, withdrawals, any other type) stays behind and goes when
  * the migration drops the tables.
  *
- * Every row reuses the id of the row it comes from, so a re-run inserts nothing,
- * and two devices that migrate copies of one database write the same rows,
- * which the append-only sync family keeps once.
+ * Every column of a row written here is a function of the source rows alone:
+ * its id is the source row's, its author, `updated_by` and times come from the
+ * activity and its session, never from the device's actor or clock. So two
+ * devices that migrate copies of one database write identical rows, which the
+ * append-only sync family keeps once, and a re-run writes nothing.
  *
  * Nothing is lost quietly. A database missing one of the two tables, or one
  * that already holds a different row under an id this step would write, fails
@@ -24,7 +26,6 @@
  */
 
 import type { Db } from "../db/port";
-import { Runtime } from "../runtime";
 import { parseQuestionBody } from "../schemas";
 import { TABLES } from "./helpers";
 import { Oplog } from "./oplog";
@@ -71,6 +72,10 @@ type SessionRow = {
 const ANSWERS = "answers ";
 
 const AGENT_ACTOR = "cabane://actor/agent/";
+
+/** An author as an actor URI: one already a URI as it is, an agent's name as that agent. */
+const actorOf = (author: string): string =>
+	author.startsWith("cabane://") ? author : `${AGENT_ACTOR}${author}`;
 
 /** Fail the migration: thrown inside its transaction, which rolls back. */
 const refuse = (what: string): never => {
@@ -169,7 +174,7 @@ const moveOutcomes = (db: Db): void => {
 				author,
 				authorType,
 				content,
-				Runtime.actor(),
+				actorOf(author),
 				a.created_at,
 			],
 		);
@@ -240,7 +245,7 @@ const moveSessions = (db: Db): void => {
 			`INSERT INTO ${TABLES.work_log}
 			   (id, task_id, refs, updated_by, visibility, created_at)
 			 VALUES (?, ?, ?, ?, 'shared', ?)`,
-			[s.id, s.task_id, refs, Runtime.actor(), s.started_at],
+			[s.id, s.task_id, refs, actorOf(s.agent), s.started_at],
 		);
 		Oplog.afterWrite(db, TABLES.work_log, "insert", s.id);
 	}

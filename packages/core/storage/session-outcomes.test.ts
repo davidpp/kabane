@@ -275,10 +275,17 @@ describe("Migration session-outcomes on a database with session rows", () => {
 		const entries = (await rows(base, TABLES.comments)).filter(
 			(r) => r.kind !== "comment",
 		);
+		// Every column comes from the source rows: the migrating device's actor
+		// and clock appear nowhere.
 		for (const entry of entries) {
 			expect(entry.visibility).toBe("shared");
-			expect(entry.updated_by).toBe(MIGRATOR);
+			expect(entry.updated_by).toBe(
+				String(entry.author).startsWith("cabane://")
+					? entry.author
+					: `cabane://actor/agent/${entry.author}`,
+			);
 			expect(entry.version).toBe(1);
+			expect(entry.updated_at).toBeNull();
 		}
 
 		expect(must(await Planner.getWorkLogs(base, issue.id))).toEqual([
@@ -323,7 +330,7 @@ describe("Migration session-outcomes on a database with session rows", () => {
 			(r) => r.id === "01S1",
 		);
 		expect(migratedLog).toMatchObject({
-			updated_by: MIGRATOR,
+			updated_by: "cabane://actor/agent/claude",
 			visibility: "shared",
 			version: 1,
 		});
@@ -367,9 +374,6 @@ describe("Migration session-outcomes on a database with session rows", () => {
 });
 
 describe("Migration session-outcomes through sync", () => {
-	const ids = async (base: string, table: string) =>
-		(await rows(base, table)).map((r) => r.id);
-
 	/** A device that took no part in the session, fully migrated and armed. */
 	const reader = async (name: string) => {
 		const base = freshBase(name);
@@ -403,11 +407,11 @@ describe("Migration session-outcomes through sync", () => {
 		expect(brief).not.toContain("AI_COMMENT_BEFORE");
 	});
 
-	it("converges two devices that migrate copies of one database to one entry per activity", async () => {
+	it("converges two devices that migrate copies of one database as different actors, row for row", async () => {
 		const relay = LocalRelay.create();
-		as(MIGRATOR);
+		as("cabane://actor/human/alpha");
 		const alpha = await before("copy-alpha");
-		const { issue } = await seedLegacy(alpha);
+		const { issue, other } = await seedLegacy(alpha);
 		const beta = freshBase("copy-beta");
 		// A copy of the file as it stands: VACUUM INTO carries what the WAL still holds.
 		await withDb(alpha, (db) =>
@@ -416,18 +420,31 @@ describe("Migration session-outcomes through sync", () => {
 		await arm(alpha, "alpha");
 		await arm(beta, "beta");
 		must(await Planner.init(alpha));
+		// Later, elsewhere, under another actor.
+		await Bun.sleep(5);
+		as("cabane://actor/human/beta");
 		must(await Planner.init(beta));
 		const a = LocalRelay.transportFor(relay, "alpha");
 		const b = LocalRelay.transportFor(relay, "beta");
+		// Both directions: each device's ops reach the other.
 		must(await Sync.push(alpha, a));
 		must(await Sync.push(beta, b));
 		must(await Sync.pull(alpha, a));
 		must(await Sync.pull(beta, b));
+		must(await Sync.pull(alpha, a));
 
 		for (const table of [TABLES.comments, TABLES.work_log])
-			expect(await ids(alpha, table)).toEqual(await ids(beta, table));
+			expect(await rows(alpha, table)).toEqual(await rows(beta, table));
+		for (const id of [issue.id, other.id])
+			expect(must(await Planner.assembleContext(alpha, id))).toBe(
+				must(await Planner.assembleContext(beta, id)),
+			);
 		expect(await outcomesOf(alpha, issue.id)).toEqual(EXPECTED_ISSUE_OUTCOMES);
-		expect(await outcomesOf(beta, issue.id)).toEqual(EXPECTED_ISSUE_OUTCOMES);
+		const actors = (await rows(alpha, TABLES.comments))
+			.filter((r) => r.kind !== "comment")
+			.map((r) => r.updated_by);
+		expect(actors).not.toContain("cabane://actor/human/alpha");
+		expect(actors).not.toContain("cabane://actor/human/beta");
 	});
 
 	it("seeds the migrated rows by backfill on a device armed after the migration", async () => {
