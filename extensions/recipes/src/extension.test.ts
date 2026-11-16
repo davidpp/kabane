@@ -82,7 +82,12 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 	/** A run row as `kabane run` writes it, put straight into the table: no terminal starts. */
 	const seed = (
 		id: string,
-		fields: { machine?: string; state?: string; terminal?: string } = {},
+		fields: {
+			machine?: string;
+			state?: string;
+			runtime?: string;
+			session?: string;
+		} = {},
 	) => {
 		// The scope this project resolves to, read from an issue made here.
 		const added = kabane(["add", "Scope probe", "--json"]);
@@ -90,15 +95,16 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 		const db = new Database(join(home, "kabane.db"));
 		try {
 			db.run(
-				`INSERT INTO recipes_runs (id, recipe, recipe_hash, target_id, scope_uri, dir, machine,
-				   cwd, runtime, terminal, inputs, state, started_at, ended_at, updated_at)
-				 VALUES (?, 'research', 'abc', NULL, ?, '', ?, ?, 'hc', ?, '{}', ?, ?, NULL, ?)`,
+				`INSERT INTO recipes_runs (id, recipe, recipe_hash, target_kind, target_id, scope_uri,
+				   dir, machine, cwd, runtime, session, inputs, state, started_at, ended_at, updated_at)
+				 VALUES (?, 'research', 'abc', NULL, NULL, ?, '', ?, ?, ?, ?, '{}', ?, ?, NULL, ?)`,
 				[
 					id,
 					scope,
 					fields.machine ?? hostname(),
 					root,
-					fields.terminal ?? `kabane-test-${id.slice(-6).toLowerCase()}`,
+					fields.runtime ?? "hc",
+					fields.session ?? `kabane-test-${id.slice(-6).toLowerCase()}`,
 					fields.state ?? "running",
 					new Date().toISOString(),
 					new Date().toISOString(),
@@ -262,6 +268,24 @@ test("runs lists live runs unless --all, and refuses another machine's run by na
 	);
 });
 
+test("a run in a runtime this kabane lacks keeps its recorded state, and its verbs name that runtime", () => {
+	const { kabane, seed } = setup();
+	kabane(["runs"]);
+	seed("01M7JT0TFJB7MF38VYDWCG0EEE", { runtime: "cloud", session: "s-1" });
+	// hc reconciles this machine's runs, and leaves the cloud one as recorded.
+	expect(
+		JSON.parse(kabane(["runs", "--json"]).stdout).runs.map(
+			(r: { state: string; session: string }) => [r.state, r.session],
+		),
+	).toEqual([["running", "s-1"]]);
+	for (const verb of ["attach", "read", "stop"])
+		expect(kabane(["runs", verb, "eee"])).toMatchObject({
+			code: 1,
+			stderr:
+				"Error: Run 01M7JT0TFJB7MF38VYDWCG0EEE runs in cloud, which this kabane does not have",
+		});
+});
+
 // Reads one terminal through the real hc, by a name no terminal has: hc answers not found and
 // nothing of the human's is touched. Skipped where hc is not installed.
 test.skipIf(Bun.which("hc") === null)(
@@ -270,7 +294,7 @@ test.skipIf(Bun.which("hc") === null)(
 		const { kabane, seed } = setup();
 		kabane(["runs"]);
 		seed("01M7JT0TFJB7MF38VYDWCG0CCC", {
-			terminal: `kabane-test-gone-${Date.now().toString(36)}`,
+			session: `kabane-test-gone-${Date.now().toString(36)}`,
 		});
 		seed("01M7JT0TFJB7MF38VYDWCG0DDD", { machine: "elsewhere" });
 		expect(

@@ -2,12 +2,19 @@
 // record the run, start the harness in a runtime terminal and return without waiting. With no
 // recipe it lists the project's recipes.
 import { hostname } from "node:os";
-import { relative } from "node:path";
-import type { Extension, Host, Outcome, ProjectScope } from "@cabane/extension";
+import { join, relative } from "node:path";
+import type {
+	Extension,
+	Host,
+	Outcome,
+	ProjectScope,
+	Result,
+} from "@cabane/extension";
 import { Inputs } from "./inputs";
 import { Recipe } from "./recipe";
+import { err, ok } from "./result";
 import { Runs } from "./runs";
-import type { HcRuntime } from "./runtime-hc";
+import type { Runtime } from "./runtime";
 
 /** The `recipes` settings namespace. */
 export const settingsSchema = (z: Host["z"]) =>
@@ -151,61 +158,91 @@ const targetOf = async (
 	};
 };
 
-type Launch = {
-	project: ProjectScope;
+/** What starting a run takes: everything explicit, no cwd, no terminal, no settings read. */
+type Start = {
+	scopeUri: string;
+	/** The scope's root folder. */
+	root: string;
+	/** The folder the run starts in, relative to `root` ("" at the root). */
+	dir: string;
 	recipe: Recipe.Recipe;
 	target?: Recipe.Target;
+	/** The recipe's inputs, already resolved and validated. */
 	inputs: Record<string, Recipe.Value>;
+	/** The command the prompt is appended to: `recipes.harness`. */
 	harness: readonly string[];
+	actor: string;
 };
 
-/** Record the run, start its terminal and log it on the target: the steps after every check. */
-const launch = async (
+/** A run that started, and what went wrong after it did. */
+type Started = { run: Runs.Run; warnings: string[] };
+
+/**
+ * Record the run, start it in the runtime and log it on the target. `kabane run` calls it after
+ * resolving its inputs from the cwd, its flags and its prompts; anything else that starts a
+ * recipe, such as JCAB-445's dispatcher, calls it the same way once it is exported.
+ */
+const startRun = async (
 	host: Host,
-	runtime: HcRuntime.Runtime,
-	ctx: Extension.Ctx,
-	{ project, recipe, target, inputs, harness }: Launch,
-): Promise<Outcome> => {
+	runtime: Runtime,
+	{ scopeUri, root, dir, recipe, target, inputs, harness, actor }: Start,
+): Promise<Result<Started>> => {
+	const blocked = runtime.missing();
+	if (blocked !== undefined) return err(new Error(blocked));
 	const { name } = recipe;
 	const id = Runs.newId();
-	const terminal = `${name.slice(0, 22)}-${id.slice(-6).toLowerCase()}`;
 	const text = `${preamble(id, name, target)}\n\n${Recipe.render(recipe, inputs, target)}`;
+	const cwd = join(root, dir);
+	// Recorded before it starts, so a start that fails still leaves an ended run to see.
 	const stored = await Runs.insert(
 		host,
 		{
 			id,
 			recipe: { name, hash: recipe.hash },
-			...(target === undefined ? {} : { target: target.id }),
-			scope: project.scopeUri,
-			dir: relative(project.root, ctx.cwd),
+			...(target === undefined
+				? {}
+				: { target: { kind: "issue", id: target.id } }),
+			scope: scopeUri,
+			dir,
 			machine: hostname(),
-			cwd: ctx.cwd,
-			runtime: "hc",
-			terminal,
+			cwd,
+			runtime: runtime.name,
+			session: Runs.STARTING,
 			inputs,
 			state: "running",
 			startedAt: new Date().toISOString(),
 		},
-		ctx.actor,
+		actor,
 	);
-	if (!stored.ok) return host.outcome.failure(stored.error);
+	if (!stored.ok) return stored;
 	const started = await runtime.start({
+		run: id,
+		title: name,
 		argv: [...harness, text],
-		cwd: ctx.cwd,
-		name: terminal,
+		cwd,
 		labels: {
 			"kabane.run": id,
 			...(target === undefined ? {} : { "kabane.issue": target.shortId }),
 		},
 	});
 	if (!started.ok) {
-		const ended = await Runs.setState(host, id, "ended", ctx.actor);
-		return host.outcome.failure(
-			ended.ok
-				? started.error
-				: `${started.error.message}; the run row ${id} is still recorded as running: ${ended.error.message}`,
-		);
+		const ended = await Runs.setState(host, id, "ended", actor);
+		return ended.ok
+			? started
+			: err(
+					new Error(
+						`${started.error.message}; the run row ${id} is still recorded as running: ${ended.error.message}`,
+					),
+				);
 	}
+	const session = await Runs.setSession(host, id, started.value, actor);
+	if (!session.ok)
+		return err(
+			new Error(
+				`${runtime.name} session ${started.value} started, and run ${id} does not record it: ${session.error.message}`,
+			),
+		);
+	const run = { ...stored.value, session: started.value };
 	const warnings: string[] = [];
 	if (target !== undefined) {
 		const logged = await host.record.log({
@@ -217,25 +254,13 @@ const launch = async (
 				`Warning: the run: ref was not logged on ${target.shortId}: ${logged.error.message}`,
 			);
 	}
-	return host.outcome.success(
-		{
-			run: id,
-			terminal,
-			attach: `kabane runs attach ${id}`,
-			...(warnings.length ? { warnings } : {}),
-		},
-		[
-			`Started run ${id} (${name}${target ? ` on ${target.shortId}` : ""}) in hc terminal ${terminal}.`,
-			`Attach: kabane runs attach ${id}`,
-			...warnings,
-		].join("\n"),
-	);
+	return ok({ run, warnings });
 };
 
 export const runCommand = (
 	host: Host,
 	settings: ReturnType<typeof settingsSchema>,
-	runtime: HcRuntime.Runtime,
+	runtime: Runtime,
 ): Extension.Command => ({
 	name: "run",
 	summary: "Start a project recipe in a background terminal",
@@ -273,14 +298,31 @@ export const runCommand = (
 			projectDir: project.value.root,
 		});
 		if (!configured.ok) return host.outcome.failure(configured.error);
-		const missing = runtime.missing();
-		if (missing !== undefined) return host.outcome.failure(missing);
-		return launch(host, runtime, ctx, {
-			project: project.value,
+		const started = await startRun(host, runtime, {
+			scopeUri: project.value.scopeUri,
+			root: project.value.root,
+			dir: relative(project.value.root, ctx.cwd),
 			recipe: recipe.value,
 			...(target.value === undefined ? {} : { target: target.value }),
 			inputs: inputs.value,
 			harness: configured.value.harness,
+			actor: ctx.actor,
 		});
+		if (!started.ok) return host.outcome.failure(started.error);
+		const { run, warnings } = started.value;
+		const on = target.value ? ` on ${target.value.shortId}` : "";
+		return host.outcome.success(
+			{
+				run: run.id,
+				session: run.session,
+				attach: `kabane runs attach ${run.id}`,
+				...(warnings.length ? { warnings } : {}),
+			},
+			[
+				`Started run ${run.id} (${run.recipe.name}${on}) in ${run.runtime} terminal ${run.session}.`,
+				`Attach: kabane runs attach ${run.id}`,
+				...warnings,
+			].join("\n"),
+		);
 	},
 });

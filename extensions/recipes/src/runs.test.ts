@@ -60,7 +60,7 @@ const run = (id: string, overrides: Partial<Runs.Run> = {}): Runs.Run => ({
 	machine: "here",
 	cwd: "/repo",
 	runtime: "hc",
-	terminal: `research-${id.slice(-6).toLowerCase()}`,
+	session: `research-${id.slice(-6).toLowerCase()}`,
 	inputs: { depth: "quick" },
 	state: "running",
 	startedAt: "2026-11-16T10:00:00.000Z",
@@ -77,7 +77,9 @@ const oplog = () =>
 	);
 
 it("stores a run, captures each write, stamps ended_at on ended and clears it after", async () => {
-	const first = run("01M7JT0TFJB7MF38VYDWCG8PKX", { target: "TASK1" });
+	const first = run("01M7JT0TFJB7MF38VYDWCG8PKX", {
+		target: { kind: "issue", id: "TASK1" },
+	});
 	value(await Runs.insert(host, first, "tester"));
 	expect(value(await Runs.list(host, SCOPE))).toEqual([first]);
 
@@ -158,4 +160,13 @@ it("refuses a row it cannot read, as one from another device's ops might be", as
 	const inputs = await Runs.find(host, SCOPE, "0001");
 	expect(inputs.ok).toBe(false);
 	if (!inputs.ok) expect(inputs.error.message).toContain("not a JSON object");
+
+	value(
+		await withDb(home, (db) =>
+			db.run("UPDATE recipes_runs SET inputs = '{}', target_id = 'TASK1'"),
+		),
+	);
+	const half = await Runs.find(host, SCOPE, "0001");
+	expect(half.ok).toBe(false);
+	if (!half.ok) expect(half.error.message).toContain("without the other");
 });
