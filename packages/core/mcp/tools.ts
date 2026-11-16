@@ -7,9 +7,10 @@
  * from this list, so a browser connector and a local CLI see the same surface.
  *
  * ONLY REPLICATED DATA. The hub holds what the sync set carries: tasks,
- * links, comments, work logs, projects, context refs, upstream links. Agent
- * sessions do not replicate, so there are no session tools here; the assembled
- * brief's Discussion section at the hub therefore carries comments only.
+ * links, timeline entries, work logs, projects, context refs, upstream links,
+ * and each registered module's tables. Core keeps no agent session: its
+ * outcomes are timeline entries and the session a `session:` ref in the work
+ * log, so the brief a device assembles and the hub's are the same.
  *
  * SCOPE IS EXPLICIT AT THE HUB. A device can default `scopeUri` from its
  * working directory; the hub has no directory, so `scopeRequired` makes every
@@ -747,7 +748,7 @@ const contextInput = {
 const context = define({
 	name: CORE_TOOL_NAMES.context,
 	kind: "read",
-	description: `THE read entrypoint before picking up an issue: description, DAG position, curated references, prior work and discussion. Prefer responseFormat: concise for bounded selected markdown (16KiB UTF-8 including JSON); consume ALL preceding chunks and finish required description/human steering before starting work. Completeness describes coverage from offset zero through this chunk, not instructions repeated in this response. Omitted/full preserves the complete legacy markdown envelope without a size bound. Local sessions/files may not be available at the hub.
+	description: `THE read entrypoint before picking up an issue: description, DAG position, curated references, prior work and discussion. Prefer responseFormat: concise for bounded selected markdown (16KiB UTF-8 including JSON); consume ALL preceding chunks and finish required description/human steering before starting work. Completeness describes coverage from offset zero through this chunk, not instructions repeated in this response. Omitted/full preserves the complete legacy markdown envelope without a size bound. Local files may not be available at the hub.
 
 Parameters:
 - id: ${ID_HINT}

@@ -28,9 +28,6 @@ import { traced } from "../observability";
 import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
-	type AgentActivity,
-	type AgentSession,
-	answeredQuestion,
 	type AssembleContextOpts,
 	AssembleContextOptsSchema,
 	DEFAULT_ENTRY_KIND,
@@ -42,12 +39,9 @@ import {
 	type TaskLink,
 	type TaskWorkLog,
 	type UpstreamLink,
-	parseQuestionBody,
 } from "../schemas";
 import { Planner as PlannerComments } from "./comments";
 import { Planner as PlannerContextRefs } from "./context-refs";
-import { Planner as SelectDurable } from "./select-durable";
-import { Planner as PlannerSessions } from "./sessions";
 import { Planner as PlannerTaskLinks } from "./task-links";
 import { Planner as PlannerTasks } from "./tasks";
 import { Planner as PlannerUpstreamLinks } from "./upstream-links";
@@ -312,79 +306,40 @@ const typedEntries = (entries: TaskEntry[]): DiscussionEntry[] =>
 const humanCommentEntries = (comments: TaskComment[]): DiscussionEntry[] =>
 	comments.filter((c) => c.authorType === "human").map(commentEntry);
 
-/** Session-less heuristic: the last 3 AI comments approximate durable signal. */
-const lastAiCommentEntries = (comments: TaskComment[]): DiscussionEntry[] =>
-	comments
-		.filter((c) => c.authorType === "ai")
-		.slice(-3)
-		.map(commentEntry);
+/**
+ * Whether an agent session ran on the task: its work log holds a `session:`
+ * ref. The work log replicates, so every device and the hub agree on it.
+ */
+const ranSessions = (workLogs: readonly TaskWorkLog[]): boolean =>
+	workLogs.some((w) => w.refs.some((r) => r.uri.startsWith("session:")));
 
 /**
- * One durable activity as a Discussion entry. A decision that answers a
- * question reads as the question, then the choice, under who made it.
+ * The AI comments kept: none on a task a session ran on, whose outcomes are
+ * typed entries; the last 3 on any other, as the durable signal they stand in
+ * for.
  */
-const activityEntry = (
-	s: AgentSession,
-	a: AgentActivity,
-	activities: readonly AgentActivity[],
-): DiscussionEntry => {
-	const tag = a.severity ? `${a.type}/${a.severity}` : a.type;
-	const question = answeredQuestion(a.context, activities);
-	const body = question
-		? `${parseQuestionBody(question.body).question}\n→ ${a.body}`
-		: a.body;
-	return {
-		createdAt: a.createdAt,
-		line: `**${a.author ?? s.agent}** (${tag}, ${a.createdAt}):\n${body}`,
-	};
-};
-
-/**
- * Durable session activities across every session, as Discussion entries.
- * A per-session activity fetch that fails degrades to no activities for that
- * session (never fails the call).
- */
-const sessionActivityEntries = async (
-	basePath: string,
-	sessions: AgentSession[],
-	strict: boolean,
-): Promise<Result<DiscussionEntry[]>> => {
-	const perSession = await Promise.all(
-		sessions.map(async (s) => {
-			const r = await PlannerSessions.getActivities(basePath, s.id);
-			if (!r.ok && strict)
-				return err(
-					new Error(
-						"Cannot read context discussion activities; retry the bounded read.",
-					),
-				);
-			const activities = r.ok ? r.value : [];
-			return ok(
-				SelectDurable.selectDurableActivities(activities).map((a) =>
-					activityEntry(s, a, activities),
-				),
-			);
-		}),
-	);
-	const entries: DiscussionEntry[] = [];
-	for (const result of perSession) {
-		if (!result.ok) return result;
-		entries.push(...result.value);
-	}
-	return ok(entries);
-};
+const aiCommentEntries = (
+	comments: TaskComment[],
+	sessioned: boolean,
+): DiscussionEntry[] =>
+	sessioned
+		? []
+		: comments
+				.filter((c) => c.authorType === "ai")
+				.slice(-3)
+				.map(commentEntry);
 
 /**
  * Discussion — ALL human comments and every typed entry no `latest` section
- * lifts (always) merged chronologically with the durable machine signal:
- *   - session-bearing tasks → durable session activities
- *   - session-less tasks    → the last 3 AI comments (pre-S4 heuristic)
+ * lifts (always) merged chronologically with the AI comments kept
+ * (`aiCommentEntries`).
  *
  * Human comments are the most load-bearing brief content (the steering left by
  * people) and carry NO other section, so they are ALWAYS included — the cap
- * bounds only the machine set, never the kept entries. A typed entry is kept
- * for the same reason: its writer gave it a kind to keep it. Work-log entries
- * are deliberately EXCLUDED — "Prior work" owns them.
+ * bounds only the AI comments, never the kept entries. A typed entry is kept
+ * for the same reason: its writer gave it a kind to keep it, and an agent's
+ * outcomes are typed. Work-log entries are deliberately EXCLUDED — "Prior work"
+ * owns them.
  */
 const discussionSection = (
 	kept: DiscussionEntry[],
@@ -490,8 +445,7 @@ const renderModuleSection = async (
 
 /**
  * The Discussion from one timeline snapshot (`readContextSections`): plain
- * comments under their rules, typed entries kept, merged with the sessions'
- * durable activities.
+ * comments under their rules, typed entries kept.
  */
 const renderDiscussion = async (
 	basePath: string,
@@ -500,23 +454,16 @@ const renderDiscussion = async (
 	timeline: Result<TaskEntry[]>,
 	strict: boolean,
 ): Promise<Result<string | null>> => {
-	const sessionsR = await PlannerSessions.querySessions(basePath, {
-		taskId: task.id,
-	});
+	const workLogsR = await PlannerWorkLogs.getWorkLogs(basePath, task.id);
 	const entries = sourceRows(timeline, "discussion comments", strict);
 	if (!entries.ok) return entries;
-	const sessions = sourceRows(sessionsR, "discussion sessions", strict);
-	if (!sessions.ok) return sessions;
+	const workLogs = sourceRows(workLogsR, "discussion work log", strict);
+	if (!workLogs.ok) return workLogs;
 	const comments = entries.value.filter((e) => e.kind === DEFAULT_ENTRY_KIND);
-	const machine =
-		sessions.value.length > 0
-			? await sessionActivityEntries(basePath, sessions.value, strict)
-			: ok(lastAiCommentEntries(comments));
-	if (!machine.ok) return machine;
 	return ok(
 		discussionSection(
 			[...humanCommentEntries(comments), ...typedEntries(entries.value)],
-			machine.value,
+			aiCommentEntries(comments, ranSessions(workLogs.value)),
 			opts,
 		),
 	);
