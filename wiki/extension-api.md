@@ -257,8 +257,7 @@ ports and MCP handlers (a missed `activity.load` shows stale cards; a missed han
   copies (`extensions/loop/lenses/`, JCAB-326), and the dispatch template, now the dispatch
   extension's (`extensions/dispatch/templates/dispatch/references/lenses/`, JCAB-327), keeps its
   own for the skill's close review. API v1 has no dependency between extensions, so neither reads
-  the other's. The loop's build test still pins the two copies byte for byte, so a change to one
-  fails until the other follows.
+  the other's, and the two copies may drift.
 - **`@cabane/acp` imports `@cabane/core` for `Result`** (`packages/acp/src/client.ts:33`). An
   extension that bundles the harness client bundles that import too. Whether the harness client
   keeps a dependency on core, or the bundle's tree shaking keeps it to `result.ts`, is for

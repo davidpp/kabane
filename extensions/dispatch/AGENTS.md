@@ -26,9 +26,8 @@ template's relative paths and bytes, `PLACEHOLDERS.md` excluded, so a skill base
 before the template moved here still compares equal. Any change to `templates/dispatch/` other
 than `PLACEHOLDERS.md` makes every filled skill behind: that is the point of the stamp.
 
-The loop keeps its own copies of the two shipped lenses (`extensions/loop/lenses/`), and its build
-test pins them to `templates/dispatch/references/lenses/`. Change both together, or change that
-test.
+The loop keeps its own copies of the two shipped lenses (`extensions/loop/lenses/`). Each
+extension owns its copy, and the two may drift.
 
 Read before writing: `src/extension.ts`, `src/doctor.ts`, and `src/extension.test.ts`.
 
