@@ -121,8 +121,10 @@ export const layers: Readonly<Record<string, Rule>> = {
 		dependencies: ["@cabane/acp"],
 		devDependencies: ["@cabane/checklist"],
 		exceptions: {
-			"@cabane/core": "JCAB-326: port the loop onto the extension API",
-			"@cabane/extension": "JCAB-326: port the loop onto the extension API",
+			"@cabane/core":
+				"JCAB-326: allow type-only development dependencies and package the extension API types",
+			"@cabane/extension":
+				"JCAB-326: allow type-only development dependencies and package the extension API types",
 		},
 	},
 };

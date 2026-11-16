@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 // Settling ended sessions against a real tracker: the core sessions, the subtasks' states and the
 // gate results a settle records.
 import "@cabane/core/testing";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { AcpClient } from "@cabane/acp";
 import { Planner, type Task } from "@cabane/core";
 import { Claims } from "./claims";
 import { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
+import { TestSessions } from "./session-store.test";
 import { Stall } from "./stall";
 import type { RunState } from "./state";
 import { Steering } from "./steering";
@@ -39,16 +41,6 @@ const add = async (
 	});
 	if (!created.ok) throw created.error;
 	return created.value;
-};
-
-const sessionOn = async (task: Task): Promise<string> => {
-	const session = await Planner.startSession(home, {
-		taskId: task.id,
-		agent: "claude",
-		externalRef: RunStore.sessionRef("run-1"),
-	});
-	if (!session.ok) throw session.error;
-	return session.value.id;
 };
 
 const claimOf = (task: Task, sessionId: string): RunStore.Claim => ({
@@ -99,7 +91,7 @@ describe("Claims.settleAll", () => {
 			state: "done",
 			assignee: "claude",
 		});
-		const [sa, sb] = [await sessionOn(a), await sessionOn(b)];
+		const [sa, sb] = [RunStore.newSessionId(), RunStore.newSessionId()];
 		// b's session closed it, and the gates its end ran came back red.
 		const red: Gates.Run = {
 			at: new Date().toISOString(),
@@ -162,6 +154,13 @@ describe("Claims.settleAll", () => {
 		expect(await Claims.settleAll(ctx)).toBe(true);
 
 		expect(ctx.settled).toEqual([]);
+		const summaries = await Planner.getEntries(home, b.id);
+		expect(
+			summaries.ok &&
+				summaries.value.some(
+					(c) => c.kind === "outcome.summary" && c.content === "b is done",
+				),
+		).toBe(true);
 		expect(
 			ctx.run.claims.map((c) => [c.sessionId, c.outcome, c.detail]),
 		).toEqual([
@@ -172,8 +171,9 @@ describe("Claims.settleAll", () => {
 		const reopened = await Planner.getTask(home, b.id);
 		expect(reopened.ok && reopened.value?.state).toBe("next");
 		for (const id of [sa, sb]) {
-			const session = await Planner.getSession(home, id);
-			expect(session.ok && session.value?.state).not.toBe("active");
+			expect(
+				ctx.run.claims.find((c) => c.sessionId === id)?.endedAt,
+			).toBeDefined();
 		}
 	});
 });
@@ -194,7 +194,7 @@ describe("Claims parking and ownership", () => {
 					state: "in_progress",
 					assignee: "claude",
 				});
-				const sessionId = await sessionOn(child);
+				const sessionId = RunStore.newSessionId();
 				const config = LoopConfig.Schema.safeParse({ stallAfter: 2 });
 				if (!config.success) throw config.error;
 				const run: RunStore.Run = {
@@ -241,22 +241,22 @@ describe("Claims parking and ownership", () => {
 				expect(after.value.kind).toBe(changed.value.kind);
 				expect(after.value.assignee).toBe(changed.value.assignee);
 				expect(ctx.run.stall?.unchanged).toBe(active && !recover ? 2 : 1);
-				const session = await Planner.getSession(home, sessionId);
-				if (!session.ok || !session.value) throw new Error("missing session");
-				expect(session.value.state).not.toBe("active");
+				expect(
+					ctx.run.claims.find((c) => c.sessionId === sessionId)?.endedAt,
+				).toBeDefined();
 			});
 		}
 	}
 });
 
 describe("Claims.hooks", () => {
-	it("records a relayed permission request on the asking claim's lane, session and task", async () => {
+	it("relays the scripted agent's permission through the real run journal and answers it over ACP", async () => {
 		const parent = await add("parent");
 		const child = await add("child", {
 			parentTaskId: parent.id,
 			state: "in_progress",
 		});
-		const sessionId = await sessionOn(child);
+		const sessionId = RunStore.newSessionId();
 		const claim = claimOf(child, sessionId);
 		const config = LoopConfig.Schema.safeParse({});
 		if (!config.success) throw config.error;
@@ -285,34 +285,62 @@ describe("Claims.hooks", () => {
 			claim.shortId,
 			"claude",
 		);
-		const relayed = hooks.permission(
-			{
-				toolCallId: "toolu_01",
-				title: "bun install",
-				options: [
-					{ id: "allow", name: "Yes", kind: "allow_once" },
-					{ id: "reject", name: "No", kind: "reject_once" },
+		const launch = TestHarnesses.overrides({
+			claude: {
+				command: process.execPath,
+				args: [
+					join(
+						import.meta.dir,
+						"../../../packages/acp/scripts/scripted-agent.ts",
+					),
 				],
 			},
-			new AbortController().signal,
-			new AbortController().signal,
-		);
-		let questionId: string | undefined;
-		for (let i = 0; i < 200 && !questionId; i++) {
-			const needs = await Planner.getNeedsInput(home);
-			if (!needs.ok) throw needs.error;
-			questionId = needs.value.find((r) => r.session.id === sessionId)?.question
-				?.id;
-			if (!questionId) await Bun.sleep(5);
-		}
-		if (!questionId) throw new Error("no question appeared");
-		const answered = await Planner.answerQuestion(home, {
-			questionId,
-			answer: "Yes",
+		}).claude;
+		if (!launch) throw new Error("missing scripted launch");
+		const stopped = new AbortController();
+		const connection = await AcpClient.spawn("claude", home, {
+			overrides: launch,
+			onPermission: (request, withdrawn) =>
+				hooks.permission(request, withdrawn, stopped.signal),
+			onElicitation: (request, withdrawn) =>
+				hooks.elicitation(request, withdrawn, stopped.signal),
 		});
-		if (!answered.ok) throw answered.error;
-		const chosen = await relayed;
-		expect(chosen.ok && chosen.value).toBe("allow");
+		if (!connection.ok) throw connection.error;
+		try {
+			const session = await AcpClient.newSession(connection.value, {
+				cwd: home,
+				mcpServers: [],
+			});
+			if (!session.ok) throw session.error;
+			const text: string[] = [];
+			const prompted = (async () => {
+				for await (const update of AcpClient.prompt(session.value, [
+					{ type: "text", text: "ask permission" },
+				]))
+					if (update.type === "text") text.push(update.text);
+			})();
+			let questionId: string | undefined;
+			for (let i = 0; i < 200 && !questionId; i++) {
+				const needs = await TestSessions.pending(home);
+				if (!needs.ok) throw needs.error;
+				questionId = needs.value.find((r) => r.session.id === sessionId)
+					?.question.id;
+				if (!questionId) await Bun.sleep(5);
+			}
+			if (!questionId)
+				throw new Error("scripted permission question did not appear");
+			const answer = await TestSessions.submit(home, {
+				questionId,
+				answer: "Allow once",
+			});
+			if (!answer.ok) throw answer.error;
+			await prompted;
+			expect(text.join("")).toContain("Received: allow");
+		} finally {
+			stopped.abort();
+			AcpClient.close(connection.value);
+			await connection.value.closed;
+		}
 
 		const events = RunStore.readEvents(home, run.id);
 		if (!events.ok) throw events.error;
@@ -429,6 +457,14 @@ describe("Claims.claim", () => {
 		await Promise.all([...ctx.live.values()].map((l) => l.settled));
 
 		expect(ctx.run.claims.map((c) => c.harness)).toEqual(["codex"]);
+		const logs = await Planner.getWorkLogs(home, child.id);
+		expect(
+			logs.ok && logs.value.flatMap((log) => log.refs.map((ref) => ref.uri)),
+		).toContain(`session:${ctx.run.claims[0]?.sessionId}`);
+		const coreSessions = await Planner.querySessions(home, {
+			taskId: child.id,
+		});
+		expect(coreSessions.ok && coreSessions.value).toEqual([]);
 		const task = await Planner.getTask(home, child.id);
 		expect(task.ok && task.value?.assignee).toBe("codex");
 	});
@@ -766,7 +802,7 @@ describe("Claims.interruption", () => {
 		const child = await add("child", { parentTaskId: parent.id });
 		await log(child.id, "file:older.txt");
 		await Bun.sleep(5);
-		const sessionId = await sessionOn(child);
+		const sessionId = RunStore.newSessionId();
 		const previous: RunStore.Claim = {
 			...claimOf(child, sessionId),
 			acpSessionId: "acp-1",
@@ -795,7 +831,7 @@ describe("Claims.interruption", () => {
 		const parent = await add("parent");
 		const child = await add("child", { parentTaskId: parent.id });
 		const ended: RunStore.Claim = {
-			...claimOf(child, await sessionOn(child)),
+			...claimOf(child, RunStore.newSessionId()),
 			endedAt: new Date().toISOString(),
 			outcome: "error",
 		};

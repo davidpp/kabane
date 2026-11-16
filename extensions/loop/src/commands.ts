@@ -14,15 +14,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { Harnesses } from "@cabane/acp";
-import {
-	type AgentActivity,
-	isAnswerTo,
-	type ParsedQuestion,
-	Planner,
-	parseQuestionBody,
-	type Result,
-	type Task,
-} from "@cabane/core";
+import type { Result, Task } from "@cabane/core";
 import type { Host, Settings } from "@cabane/extension";
 import { z } from "zod";
 import { LoopAdvice } from "./advice";
@@ -37,7 +29,7 @@ import { Parent } from "./parent";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Prune } from "./prune";
-import { Questions } from "./questions";
+import { parseQuestionBody, type ParsedQuestion } from "./question-body";
 import { err, ok, trySync } from "./result";
 import { Route } from "./route";
 import { Runner } from "./runner";
@@ -1123,7 +1115,10 @@ export namespace Loop {
 		choices: string[];
 	};
 
-	const waitingOf = (question: AgentActivity, task: string): Waiting => {
+	const waitingOf = (
+		question: RunStore.QuestionEntry,
+		task: string,
+	): Waiting => {
 		const parsed = parseQuestionBody(question.body);
 		return {
 			questionId: question.id,
@@ -1133,83 +1128,39 @@ export namespace Loop {
 		};
 	};
 
-	/** The questions run `runId`'s sessions are waiting on a human for, from core. */
+	/** The questions run `runId`'s sessions are waiting on a human for, from its own run store. */
 	export const questions = async (
-		deps: Pick<Deps, "basePath">,
+		deps: Pick<Deps, "home">,
 		runId: string,
 	): Promise<Result<Waiting[]>> => {
-		const needs = await Planner.getNeedsInput(deps.basePath);
-		if (!needs.ok) return needs;
+		const run = RunStore.read(deps.home, runId);
+		if (!run.ok) return run;
+		const entries = RunStore.pendingQuestions(deps.home, run.value);
+		if (!entries.ok) return entries;
 		return ok(
-			needs.value.flatMap(({ session, task, question }) =>
-				question && session.externalRef === RunStore.sessionRef(runId)
-					? [waitingOf(question, task?.shortId ?? session.taskId)]
-					: [],
+			entries.value.map(({ question, claim }) =>
+				waitingOf(question, claim.shortId),
 			),
 		);
 	};
 
-	/**
-	 * Withdraw what the sessions of `run`, whose runner died, were asking. Their harnesses died with
-	 * the runner, so nobody is left to read an answer, and a restart closes those sessions and asks
-	 * again in new ones. Each question nothing answers is closed as `withdrawn` (`Questions.withdraw`)
-	 * and the session ended after it, since core takes no activity on an ended one. That closes the
-	 * question on every surface: the needs-input queue and the open questions a task's detail
-	 * shows, which reads ended sessions too. Returns the questions withdrawn, for `status` to show,
-	 * on this call or an earlier one; nothing for a run whose runner is not dead. Whichever surface
-	 * first sees the death does this: the dead runner cannot. A question that cannot be closed
-	 * leaves its session open, so the next call tries again.
-	 */
+	/** A dead runner cannot consume answers; report its stranded questions without writing its store. */
 	export const withdraw = async (
-		deps: Pick<Deps, "basePath">,
+		deps: Pick<Deps, "home">,
 		run: RunStore.Run,
 	): Promise<Result<Waiting[]>> => {
 		if (!died(run)) return ok([]);
-		const death = `the loop runner of ${run.id} died; \`${restartCommand(run.id)}\` restarts the run`;
-		const why = `withdrawn: ${death}, and its agent asks again`;
-		const withdrawn: Waiting[] = [];
-		for (const claim of run.claims) {
-			if (claim.endedAt !== undefined) continue;
-			const { sessionId } = claim;
-			const before = await Planner.getActivities(deps.basePath, sessionId);
-			if (!before.ok) return before;
-			const open = strandedBy(before.value, why);
-			const failed: string[] = [];
-			await Questions.withdraw(
-				{
-					basePath: deps.basePath,
-					sessionId,
-					emit: (warning) => failed.push(warning.summary),
-				},
-				open.map((q) => q.id),
-				why,
-			);
-			if (failed.length > 0) return err(new Error(failed.join("; ")));
-			const ended = await Planner.endSession(deps.basePath, sessionId, {
-				state: "error",
-				summary: death,
-			});
-			if (!ended.ok) return ended;
-			for (const q of open) withdrawn.push(waitingOf(q, claim.shortId));
-		}
-		return ok(withdrawn);
+		const entries = RunStore.pendingQuestions(deps.home, run, true);
+		return entries.ok
+			? ok(
+					entries.value.map(({ question, claim }) =>
+						waitingOf(question, claim.shortId),
+					),
+				)
+			: entries;
 	};
 
-	// The questions the runner's death leaves unanswered: nothing closes them yet, or only the
-	// withdrawal `why` an earlier call wrote for that death.
-	const strandedBy = (
-		activities: readonly AgentActivity[],
-		why: string,
-	): AgentActivity[] =>
-		activities.filter(
-			(q) =>
-				q.type === "question" &&
-				activities
-					.filter((a) => isAnswerTo(a.context, q.id))
-					.every((a) => a.type === "withdrawn" && a.body === why),
-		);
-
-	/** The run whose runner died while one of its sessions asked `questionId`, withdrawing it. */
+	/** The run whose runner died while one of its sessions asked `questionId`, with nobody left to read an answer. */
 	const stranded = async (
 		deps: Pick<Deps, "host" | "home" | "basePath">,
 		questionId: string,
@@ -1260,7 +1211,7 @@ export namespace Loop {
 	};
 
 	/**
-	 * Answer a question a loop session is waiting on, as `actor`, through `Planner.answerQuestion`:
+	 * Answer a question a loop session is waiting on, as `actor`, through the run inbox:
 	 * the same answer the board gives. A permission question takes one of the harness's options
 	 * by id, label or position, and the decision records its label.
 	 */
@@ -1268,51 +1219,45 @@ export namespace Loop {
 		actor: string;
 	};
 
-	type Asked = { question: AgentActivity; runId: string; task: string };
+	type Asked = {
+		question: RunStore.QuestionEntry;
+		runId: string;
+		task: string;
+	};
 
 	/** The question `questionId`, the run whose session waits on it, and its task; undefined if no loop's. */
 	const waiting = async (
-		basePath: string,
+		home: string,
 		questionId: string,
 	): Promise<Result<Asked | undefined>> => {
-		const needs = await Planner.getNeedsInput(basePath);
-		if (!needs.ok) return needs;
-		const row = needs.value.find((r) => r.question?.id === questionId);
-		const runId = RunStore.runOfSession(row?.session.externalRef);
-		return ok(
-			row?.question && runId !== undefined
-				? {
-						question: row.question,
-						runId,
-						task: row.task?.shortId ?? row.session.taskId,
-					}
-				: undefined,
-		);
+		const runs = RunStore.list(home);
+		if (!runs.ok) return runs;
+		for (const run of runs.value) {
+			const entries = RunStore.pendingQuestions(home, run);
+			if (!entries.ok) return entries;
+			const found = entries.value.find(
+				({ question }) => question.id === questionId,
+			);
+			if (found)
+				return ok({
+					question: found.question,
+					runId: run.id,
+					task: found.claim.shortId,
+				});
+		}
+		return ok(undefined);
 	};
-
-	// Who answered also rides the run's inbox, noted before the answer so the runner finds it
-	// once it sees the answer.
-	const note = (
-		deps: AnswerDeps,
-		runId: string,
-		questionId: string,
-	): Result<void> =>
-		RunStore.appendInbox(deps.home, runId, {
-			kind: "answered",
-			questionId,
-			by: deps.actor,
-			at: new Date().toISOString(),
-		});
 
 	export const answer = async (
 		deps: AnswerDeps,
 		questionId: string,
 		given: string,
 	): Promise<Result<Answered>> => {
+		if (!given.trim()) return err(new Error("An answer cannot be empty"));
 		const dead = await stranded(deps, questionId);
 		if (!dead.ok) return dead;
 		if (dead.value) return err(strandedError(dead.value, questionId));
-		const found = await waiting(deps.basePath, questionId);
+		const found = await waiting(deps.home, questionId);
 		if (!found.ok) return found;
 		if (!found.value)
 			return err(
@@ -1323,11 +1268,25 @@ export namespace Loop {
 		const { question, runId, task } = found.value;
 		const text = answerText(parseQuestionBody(question.body), given);
 		if (!text.ok) return text;
-		// A note that cannot be written (the run's directory is gone) does not hold the answer back.
-		note(deps, runId, questionId);
-		const answered = await Planner.answerQuestion(deps.basePath, {
+		const inbox = RunStore.readInbox(deps.home, runId, 0);
+		if (!inbox.ok) return inbox;
+		if (
+			inbox.value.entries.some(
+				(e) =>
+					e.kind === "answered" &&
+					e.questionId === questionId &&
+					e.answer !== undefined,
+			)
+		)
+			return err(
+				new Error(`Question ${questionId} already has a submitted answer`),
+			);
+		const answered = RunStore.appendInbox(deps.home, runId, {
+			kind: "answered",
 			questionId,
 			answer: text.value,
+			by: deps.actor,
+			at: new Date().toISOString(),
 		});
 		if (!answered.ok) return answered;
 		return ok({ questionId, answer: text.value, runId, task });

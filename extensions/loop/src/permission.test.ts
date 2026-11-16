@@ -1,19 +1,15 @@
-import "./test-host";
-import "@cabane/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import "@cabane/core/testing";
 import { join } from "node:path";
 import type { AcpClient } from "@cabane/acp";
-import {
-	answersContext,
-	isAnswerTo,
-	parseQuestionBody,
-	Planner,
-	type Result,
-} from "@cabane/core";
+import { Planner, type Result } from "@cabane/core";
 import { Permission } from "./permission";
+import { answersContext, isAnswerTo, parseQuestionBody } from "./question-body";
+import { TestSessions } from "./session-store.test";
 import type { RunStore } from "./store";
+import { testHost } from "./test-host";
 
 let base = "";
 
@@ -38,7 +34,7 @@ const REQUEST: AcpClient.PermissionRequest = {
 const session = async (): Promise<string> => {
 	const task = await Planner.addTask(base, { kind: "issue", title: "sub" });
 	if (!task.ok) throw task.error;
-	const started = await Planner.startSession(base, {
+	const started = await TestSessions.open(base, {
 		taskId: task.value.id,
 		agent: "claude",
 	});
@@ -61,7 +57,9 @@ const relay = (sessionId: string, by?: string): Relayed => {
 	const harness = new AbortController();
 	const result = Permission.relay(
 		{
-			basePath: base,
+			home: base,
+			runId: "test-run",
+			record: testHost(base).record,
 			sessionId,
 			harness: "claude",
 			origin: "test",
@@ -80,7 +78,7 @@ const relay = (sessionId: string, by?: string): Relayed => {
 // The question the relay put on the session, once it is there.
 const pending = async (sessionId: string) => {
 	for (let i = 0; i < 200; i++) {
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		if (!needs.ok) throw needs.error;
 		const row = needs.value.find((r) => r.session.id === sessionId);
 		if (row?.question) return row.question;
@@ -90,7 +88,7 @@ const pending = async (sessionId: string) => {
 };
 
 const answer = async (questionId: string, text: string) => {
-	const answered = await Planner.answerQuestion(base, {
+	const answered = await TestSessions.submit(base, {
 		questionId,
 		answer: text,
 	});
@@ -141,8 +139,10 @@ describe("Permission.relay", () => {
 		const sessionId = await session();
 		const { result, events } = relay(sessionId, "cabane://actor/human/david");
 		const question = await pending(sessionId);
-		const waiting = await Planner.getSession(base, sessionId);
-		expect(waiting.ok && waiting.value?.state).toBe("awaiting_input");
+		const waiting = await TestSessions.pending(base);
+		expect(waiting.ok && waiting.value.map((r) => r.question.id)).toContain(
+			question.id,
+		);
 		expect(parseQuestionBody(question.body).permission?.title).toBe(
 			"Write notes.md",
 		);
@@ -157,7 +157,7 @@ describe("Permission.relay", () => {
 			optionKind: "allow_once",
 			by: "cabane://actor/human/david",
 		});
-		const after = await Planner.getNeedsInput(base);
+		const after = await TestSessions.pending(base);
 		expect(after.ok && after.value).toEqual([]);
 	});
 
@@ -165,9 +165,9 @@ describe("Permission.relay", () => {
 		const sessionId = await session();
 		const { result } = relay(sessionId);
 		const question = await pending(sessionId);
-		const answered = await Planner.addActivity(base, {
+		const answered = await TestSessions.append(base, {
 			sessionId,
-			type: "answer",
+			type: "decision",
 			context: answersContext(question.id),
 			body: "Reject",
 		});
@@ -180,7 +180,13 @@ describe("Permission.relay", () => {
 		const sessionId = await session();
 		const { result, events } = relay(sessionId);
 		const first = await pending(sessionId);
-		await answer(first.id, "sure, go ahead");
+		const invalid = TestSessions.append(base, {
+			sessionId,
+			type: "answer",
+			context: answersContext(first.id),
+			body: "sure, go ahead",
+		});
+		expect(invalid.ok).toBe(true);
 		const second = await pending(sessionId);
 		expect(second.id).not.toBe(first.id);
 		await answer(second.id, "3");
@@ -198,7 +204,7 @@ describe("Permission.relay", () => {
 
 	// What closes `questionId`, as type and body: never an answer or a decision of the loop's own.
 	const closing = async (sessionId: string, questionId: string) => {
-		const activities = await Planner.getActivities(base, sessionId);
+		const activities = await TestSessions.journal(base, sessionId);
 		if (!activities.ok) throw activities.error;
 		return activities.value
 			.filter((a) => isAnswerTo(a.context, questionId))
@@ -222,9 +228,9 @@ describe("Permission.relay", () => {
 		]);
 
 		// What the runner's settle does with a cancelled claim.
-		const ended = await Planner.endSession(base, sessionId, { state: "error" });
+		const ended = await TestSessions.close(base, sessionId, { state: "error" });
 		expect(ended.ok).toBe(true);
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		expect(
 			needs.ok && needs.value.some((r) => r.question?.id === question.id),
 		).toBe(false);
@@ -246,13 +252,15 @@ describe("Permission.relay", () => {
 			["withdrawn", "withdrawn by the harness (claude)"],
 		]);
 		// The badge clears on the session that is still running, and the brief keeps no decision.
-		const needs = await Planner.getNeedsInput(base);
+		const needs = await TestSessions.pending(base);
 		expect(needs.ok && needs.value).toEqual([]);
-		const waiting = await Planner.getSession(base, sessionId);
-		expect(waiting.ok && waiting.value?.state).toBe("active");
-		const durable = await Planner.getActivities(base, sessionId);
+		const waiting = TestSessions.owner(base, sessionId);
+		expect(
+			waiting.claims.find((c) => c.sessionId === sessionId)?.endedAt,
+		).toBeUndefined();
+		const durable = await TestSessions.journal(base, sessionId);
 		if (!durable.ok) throw durable.error;
-		expect(Planner.selectDurableActivities(durable.value)).toEqual([]);
+		expect(durable.value.filter((e) => e.type === "decision")).toEqual([]);
 	});
 
 	it("keeps the answer a human gave just before the harness withdrew", async () => {
@@ -261,7 +269,9 @@ describe("Permission.relay", () => {
 		const harness = new AbortController();
 		const question = Permission.relay(
 			{
-				basePath: base,
+				home: base,
+				runId: "test-run",
+				record: testHost(base).record,
 				sessionId,
 				harness: "claude",
 				origin: "test",

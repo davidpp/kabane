@@ -3,9 +3,9 @@
 // claim is over when its subtask is closed or yielded, active work exhausts its nudges,
 // or the run cancels it; a lens, and a lens's recheck, is over when its review turn ends; the fixer
 // is over when none of its findings is still waiting on it, or its nudges run out. Every update goes out through
-// `hooks.event` tagged with the claim's lane and core session.
+// `hooks.event` tagged with the claim's lane and loop session.
 //
-// The core session itself is opened and closed by the runner, which owns the claim; this module
+// The loop session itself is opened and closed by the runner, which owns the claim; this module
 // only writes into it (an ephemeral progress row per tool call, so a card can show what the agent
 // is doing now). The one tracker write of its own: an implementing session that closed an issue
 // whose checklist still has items open has it reopened, and is nudged to go on from the first.
@@ -15,7 +15,7 @@ import {
 	Harnesses,
 	ToolCalls,
 } from "@cabane/acp";
-import { Planner, type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
 import type { Host } from "@cabane/extension";
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
@@ -186,7 +186,7 @@ export namespace Dispatch {
 	export type Outcome = {
 		outcome: "done" | "incomplete" | "error" | "cancelled";
 		detail?: string;
-		/** The agent's last message, for the core session's summary. */
+		/** The agent's last message, for the loop session's summary. */
 		summary?: string;
 	};
 
@@ -1000,14 +1000,7 @@ export namespace Dispatch {
 			tool: (type, id, call) =>
 				hooks.event({ ...tag, ...toolEvent(type, id, call) }),
 			progress: async (body) => {
-				const written = await Planner.addActivity(env.basePath, {
-					sessionId: claim.sessionId,
-					type: "progress",
-					ephemeral: true,
-					body,
-				});
-				if (!written.ok)
-					sink.emit("warning", `session activity: ${written.error.message}`);
+				sink.emit("progress", body);
 			},
 			usage: hooks.usage,
 			message: (text) => {

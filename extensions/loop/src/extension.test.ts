@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // `kabane loop` as the CLI calls it: argv parsed by the shared parser, run against a real tracker.
 import "@cabane/core/testing";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,7 @@ import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
 import { loop, start } from "./extension";
+import { TestSessions } from "./session-store.test";
 import { Steering } from "./steering";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
@@ -374,10 +375,10 @@ describe("kabane loop status", () => {
 			gateRuns: [],
 		});
 		if (!created.ok) throw created.error;
-		const session = await Planner.startSession(home, {
+		const session = await TestSessions.open(home, {
 			taskId: issue.value.id,
 			agent: "claude",
-			externalRef: RunStore.sessionRef("run-1"),
+			externalRef: "loop:run-1",
 		});
 		if (!session.ok) throw session.error;
 		const request = {
@@ -394,7 +395,7 @@ describe("kabane loop status", () => {
 		};
 		const [store] = Elicitation.questions(request.fields);
 		if (!store) throw new Error("no question");
-		const asked = await Planner.addActivity(home, {
+		const asked = await TestSessions.append(home, {
 			sessionId: session.value.id,
 			type: "question",
 			body: Elicitation.body("claude", request, store, { index: 0, total: 1 }),

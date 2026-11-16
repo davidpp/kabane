@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import "@cabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -8,14 +7,17 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import "@cabane/core/testing";
 import { join } from "node:path";
-import { isAnswerTo, ok, Planner, trySync } from "@cabane/core";
+import { ok, Planner, trySync } from "@cabane/core";
 import { GitFixture } from "@cabane/core/git-fixture";
 import { detectScope } from "@cabane/core/scope";
 import { Settings } from "@cabane/extension";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
+import { isAnswerTo } from "./question-body";
+import { TestSessions } from "./session-store.test";
 import { RunStore } from "./store";
 import { TestHarnesses } from "./test-harnesses";
 import { testHost } from "./test-host";
@@ -560,12 +562,7 @@ const orphaned = async (id: string) => {
 		state: "in_progress",
 		assignee: "claude",
 	});
-	const session = await Planner.startSession(home, {
-		taskId: child.id,
-		agent: "claude",
-		externalRef: RunStore.sessionRef(id),
-	});
-	if (!session.ok) throw session.error;
+	const sessionId = RunStore.newSessionId();
 	const created = RunStore.create(home, {
 		version: 1,
 		id,
@@ -583,7 +580,7 @@ const orphaned = async (id: string) => {
 				shortId: child.shortId ?? child.id,
 				harness: "claude",
 				lane: "claude:child",
-				sessionId: session.value.id,
+				sessionId: sessionId,
 				startedAt: new Date().toISOString(),
 				continuations: 0,
 			},
@@ -595,7 +592,7 @@ const orphaned = async (id: string) => {
 		gateRuns: [],
 	});
 	if (!created.ok) throw created.error;
-	return { run: created.value, parent, child, sessionId: session.value.id };
+	return { run: created.value, parent, child, sessionId: sessionId };
 };
 
 describe("Loop.start on a parent whose last run lost its runner", () => {
@@ -679,13 +676,13 @@ describe("Loop.answer", () => {
 	const blocked = async (runId: string) => {
 		mkdirSync(RunStore.paths(home, runId).dir, { recursive: true });
 		const task = await add("child");
-		const session = await Planner.startSession(home, {
+		const session = await TestSessions.open(home, {
 			taskId: task.id,
 			agent: "claude",
-			externalRef: RunStore.sessionRef(runId),
+			externalRef: `loop:${runId}`,
 		});
 		if (!session.ok) throw session.error;
-		const question = await Planner.addActivity(home, {
+		const question = await TestSessions.append(home, {
 			sessionId: session.value.id,
 			type: "question",
 			body: Permission.body("claude", {
@@ -701,130 +698,89 @@ describe("Loop.answer", () => {
 		return { sessionId: session.value.id, questionId: question.value.id };
 	};
 
-	it("writes the chosen option's label as the answer, no decision, and notes who answered", async () => {
+	it("submits the chosen option to the inbox without writing the runner's journal", async () => {
 		const { sessionId, questionId } = await blocked("run-1");
-		const listed = await Loop.questions({ basePath: home }, "run-1");
-		expect(listed.ok && listed.value.map((q) => q.questionId)).toEqual([
-			questionId,
-		]);
-
+		const before = await TestSessions.journal(home, sessionId);
 		const answered = await Loop.answer(
 			{ home, basePath: home, host: testHost(home), actor: HUMAN },
 			questionId,
 			"2",
 		);
 		expect(answered.ok && answered.value.answer).toBe("Reject");
-		const activities = await Planner.getActivities(home, sessionId);
-		const answer =
-			activities.ok &&
-			activities.value.find((a) => isAnswerTo(a.context, questionId));
-		expect(answer && [answer.type, answer.body]).toEqual(["answer", "Reject"]);
+		expect(await TestSessions.journal(home, sessionId)).toEqual(before);
 		const inbox = RunStore.readInbox(home, "run-1", 0);
 		expect(inbox.ok && inbox.value.entries).toMatchObject([
-			{ kind: "answered", questionId, by: HUMAN },
+			{ kind: "answered", questionId, answer: "Reject", by: HUMAN },
 		]);
-		const after = await Loop.questions({ basePath: home }, "run-1");
-		expect(after.ok && after.value).toEqual([]);
+		expect(await Loop.questions({ home }, "run-1")).toEqual({
+			ok: true,
+			value: [],
+		});
+		expect(
+			(
+				await Loop.answer(
+					{ home, basePath: home, host: testHost(home), actor: HUMAN },
+					questionId,
+					"1",
+				)
+			).ok,
+		).toBe(false);
 	});
 
-	it("refuses a question whose runner died, withdraws it from core's queue, and lists it as withdrawn", async () => {
-		const deps = { home, basePath: home, host: testHost(home), actor: HUMAN };
+	it("refuses a dead runner's questions and reports them without changing its journal", async () => {
 		const { run, sessionId } = await orphaned("dead-run");
-		const asked = await Planner.addActivity(home, {
+		const asked = TestSessions.append(home, {
 			sessionId,
 			type: "question",
-			body: Permission.body("claude", {
-				toolCallId: "toolu_02",
-				title: "Fetch example.com",
-				options: [
-					{ id: "allow", name: "Allow", kind: "allow_once" },
-					{ id: "reject", name: "Reject", kind: "reject_once" },
-				],
-			}),
+			body: "Which store?",
 		});
 		if (!asked.ok) throw asked.error;
-		const questionId = asked.value.id;
-
-		const answered = await Loop.answer(deps, questionId, "2");
-		expect(!answered.ok && answered.error.message).toContain("runner died");
-		expect(!answered.ok && answered.error.message).toContain(
-			`kabane loop resume ${run.id}`,
+		const before = TestSessions.journal(home, sessionId);
+		const answered = await Loop.answer(
+			{ home, basePath: home, host: testHost(home), actor: HUMAN },
+			asked.value.id,
+			"SQLite",
 		);
-		// Closed as withdrawn, not answered: a task's detail, which reads ended sessions too, no
-		// longer pins it.
-		const closing = async () => {
-			const activities = await Planner.getActivities(home, sessionId);
-			if (!activities.ok) throw activities.error;
-			return activities.value
-				.filter((a) => isAnswerTo(a.context, questionId))
-				.map((a) => [a.type, a.body]);
-		};
-		expect(await closing()).toEqual([
-			[
-				"withdrawn",
-				`withdrawn: the loop runner of ${run.id} died; \`kabane loop resume ${run.id}\` restarts the run, and its agent asks again`,
-			],
+		expect(!answered.ok && answered.error.message).toContain("runner died");
+		const stranded = await Loop.withdraw({ home }, RunStore.effective(run));
+		expect(stranded.ok && stranded.value.map((q) => q.questionId)).toEqual([
+			asked.value.id,
 		]);
-		// Off every surface's queue, and no longer answerable in core either.
-		const needs = await Planner.getNeedsInput(home);
-		expect(needs.ok && needs.value).toEqual([]);
-		const direct = await Planner.answerQuestion(home, {
-			questionId,
-			answer: "Reject",
+		expect(TestSessions.journal(home, sessionId)).toEqual(before);
+		expect(await Loop.questions({ home }, run.id)).toEqual({
+			ok: true,
+			value: [],
 		});
-		expect(direct.ok).toBe(false);
-		// Asked again, it still lists what the death withdrew, and writes nothing more.
-		const withdrawn = await Loop.withdraw(deps, RunStore.effective(run));
-		expect(withdrawn.ok && withdrawn.value.map((q) => q.questionId)).toEqual([
-			questionId,
-		]);
-		expect(await closing()).toHaveLength(1);
 	});
 
-	it("withdraws only what a dead run's sessions left unanswered, and lists only that", async () => {
+	it("reports only unanswered questions from a dead run", async () => {
 		const { run, sessionId } = await orphaned("dead-run");
-		const ask = async (body: string) => {
-			const asked = await Planner.addActivity(home, {
+		const asked = ["answered", "withdrawn", "open"].map((body) =>
+			TestSessions.append(home, { sessionId, type: "question", body }),
+		);
+		const [answered, withdrawn, open] = asked;
+		if (!answered?.ok || !withdrawn?.ok || !open?.ok)
+			throw new Error("question setup failed");
+		expect(
+			TestSessions.append(home, {
 				sessionId,
-				type: "question",
-				body,
-			});
-			if (!asked.ok) throw asked.error;
-			return asked.value.id;
-		};
-		const answered = await ask("Which store?");
-		const harnessWithdrew = await ask("Run the migration?");
-		const open = await ask("Which port?");
-		const human = await Planner.answerQuestion(home, {
-			questionId: answered,
-			answer: "Redis",
-		});
-		if (!human.ok) throw human.error;
-		const harness = await Planner.addActivity(home, {
-			sessionId,
-			type: "withdrawn",
-			context: `answers ${harnessWithdrew}`,
-			body: "withdrawn by the harness (claude)",
-		});
-		if (!harness.ok) throw harness.error;
-
-		const withdrawn = await Loop.withdraw(deps(), RunStore.effective(run));
-		expect(withdrawn.ok && withdrawn.value.map((q) => q.questionId)).toEqual([
-			open,
+				type: "decision",
+				body: "SQLite",
+				context: `answers ${answered.value.id}`,
+			}).ok,
+		).toBe(true);
+		expect(
+			TestSessions.append(home, {
+				sessionId,
+				type: "withdrawn",
+				body: "harness withdrew",
+				context: `answers ${withdrawn.value.id}`,
+			}).ok,
+		).toBe(true);
+		const stranded = await Loop.withdraw({ home }, RunStore.effective(run));
+		expect(stranded.ok && stranded.value.map((q) => q.questionId)).toEqual([
+			open.value.id,
 		]);
-		const activities = await Planner.getActivities(home, sessionId);
-		if (!activities.ok) throw activities.error;
-		const closedBy = (id: string) =>
-			activities.value
-				.filter((a) => isAnswerTo(a.context, id))
-				.map((a) => a.type);
-		expect([answered, harnessWithdrew, open].map(closedBy)).toEqual([
-			["decision"],
-			["withdrawn"],
-			["withdrawn"],
-		]);
-		const ended = await Planner.getSession(home, sessionId);
-		expect(ended.ok && ended.value?.state).toBe("error");
 	});
 
 	it("refuses an answer that is none of the harness's options, and answers nothing", async () => {
@@ -835,7 +791,7 @@ describe("Loop.answer", () => {
 			"yes please",
 		);
 		expect(answered.ok).toBe(false);
-		const activities = await Planner.getActivities(home, sessionId);
+		const activities = await TestSessions.journal(home, sessionId);
 		expect(
 			activities.ok &&
 				activities.value.some((a) => isAnswerTo(a.context, questionId)),

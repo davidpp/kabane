@@ -387,12 +387,7 @@ describe("A single-issue run resumed after its runner died mid-checklist", () =>
 			assignee: "gemini",
 		});
 		if (!held.ok) throw held.error;
-		const session = await Planner.startSession(home, {
-			taskId: issue.id,
-			agent: "gemini",
-			externalRef: RunStore.sessionRef("run-1"),
-		});
-		if (!session.ok) throw session.error;
+		const sessionId = RunStore.newSessionId();
 		const startedAt = new Date(Date.now() - 60_000).toISOString();
 		await runOn(issue, {
 			status: "running",
@@ -404,7 +399,7 @@ describe("A single-issue run resumed after its runner died mid-checklist", () =>
 					shortId: id,
 					harness: "gemini",
 					lane: id,
-					sessionId: session.value.id,
+					sessionId: sessionId,
 					startedAt,
 					continuations: 0,
 				},

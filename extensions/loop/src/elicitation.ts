@@ -2,7 +2,7 @@
 // server's form), relayed to the human as tracker questions. The loop fills nothing itself and
 // never accepts a form on the human's behalf.
 //
-// Every field becomes one question on the claim's core session, asked together and numbered
+// Every field becomes one question on the claim's loop session, asked together and numbered
 // "i of n" so the board lists them as one group: the harness's message, then the field's title
 // and description verbatim. A choice is the field's options, several choices a multi-select, a
 // boolean Yes / No, text and numbers free text. An optional free-text field keyed `<key>_custom`
@@ -18,8 +18,9 @@
 // the questions still open as withdrawn (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
 import { FormField } from "@cabane/acp/form-field";
-import { formatQuestionBody, type Result } from "@cabane/core";
+import type { Result } from "@cabane/core";
 import { Permission } from "./permission";
+import { formatQuestionBody } from "./question-body";
 import { Questions } from "./questions";
 import { err, ok } from "./result";
 

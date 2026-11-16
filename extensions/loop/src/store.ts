@@ -1,14 +1,16 @@
-// Run state is device-local files beside the device's sessions, never the tracker:
+// Run state and session streams are device-local files, never tracker tables:
 //
 //   $KABANE_HOME/loops/<runId>/run.json      config, status, runner pid, claims, usage
 //   $KABANE_HOME/loops/<runId>/events.jsonl  the trace, and the board's event source
+//   $KABANE_HOME/loops/<runId>/questions.jsonl  questions and their resolutions
 //   $KABANE_HOME/loops/<runId>/inbox.jsonl   requests to the runner, append-only
 //   $KABANE_HOME/loops/<runId>/runner.log    the detached runner's stdout and stderr
 //
-// One writer per file while a run is live: the runner owns run.json and events.jsonl, anyone
-// may append to the inbox. `run.json` is replaced by rename, so a reader never sees half of it.
+// One writer per file while a run is live: the runner owns run.json, events.jsonl and questions.jsonl; anyone
+// may append to the inbox. `run.json` and the question journal are replaced by rename, so a reader never sees half of it.
 // A run whose runner is gone reads as `failed`: a status that says "running" with nobody running
 // it is the one lie this store refuses to tell.
+import { randomUUID } from "node:crypto";
 import {
 	appendFileSync,
 	existsSync,
@@ -25,6 +27,7 @@ import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";
 import { Gates } from "./gates";
+import { isAnswerTo } from "./question-body";
 import { err, ok, trySync } from "./result";
 import { Review } from "./review";
 import { Route } from "./route";
@@ -72,7 +75,7 @@ export namespace RunStore {
 		harness: z.string(),
 		/** The event lane: harness and subtask, numbered from the second attempt on. */
 		lane: z.string(),
-		/** The core `agent_session` this claim's ACP session is mirrored into. */
+		/** The loop-owned session id, also named in the issue work log. */
 		sessionId: z.string(),
 		/** The harness's own ACP session id, once it opened: what a resumed run reopens. */
 		acpSessionId: z.string().optional(),
@@ -256,14 +259,7 @@ export namespace RunStore {
 	});
 	export type Run = z.infer<typeof RunSchema>;
 
-	/** The `externalRef` of every core session run `runId` opens: how a session finds its run. */
-	export const sessionRef = (runId: string): string => `loop:${runId}`;
-
-	/** The run a core session belongs to, from its `externalRef`; undefined for any other session. */
-	export const runOfSession = (
-		externalRef: string | undefined,
-	): string | undefined =>
-		externalRef?.startsWith("loop:") ? externalRef.slice(5) : undefined;
+	export const newSessionId = (): string => randomUUID();
 
 	/** A triage, a lens, the fixer or a recheck: a session that holds the parent without taking it. */
 	export const reviews = (claim: Claim): boolean =>
@@ -365,7 +361,7 @@ export namespace RunStore {
 		type: z.string(),
 		summary: z.string(),
 		lane: z.string().optional(),
-		/** The core session id, for an event that came from one. */
+		/** The loop session id, for an event that came from one. */
 		session: z.string().optional(),
 		task: z.string().optional(),
 		/** Machine-readable fields behind the summary, for an event that has some. */
@@ -386,16 +382,17 @@ export namespace RunStore {
 		z.object({
 			kind: z.literal("inject"),
 			at: z.string(),
-			/** The core session the text is for, and the lane it was aimed at on the board. */
+			/** The loop session the text is for, and the lane it was aimed at on the board. */
 			session: z.string(),
 			lane: z.string(),
 			text: z.string(),
 		}),
 		// Who answered one of the run's questions, noted by the answering surface. The answer
-		// itself is the core activity answering it.
+		// itself is the answer text; the runner records it in questions.jsonl.
 		z.object({
 			kind: z.literal("answered"),
 			questionId: z.string(),
+			answer: z.string().trim().min(1).optional(),
 			by: z.string(),
 			at: z.string(),
 		}),
@@ -427,6 +424,7 @@ export namespace RunStore {
 			run: join(dir, "run.json"),
 			events: join(dir, "events.jsonl"),
 			inbox: join(dir, "inbox.jsonl"),
+			questions: join(dir, "questions.jsonl"),
 			log: join(dir, "runner.log"),
 		};
 	};
@@ -667,6 +665,102 @@ export namespace RunStore {
 			all.value.flatMap((line) => {
 				const event = parseLine(EventSchema, line);
 				return event && event.seq > afterSeq ? [event] : [];
+			}),
+		);
+	};
+
+	const QuestionEntrySchema = z.object({
+		id: z.string(),
+		sessionId: z.string(),
+		type: z.enum(["question", "answer", "decision", "withdrawn"]),
+		body: z.string(),
+		context: z.string().optional(),
+		createdAt: z.string(),
+		by: z.string().optional(),
+	});
+	export type QuestionEntry = z.infer<typeof QuestionEntrySchema>;
+
+	/** Runner-owned question journal. Missing on runs written before loop-owned sessions. */
+	export const questionEntries = (
+		home: string,
+		runId: string,
+	): Result<QuestionEntry[]> => {
+		const dir = dirOf(home, runId);
+		if (!dir.ok) return dir;
+		const all = readText(paths(home, runId).questions);
+		if (!all.ok) return all;
+		const entries: QuestionEntry[] = [];
+		const rows = all.value.split("\n");
+		for (const [index, line] of rows.entries()) {
+			if (!line.trim()) continue;
+			const entry = parseLine(QuestionEntrySchema, line);
+			if (!entry && index === rows.length - 1) continue;
+			if (!entry)
+				return err(new Error(`Invalid question journal in run ${runId}`));
+			entries.push(entry);
+		}
+		return ok(entries);
+	};
+
+	export const recordQuestion = (
+		home: string,
+		runId: string,
+		draft: Omit<QuestionEntry, "id" | "createdAt">,
+	): Result<QuestionEntry> => {
+		const dir = dirOf(home, runId);
+		if (!dir.ok) return dir;
+		const existing = questionEntries(home, runId);
+		if (!existing.ok) return existing;
+		const entry = {
+			...draft,
+			id: randomUUID(),
+			createdAt: new Date().toISOString(),
+		};
+		// Atomic replacement keeps readers on a complete journal; a torn final line is discarded.
+		const file = paths(home, runId).questions;
+		const written = trySync(() => {
+			const tmp = `${file}.${process.pid}.tmp`;
+			writeFileSync(
+				tmp,
+				[...existing.value, entry]
+					.map((row) => JSON.stringify(row))
+					.join("\n") + "\n",
+			);
+			renameSync(tmp, file);
+		});
+		return written.ok ? ok(entry) : written;
+	};
+
+	/** Open questions on active claims; inbox submissions leave the human queue immediately. */
+	export const pendingQuestions = (
+		home: string,
+		run: Run,
+		stranded = false,
+	): Result<{ question: QuestionEntry; claim: Claim }[]> => {
+		const entries = questionEntries(home, run.id);
+		if (!entries.ok) return entries;
+		const inbox = readInbox(home, run.id, 0);
+		if (!inbox.ok) return inbox;
+		return ok(
+			entries.value.flatMap((question) => {
+				const claim = run.claims.find(
+					(c) => c.sessionId === question.sessionId && c.endedAt === undefined,
+				);
+				const submitted =
+					!stranded &&
+					inbox.value.entries.some(
+						(e) =>
+							e.kind === "answered" &&
+							e.questionId === question.id &&
+							e.answer !== undefined,
+					);
+				return claim &&
+					(stranded || isLive(run.status)) &&
+					!submitted &&
+					question.type === "question" &&
+					!entries.value.some((a) => isAnswerTo(a.context, question.id))
+					? [{ question, claim }]
+					: [];
 			}),
 		);
 	};

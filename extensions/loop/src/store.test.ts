@@ -233,3 +233,53 @@ describe("RunStore events and inbox", () => {
 		expect(late.ok && late.value.next).toBe(1);
 	});
 });
+
+describe("loop-owned question journal", () => {
+	it("loads a legacy run without a question journal", () => {
+		expect(RunStore.create(home, draft()).ok).toBe(true);
+		expect(RunStore.read(home, "KAB-1-abc").ok).toBe(true);
+		expect(RunStore.questionEntries(home, "KAB-1-abc")).toEqual({
+			ok: true,
+			value: [],
+		});
+	});
+	it("recovers a torn last question without hiding a completed corrupt line", () => {
+		expect(RunStore.create(home, draft()).ok).toBe(true);
+		const first = RunStore.recordQuestion(home, "KAB-1-abc", {
+			sessionId: "session",
+			type: "question",
+			body: "Which store?",
+		});
+		if (!first.ok) throw first.error;
+		appendFileSync(RunStore.paths(home, "KAB-1-abc").questions, '{"id":"torn');
+		expect(RunStore.questionEntries(home, "KAB-1-abc")).toEqual({
+			ok: true,
+			value: [first.value],
+		});
+		const next = RunStore.recordQuestion(home, "KAB-1-abc", {
+			sessionId: "session",
+			type: "answer",
+			body: "Files",
+			context: `answers ${first.value.id}`,
+		});
+		if (!next.ok) throw next.error;
+		expect(RunStore.questionEntries(home, "KAB-1-abc")).toEqual({
+			ok: true,
+			value: [first.value, next.value],
+		});
+		appendFileSync(RunStore.paths(home, "KAB-1-abc").questions, "corrupt\n");
+		expect(RunStore.questionEntries(home, "KAB-1-abc").ok).toBe(false);
+		expect(
+			RunStore.recordQuestion(home, "KAB-1-abc", {
+				sessionId: "session",
+				type: "question",
+				body: "Another?",
+			}).ok,
+		).toBe(false);
+	});
+	it("mints independent session ids without database state", () => {
+		const ids = Array.from({ length: 100 }, () => RunStore.newSessionId());
+		expect(new Set(ids).size).toBe(100);
+		expect(ids.every((id) => /^[0-9a-f-]{36}$/.test(id))).toBe(true);
+	});
+});

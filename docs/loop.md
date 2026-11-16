@@ -26,6 +26,24 @@ one commit. Use `--no-worktree` to work in the project checkout without checkpoi
 worktree, each subtask's claims and any questions waiting on you. `stop` asks the runner
 to cancel its sessions and release their work.
 
+Answer a question from the run's board tab, or use its id from `status`:
+
+```bash
+kabane loop answer <questionId> <option>
+```
+
+For a permission request, `<option>` is an option id, label or position shown with the
+question. The loop submits your answer to the runner, which records it and returns it to
+the harness. It never chooses a permission answer for you. A question whose runner has
+died cannot be answered; `status` gives the command to restart that run.
+
+Each run keeps its session claims in `run.json`, its stream in `events.jsonl`, and its
+questions and their answers or withdrawals in `questions.jsonl`, under
+`$KABANE_HOME/loops/<runId>/`. Session summaries and your answers to questions other than
+permission requests also appear on the issue's timeline; its work log links each session
+with a `session:` URI. Runs created before the question journal existed still load, but
+questions stored in the old tracker session tables are not offered by the loop.
+
 On the board, a run's tab says what the run is doing: working its subtasks, then, once they
 are done, its closing gates, each lens's review, the fixer, the rechecks and the landing.
 When it says `waiting on`, each subtask it names says why, for example `JCAB-64 (someday)`.

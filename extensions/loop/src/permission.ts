@@ -2,18 +2,17 @@
 // the user's own harness: whatever their settings make it ask in an interactive session, it asks
 // here, and the human answers. The loop never approves or declines on its own.
 //
-// The request becomes a `question` activity on the asking claim's core session, carrying the
-// harness's options verbatim, which moves the session to `awaiting_input` and onto
-// `getNeedsInput` (the board's `!` and banner). The relay then waits for the answer
-// `Planner.answerQuestion` writes, maps it back to the harness's option id, and answers the
+// The request becomes a question in the run store with the harness's options verbatim.
+// The activity port presents it to the human. The relay reads their inbox submission,
+// maps its label back to the harness's option id, and answers the
 // harness with it. A run that stops while it waits, or a harness that withdraws the request,
 // cancels it through ACP instead and closes the question as withdrawn (`questions.ts`).
 import type { AcpClient } from "@cabane/acp";
+import { type Result } from "@cabane/core";
 import {
 	formatQuestionBody,
 	type PermissionRequestMeta,
-	type Result,
-} from "@cabane/core";
+} from "./question-body";
 import { Questions } from "./questions";
 import { err, ok } from "./result";
 

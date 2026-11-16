@@ -1,21 +1,15 @@
-// The loop's side of a tracker question it relays for a harness: put it on the claim's core
-// session, wait for the human's answer, and close what nobody is left to answer. A question is a
-// core `question` activity, so it moves the session to `awaiting_input` and onto `getNeedsInput`
-// (the board's `!` and banner); its answer is whatever activity carries `answers <questionId>`.
-// The loop never writes an answer: closing a question is a `withdrawn` activity, which every
-// queue lets go of as of an answer and which is no decision.
-import {
-	type AgentActivity,
-	answersContext,
-	isAnswerTo,
-	Planner,
-	type Result,
-} from "@cabane/core";
-import type { RunStore } from "./store";
+// Questions belong to the run. Only the runner writes their journal; human surfaces append answers to its inbox.
+import type { Result } from "@cabane/core";
+import type { Host } from "@cabane/extension";
+import { answersContext, isAnswerTo, parseQuestionBody } from "./question-body";
+import { ok } from "./result";
+import { RunStore } from "./store";
 
 export namespace Questions {
 	export type Deps = {
-		basePath: string;
+		home: string;
+		runId: string;
+		record: Host.Record;
 		sessionId: string;
 		harness: string;
 		/** What the question's `context` says about where it comes from. */
@@ -50,13 +44,65 @@ export namespace Questions {
 	export const ask = (
 		deps: Deps,
 		body: string,
-	): Promise<Result<AgentActivity>> =>
-		Planner.addActivity(deps.basePath, {
-			sessionId: deps.sessionId,
-			type: "question",
-			context: deps.origin,
-			body,
-		});
+	): Promise<Result<RunStore.QuestionEntry>> =>
+		Promise.resolve(
+			RunStore.recordQuestion(deps.home, deps.runId, {
+				sessionId: deps.sessionId,
+				type: "question",
+				context: deps.origin,
+				body,
+			}),
+		);
+
+	/** Commit human submissions in inbox order, once, before handing them to a harness. */
+	const accept = async (
+		deps: Pick<Deps, "home" | "runId" | "record" | "sessionId" | "emit">,
+	): Promise<Result<void>> => {
+		const inbox = RunStore.readInbox(deps.home, deps.runId, 0);
+		if (!inbox.ok) return inbox;
+		const run = RunStore.readRaw(deps.home, deps.runId);
+		if (!run.ok) return run;
+		const claim = run.value.claims.find((c) => c.sessionId === deps.sessionId);
+		if (!claim || claim.endedAt !== undefined) return ok(undefined);
+		for (const entry of inbox.value.entries) {
+			if (entry.kind !== "answered" || entry.answer === undefined) continue;
+			const current = RunStore.questionEntries(deps.home, deps.runId);
+			if (!current.ok) return current;
+			const question = current.value.find(
+				(q) =>
+					q.id === entry.questionId &&
+					q.sessionId === deps.sessionId &&
+					q.type === "question",
+			);
+			if (
+				!question ||
+				current.value.some((a) => isAnswerTo(a.context, question.id))
+			)
+				continue;
+			const parsed = parseQuestionBody(question.body);
+			const written = RunStore.recordQuestion(deps.home, deps.runId, {
+				sessionId: deps.sessionId,
+				type: parsed.permission ? "answer" : "decision",
+				body: entry.answer,
+				context: answersContext(question.id),
+				by: entry.by,
+			});
+			if (!written.ok) return written;
+			if (!parsed.permission) {
+				const outcome = await deps.record.comment({
+					id: claim.taskId,
+					kind: "outcome.decision",
+					body: `${parsed.question}\n→ ${entry.answer}`,
+				});
+				if (!outcome.ok)
+					deps.emit({
+						type: "warning",
+						summary: `decision not recorded: ${outcome.error.message}`,
+					});
+			}
+		}
+		return ok(undefined);
+	};
 
 	/**
 	 * The latest answer to each of `questionIds` that has one, as soon as one does; undefined when
@@ -65,18 +111,28 @@ export namespace Questions {
 	 * which is reported once and retried.
 	 */
 	export const awaitAnswers = async (
-		deps: Pick<Deps, "basePath" | "sessionId" | "emit" | "pollMs">,
+		deps: Pick<
+			Deps,
+			"home" | "runId" | "record" | "sessionId" | "emit" | "pollMs"
+		>,
 		questionIds: readonly string[],
 		signal: AbortSignal,
-	): Promise<Map<string, AgentActivity> | undefined> => {
+	): Promise<Map<string, RunStore.QuestionEntry> | undefined> => {
 		let reported = "";
 		while (!signal.aborted) {
-			const activities = await Planner.getActivities(
-				deps.basePath,
-				deps.sessionId,
-			);
+			const run = RunStore.readRaw(deps.home, deps.runId);
+			if (
+				run.ok &&
+				run.value.claims.find((c) => c.sessionId === deps.sessionId)
+					?.endedAt !== undefined
+			)
+				return undefined;
+			const accepted = await accept(deps);
+			const activities = accepted.ok
+				? RunStore.questionEntries(deps.home, deps.runId)
+				: accepted;
 			if (activities.ok) {
-				const answers = new Map<string, AgentActivity>();
+				const answers = new Map<string, RunStore.QuestionEntry>();
 				let withdrawn = false;
 				for (const id of questionIds) {
 					const closing = activities.value.filter((a) =>
@@ -107,38 +163,42 @@ export namespace Questions {
 	 * so a close that loses the race to its end is no failure.
 	 */
 	export const withdraw = async (
-		deps: Pick<Deps, "basePath" | "sessionId" | "emit">,
+		deps: Pick<Deps, "home" | "runId" | "record" | "sessionId" | "emit">,
 		questionIds: readonly string[],
 		why: string,
 	): Promise<void> => {
 		if (questionIds.length === 0) return;
-		const activities = await Planner.getActivities(
-			deps.basePath,
-			deps.sessionId,
-		);
+		const accepted = await accept(deps);
+		if (!accepted.ok) {
+			deps.emit({
+				type: "warning",
+				summary: `questions not closed: ${accepted.error.message}`,
+			});
+			return;
+		}
+		const activities = RunStore.questionEntries(deps.home, deps.runId);
+		if (!activities.ok) {
+			deps.emit({
+				type: "warning",
+				summary: `questions not read: ${activities.error.message}`,
+			});
+			return;
+		}
 		const answered = (id: string) =>
-			activities.ok && activities.value.some((a) => isAnswerTo(a.context, id));
+			activities.value.some((a) => isAnswerTo(a.context, id));
 		for (const id of questionIds.filter((q) => !answered(q))) {
-			const closed = await Planner.addActivity(deps.basePath, {
+			const closed = RunStore.recordQuestion(deps.home, deps.runId, {
 				sessionId: deps.sessionId,
 				type: "withdrawn",
 				context: answersContext(id),
 				body: why,
 			});
-			if (closed.ok || (await ended(deps, deps.sessionId))) continue;
+			if (closed.ok) continue;
 			deps.emit({
 				type: "warning",
 				summary: `question ${id} not closed (${why}): ${closed.error.message}`,
 			});
 		}
-	};
-
-	const ended = async (
-		deps: Pick<Deps, "basePath">,
-		sessionId: string,
-	): Promise<boolean> => {
-		const session = await Planner.getSession(deps.basePath, sessionId);
-		return session.ok && session.value?.endedAt !== undefined;
 	};
 
 	/**

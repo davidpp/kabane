@@ -1,6 +1,6 @@
-// A claim's life in the tracker: open a core session on the subtask, move it to in_progress,
+// A claim's life in the tracker: open a loop session on the subtask, move it to in_progress,
 // log the session on it, dispatch; when the session ends with the subtask done, run the gates
-// while the claim still holds it; then close the core session, put a subtask the agent left in
+// while the claim still holds it; then close the loop session, put a subtask the agent left in
 // progress and still owned back in the ready pool, record the gates, end the claim, and take a
 // progress mark for the stall detector unless the tracker parked or handed off the work. A lens
 // is a claim on the parent that leaves its state alone and has no gates; so is a lens's recheck of
@@ -14,7 +14,7 @@
 // and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
 // or cancelled while it held that worktree is settled there (`settleHeld`).
 import { Harnesses } from "@cabane/acp";
-import { Planner, type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@cabane/core";
 import { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checklists } from "./checklists";
@@ -70,18 +70,19 @@ export namespace Claims {
 		sessionId: string,
 		outcome: Dispatch.Outcome,
 	): Promise<void> => {
-		const finished =
-			outcome.outcome === "done" || outcome.outcome === "incomplete";
+		const claim = ctx.run.claims.find((c) => c.sessionId === sessionId);
 		const summary = outcome.summary ?? outcome.detail;
-		const ended = await Planner.endSession(ctx.deps.basePath, sessionId, {
-			state: finished ? "complete" : "error",
-			...(summary ? { summary } : {}),
+		if (!claim || !summary) return;
+		const ended = await ctx.deps.host.record.comment({
+			id: claim.taskId,
+			body: summary,
+			kind: "outcome.summary",
 		});
 		if (!ended.ok)
 			RunState.event(ctx, {
 				type: "warning",
 				session: sessionId,
-				summary: `session not closed: ${ended.error.message}`,
+				summary: `summary not recorded: ${ended.error.message}`,
 			});
 	};
 
@@ -188,14 +189,15 @@ export namespace Claims {
 		return edited;
 	};
 
-	/** Who the run's inbox says answered `questionId`; the latest note wins. */
+	/** The actor on the answer the runner accepted, not a later duplicate inbox submission. */
 	const answeredBy = (ctx: Ctx, questionId: string): string | undefined => {
-		const inbox = RunStore.readInbox(ctx.deps.home, ctx.run.id, 0);
-		if (!inbox.ok) return undefined;
-		const note = inbox.value.entries.findLast(
-			(e) => e.kind === "answered" && e.questionId === questionId,
-		);
-		return note?.kind === "answered" ? note.by : undefined;
+		const entries = RunStore.questionEntries(ctx.deps.home, ctx.run.id);
+		return entries.ok
+			? entries.value.find(
+					(entry) =>
+						entry.context === `answers ${questionId}` && entry.by !== undefined,
+				)?.by
+			: undefined;
 	};
 
 	type Asker = {
@@ -212,7 +214,9 @@ export namespace Claims {
 		stopped: AbortSignal,
 		asker: Asker,
 	): Questions.Deps => ({
-		basePath: ctx.deps.basePath,
+		home: ctx.deps.home,
+		runId: ctx.run.id,
+		record: ctx.deps.host.record,
 		sessionId: asker.sessionId,
 		harness: asker.harness,
 		origin: `The ${asker.harness} session working on ${asker.shortId} in loop ${ctx.run.id} is blocked on this ${asker.blockedOn} until it is answered.`,
@@ -301,7 +305,7 @@ export namespace Claims {
 			),
 	});
 
-	// Open the core session and, for a subtask it takes, mark it as taken; the session id, or
+	// Open the loop session and, for a subtask it takes, mark it as taken; the session id, or
 	// undefined.
 	const open = async (
 		ctx: Ctx,
@@ -311,20 +315,7 @@ export namespace Claims {
 		takes: boolean,
 	): Promise<string | undefined> => {
 		const tag = { lane, task: label(task) };
-		const session = await Planner.startSession(ctx.deps.basePath, {
-			taskId: task.id,
-			agent: harness,
-			externalRef: RunStore.sessionRef(ctx.run.id),
-		});
-		if (!session.ok) {
-			RunState.event(ctx, {
-				...tag,
-				type: "error",
-				summary: `session not started: ${session.error.message}`,
-			});
-			return undefined;
-		}
-		const sessionId = session.value.id;
+		const sessionId = RunStore.newSessionId();
 		if (takes) {
 			const moved = await ctx.deps.host.record.edit({
 				id: task.id,
@@ -742,7 +733,7 @@ export namespace Claims {
 	};
 
 	/**
-	 * Claim one ready work node, a subtask or a single issue itself: a core session, a dispatched
+	 * Claim one ready work node, a subtask or a single issue itself: a loop session, a dispatched
 	 * ACP session, a live entry. False when it waits for a worktree of its own (`ClaimTrees`), an
 	 * error when its worktree could not be readied (its setup failed), which stops the run; true
 	 * otherwise, the node claimed or the tracker's changes having taken it out of the run's hands.
