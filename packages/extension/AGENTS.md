@@ -6,8 +6,12 @@ command, built-in or extension, is written with. It has no runtime of its own.
 - `contract.ts`: `Extension` (`name`, `settings`, `looks`, `commands`, `board`, `mcp`, `doctor`),
   and in the `Extension` namespace `Ctx` (what every command runs with), `Command` and `BoardPorts`.
 - `doctor.ts`: check sources, findings and repairs; a failed check becomes a finding.
-- `host.ts`: API 1: record, scope, zod, helpers, harness mode and kabane identity.
+- `host.ts`: API 1: record, store, scope, zod, helpers, harness mode and kabane identity.
 - `host-record.ts`: typed wrappers through `callTool`, shared by the CLI and real database tests.
+- `host-store.ts`: the storage kit on `host.store`, built from core's exports so an extension's
+  module tests run it over a real database. It owns commit, rollback on any `err` and the
+  `TASK_UPDATED` notification after commit, and refuses capture on a table the extension's own
+  modules do not declare.
 - `args.ts`: `parseArgs` and the `flag*` readers.
 - `outcome.ts`: `Outcome` and `success`, `conciseSuccess`, `failure`, `usage`.
 - `settings.ts`: the `Settings` namespace, which resolves a settings namespace through the
@@ -36,10 +40,11 @@ or member that section does not list comes with a change to it in the same diff 
 The current contract and loader enforce these boundaries:
 
 - `kabane/extension` publishes generated types only; factories receive values through `host`.
-  `record` becomes live only after the CLI configures and migrates the runtime and the
-  host’s factory returns. Doctor activates it only when it opens the store.
-- The CLI validates the manifest in `package.json` before importing the factory. JCAB-323 adds
-  its modules entry; it does not live on `Extension`.
+  `record` and `store` become live only after the CLI configures and migrates the runtime and
+  one of the host's factories returns. Doctor activates them only when it opens the store.
+- The CLI validates the manifest in `package.json` before importing the factory. The modules
+  entry (`kabane.modules`, a factory `(host) => KabaneModule[]`) does not live on `Extension`;
+  the CLI imports it before configuring the runtime and hands it the host the main entry gets.
 
 Read before writing: `contract.ts`, `settings.ts`, `settings.test.ts`.
 

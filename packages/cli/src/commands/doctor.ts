@@ -5,7 +5,7 @@ import { configPath, loadConfig } from "../config";
 import {
 	activateContextRecord,
 	type Command,
-	configureRuntime,
+	registerModules,
 } from "../context";
 import { copilotFiles } from "../doctor/copilot-files";
 import { kabane } from "../doctor/kabane";
@@ -53,11 +53,23 @@ export const doctor: Command = {
 			const config = loadConfig(ctx.home);
 			// Settings diagnostics report invalid config; it must not prevent the other checks.
 			if (config.ok) {
-				const configured = configureRuntime(config.value, config.value.actor);
-				const initialized = configured.ok
+				// The same stages as every process that opens the database. A stop is its own
+				// finding, and the checks that need no store still run.
+				const registered = await registerModules(
+					ctx.home,
+					config.value,
+					config.value.actor,
+				);
+				if (!registered.ok)
+					unavailable.push({
+						id: "extension-modules",
+						severity: "mention",
+						summary: registered.error.message,
+					});
+				const initialized = registered.ok
 					? await Planner.init(ctx.home)
-					: configured;
-				if (initialized.ok) {
+					: undefined;
+				if (initialized?.ok) {
 					ctx = {
 						...ctx,
 						config: config.value,
@@ -65,7 +77,7 @@ export const doctor: Command = {
 						harnessMode: hostHarnessMode(ctx.home, config.value),
 					};
 					activateContextRecord(ctx, args);
-				} else
+				} else if (initialized)
 					unavailable.push({
 						id: "store-unavailable",
 						severity: "mention",
@@ -85,7 +97,10 @@ export const doctor: Command = {
 			...Extensions.doctors(loaded),
 			...copilotFiles(directories, ctx.home),
 		);
-		for (const refusal of refused)
+		// The modules stop is already that extension's finding (`kabane/extension-modules`).
+		for (const refusal of refused.filter(
+			({ name }) => name !== Extensions.stopped(),
+		))
 			sources.push({
 				name: refusal.name,
 				doctor: async () =>

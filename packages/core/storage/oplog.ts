@@ -21,7 +21,10 @@
  * becomes an op, whatever table it lives in. The set of tables that replicate
  * (`SYNC_TABLES`, plus each registered data module's `syncTables`) is still
  * declared, because the resolver needs a family per table, but the per-row
- * decision is the column. Capturing any other table is refused.
+ * decision is the column. Capturing any other table is refused, except a
+ * delete in a table an unregistered module's recorded declaration names
+ * (`Modules.unregistered`): a task delete's cascade reaches those rows whether
+ * or not the module's code is loaded.
  *
  * DELETES ARE CAPTURED FROM THE ROW THAT WAS. A delete carries no payload, but
  * the visibility check and the cascade walk both need the row before it is
@@ -52,10 +55,9 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/** A core replicated table, or a registered data module's. */
-const replicates = (tbl: string): boolean =>
-	(SYNC_TABLES as readonly string[]).includes(tbl) ||
-	Modules.table(tbl) !== undefined;
+/** A core replicated table. */
+const isCoreTable = (tbl: string): boolean =>
+	(SYNC_TABLES as readonly string[]).includes(tbl);
 
 // ============================================================
 // Types
@@ -202,19 +204,38 @@ const selectRows = (
 	db.query<Row, string[]>(`SELECT * FROM ${tbl} WHERE ${where}`).all(...params);
 
 /**
+ * The module tables a task delete cascades into: every registered module's
+ * table declared `childOfTasks`, then those the recorded declarations of
+ * unregistered modules name (`Modules.unregistered`), so a disabled or broken
+ * module's rows still have their deletes captured.
+ */
+const moduleChildTables = (db: Db): string[] => [
+	...Modules.tables()
+		.filter(({ spec }) => spec.childOfTasks)
+		.map(({ spec }) => spec.table),
+	...Modules.unregistered(db)
+		.filter((recorded) => recorded.childOfTasks)
+		.map((recorded) => recorded.table),
+];
+
+/**
  * Everything the FK cascade will remove when `taskId` goes: the same walk for
  * every subtask first (deepest first), then the task's own rows in the four
- * child tables and in every registered module table declared `childOfTasks`,
- * then the task itself. Subtasks nest one level in practice; the
- * walk is recursive so a deeper tree is still emitted FK-safely.
+ * child tables and in every module table in `moduleTables`, then the task
+ * itself. Subtasks nest one level in practice; the walk is recursive so a
+ * deeper tree is still emitted FK-safely.
  */
-const cascadeOfTask = (db: Db, taskId: string): Cascade => {
+const cascadeOfTask = (
+	db: Db,
+	taskId: string,
+	moduleTables: readonly string[],
+): Cascade => {
 	const out: Cascade = [];
 	for (const subtask of selectRows(db, TABLES.tasks, "parent_task_id = ?", [
 		taskId,
 	])) {
 		const id = asString(subtask.id);
-		if (id !== undefined) out.push(...cascadeOfTask(db, id));
+		if (id !== undefined) out.push(...cascadeOfTask(db, id, moduleTables));
 	}
 
 	const children: [string, string, string[]][] = [
@@ -222,13 +243,11 @@ const cascadeOfTask = (db: Db, taskId: string): Cascade => {
 		[TABLES.work_log, "task_id = ?", [taskId]],
 		[TABLES.context_refs, "task_id = ?", [taskId]],
 		[TABLES.task_links, "source_id = ? OR target_id = ?", [taskId, taskId]],
-		...Modules.tables()
-			.filter(({ spec }) => spec.childOfTasks)
-			.map(({ spec }): [string, string, string[]] => [
-				spec.table,
-				"task_id = ?",
-				[taskId],
-			]),
+		...moduleTables.map((table): [string, string, string[]] => [
+			table,
+			"task_id = ?",
+			[taskId],
+		]),
 	];
 	for (const [tbl, where, params] of children) {
 		for (const row of selectRows(db, tbl, where, params)) {
@@ -260,9 +279,11 @@ export namespace Oplog {
 		row: Row;
 		capturedAt: string;
 		opId?: string;
+		/** The tag of a table only a recorded declaration knows; registered modules' come from the registry. */
+		module?: { name: string; schema: number };
 	}): SyncOp => {
 		const isDelete = args.op === "delete";
-		const tag = Modules.tagFor(args.tbl);
+		const tag = Modules.tagFor(args.tbl) ?? args.module;
 		return {
 			opId: args.opId ?? randomOpId(),
 			deviceId: args.deviceId,
@@ -309,7 +330,13 @@ export namespace Oplog {
 	 * recorded: sync is not armed, or the row is private.
 	 */
 	export const capture = (db: Db, input: CaptureInput): Result<boolean> => {
-		if (!replicates(input.tbl))
+		const recorded = recordedTag(db, input);
+		if (!recorded.ok) return recorded;
+		if (
+			!isCoreTable(input.tbl) &&
+			Modules.table(input.tbl) === undefined &&
+			recorded.value === undefined
+		)
 			return err(
 				new Error(
 					`Cannot capture a write to "${input.tbl}": it is no core replicated table and no registered module declares it in syncTables. Register the module with Runtime.configure({ modules }).`,
@@ -328,7 +355,29 @@ export namespace Oplog {
 				op: input.op,
 				row: input.row,
 				capturedAt: new Date().toISOString(),
+				...(recorded.value === undefined ? {} : { module: recorded.value }),
 			}),
+		);
+	};
+
+	/**
+	 * The recorded tag for a delete on a table no registered module declares,
+	 * which only a task delete's cascade reaches: an unregistered module's rows
+	 * are written by nothing else, so an insert or update there stays refused.
+	 */
+	const recordedTag = (
+		db: Db,
+		input: CaptureInput,
+	): Result<{ name: string; schema: number } | undefined> => {
+		if (
+			input.op !== "delete" ||
+			isCoreTable(input.tbl) ||
+			Modules.table(input.tbl) !== undefined
+		)
+			return ok(undefined);
+		return trySync(
+			() =>
+				Modules.unregistered(db).find((row) => row.table === input.tbl)?.tag,
 		);
 	};
 
@@ -348,7 +397,7 @@ export namespace Oplog {
 	};
 
 	/** `captureDeletes` with the same throw-on-failure contract as `afterWrite`. */
-	export const afterDelete = (db: Db, rows: Cascade): void => {
+	export const afterDelete = (db: Db, rows: Readonly<Cascade>): void => {
 		const captured = captureDeletes(db, rows);
 		if (!captured.ok) throw captured.error;
 	};
@@ -367,7 +416,7 @@ export namespace Oplog {
 	};
 
 	/** Capture several rows as deletes, in the order given. */
-	const captureDeletes = (db: Db, rows: Cascade): Result<number> => {
+	const captureDeletes = (db: Db, rows: Readonly<Cascade>): Result<number> => {
 		let recorded = 0;
 		for (const { tbl, row } of rows) {
 			const done = capture(db, { tbl, op: "delete", row });
@@ -395,7 +444,7 @@ export namespace Oplog {
 	 * children first and the task itself last. Read BEFORE the delete.
 	 */
 	export const cascadeOf = (db: Db, taskId: string): Result<Cascade> =>
-		trySync(() => cascadeOfTask(db, taskId));
+		trySync(() => cascadeOfTask(db, taskId, moduleChildTables(db)));
 
 	/**
 	 * Create the singleton state row, which is what arms capture.

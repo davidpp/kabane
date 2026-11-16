@@ -9,6 +9,8 @@
 import { existsSync } from "node:fs";
 import { checklistModule } from "@cabane/checklist";
 import {
+	err,
+	type KabaneModule,
 	normalizeScopeUri,
 	ok,
 	Planner,
@@ -40,6 +42,7 @@ import {
 	loadConfigDocument,
 } from "./config";
 import { ConfigLayers } from "./config-layers";
+import { Extensions } from "./extensions";
 import { activateHostRecord, hostHarnessMode } from "./host";
 
 /** An extension's context plus the device config, which only built-in commands read. */
@@ -60,13 +63,15 @@ export const MODULES = [
 	checklistModule,
 ];
 
+/** Wire the runtime with the first-party modules, then `extensions` (enabled extensions' modules). */
 export const configureRuntime = (
 	config: Config,
 	actor: string,
+	extensions: readonly KabaneModule[] = [],
 ): Result<void> => {
 	const zone = config.timezone;
 	return Runtime.configure({
-		modules: MODULES,
+		modules: [...MODULES, ...extensions],
 		provider: SqliteDb.provider({ dbName: DB_NAME }),
 		actor: () => actor,
 		syncSettings: async () => ok(config.sync),
@@ -75,7 +80,42 @@ export const configureRuntime = (
 	});
 };
 
-/** Load config, wire the runtime, ensure the schema. */
+/**
+ * The stages before migration (`ARCHITECTURE.md`, "Every process that opens the database
+ * registers the same modules"): each enabled extension's manifest read and `api` checked, its
+ * modules entry imported and its factory called with its host, then `Runtime.configure` with
+ * the first-party modules and the extensions' in `extensions` order. An `err` is the stop's one
+ * line: a process that opens the database must not go on without an enabled extension's modules.
+ */
+export const registerModules = async (
+	home: string,
+	config: Config,
+	actor: string,
+): Promise<Result<void>> => {
+	const enabled = config.extensions ?? [];
+	const contributed = await Extensions.modules(enabled, home);
+	if (!contributed.ok) return contributed;
+	const modules: KabaneModule[] = [];
+	// One extension at a time, so a refused set names the extension whose modules it refused.
+	for (const { name, modules: own } of contributed.value) {
+		modules.push(...own);
+		const configured = configureRuntime(config, actor, modules);
+		if (!configured.ok)
+			return err(
+				new Error(
+					Extensions.stopLine(
+						home,
+						enabled,
+						name,
+						`its data modules were refused: ${configured.error.message}`,
+					),
+				),
+			);
+	}
+	return modules.length > 0 ? ok(undefined) : configureRuntime(config, actor);
+};
+
+/** Load config, register every module, ensure the schema. */
 export const openContext = async (
 	home: string,
 	cwd: string,
@@ -85,8 +125,8 @@ export const openContext = async (
 	const config = loadConfig(home);
 	if (!config.ok) return config;
 	const actor = flagString(args, "as") ?? config.value.actor;
-	const configured = configureRuntime(config.value, actor);
-	if (!configured.ok) return configured;
+	const registered = await registerModules(home, config.value, actor);
+	if (!registered.ok) return registered;
 	const initialized = await Planner.init(home);
 	if (!initialized.ok) return initialized;
 	const ctx: Ctx = {

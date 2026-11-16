@@ -169,7 +169,9 @@ function dependencyFindings(
 }
 
 // Parse syntax only: no resolver, type checker, or workspace code is executed.
-function importSpecifiers(file: string): { specifier: string; line: number }[] {
+export function importSpecifiers(
+	file: string,
+): { specifier: string; line: number }[] {
 	const source = ts.createSourceFile(
 		file,
 		readFileSync(file, "utf8"),

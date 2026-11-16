@@ -304,24 +304,43 @@ export namespace Migrations {
 
 	/**
 	 * Bring each registered module up to its own list, in registration order,
-	 * after core. Each records its versions in its own table, so a module
-	 * migrating never moves `SCHEMA_VERSION`, and a database a newer build of a
-	 * module migrated is refused for that module the way core refuses its own.
+	 * after core, and keep its declaration in `module_declarations`. Each records
+	 * its versions in its own table, so a module migrating never moves
+	 * `SCHEMA_VERSION`, and a database a newer build of a module migrated is
+	 * refused for that module the way core refuses its own.
+	 *
+	 * `module_declarations` is bookkeeping this pass owns, like each module's
+	 * version table: created here if missing, outside the numbered list, never
+	 * replicated (`Modules.record`).
 	 */
 	export const applyModules = (
 		db: Db,
 		modules: readonly KabaneModule[],
 	): Result<void> => {
+		const ready = Modules.ensureDeclarations(db);
+		if (!ready.ok) return ready;
 		for (const module of modules) {
 			// Run for an empty list too: a database a build of this module with
-			// migrations has opened must still be refused by one without.
+			// migrations has opened must still be refused by one without. Each
+			// migration that runs records the declaration in its own transaction.
 			const ran = Migrate.run(
 				db,
 				module.migrations ?? [],
 				Modules.versionTable(module.name),
+				(tx, version) => Modules.recordIn(tx, module, version),
 			);
 			if (!ran.ok)
 				return err(new Error(`module "${module.name}": ${ran.error.message}`));
+			// Nothing moved: the declaration may still be new (a module registered
+			// on a database that predates the table) or changed (its tables did).
+			if (ran.value.applied.length > 0) continue;
+			const recorded = Modules.record(db, module);
+			if (!recorded.ok)
+				return err(
+					new Error(
+						`module "${module.name}": its declaration could not be recorded: ${recorded.error.message}`,
+					),
+				);
 		}
 		return ok(undefined);
 	};

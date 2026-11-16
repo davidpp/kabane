@@ -1,9 +1,12 @@
 /** The versioned host supplied to an extension factory. */
 import type {
+	Db,
 	defineTool,
 	err,
 	ok,
 	Result,
+	Row,
+	TaskUpdate,
 	tryCatch,
 	trySync,
 	Task,
@@ -30,6 +33,8 @@ export type Host = {
 		idOf(uri: string): Result<string>;
 	};
 	readonly harnessMode: "auto" | "default";
+	/** For the extension's own data modules (the manifest's modules entry). */
+	readonly store: Host.Store;
 	readonly z: typeof z;
 	readonly result: {
 		ok: typeof ok;
@@ -135,5 +140,54 @@ export namespace Host {
 		}): Promise<Result<TaskWorkLog[]>>;
 		/** Any registered tool, including data modules; input passes through unchanged. */
 		call(tool: string, input: unknown): Promise<Result<unknown>>;
+	};
+	/**
+	 * Storage for the extension's data modules. Both calls return the "not configured yet" `err`
+	 * until the store is open and this host's factory has returned.
+	 */
+	export type Store = {
+		/** Reads, on a connection that refuses writes. */
+		read<T>(fn: (db: Db) => Result<T> | Promise<Result<T>>): Promise<Result<T>>;
+		/**
+		 * One transaction. An `err` returned from `fn`, a throw, or an `err` from any `tx` call
+		 * rolls everything back. After the commit, and only then, the host emits `TASK_UPDATED`
+		 * for every task `tx.updateTask` changed.
+		 *
+		 * `fn` runs inside the database's write lock: do not await I/O, a timer or another write
+		 * in it. A `store.write` nested in it, from any host, and a `host.record` call that writes
+		 * return an `err` at once; `record` reads work and see what was committed before this write
+		 * began. A callback `fn` schedules may write once this write has ended.
+		 *
+		 * What takes turns: every `store.write` and every `host.record` write in the process, each
+		 * waiting at most 5000 ms (SQLite's busy timeout) and then returning an `err` naming the
+		 * write that holds the turn, without ever running. What does not: kabane's own writes (CLI
+		 * commands, MCP tools, the board) open their own connection and wait in SQLite's busy
+		 * handler, which blocks the thread `fn` would resume on; so while `fn` awaits, a
+		 * first-party write in the same process stalls for that timeout. Awaiting inside `fn` is
+		 * the misuse that causes both.
+		 */
+		write<T>(
+			fn: (tx: Tx) => Result<T> | Promise<Result<T>>,
+		): Promise<Result<T>>;
+	};
+	/**
+	 * A write transaction, valid only while `fn` runs. Capture calls exist only here, and only
+	 * they are checked against the tables the extension's modules declare.
+	 */
+	export type Tx = {
+		/** A raw handle on the open transaction: nothing checks which tables SQL on it touches. */
+		readonly db: Db;
+		/** Capture a row of one of the extension's tables after an insert or update. */
+		afterWrite(
+			table: string,
+			op: "insert" | "update",
+			id: string,
+		): Result<void>;
+		/** The row as it is, read before a delete. */
+		snapshot(table: string, id: string): Result<Row | undefined>;
+		/** Capture deleted rows of the extension's tables, children first. */
+		afterDelete(rows: readonly { tbl: string; row: Row }[]): Result<void>;
+		/** The one way to change a task: runs every module's `onTaskStateChange` on a state change. */
+		updateTask(id: string, updates: TaskUpdate): Result<Task | null>;
 	};
 }

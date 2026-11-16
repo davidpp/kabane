@@ -1,6 +1,12 @@
 {
 	"extends": "../tsconfig.base.json",
-	"include": ["build*.ts", "release*.ts", "smoke.ts", "layers*.ts"],
+	"include": [
+		"build*.ts",
+		"release*.ts",
+		"smoke.ts",
+		"layers*.ts",
+		"modules-entry*.ts"
+	],
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM"],
 		"types": ["bun"]

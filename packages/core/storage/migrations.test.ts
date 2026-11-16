@@ -626,3 +626,25 @@ describe("Migrations when several processes boot one database at once", () => {
 		expect(await versionRows()).toEqual(ALL_VERSIONS);
 	});
 });
+
+describe("module_declarations, bookkeeping of the module pass", () => {
+	afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+	it("is created on a database every migration already ran on, moves no version, and leaves every row readable", async () => {
+		base = freshBase("declarations");
+		await withDb((db) => {
+			const all = Migrate.run(db, Migrations.LIST);
+			if (!all.ok) throw all.error;
+		});
+		const task = await Planner.addTask(base, { title: "kept", kind: "issue" });
+		if (!task.ok) throw task.error;
+		expect(await tableNames()).not.toContain(TABLES.module_declarations);
+
+		await mustInit(base);
+
+		expect(await tableNames()).toContain(TABLES.module_declarations);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		const kept = await Planner.getTask(base, task.value.id);
+		expect(kept.ok && kept.value?.title).toBe("kept");
+	});
+});

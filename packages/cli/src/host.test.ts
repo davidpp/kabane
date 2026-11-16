@@ -26,8 +26,8 @@ it("activates existing and later hosts with the command's actor, scope and modul
 			harness: { mode: "default" },
 		}),
 	);
-	const { host, ready } = createHost(home);
-	ready();
+	const { host, build } = createHost(home);
+	await build(() => undefined);
 	expect(host.api).toBe(1);
 	expect(host.harnessMode).toBe("default");
 	expect((await host.record.list({})).ok).toBe(false);
@@ -59,7 +59,7 @@ it("activates existing and later hosts with the command's actor, scope and modul
 		host.result.ok([]),
 	);
 	const later = createHost(home);
-	later.ready();
+	await later.build(() => undefined);
 	const comment = await later.host.record.comment({
 		id: task.id,
 		body: "After opening",
@@ -99,10 +99,10 @@ it("opens without scope detection, then resolves it only once across record call
 		if (!ctx.ok) throw ctx.error;
 		expect(detect).not.toHaveBeenCalled();
 		const first = createHost(home);
-		first.ready();
+		await first.build(() => undefined);
 		expect((await first.host.record.list({})).ok).toBe(true);
 		const second = createHost(home);
-		second.ready();
+		await second.build(() => undefined);
 		expect((await second.host.record.list({})).ok).toBe(true);
 		expect(detect).toHaveBeenCalledTimes(1);
 	} finally {
@@ -141,8 +141,8 @@ it("passes question cursors untouched through record.call", async () => {
 	const home = configuredHome();
 	const ctx = await openContext(home, home, parseArgs([]));
 	if (!ctx.ok) throw ctx.error;
-	const { host, ready } = createHost(home);
-	ready();
+	const { host, build } = createHost(home);
+	await build(() => undefined);
 	const added = await Planner.addTask(home, { title: "Paged", kind: "issue" });
 	if (!added.ok) throw added.error;
 	const id = added.value.id;
