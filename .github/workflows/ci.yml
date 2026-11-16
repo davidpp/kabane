@@ -52,9 +52,9 @@ jobs:
       matrix:
         include:
           - group: cli
-            command: bun test ./packages/cli --path-ignore-patterns=**/commands/config.test.ts --path-ignore-patterns=**/update-binary.test.ts
+            command: bun test ./packages/cli --path-ignore-patterns=**/commands/config.test.ts --path-ignore-patterns=**/commands/update.test.ts --path-ignore-patterns=**/update-binary.test.ts
           - group: cli-processes
-            command: bun test ./packages/cli/src/commands/config.test.ts ./packages/cli/src/update-binary.test.ts
+            command: bun test ./packages/cli/src/commands/config.test.ts ./packages/cli/src/commands/update.test.ts ./packages/cli/src/update-binary.test.ts
           - group: extensions
             command: bun test ./extensions
           - group: scripts-board

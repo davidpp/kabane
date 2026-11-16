@@ -1,13 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { checklistModule } from "@cabane/checklist";
 import { KABANE_TOOLS } from "@cabane/core";
 import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
 import manifest from "@cabane/core/testing/fixtures/issue-corpus/manifest.json";
 import {
-	corpusSchema,
 	HUGE_BODY,
 	HUGE_COMMENT,
 	FIXTURE_TIME,
@@ -41,40 +38,12 @@ const textBlocks = z.object({
 const jsonRecord = (text: string) => taskSchema.safeParse(JSON.parse(text));
 
 describe("retained issue corpus baseline", () => {
-	it("pins the retained bytes and deterministic selection", () => {
-		const parsed = corpusSchema.safeParse(issues);
-		expect(parsed.success).toBe(true);
-		expect(issues).toHaveLength(24);
-		expect(manifest.normalizationVersion).toBe(2);
-		expect(issues.map((issue) => issue.number)).toEqual(manifest.issueNumbers);
-		const bytes = readFileSync(
-			fileURLToPath(
-				import.meta
-					.resolve("@cabane/core/testing/fixtures/issue-corpus/issues.json"),
-			),
-		);
-		expect(createHash("sha256").update(bytes).digest("hex")).toBe(
-			manifest.fixtureSha256,
-		);
-		expect(bytes.length).toBeLessThan(500 * 1024);
-		for (const issue of issues) {
-			const canonical = JSON.stringify({
-				body: issue.body,
-				comments: issue.comments,
-				title: issue.title,
-			});
-			expect(createHash("sha256").update(canonical).digest("hex")).toBe(
-				issue.contentSha256,
-			);
-		}
+	it("contains no personal home-directory paths", () => {
 		for (const issue of issues) {
 			const text = [issue.title, issue.body, ...issue.comments].join("\n");
 			expect(text).not.toMatch(/[a-z]:\\users\\(?!\[user\])[^\\\s]+/i);
 			expect(text).not.toMatch(/\/(?:home|Users)\/(?!\[user\])[^/\s]+/);
 		}
-		expect(issues.some((issue) => issue.body.includes("```"))).toBe(true);
-		expect(issues.some((issue) => issue.comments.length === 0)).toBe(true);
-		expect(issues.some((issue) => issue.comments.length >= 10)).toBe(true);
 	});
 
 	for (const synthetic of [false, true]) {

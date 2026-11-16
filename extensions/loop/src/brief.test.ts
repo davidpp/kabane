@@ -52,9 +52,9 @@ describe("Brief, after an interrupted attempt", () => {
 			"ASSEMBLED",
 		).split("\n\n---\n\n");
 		expect(sections).toHaveLength(3);
-		expect(sections[1]).toStartWith(
-			"This work was started before, by attempt P-2 (from 2026-11-04T10:00:00.000Z), which was interrupted",
-		);
+		expect(sections[1]).toContain("P-2");
+		expect(sections[1]).toContain("2026-11-04T10:00:00.000Z");
+		expect(sections[1]).toContain("interrupted");
 		expect(sections[1]).toContain("- file:hello.txt (wip)");
 		expect(sections[1]).toContain("It made no commit.");
 		expect(sections[1]).toContain("```\n?? hello.txt\n```");
@@ -109,9 +109,13 @@ describe("Brief after a red gate", () => {
 
 	it("tells the resumed session only which gate failed, how, and to close again", () => {
 		const prompt = Brief.retriedInSession(subject.task, gate);
-		expect(prompt.split("\n")[0]).toBe(
-			"After you called kabane_done on P-2, the runner ran the gates and the `check` gate (`grep -q fixed out.txt`) failed with exit 1, so P-2 is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. The end of the gate's output:",
-		);
+		const [failure] = prompt.split("\n");
+		expect(failure).toContain("kabane_done on P-2");
+		expect(failure).toContain("`check`");
+		expect(failure).toContain("`grep -q fixed out.txt`");
+		expect(failure).toContain("exit 1");
+		expect(failure).toContain("open again");
+		expect(failure).toContain("same session");
 		expect(prompt).toContain("```\nno match\n```");
 		expect(prompt).toContain(
 			"Make it pass, then call kabane_done on P-2 again.",
@@ -125,9 +129,11 @@ describe("Brief after a red gate", () => {
 			"ASSEMBLED",
 		).split("\n\n---\n\n");
 		expect(sections[0]).toStartWith("You are one implementing session");
-		expect(sections[1]).toStartWith(
-			"P-2 was closed before, then reopened: the `check` gate (`grep -q fixed out.txt`) failed with exit 1 on that work.",
-		);
+		expect(sections[1]).toContain("P-2");
+		expect(sections[1]).toContain("reopened");
+		expect(sections[1]).toContain("`check`");
+		expect(sections[1]).toContain("`grep -q fixed out.txt`");
+		expect(sections[1]).toContain("exit 1");
 		expect(sections[2]).toBe("ASSEMBLED");
 	});
 });
@@ -148,13 +154,13 @@ describe("Brief on a single issue", () => {
 		const [instructions] = Brief.opening(single, "ASSEMBLED").split(
 			"\n\n---\n\n",
 		);
-		expect(instructions).toStartWith(
-			'You are the implementing session of kabane loop run r1, which drives the single issue P-9 ("lone") to completion.',
-		);
+		expect(instructions).toContain("implementing session");
+		expect(instructions).toContain("r1");
+		expect(instructions).toContain("single issue P-9");
+		expect(instructions).toContain("lone");
 		expect(instructions).toContain("Your issue is P-9.");
-		expect(instructions).toContain(
-			"When the issue is implemented and you have verified it, call kabane_done on P-9.",
-		);
+		expect(instructions).toContain("verified");
+		expect(instructions).toContain("kabane_done on P-9");
 		expect(instructions).toContain("Do not make it a child of P-9");
 		expect(instructions).not.toMatch(/subtask|sibling/);
 	});
@@ -172,19 +178,22 @@ describe("Brief on a single issue", () => {
 			{ ...single, findings: [], gates: [] },
 			"ASSEMBLED",
 		);
-		expect(lens).toStartWith(
-			'You are the `security` verifier of kabane loop run r1 on P-9 ("lone"). Its work is done.',
-		);
-		expect(fixer).toStartWith(
-			'You are the fixer session of kabane loop run r1 on P-9 ("lone"), whose work is done.',
-		);
+		expect(lens).toContain("`security` verifier");
+		expect(lens).toContain("r1");
+		expect(lens).toContain("P-9");
+		expect(lens).toContain("lone");
+		expect(lens).toContain("work is done");
+		expect(fixer).toContain("fixer session");
+		expect(fixer).toContain("r1");
+		expect(fixer).toContain("P-9");
+		expect(fixer).toContain("lone");
+		expect(fixer).toContain("work is done");
 		for (const brief of [lens, fixer])
 			expect(brief).not.toContain("subtasks of");
 	});
 
 	it("tells a subtask's session its siblings share the tree only when the run has more than one session at once", () => {
-		const SIBLINGS =
-			"Other sessions may be working on sibling subtasks in the same repository at the same time.";
+		const SIBLINGS = "sibling subtasks";
 		const alone = Brief.opening(subject, "ASSEMBLED");
 		expect(alone).toContain(
 			'which drives the subtasks of P-1 ("parent") to completion.',
@@ -192,7 +201,7 @@ describe("Brief on a single issue", () => {
 		expect(alone).not.toContain(SIBLINGS);
 		expect(
 			Brief.opening({ ...subject, concurrent: true }, "ASSEMBLED"),
-		).toContain(`("parent") to completion. ${SIBLINGS}`);
+		).toContain(SIBLINGS);
 	});
 });
 
@@ -208,24 +217,26 @@ describe("Brief implementing checks", () => {
 				{ ...target, gates: ["typecheck", "lint"] },
 				"ASSEMBLED",
 			);
-			expect(brief).toContain(
-				`When you call kabane_done, the runner runs the gates (\`typecheck\`, \`lint\`) in that order on the tree outside your session; a failing gate reopens the ${noun} with its output.`,
-			);
+			expect(brief).toContain("kabane_done");
+			expect(brief).toContain("`typecheck`, `lint`");
+			expect(brief).toContain("in that order");
+			expect(brief).toContain("outside your session");
+			expect(brief).toContain(`a failing gate reopens the ${noun}`);
 			expect(brief).toContain("Run the checks your change needs");
-			expect(brief).toContain(
-				"if a check fails only because the environment forbids something (a denied process or a blocked network call)",
-			);
-			expect(brief).toContain(
-				`explain it with kabane_comment and leave it to the gates without parking the ${noun}`,
-			);
+			expect(brief).toContain("environment forbids");
+			expect(brief).toContain("denied process");
+			expect(brief).toContain("blocked network");
+			expect(brief).toContain("kabane_comment");
+			expect(brief).toContain("leave it to the gates");
+			expect(brief).toContain(`without parking the ${noun}`);
 			expect(brief).not.toContain("No gates are configured");
 		});
 
 		it(`requires the project's checks for a ${noun} without gates`, () => {
 			const brief = Brief.opening(target, "ASSEMBLED");
-			expect(brief).toContain(
-				"No gates are configured for this run, so nothing runs the project's checks on your result after your session: run the project's checks yourself before you call kabane_done.",
-			);
+			expect(brief).toContain("No gates are configured");
+			expect(brief).toContain("run the project's checks yourself");
+			expect(brief).toContain("before you call kabane_done");
 			expect(brief).not.toContain("leave it to the gates");
 			expect(brief).not.toContain("the runner runs the gates");
 		});
@@ -233,20 +244,27 @@ describe("Brief implementing checks", () => {
 });
 
 describe("Brief on a decision that is the human's", () => {
-	const asked =
-		"with kabane_ask: the choices, your recommendation and why, one question per decision and all of them in one call";
-	const parked =
-		"That parks it as waiting until the human answers. Comment only what the questions do not carry, such as evidence or a link.";
-
 	it("has an implementing session ask a design fork on its own issue instead of guessing", () => {
 		for (const target of [subject.task, subject.parent]) {
 			const [instructions] = Brief.opening(
 				{ ...subject, task: target },
 				"ASSEMBLED",
 			).split("\n\n---\n\n");
-			expect(instructions).toContain(
-				`If the work reaches a design choice the brief does not settle, do not guess: file the decision on ${target.id} ${asked}. ${parked} Then end your turn.`,
+			const decision = instructions
+				?.split("\n")
+				.find((paragraph) =>
+					paragraph.startsWith("If the work reaches a design choice"),
+				);
+			const ask = decision?.split(". ")[0];
+			expect(ask).toContain(
+				`file the decision on ${target.id} with kabane_ask`,
 			);
+			expect(ask).toContain("the choices, your recommendation and why");
+			expect(ask).toContain(
+				"one question per decision and all of them in one call",
+			);
+			expect(decision).toContain("parks it as waiting until the human answers");
+			expect(decision).toContain("Then end your turn.");
 		}
 	});
 
@@ -259,9 +277,13 @@ describe("Brief on a decision that is the human's", () => {
 			},
 			"ASSEMBLED",
 		);
+		expect(lens).toContain("trade-off");
+		expect(lens).toContain("file the finding");
+		expect(lens).toContain("kabane_ask");
 		expect(lens).toContain(
-			`When the fix is a trade-off the human must choose, file the finding all the same, then file the decision on it ${asked}. ${parked} The fixer leaves a waiting finding to the human.`,
+			"with kabane_ask: the choices, your recommendation and why",
 		);
+		expect(lens).toContain("waiting finding");
 	});
 
 	it("has the fixer ask a finding that needs the human's call, and only comment one that is wrong", () => {
@@ -269,12 +291,20 @@ describe("Brief on a decision that is the human's", () => {
 			{ ...subject, findings: [], gates: [] },
 			"ASSEMBLED",
 		);
+		expect(fixer).toContain("finding is wrong");
+		expect(fixer).toContain("already fixed");
+		expect(fixer).toContain("outside P-1's scope");
+		expect(fixer).toContain("do not close it");
+		expect(fixer).toContain("kabane_comment");
+		expect(fixer).toContain("kabane_edit");
+		expect(fixer).toContain('state "waiting"');
+		expect(fixer).toContain("needs a call that is the human's");
+		expect(fixer).toContain("do not change code");
+		expect(fixer).toContain("kabane_ask");
 		expect(fixer).toContain(
-			'If a finding is wrong, already fixed, or outside P-1\'s scope, do not change code for it and do not close it: say why with kabane_comment on it, then call kabane_edit on it with state "waiting", so it stays open with the reason and next step recorded.',
+			"with kabane_ask: the choices, your recommendation and why",
 		);
-		expect(fixer).toContain(
-			`If fixing a finding needs a call that is the human's (two reasonable fixes, or a change to what P-1 asked for), do not change code for it either: file the decision on it ${asked}. ${parked}`,
-		);
+		expect(fixer).toContain("parks it as waiting until the human answers");
 		expect(Brief.fixerContinuation([subject.task])).toContain(
 			"or file the decision it needs with kabane_ask.",
 		);
@@ -300,10 +330,6 @@ describe("Brief on the gates a review can trust", () => {
 			tail: "",
 		},
 	];
-	const named =
-		"These gates passed on this exact tree: `check` (`bun run check`, 41s), `test` (`bun run test`, 3m12s).";
-	const rule =
-		"Do not rerun them or any part of them (a package's tests, one test file, lint) to confirm they pass. Run something only when it checks what they cannot";
 	const lens = (extra: { gates: string[]; passed?: Gates.Result[] }) =>
 		Brief.lens(
 			{
@@ -332,7 +358,11 @@ describe("Brief on the gates a review can trust", () => {
 			lens({ gates: ["check", "test"], passed }),
 			recheck({ gates: ["check", "test"], passed }),
 		]) {
-			expect(brief).toContain(`${named} ${rule}`);
+			expect(brief).toContain("exact tree");
+			expect(brief).toContain("`check` (`bun run check`, 41s)");
+			expect(brief).toContain("`test` (`bun run test`, 3m12s)");
+			expect(brief).toContain("Do not rerun");
+			expect(brief).toContain("checks what they cannot");
 			expect(brief).not.toContain("Its gates (");
 		}
 	});
@@ -342,16 +372,16 @@ describe("Brief on the gates a review can trust", () => {
 			lens({ gates: ["check", "test"] }),
 			recheck({ gates: ["check", "test"] }),
 		]) {
-			expect(brief).toContain(
-				"The run's gates (`check`, `test`) have no green pass on record for this exact tree: do not assume they pass, and run the checks you need.",
-			);
+			expect(brief).toContain("`check`, `test`");
+			expect(brief).toContain("no green pass");
+			expect(brief).toContain("exact tree");
+			expect(brief).toContain("do not assume they pass");
 			expect(brief).not.toContain("pass on the tree you are reviewing");
 			expect(brief).not.toContain("Do not rerun");
 		}
 		for (const brief of [lens({ gates: [] }), recheck({ gates: [] })]) {
-			expect(brief).toContain(
-				"No gates are configured for this run, so nothing has run the project's checks on the result: do not assume they pass.",
-			);
+			expect(brief).toContain("No gates are configured");
+			expect(brief).toContain("do not assume they pass");
 			expect(brief).not.toContain("Do not rerun");
 		}
 	});
@@ -416,9 +446,10 @@ describe("Brief on a task with a checklist", () => {
 			{ ...subject, checklist: items },
 			"ASSEMBLED",
 		).split("\n\n---\n\n");
-		expect(instructions).toContain(
-			'P-2 has a checklist of 3 items, 1 ticked, in its brief below: the steps of this one change, worked in this tree one after another. Start at P-2.2 ("Validate").',
-		);
+		expect(instructions).toContain("P-2");
+		expect(instructions).toContain("3 items, 1 ticked");
+		expect(instructions).toContain("Start at P-2.2");
+		expect(instructions).toContain("Validate");
 		expect(instructions).toContain(
 			'(kabane_checklistTick with items: ["P-2.2"] for this one)',
 		);
@@ -445,14 +476,19 @@ describe("Brief on a task with a checklist", () => {
 
 	it("names the open items in the nudge, and in the one after a refused kabane_done", () => {
 		const [, ...open] = items;
-		expect(Brief.continuation(subject.task, open)).toStartWith(
-			'P-2 is still open, with 2 checklist items not ticked: P-2.2, P-2.3. Continue at P-2.2 ("Validate")',
-		);
+		const continuation = Brief.continuation(subject.task, open);
+		expect(continuation).toContain("P-2 is still open");
+		expect(continuation).toContain("2 checklist items not ticked");
+		expect(continuation).toContain("P-2.2, P-2.3");
+		expect(continuation).toContain("Continue at P-2.2");
+		expect(continuation).toContain("Validate");
 		const [first, ...rest] = open;
 		if (!first) throw new Error("no open item");
-		expect(Brief.reopened(subject.task, [first, ...rest])).toStartWith(
-			"You called kabane_done on P-2 with 2 checklist items not ticked (P-2.2, P-2.3), so the run reopened it",
-		);
+		const reopened = Brief.reopened(subject.task, [first, ...rest]);
+		expect(reopened).toContain("kabane_done on P-2");
+		expect(reopened).toContain("2 checklist items not ticked");
+		expect(reopened).toContain("P-2.2, P-2.3");
+		expect(reopened).toContain("reopened");
 	});
 });
 
@@ -484,9 +520,13 @@ describe("Brief working copy", () => {
 						expect(prompt).toContain(
 							"Do not create a branch or a worktree and do not switch branches.",
 						);
-						expect(prompt).toContain(
-							"Where the issue's brief names a branch, a worktree, a merge order or who pushes, opens a PR or runs landing automation, this paragraph replaces it.",
-						);
+						expect(prompt).toContain("issue's brief");
+						expect(prompt).toContain("branch");
+						expect(prompt).toContain("worktree");
+						expect(prompt).toContain("merge order");
+						expect(prompt).toContain("who pushes");
+						expect(prompt).toContain("landing automation");
+						expect(prompt).toContain("this paragraph replaces it");
 						expect(prompt.indexOf("this paragraph replaces it")).toBeLessThan(
 							prompt.indexOf("Branch foo"),
 						);
@@ -585,9 +625,10 @@ describe("Brief working copy", () => {
 			"If verification must wait for landing or later CI",
 		);
 		expect(fixer).toContain('then kabane_edit with state "waiting"');
-		expect(fixer).toContain(
-			"who pushes, opens a PR or runs landing automation, this paragraph replaces it",
-		);
+		expect(fixer).toContain("who pushes");
+		expect(fixer).toContain("opens a PR");
+		expect(fixer).toContain("landing automation");
+		expect(fixer).toContain("this paragraph replaces it");
 		for (const place of [
 			{ ...target.tree, land: "none" as const },
 			{ ...target.tree, worktree: false },

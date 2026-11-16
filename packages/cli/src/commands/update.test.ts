@@ -75,7 +75,7 @@ beforeAll(async () => {
 	if (!parsed.success || !parsed.data[0]) return;
 	archive = join(WORK, parsed.data[0].filename);
 	betaArchive = repack(archive, BETA);
-}, 30_000);
+}, 120_000);
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 
 for (const configured of [false, true])

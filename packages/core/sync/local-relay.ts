@@ -1,24 +1,9 @@
 /**
- * Planner Sync — In-process Relay
+ * In-process sync transport with an ordered, idempotent log.
+ * Devices use it to exercise sync and convergence without a deployed Worker.
  *
- * A `SyncTransport` backed by an ordered in-memory log. This is what makes the
- * slice-1 milestone real: two planner DBs in separate temp dirs share one relay
- * and converge with no Worker, no D1, no wrangler and no network.
- *
- * SHIPPED CODE, NOT A FIXTURE. When `http-transport.ts` (JJAK-1074) lands, this
- * stays as the permanent test double so every convergence assertion still runs
- * in CI without Cloudflare, and so a resolution bug can be reproduced without a
- * deploy.
- *
- * IN MEMORY, NOT SQLITE. The contract a transport owes an applier is exactly
- * one thing — a monotonic total order with idempotent append — and an array
- * plus a `Set` of seen `opId`s is that, with no second database file to open,
- * pragma, or clean up. Durable ordering is D1's job in slice 2, not the double's.
- *
- * THE WIRE IS A BOUNDARY, so `push` re-parses every op with `SyncOpSchema`
- * rather than trusting the caller. That also strips the local `seq` a
- * `DrainedOp` carries, which is meaningless to anyone but the device that
- * captured it.
+ * In memory, not SQLite: a transport owes an applier only a monotonic order
+ * with idempotent append, which an array and a `Set` of seen opIds provide.
  */
 
 import { err, ok, type Result } from "../result";
