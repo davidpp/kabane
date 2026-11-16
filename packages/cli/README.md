@@ -211,12 +211,15 @@ modules entry's default export is a factory `(host) => KabaneModule[]`; its modu
 through `host.store`, and their rows sync like kabane's own. Every command that opens the
 database imports the modules entry of every enabled extension, `kabane list` included, so keep
 it to what the modules need. When it cannot be imported, its factory throws, kabane refuses its
-modules, or the manifest asks for an API this kabane does not support, every command that opens
+modules, the manifest asks for an API this kabane does not support, or the enabled extension's
+`package.json` cannot be read or is not a valid manifest (kabane cannot tell whether it has
+modules), every command that opens
 the database stops with one line naming the extension and why (`kabane mcp` and the board
 included; `kabane doctor` reports it as a finding). Two ways out: repair the extension, or
 remove it from `extensions` in `config.json`, by hand or with
 `kabane config set extensions <the others> --layer global` (`""` for none); `config`, `init`,
-`scope`, `update`, `doctor` and `--help` still run. Disabling such an extension keeps its tables
+`scope`, `update`, `doctor` and `--help` still run. An enabled name with no directory stops nothing: it acts as disabled, and the
+commands that load extensions report it as not installed. Disabling such an extension keeps its tables
 and rows: deleting a task still records the deletes of its rows for the other devices, which
 hold what they receive for that extension until it is enabled there.
 

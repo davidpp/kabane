@@ -191,8 +191,9 @@ for (const stop of stops) {
 			expect(stopped.text).toStartWith("Error: Extension notes: ");
 			expect(stopped.text).toContain(stop.reason);
 			expect(stopped.text).toContain(
-				`repair it or remove it from "extensions" in ${configPath(home)} by hand or with \`kabane config set extensions "" --layer global\``,
+				`, or remove it from "extensions" in ${configPath(home)} by hand or with \`kabane config set extensions "" --layer global\`; kabane opens the database only with every enabled extension's data modules registered`,
 			);
+			expect(stopped.text.match(/repair/g)?.length ?? 0).toBeLessThanOrEqual(1);
 			expect(stopped.text).not.toContain("\n");
 		}
 
@@ -215,6 +216,50 @@ for (const stop of stops) {
 		expect((await kabane(["list"])).exitCode).toBe(0);
 	});
 }
+
+it("stops on an installed extension whose manifest cannot be read, and treats an enabled name with no directory as disabled", async () => {
+	const home = mkdtempSync(join(tmpdir(), "kabane-modules-manifest-"));
+	homes.push(home);
+	const dir = NotesExtension.install(home);
+	configure(home, "manifest", [NotesExtension.NAME, "absent"]);
+	const kabane = (argv: string[]) =>
+		run(argv, { KABANE_HOME: home, KABANE_HARNESSES: "" }, home);
+	expect((await kabane(["add", "Kept", "--scope", "manifest"])).exitCode).toBe(
+		0,
+	);
+
+	// A trailing comma: the manifest cannot prove the extension has no modules.
+	const manifest = join(dir, "package.json");
+	writeFileSync(
+		manifest,
+		'{ "kabane": { "extension": "./index.ts", "api": 1, } }',
+	);
+	for (const argv of [["list"], ["done", "JMAN-1"]]) {
+		const stopped = await kabane(argv);
+		expect(stopped.exitCode).toBe(1);
+		expect(stopped.text).toStartWith(
+			`Error: Extension notes: ${manifest} contains invalid JSON; correct its JSON, or remove it from "extensions"`,
+		);
+		expect(stopped.text).toContain(
+			"`kabane config set extensions absent --layer global`",
+		);
+	}
+
+	// The enabled name "absent" has no directory: no stop, and commands that load extensions refuse it.
+	const cleared = await kabane([
+		"config",
+		"set",
+		"extensions",
+		"absent",
+		"--layer",
+		"global",
+	]);
+	expect(cleared.exitCode).toBe(0);
+	const listed = await kabane(["list", "--scope", "manifest"]);
+	expect(listed.exitCode).toBe(0);
+	expect(listed.text).toContain("Kept");
+	expect((await kabane(["--help"])).exitCode).toBe(0);
+});
 
 it("names the other enabled extensions in the way out", async () => {
 	const home = mkdtempSync(join(tmpdir(), "kabane-modules-rest-"));

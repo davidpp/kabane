@@ -386,15 +386,17 @@ export namespace Extensions {
 		const rest = enabled.filter((other) => other !== name).join(",");
 		return line({
 			name,
-			reason: `${reason.replace(/\.+$/, "")}; kabane opens the database only with every enabled extension's data modules registered, so repair it or remove it from "extensions" in ${configPath(home)} by hand or with \`kabane config set extensions ${rest || '""'} --layer global\``,
+			// `reason` ends with its own repair; the line adds the other way out and why it stops.
+			reason: `${reason.replace(/\.+$/, "")}, or remove it from "extensions" in ${configPath(home)} by hand or with \`kabane config set extensions ${rest || '""'} --layer global\`; kabane opens the database only with every enabled extension's data modules registered`,
 		});
 	};
 
 	/**
 	 * Each enabled extension's data modules, in `names` order: its manifest checked, its modules
-	 * entry imported and its factory called with the host its main entry will get. Only an
-	 * installed directory whose manifest names `modules` takes part; any other failure to read a
-	 * manifest is the main entry's refusal, reported where that entry loads.
+	 * entry imported and its factory called with the host its main entry will get. An enabled
+	 * name with no directory is skipped: it is as good as disabled, and where commands load
+	 * extensions it stays the "not installed" refusal. A directory whose manifest cannot be read
+	 * or validated stops: nothing proves it has no modules.
 	 */
 	export const modules = async (
 		names: readonly string[],
@@ -404,10 +406,11 @@ export namespace Extensions {
 		const contributions: Contribution[] = [];
 		for (const name of enabled) {
 			if (!installed(home, name)) continue;
-			const manifest = readManifest(home, name);
-			if (!manifest.ok || manifest.value.entry.modules === undefined) continue;
 			const stop = (reason: string) =>
 				err(new Error(stopLine(home, enabled, name, reason)));
+			const manifest = readManifest(home, name);
+			if (!manifest.ok) return stop(manifest.error.message);
+			if (manifest.value.entry.modules === undefined) continue;
 			if (manifest.value.entry.api !== 1)
 				return stop(unsupported(manifest.value.entry.api));
 			const imported = await importEntry(home, name, manifest.value, "modules");
@@ -426,7 +429,7 @@ export namespace Extensions {
 			const parsed = ModuleList.safeParse(built.value);
 			if (!parsed.success)
 				return stop(
-					`the modules factory returned an invalid module list: ${invalidModules(built.value)}`,
+					`the modules factory returned an invalid module list: ${invalidModules(built.value)}; repair the modules factory`,
 				);
 			staged.own(parsed.data);
 			contributions.push({ name, modules: parsed.data });

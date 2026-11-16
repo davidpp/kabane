@@ -603,8 +603,11 @@ consistent only while the module is registered. The rule has two parts:
   through the same stages, reports the stop as its `kabane/extension-modules` finding instead of
   opening the store, and runs every check that needs no store. Writing on in that state would
   change task states without the module's `onTaskStateChange`, and the human never chose that.
-  Any other manifest failure (missing, unreadable, invalid) cannot say whether the extension has
-  modules, so it stays the main entry's refusal.
+  An enabled extension whose directory exists but whose `package.json` is missing, unreadable,
+  not JSON or not a valid manifest stops the same way, naming the file: nothing proves it has no
+  modules. An enabled name with no directory (and no bundled fallback) is not a stop: it is as
+  good as disabled (below), and where commands load extensions it stays the "not installed"
+  refusal.
 
 **Disabling an extension** (removing it from `extensions`) is the human choosing that state. Its
 tables stay, with their rows. Task deletes still capture their cascaded rows through the recorded
