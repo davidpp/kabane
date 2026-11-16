@@ -250,14 +250,21 @@ describe("Brief on a decision that is the human's", () => {
 				{ ...subject, task: target },
 				"ASSEMBLED",
 			).split("\n\n---\n\n");
-			expect(instructions).toContain("design choice");
-			expect(instructions).toContain(`file the decision on ${target.id}`);
-			expect(instructions).toContain("kabane_ask");
-			expect(instructions).toContain("choices");
-			expect(instructions).toContain("recommendation");
-			expect(instructions).toContain("waiting");
-			expect(instructions).toContain("human answers");
-			expect(instructions).toContain("end your turn");
+			const decision = instructions
+				?.split("\n")
+				.find((paragraph) =>
+					paragraph.startsWith("If the work reaches a design choice"),
+				);
+			const ask = decision?.split(". ")[0];
+			expect(ask).toContain(
+				`file the decision on ${target.id} with kabane_ask`,
+			);
+			expect(ask).toContain("the choices, your recommendation and why");
+			expect(ask).toContain(
+				"one question per decision and all of them in one call",
+			);
+			expect(decision).toContain("parks it as waiting until the human answers");
+			expect(decision).toContain("Then end your turn.");
 		}
 	});
 
@@ -273,8 +280,9 @@ describe("Brief on a decision that is the human's", () => {
 		expect(lens).toContain("trade-off");
 		expect(lens).toContain("file the finding");
 		expect(lens).toContain("kabane_ask");
-		expect(lens).toContain("choices");
-		expect(lens).toContain("recommendation");
+		expect(lens).toContain(
+			"with kabane_ask: the choices, your recommendation and why",
+		);
 		expect(lens).toContain("waiting finding");
 	});
 
@@ -293,9 +301,10 @@ describe("Brief on a decision that is the human's", () => {
 		expect(fixer).toContain("needs a call that is the human's");
 		expect(fixer).toContain("do not change code");
 		expect(fixer).toContain("kabane_ask");
-		expect(fixer).toContain("choices");
-		expect(fixer).toContain("recommendation");
-		expect(fixer).toContain("waiting");
+		expect(fixer).toContain(
+			"with kabane_ask: the choices, your recommendation and why",
+		);
+		expect(fixer).toContain("parks it as waiting until the human answers");
 		expect(Brief.fixerContinuation([subject.task])).toContain(
 			"or file the decision it needs with kabane_ask.",
 		);
