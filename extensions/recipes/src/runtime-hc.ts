@@ -118,7 +118,7 @@ export namespace HcRuntime {
 	 */
 	const unnamed = (terminal: string): string | undefined =>
 		terminal.trim() === ""
-			? "No terminal named: kabane never runs hc without the terminal it started"
+			? "This run has no terminal: its start never recorded one"
 			: undefined;
 
 	/** The runtime over the `hc` on PATH; `z` is the host's, which reads hc's JSON. */

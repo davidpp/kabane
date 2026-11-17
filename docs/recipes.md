@@ -125,7 +125,8 @@ wrote on the issue. A run started on another machine shows the state last record
 that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in a runtime
 this kabane does not have is treated the same way, and `read`, `send` and `attach` on a runtime
 with no terminal fail with one line naming it. A run whose start was interrupted
-stays `live` with no terminal (an empty TERMINAL column).
+stays `live` with no terminal (an empty TERMINAL column), and every verb on it fails with
+"This run has no terminal: its start never recorded one".
 
 With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
 attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list

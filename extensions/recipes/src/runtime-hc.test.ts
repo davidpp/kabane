@@ -103,7 +103,7 @@ it("refuses an empty or blank terminal in every method before it looks for hc", 
 				expect(result?.ok).toBe(false);
 				if (result !== undefined && !result.ok)
 					expect(result.error.message).toBe(
-						"No terminal named: kabane never runs hc without the terminal it started",
+						"This run has no terminal: its start never recorded one",
 					);
 			}
 		}

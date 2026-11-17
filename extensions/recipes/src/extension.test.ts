@@ -318,8 +318,7 @@ test("every verb on a run with no terminal yet stops at the hc adapter", () => {
 			kabane(["runs", verb ?? "", "fff", ...rest], { path: NO_HC }),
 		).toMatchObject({
 			code: 1,
-			stderr:
-				"Error: No terminal named: kabane never runs hc without the terminal it started",
+			stderr: "Error: This run has no terminal: its start never recorded one",
 		});
 	}
 });
