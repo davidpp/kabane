@@ -129,6 +129,16 @@ describe("the Jobs tab", () => {
 		expect(gone.view).toEqual({ type: "board" });
 	});
 
+	test("its number opens it from the tracker, and the tracker's from the tab", () => {
+		const onJobs = key(withTwo, "2").state;
+		expect(onJobs.view).toEqual({ type: "jobs" });
+		expect(onJobs.tabs.active).toBe(BoardTabs.JOBS);
+		expect(key(onJobs, "1").state.tabs.active).toBeNull();
+		// Past the last tab a digit does nothing.
+		expect(key(withTwo, "3").state.tabs.active).toBeNull();
+		expect(key(base, "2").state.tabs.active).toBeNull();
+	});
+
 	test("opens a job's detail and comes back to the tab, and pauses and resumes it", () => {
 		const onJobs = key(withTwo, "}").state;
 		const opened = key(onJobs, "return").state;

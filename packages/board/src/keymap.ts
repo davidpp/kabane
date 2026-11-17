@@ -196,7 +196,7 @@ export namespace Keymap {
 		NEXT_QUESTION,
 		{
 			key: "{ }",
-			label: "previous · next tab",
+			label: "previous · next tab, or 1-9",
 			tier: "help",
 			keys: ["{", "}"],
 			when: (s) => s.tabs === true,

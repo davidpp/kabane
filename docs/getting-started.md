@@ -169,7 +169,8 @@ scroll it when it is taller than the pane. A key that does nothing right now (no
 - `O` opens a task's linked issue. On the board, `space` and `h`/`l` fold subtasks, and `r`
   refreshes. `tab` moves between the board and the copilot.
 - The top row is the tab bar: the tracker, then one tab per piece of running work that asks
-  for one (an extension's run, say). `{` and `}` switch tabs, and `w` closes a finished one.
+  for one (an extension's run, say). `{` and `}` switch tabs, as does a tab's number from the board, the
+  Jobs tab or a card's tab with no question to answer; `w` closes a finished one.
   `?n` on a tab counts the agent questions waiting on you there.
 - `!` goes to the next question waiting on you, oldest first. It opens the question's task
   with the question pinned over it, and a digit answers it. From a run's tab, `o` does the

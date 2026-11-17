@@ -277,8 +277,8 @@ changes nothing else: it is not retried. Under launchd, the command must be on t
 
 ### Jobs on the board
 
-While this device has a job, the board has a Jobs tab after the tracker (tab 2; `{` and `}`
-walk to it, or click it). It lists the jobs of every project on this device, not only the
+While this device has a job, the board has a Jobs tab after the tracker (tab 2; `2`, `{` and `}`
+reach it, or click it). It lists the jobs of every project on this device, not only the
 board's, one section per project named after its folder. Each row shows the state of the
 job's latest run, its id and title, then as much as fits of: `? waiting` when that run waits on
 you, `paused`, when it fires next, its schedule, its recipe and its harness. A waiting run is

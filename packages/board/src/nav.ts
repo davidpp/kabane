@@ -1873,6 +1873,9 @@ export namespace BoardNav {
 				tabs.active === null
 					? null
 					: (BoardTabs.reduceCardTabKey(state, tabs.active, key) ??
+						(BoardTabs.cardQuestion(tabs)
+							? null
+							: BoardTabs.reduceNumberKey(state, key)) ??
 						CardTab.reduceKey(state, tabs.active, key));
 			return own ?? reduceEventsKey(state, key);
 		}
@@ -1912,6 +1915,8 @@ export namespace BoardNav {
 			case "r":
 				return { state, effect: { type: "reload" } };
 		}
+		const numbered = BoardTabs.reduceNumberKey(state, key);
+		if (numbered) return numbered;
 		const task = BoardJobs.selected(jobs)?.task;
 		if (!task) return { state, effect: NONE };
 		switch (key.name) {
@@ -2615,7 +2620,11 @@ export namespace BoardNav {
 					? openCopilotEvents(state)
 					: { state, effect: NONE };
 			default:
-				return reduceTreeKey(state, key) ?? reduceRowKey(state, key);
+				return (
+					BoardTabs.reduceNumberKey(state, key) ??
+					reduceTreeKey(state, key) ??
+					reduceRowKey(state, key)
+				);
 		}
 	};
 

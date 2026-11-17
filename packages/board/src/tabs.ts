@@ -419,6 +419,21 @@ export namespace BoardTabs {
 	};
 
 	/**
+	 * A digit names the tab it numbers in the bar, on the views where a digit means nothing else: the
+	 * tracker's list, the Jobs tab and a card's tab with no question to answer. Null past the last tab.
+	 */
+	export const reduceNumberKey = (
+		state: State,
+		key: BoardNav.KeyInput,
+	): Step | null => {
+		const digit = key.ctrl || key.meta ? undefined : digitOf(key);
+		if (digit === undefined) return null;
+		const all = order(state.tabs);
+		if (digit > all.length) return null;
+		return { state: show(state, all[digit - 1] ?? null), effect: NOTHING };
+	};
+
+	/**
 	 * A card's own tab: the question it shows takes a digit or, offering no answers, `enter`; `esc`/`q`
 	 * go to the tracker rather than down a stack, `o` to the question's task, `w` closes it. Null for
 	 * the keys the event view under it answers (j/k).
