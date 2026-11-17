@@ -103,7 +103,8 @@ kabane runs attach <id>     # take the terminal over; ctrl+\ gives it back
 kabane runs stop <id>       # end its program
 ```
 
-`<id>` is the run's id or its last few characters, as long as one run ends with them; the
+`<id>` is the run's whole id, which works from any folder whatever project the run is in, or
+its last few characters within this project, as long as one run ends with them; the
 terminal's name ends with the id's last six. A run's state is what its program last reported
 to its terminal, read each time runs are listed. Programs report through OSC 7501, herdr's
 Program Status Protocol; kabane never guesses a state from the screen:

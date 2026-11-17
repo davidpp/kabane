@@ -289,6 +289,26 @@ test("runs lists the runs in flight unless --all, and refuses another machine's 
 	);
 });
 
+test("a run's whole id reaches it from any folder, another project's or none; a short key stays in the project", () => {
+	const { kabane, seed, home, root } = setup();
+	kabane(["runs"]);
+	seed("01M7JT0TFJB7MF38VYDWCG0GGG", { machine: "elsewhere" });
+	const other = join(dirname(root), "other");
+	mkdirSync(join(other, ".kabane"), { recursive: true });
+	expect(Bun.spawnSync(["git", "init", "-q", other]).exitCode).toBe(0);
+	writeFileSync(join(other, ".kabane/scope"), "other\n");
+	// The machine check is past the lookup: reaching it says the run was found.
+	const found = `Error: Run 01M7JT0TFJB7MF38VYDWCG0GGG runs on elsewhere, not on this machine (${hostname()}); attach it there`;
+	for (const cwd of [other, home])
+		expect(
+			kabane(["runs", "attach", "01m7jt0tfjb7mf38vydwcg0ggg"], { cwd }),
+		).toMatchObject({ code: 1, stderr: found });
+	expect(kabane(["runs", "attach", "ggg"], { cwd: other }).stderr).toBe(
+		'Error: No run "ggg" in this project; kabane runs --all lists them',
+	);
+	expect(kabane(["runs", "attach", "ggg"], { cwd: home }).code).toBe(1);
+});
+
 test("a run in a runtime this kabane lacks keeps its recorded state, and its verbs name that runtime", () => {
 	const { kabane, seed } = setup();
 	kabane(["runs"]);

@@ -307,6 +307,10 @@ export namespace Runs {
 	export const list = (host: Store, scope: string): Promise<Result<Run[]>> =>
 		host.store.read((db) => select(host.z, db, "scope_uri = ?", [scope]));
 
+	/** The run whose whole id is `id`, case aside, in whichever scope it ran. */
+	export const byId = (host: Store, id: string): Promise<Result<Run[]>> =>
+		host.store.read((db) => select(host.z, db, "id = ?", [id.toUpperCase()]));
+
 	/** The scope's runs whose id is `key` or ends with it, case aside. */
 	export const find = (
 		host: Store,
