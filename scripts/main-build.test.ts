@@ -1,9 +1,11 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	readlinkSync,
 	rmSync,
@@ -17,7 +19,7 @@ import {
 	backupFile,
 	defaultBin,
 	links,
-	replace,
+	install,
 } from "./main-build";
 
 const TMP = mkdtempSync(join(tmpdir(), "kabane-main-build-test-"));
@@ -79,13 +81,51 @@ describe("main-build", () => {
 		const built = join(TMP, "dist");
 		mkdirSync(built);
 		writeFileSync(join(built, "index.js"), "built");
-		replace(built, linked);
-		replace(built, copied);
+		install([
+			[built, linked],
+			[built, copied],
+		]);
 
 		expect(readFileSync(join(checkout, "index.ts"), "utf8")).toBe("source");
 		expect(links([linked])).toEqual([]);
 		expect(readFileSync(join(linked, "index.js"), "utf8")).toBe("built");
 		expect(existsSync(join(copied, "stale.js"))).toBe(false);
 		expect(readFileSync(join(copied, "index.js"), "utf8")).toBe("built");
+	});
+
+	it("changes nothing, the binary included, when an extension cannot be staged", () => {
+		const root = join(TMP, "partial");
+		const bin = join(root, "bin", "kabane");
+		const locked = join(root, "locked");
+		mkdirSync(join(root, "bin"), { recursive: true });
+		mkdirSync(locked);
+		writeFileSync(bin, "old binary");
+		const built = join(root, "built");
+		mkdirSync(built);
+		writeFileSync(join(built, "index.js"), "new extension");
+		const newBinary = join(root, "new-kabane");
+		writeFileSync(newBinary, "new binary");
+		const dispatch = join(root, "extensions", "dispatch");
+		mkdirSync(dispatch, { recursive: true });
+		writeFileSync(join(dispatch, "index.js"), "old extension");
+		chmodSync(locked, 0o555);
+		try {
+			expect(() =>
+				install([
+					[built, dispatch],
+					[built, join(locked, "loop")],
+					[newBinary, bin],
+				]),
+			).toThrow();
+		} finally {
+			chmodSync(locked, 0o755);
+		}
+		expect(readFileSync(bin, "utf8")).toBe("old binary");
+		expect(readdirSync(join(root, "bin"))).toEqual(["kabane"]);
+		expect(readdirSync(locked)).toEqual([]);
+		expect(readFileSync(join(dispatch, "index.js"), "utf8")).toBe(
+			"old extension",
+		);
+		expect(readdirSync(join(root, "extensions"))).toEqual(["dispatch"]);
 	});
 });

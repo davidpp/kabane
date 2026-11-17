@@ -77,21 +77,42 @@ export const links = (paths: readonly string[]): string[] =>
 			: [],
 	);
 
+const staging = (target: string): string => `${target}.main-build-new`;
+
 /**
- * `source` copied to `target`, a file or a directory: staged beside it, then renamed into place,
- * with what was there (a directory, a file or a symlink, never followed) removed after.
+ * What was at `target` (a directory, a file or a symlink, never followed) swapped for its staged
+ * copy, and then removed.
  */
-export const replace = (source: string, target: string): void => {
-	const staged = `${target}.main-build-new`;
+const swapIn = (target: string): void => {
 	const previous = `${target}.main-build-old`;
-	rmSync(staged, { recursive: true, force: true });
-	mkdirSync(dirname(target), { recursive: true });
-	cpSync(source, staged, { recursive: true });
 	const there = lstatSync(target, { throwIfNoEntry: false });
 	if (there) renameSync(target, previous);
-	renameSync(staged, target);
+	renameSync(staging(target), target);
 	if (there?.isSymbolicLink()) unlinkSync(previous);
 	else if (there) rmSync(previous, { recursive: true, force: true });
+};
+
+/**
+ * Each `[source, target]` copied beside its target first, so a copy that fails (an unwritable
+ * directory, a full disk) changes nothing and removes what was staged. Then each is renamed into
+ * place in order: the binary goes last, so its stamp only moves once the extensions are in, and
+ * an install that stops short leaves the old binary for the next update to retry.
+ */
+export const install = (
+	pairs: readonly (readonly [string, string])[],
+): void => {
+	try {
+		for (const [source, target] of pairs) {
+			rmSync(staging(target), { recursive: true, force: true });
+			mkdirSync(dirname(target), { recursive: true });
+			cpSync(source, staging(target), { recursive: true });
+		}
+	} catch (error) {
+		for (const [, target] of pairs)
+			rmSync(staging(target), { recursive: true, force: true });
+		throw error;
+	}
+	for (const [, target] of pairs) swapIn(target);
 };
 
 const run = (argv: string[], cwd: string, quiet = true): string => {
@@ -195,12 +216,16 @@ const mainBuild = (argv: string[], env: NodeJS.ProcessEnv): string[] => {
 			run([process.execPath, "run", "build"], join(source, "extensions", name));
 
 		const backup = backupDatabase(home);
-		replace(join(unpacked, "kabane/kabane"), bin);
-		for (const name of names)
-			replace(
-				join(source, "extensions", name, "dist"),
-				join(home, "extensions", name),
-			);
+		install([
+			...names.map(
+				(name) =>
+					[
+						join(source, "extensions", name, "dist"),
+						join(home, "extensions", name),
+					] as const,
+			),
+			[join(unpacked, "kabane/kabane"), bin],
+		]);
 		const printed = run([bin, "--version"], work);
 		if (!printed.includes(`main ${commit.slice(0, 7)}`))
 			throw new Error(
