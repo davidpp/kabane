@@ -33,3 +33,5 @@ reference), which puts the ADR in the implementer's brief.
 
 - [0001](0001-job-is-a-core-kind-scheduled-by-recipes.md): A job is a core item kind; its
   schedule and commands live in the recipes extension. Accepted.
+- [0002](0002-what-kabane-owns-for-long-running-agents.md): For long-running agents, kabane
+  owns the record and the schedule, and points to other tools for the rest. Accepted.

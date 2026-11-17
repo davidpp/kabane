@@ -109,8 +109,12 @@ started by `kabane run` (`"state":"live","status":null,"turn":0`, then after `hc
 (`Status.state`: "idle, working, done, blocked or error"). A shell harness reports any of them
 itself: `printf '\033]7501;state=blocked:app=my-agent\033\\'` gives
 `"status":{"app":"my-agent","state":"blocked"}` (fields split on `:`; with `;` between fields
-hc kept no record). That drove `live`, `running`, `waiting` and `idle` in the sandbox. No real
-Claude Code terminal was captured blocked or idle, nor any Codex terminal. hc refuses
+hc kept no record). That drove `live`, `running`, `waiting` and `idle` in the sandbox. Real
+Claude Code 2.1.326 terminals were captured on 2026-11-17 (JCAB-549):
+`{"app":"claude-code","kind":"permission","msg":"trust this folder","state":"blocked"}`, `idle`
+and `done`, but only from a session whose startup probe got hc's reply within 2 s; about one
+prompted run in three never reports (`reported: false`, `status: null`) and stays `live`.
+`docs/hooks/claude-program-status.sh` is the stopgap `docs/recipes.md` gives users. hc refuses
 `hc send` to a blocked terminal (exit 9, "is blocked (waiting)") unless `--force`; `HcRuntime`
 always passes it, so `kabane runs send` types into a waiting run like any other (JCAB-512).
 
