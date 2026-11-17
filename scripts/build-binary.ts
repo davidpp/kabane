@@ -19,10 +19,15 @@ export const binaryFilename = (
 	target: z.infer<typeof BinaryTargetSchema>,
 ): string => `kabane-${target}.tar.gz`;
 
-/** Native builds ensure Bun resolves the target's installed OpenTUI optional dependency. */
+/**
+ * Native builds ensure Bun resolves the target's installed OpenTUI optional dependency. `stamp`,
+ * the JSON of a main build's stamp (scripts/main-build.ts), is compiled in for `kabane --version`
+ * and `kabane update`; a release has none.
+ */
 export const buildBinary = async (
 	target: string,
 	output: string,
+	stamp?: string,
 ): Promise<Result<string>> => {
 	const parsed = BinaryTargetSchema.safeParse(target);
 	if (!parsed.success || target !== `${process.platform}-${process.arch}`)
@@ -46,6 +51,12 @@ export const buildBinary = async (
 				'process.env.KABANE_BUNDLED="1"',
 				"--define",
 				'process.env.NODE_ENV="production"',
+				...(stamp === undefined
+					? []
+					: [
+							"--define",
+							`process.env.KABANE_MAIN_BUILD=${JSON.stringify(stamp)}`,
+						]),
 				"--outfile",
 				executable,
 				"packages/cli/index.ts",
@@ -127,13 +138,13 @@ export const buildBinary = async (
 };
 
 if (import.meta.main) {
-	const [target, output, ...extra] = process.argv.slice(2);
+	const [target, output, stamp, ...extra] = process.argv.slice(2);
 	const result =
 		target && output && !extra.length
-			? await buildBinary(target, resolve(output))
+			? await buildBinary(target, resolve(output), stamp)
 			: err(
 					new Error(
-						"Usage: bun scripts/build-binary.ts <os-arch> <new-output-directory>",
+						"Usage: bun scripts/build-binary.ts <os-arch> <new-output-directory> [main-build-stamp-json]",
 					),
 				);
 	if (result.ok) console.error(`binary: ${result.value}`);

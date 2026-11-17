@@ -38,6 +38,13 @@ directory is the whole extension: a bundled `index.js` with its dependencies inl
 `package.json`, and the files it reads at run time (the copilot's files, the loop's verifier
 lenses, the dispatch skill templates).
 
+To run kabane itself from `main`, `bun run main-build` in that clone builds the binary and every
+extension of this repository that `extensions` enables, from `origin/main`, and installs them
+together; `kabane update` does it again once main has moved
+([main builds](release.md#main-builds)). Enable the extensions first, as below, so the build
+includes them. To go back to a release, build the extensions from a checkout of the release's tag
+and copy them in as below.
+
 ## Install and enable them
 
 These steps are the same for the npm install and the standalone binary: both load a copied
@@ -152,6 +159,10 @@ cp -R extensions/loop/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/loop/"
 Removing the directory first drops files the new build no longer has. The loop's runs and
 settings are elsewhere (`$KABANE_HOME/loops`, `config.json`, the project's `.kabane/loop.json`)
 and stay. Restart the board and the coding sessions afterwards.
+
+On a main build, `kabane update` rebuilds the enabled extensions with the binary and replaces
+them. An extension you enable later is installed by the next `bun run main-build`, or by
+`kabane update` once main has moved.
 
 ## Turn an extension off
 

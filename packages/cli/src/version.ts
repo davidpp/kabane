@@ -1,15 +1,20 @@
 /**
  * What `kabane --version` prints. The published bundle prints the release
- * (`kabane update` compares it); a run from a checkout, such as a `bun link`,
- * also names the commit, because package.json only knows the last release.
+ * (`kabane update` compares it); a main build adds the commit it was stamped
+ * with; a run from a checkout, such as a `bun link`, also names the commit,
+ * because package.json only knows the last release.
  */
 
 import { version } from "../package.json";
+import { UpdateMain } from "./update-main";
 
 export type Source = { branch: string; commit: string; dirty: boolean };
 
 // scripts/build.ts defines this as "1" in the published bundle.
 export const bundled = process.env.KABANE_BUNDLED === "1";
+
+// scripts/main-build.ts defines this as the stamp's JSON in a build of main.
+export const mainBuild = UpdateMain.parse(process.env.KABANE_MAIN_BUILD);
 
 const source = (dir: string): Source | undefined => {
 	const status = Bun.spawnSync(
@@ -31,7 +36,18 @@ const source = (dir: string): Source | undefined => {
 
 export const describeVersion = (
 	dir: string = import.meta.dir,
-): { version: string; source?: Source; text: string } => {
+): {
+	version: string;
+	build?: UpdateMain.Stamp;
+	source?: Source;
+	text: string;
+} => {
+	if (mainBuild)
+		return {
+			version,
+			build: mainBuild,
+			text: `${version} (${UpdateMain.label(mainBuild)})`,
+		};
 	const from = bundled ? undefined : source(dir);
 	if (!from) return { version, text: version };
 	const changes = from.dirty ? ", uncommitted changes" : "";

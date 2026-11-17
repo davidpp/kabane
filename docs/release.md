@@ -238,6 +238,57 @@ redirects. Run the older binary with an isolated `HOME`/`KABANE_HOME`: `kabane u
 to see it refuse with the old install untouched. The first real GitHub update after a
 release, which follows the download redirect, stays a human check.
 
+## Main builds
+
+A main build is kabane built from a commit of `main` rather than a release. It installs like
+the standalone binary, with the repository's extensions beside it, and it follows `main`
+instead of npm's `latest` or `beta`. Build and install one from a clone, with Bun 1.4 or later:
+
+```bash
+git clone https://github.com/davidpp/kabane.git
+cd kabane && bun install
+bun run main-build
+```
+
+It fetches `origin` and builds from a temporary worktree of `origin/main`, so nothing
+uncommitted in the clone gets in, whatever branch the clone is on. It builds the standalone
+binary for this machine and each extension of the repository that the `extensions` setting
+enables. Only once every build has succeeded does it copy the tracker database to
+`$KABANE_HOME/backups/kabane-before-main-build.db` (through SQLite, so the copy is consistent
+while a board or `kabane mcp` holds it open; each build overwrites the previous copy), then
+install the binary at `$BUN_INSTALL/bin/kabane` (default `~/.bun/bin/kabane`, where Bun puts
+`kabane` on PATH) and the extensions into `$KABANE_HOME/extensions/`. `--bin <path>` installs
+the binary somewhere else.
+
+A symlink at any of those places is a contributor's own setup, from `bun link` or
+`bun run link-extensions`. The build refuses before it builds anything and names each link;
+`bun run main-build --replace-links` replaces them with the build. It removes the link, never
+what it points at.
+
+The binary carries the commit it was built from, that commit's date, the clone and the clone's
+`origin`:
+
+```text
+$ kabane --version
+1.0.0-beta.0 (main 4a7bdfa, 2026-11-17)
+```
+
+`kabane update --check` reads `main` on that `origin` with `git ls-remote` and, when it moved,
+reads main's history (commits, no file contents) into a temporary repository to count the
+commits after the stamped one. It never fetches into the clone. It says the build is level, that
+main is N commits past it, or that main no longer has its commit because it was rewritten. The
+board shows the same thing as its update notice, read at most once an hour. `kabane update`
+runs `bun run main-build` in the recorded clone, with `--bin` set to the running binary, and
+fails with that build's output when it fails. When the clone is gone it says so and installs
+nothing: run `bun run main-build` from another clone.
+
+To go back to a release, install the release over the main build (the
+[standalone binary](getting-started.md#standalone-binaries), or remove `~/.bun/bin/kabane` and
+`bun add -g kabane`), then build the extensions from a checkout of that release's tag and
+install them ([extensions](extensions.md#build-them-from-a-kabane-checkout)). A main build may
+have migrated the database past what the release reads. In that case keep the main build, or
+restore a backup taken before the migration, which loses what changed since.
+
 ## Human-owned Actions setup (optional; before workflow publishing)
 
 1. Review the proposed exact action pins in `.github/workflows/release.yml`, Node
