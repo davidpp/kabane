@@ -2,7 +2,7 @@
 
 A recipe is a prompt you run again and again, kept as a file in your project. `kabane run`
 fills it in, starts your coding harness on it in a background terminal and returns at once;
-`kabane runs` shows what each run is doing and lets you read it, answer it, take it over or
+`kabane runs` shows what each run is doing and lets you read it, send to it, take it over or
 stop it.
 
 Recipes are the `recipes` extension. Without it, kabane has no `run` or `runs` command, and the
