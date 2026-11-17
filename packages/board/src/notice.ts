@@ -1,6 +1,13 @@
 // The footer's transient flash. Never silent: copies, state moves, review and cancel all surface a
 // notice, failures the error and successes a confirmation.
-import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import {
+	type Dispatch,
+	type SetStateAction,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import type { BoardNav } from "./nav";
 
 // How long the flash stays before clearing.
@@ -25,6 +32,23 @@ export const useNotice = (): [BoardNav.Notice | null, SetNotice] => {
 		return () => clearTimeout(timer);
 	}, [notice]);
 	return [notice, setNotice];
+};
+
+/** A notice one source raises and later takes back, leaving whatever else replaced it on screen. */
+export const useOwnNotice = (
+	setNotice: SetNotice,
+): { raise: (notice: BoardNav.Notice) => void; clear: () => void } => {
+	const raised = useRef<BoardNav.Notice | null>(null);
+	return useMemo(
+		() => ({
+			raise: (notice) => {
+				raised.current = notice;
+				setNotice(notice);
+			},
+			clear: () => setNotice((prev) => (prev === raised.current ? null : prev)),
+		}),
+		[setNotice],
+	);
 };
 
 /** A mutation's outcome, structural on Result<T> so it fits every BoardData mutation. */
