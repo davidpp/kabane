@@ -1,8 +1,8 @@
 # @cabane/recipes (extensions/recipes)
 
 The recipes extension: prompt recipes from a project's `.kabane/recipes/`, `kabane run` to start
-one in an `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop
-those runs. `docs/recipes.md` is what a user reads.
+one in an `hc` (herdr core) terminal, `kabane runs` to list, read, send to, attach to and stop
+those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is what a user reads.
 
 | Where | What it holds |
 |---|---|
@@ -11,12 +11,14 @@ those runs. `docs/recipes.md` is what a user reads.
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a recipe from explicit inputs (scope, root, dir, recipe, target, inputs, harness, actor) and reads no cwd, TTY or setting; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing, `attach`, `read`, `send`, `stop` |
+| `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which fires the due jobs through `startRun` |
+| `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`; the due rule and the fire decision |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun` |
 | `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored; `reconcile` and `stop`, which `kabane runs` and the board share |
 | `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
 | `src/runtime-hc.ts` | the hc runtime; the only file that runs `hc` |
-| `modules.ts` | the modules entry: registers the run table, imports only `src/runs.ts` |
+| `modules.ts` | the modules entry: registers the run and job tables, imports only `src/runs.ts` and `src/jobs.ts` |
 
 ## It takes types from kabane and no value
 
@@ -49,6 +51,18 @@ has no terminal fail with one line naming the runtime.
 `machine` is `os.hostname()`. Only this machine's unfinished runs are reconciled; the others
 show their last recorded state.
 
+## A job is an item plus a row
+
+A job is an item of kind `job` (title, description as the standing request, scope, state:
+`next` active, `someday` paused) created through `kabane_add`, plus its `recipes_jobs` row
+(`childOfTasks`, keyed by the item's id): schedule, recipe, inputs, harness, `last_fired_at`.
+Due is the schedule's first time after `last_fired_at`, or after the row's creation, so missed
+fires fold into one. A fire skips while one of the job's runs on this machine is `live`,
+`running` or `waiting`, stops the `idle` ones, then calls `startRun` at the root with a `job`
+target. `tick` has no cwd: it reads the root from `recipes_roots`, which every `kabane job`
+command run inside a project writes and which is left out of `syncTables`, since a path belongs
+to one machine.
+
 ## State is read from hc
 
 `HcRuntime.stateOf` maps `hc get --json`. `state` is `live` or `finished`; `status` is the
@@ -80,8 +94,8 @@ always passes it, so `kabane runs send` types into a waiting run like any other 
 ## On the board
 
 `Extension.board` gives the board's project (`host.scope.detect(ctx.cwd)`, read on each call) an
-`ActivitySource` and a `Dispatcher`; a device without the extension has neither. Only runs with
-a target are cards: a run without one belongs to a jobs view, not the issue board (JCAB-426).
+`ActivitySource` and a `Dispatcher`; a device without the extension has neither. Only runs whose
+target is an issue are cards: a run without one, or a job's run, is not on the issue board (JCAB-426).
 
 | Run state | `ActivityStatus` | Why |
 |---|---|---|
@@ -119,6 +133,16 @@ bun run sandbox runs send <id> some text
 bun run sandbox runs stop <id>
 bun run sandbox runs --all                  # ended
 hc rm <terminal>                            # each terminal you started
+```
+
+Jobs, with the same shell harness and a recipe that says `target: job` or none:
+
+```bash
+bun run sandbox job add <recipe> --title Probe --schedule "* * * * *"
+bun run sandbox job list
+bun run sandbox job tick                   # after the minute turns: starts a run
+hc label <terminal> kabane.sandbox=1        # at once
+bun run sandbox job tick                   # skips it while it is live
 ```
 
 The board in the sandbox, on your own tmux socket: start a run as above, then

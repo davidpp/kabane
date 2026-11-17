@@ -1,0 +1,5 @@
+# Fires the recipe jobs that are due on one Kabane device (Linux cron). Install with:
+#   crontab -l 2>/dev/null | cat - kabane-job-tick.cron | crontab -
+# Assumes `kabane` was installed globally into ~/.bun/bin and KABANE_HOME is the default ~/.kabane.
+# PATH must also reach `hc` and the harnesses the jobs start.
+* * * * * PATH=$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin KABANE_HOME=$HOME/.kabane $HOME/.bun/bin/kabane job tick >> $HOME/.kabane/job-tick.log 2>> $HOME/.kabane/job-tick.error.log

@@ -3,10 +3,10 @@
 A recipe is a prompt you run again and again, kept as a file in your project. `kabane run`
 fills it in, starts your coding harness on it in a background terminal and returns at once;
 `kabane runs` shows what each run is doing and lets you read it, send to it, take it over or
-stop it.
+stop it. `kabane job` runs a recipe on a schedule.
 
-Recipes are the `recipes` extension. Without it, kabane has no `run` or `runs` command, and the
-board shows no run and offers no recipe.
+Recipes are the `recipes` extension. Without it, kabane has no `run`, `runs` or `job` command,
+and the board shows no run and offers no recipe.
 
 ## Install
 
@@ -55,10 +55,10 @@ Write the result as one comment on {{target.shortId}}.
 | Field | Meaning |
 |---|---|
 | `description` | one line, shown when `kabane run` lists the recipes |
-| `target` | `issue`: the run works on an issue given with `--target`; `none` (the default): it takes none |
+| `target` | `issue`: the run works on an issue given with `--target`; `job`: it runs for a scheduled job (see [Jobs](#jobs)); `none` (the default): it takes none |
 | `inputs` | by name: `type` (`string`, the default, `number` or `boolean`), `required`, `default`, `options` (strings only), `label`, `hint` |
 
-The body can use `{{inputs.<name>}}` and, with `target: issue`, `{{target.id}}`,
+The body can use `{{inputs.<name>}}` and, with `target: issue` or `target: job`, `{{target.id}}`,
 `{{target.shortId}}` and `{{target.title}}`. An optional input left out with no default
 reads as nothing. A placeholder the recipe cannot fill, an input or field the frontmatter does
 not allow, or a file with no body is an error naming the file: kabane never skips a broken
@@ -136,7 +136,7 @@ of runs with these fields:
 |---|---|
 | `id` | the run's id |
 | `recipe` | `{ name, hash }`: the recipe and a hash of the file it started from |
-| `target` | `{ kind, id }`: what the run works on, absent when the recipe takes none. `kabane run` writes kind `issue` and the issue's full id |
+| `target` | `{ kind, id }`: what the run works on, absent when the recipe takes none: kind `issue` or `job`, and the item's full id |
 | `scope`, `dir`, `cwd` | the scope's URI, the folder relative to its root (`""` at the root), and that folder's full path |
 | `machine` | the host name of the machine the run started on |
 | `runtime` | what started the run: `hc` |
@@ -158,7 +158,7 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --all` says which of the two it is |
 
 Every run in flight (`live`, `running` or `waiting`) is listed, and the newest finished ones (`idle` or
-`ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists
+`ended`) up to ten runs in all. A run with no target, or a job's run, is not on the board: `kabane runs` lists
 it.
 
 A run's card has no tab: the board does not show the terminal. To see or answer the session,
@@ -174,6 +174,63 @@ input's default, and the card's header shows the values it got. To give other va
 with `kabane run <recipe> --target <id> --input name=value`. A recipe with a required input that has no default cannot start from the board: the
 footer gives the `kabane run` command that does. A recipe file that does not parse is listed
 with its error and does not start.
+
+## Jobs
+
+A job runs a recipe on a schedule, in its project's folder. It is an item of kind `job`: its
+title names it, its description is the standing request the agent reads each time, and its
+comments are what each run reported. Lists that name no kind leave jobs out; `kabane list
+--kind job` shows them.
+
+```bash
+kabane job add wiki-maintenance --title "Keep the wiki current" --schedule "0 7 * * *" \
+  --request "Fold this week's notes into the wiki pages they belong to"
+kabane job list                 # this project's jobs; --all for every project's
+kabane job show JCAB-600        # the request, the inputs and the last runs
+kabane job pause JCAB-600       # resume JCAB-600 starts it again
+kabane job run JCAB-600         # fire it now
+kabane job tick                 # fire every job that is due; what launchd or cron calls
+```
+
+`job add` runs in the project. The recipe must say `target: job` or take no target. Its inputs
+come from `--input name=value` and `--inputs '{…}'` as with `kabane run`, are checked now, and
+are never asked for: a required input that is missing is an error. `--schedule` is a cron
+expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
+machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
+`recipes.harness`.
+
+`job list` shows each job's id, whether it is active or paused, its schedule, the next time it
+fires, its recipe, its harness, the state of its latest run and its title. `pause` sets the job
+`someday` and `resume` sets it `next`. A job ends when you close it with `kabane done`; there is
+no delete.
+
+`job tick` fires every active job whose schedule has come round since it last fired, or since
+it was added. A tick that comes late fires a job once, however many times it was missed. A fire,
+like `job run`:
+
+1. reads the job's runs on this machine from their terminals;
+2. skips the job when one is `live`, `running` or `waiting`, and says so; the job stays due for
+   the next tick;
+3. stops each `idle` one, because a harness stays at its prompt after its turn;
+4. starts the recipe at the project's root, as `kabane run` would, with the job as its target.
+
+The run's preamble tells the agent it is a scheduled background run of the job, to read the job
+with `kabane_context` for the request and what earlier runs reported, to write its result as one
+comment on the job and to file a decision for you with `kabane_ask` on the job. `tick` prints one
+line for each job it fired or skipped and exits 0 unless kabane itself failed.
+
+`tick` runs with no project, so it needs each project's folder on this machine: every `kabane
+job` command run inside a project records it. A job whose project has no folder recorded is
+skipped with a line that says to run `kabane job list` inside it. Jobs sync with your other
+items; the folders do not, so each machine that ticks needs one `kabane job` command in each
+project.
+
+### Tick on a schedule
+
+On macOS, `docs/schedule/com.kabane.job-tick.plist` runs `kabane job tick` every minute with
+launchd; the comment at its top says how to install and remove it. On Linux,
+`docs/schedule/kabane-job-tick.cron` is the same as a crontab line. A tick with nothing due does
+nothing, so ticking every minute is cheap.
 
 ## Settings
 

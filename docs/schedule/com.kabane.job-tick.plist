@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Fires the recipe jobs that are due on one Kabane device (macOS launchd). See docs/recipes.md, "Jobs".
+
+  Install:  sed "s|__HOME__|$HOME|g" com.kabane.job-tick.plist > ~/Library/LaunchAgents/com.kabane.job-tick.plist
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kabane.job-tick.plist
+  Remove:   launchctl bootout gui/$(id -u)/com.kabane.job-tick
+
+  `kabane` is the globally installed binary at ~/.bun/bin/kabane; its shebang is `/usr/bin/env bun`, so
+  PATH below must also reach `bun` itself (mise shims first), and `hc` and the harnesses the jobs start
+  (claude, codex), which a run looks up on the same PATH. A tick with nothing due does nothing, so it
+  runs every minute.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kabane.job-tick</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/.bun/bin/kabane</string>
+        <string>job</string>
+        <string>tick</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.local/share/mise/shims:__HOME__/.bun/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>KABANE_HOME</key>
+        <string>__HOME__/.kabane</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.kabane/job-tick.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.kabane/job-tick.error.log</string>
+</dict>
+</plist>
