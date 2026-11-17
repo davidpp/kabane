@@ -81,11 +81,8 @@ itself: `printf '\033]7501;state=blocked:app=my-agent\033\\'` gives
 `"status":{"app":"my-agent","state":"blocked"}` (fields split on `:`; with `;` between fields
 hc kept no record). That drove `live`, `running`, `waiting` and `idle` in the sandbox. No real
 Claude Code terminal was captured blocked or idle, nor any Codex terminal. hc refuses
-`hc send` to a blocked terminal (exit 9, `{"error":{"kind":"blocked",…}}`, nothing typed) unless
-`--force`. `Runtime.send` resolves that to `waiting`, and `kabane runs send` refuses the run in one
-line naming `kabane runs attach <id>` and `--force`; only the human's `runs send --force` passes
-hc's `--force` (JCAB-505). The CLI parser takes the word after `--force` as its value, so
-`runs send` reads that value back as the text's first word.
+`hc send` to a blocked terminal (exit 9, "is blocked (waiting)") unless `--force`; `HcRuntime`
+always passes it, so `kabane runs send` types into a waiting run like any other (JCAB-512).
 
 ## On the board
 
