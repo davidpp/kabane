@@ -1,5 +1,5 @@
-// A recipe is `<root>/.kabane/recipes/<name>.md`: YAML frontmatter that declares its target and
-// inputs, and a body that is the prompt. A file that does not parse is an error naming it, never a
+// A recipe is `<root>/.kabane/recipes/<name>.md`: YAML frontmatter that declares its target, its
+// inputs and the harness it is written for, and a body that is the prompt. A file that does not parse is an error naming it, never a
 // recipe skipped in silence.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -29,6 +29,8 @@ export namespace Recipe {
 		description?: string;
 		target: "issue" | "job" | "none";
 		inputs: Record<string, Input>;
+		/** The command this recipe starts, ahead of `recipes.harness`. */
+		harness?: string[];
 		body: string;
 		/** sha256 of the file's bytes, first 12 hex characters. */
 		hash: string;
@@ -54,11 +56,25 @@ export namespace Recipe {
 				hint: z.string().optional(),
 			})
 			.strict();
+		// One word as a string; a command with arguments is a list, so no word is split on a guess.
+		const harness = z
+			.union([z.string(), z.array(z.string().min(1)).min(1)])
+			.transform((value, ctx) => {
+				if (typeof value !== "string") return value;
+				if (/^\S+$/.test(value)) return [value];
+				ctx.addIssue({
+					code: "custom",
+					message:
+						"a harness is one word, or a list with one word per item: [codex, exec]",
+				});
+				return z.NEVER;
+			});
 		return z
 			.object({
 				description: z.string().optional(),
 				target: z.enum(["issue", "job", "none"]).default("none"),
 				inputs: z.record(input).default({}),
+				harness: harness.optional(),
 			})
 			.strict();
 	};
@@ -135,7 +151,7 @@ export namespace Recipe {
 			const where = issue?.path.join(".") || "the frontmatter";
 			return fail(`${where}: ${issue?.message ?? "invalid"}`);
 		}
-		const { description, target, inputs } = parsed.data;
+		const { description, target, inputs, harness } = parsed.data;
 		for (const [key, input] of Object.entries(inputs)) {
 			const problem = inputProblem(key, input);
 			if (problem !== undefined) return fail(problem);
@@ -150,6 +166,7 @@ export namespace Recipe {
 			...(description === undefined ? {} : { description }),
 			target,
 			inputs,
+			...(harness === undefined ? {} : { harness }),
 			body,
 			hash: createHash("sha256").update(text).digest("hex").slice(0, 12),
 		});

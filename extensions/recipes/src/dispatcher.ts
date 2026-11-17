@@ -1,6 +1,8 @@
 // Starting a recipe from the board: `a` on an issue offers each recipe of the board's project that
-// works on an issue, with its inputs as the form's, and `enter` starts it through `startRun`, the
-// function `kabane run` calls. A recipe file that does not parse is offered too, unsatisfiable,
+// works on an issue, and `enter` opens its form: the harness first, as the command line it will
+// start and where that comes from, then every input with its default, each one the human can
+// change. `enter` on the form starts it through `startRun`, the function `kabane run` calls, with
+// what the form shows. A recipe file that does not parse is offered too, unsatisfiable,
 // with its error, so a broken recipe is never silently missing. On a job, `a` offers `job:run`, which
 // fires it now as `kabane job run` does, in its own scope's folder whatever the board's project.
 import { basename, relative } from "node:path";
@@ -12,11 +14,17 @@ import type {
 	Result,
 	TriggerDescriptor,
 } from "@cabane/extension";
+import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { runJob } from "./job-command";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
-import { promptOf, type settingsSchema, startRun } from "./run-command";
+import {
+	harnessOf,
+	promptOf,
+	type settingsSchema,
+	startRun,
+} from "./run-command";
 import type { Runtime } from "./runtime";
 
 export namespace RecipeDispatcher {
@@ -31,34 +39,45 @@ export namespace RecipeDispatcher {
 		ctx: Pick<Extension.Ctx, "cwd" | "actor" | "settings">;
 	};
 
-	/** Why the board cannot start `recipe` with what its form holds, or undefined. */
-	const unmet = (
-		recipe: Recipe.Recipe,
-		shortId: string,
-	): string | undefined => {
-		const missing = Object.entries(recipe.inputs)
-			.filter(([, input]) => input.required && input.default === undefined)
-			.map(([name]) => name);
-		return missing.length === 0
-			? undefined
-			: `${recipe.name} needs ${missing.join(", ")}, which has no default: kabane run ${recipe.name} --target ${shortId} ${missing.map((name) => `--input ${name}=…`).join(" ")}`;
-	};
+	/** The form's harness row; no input can take its name, since input names start with a letter or `_`. */
+	const HARNESS = "@harness";
 
 	const descriptor = (
 		recipe: Recipe.Recipe,
-		shortId: string,
+		harness: Harness.Chosen,
 		blocked?: string,
-	): TriggerDescriptor => {
-		const hint = blocked ?? unmet(recipe, shortId);
-		return {
-			id: `${PREFIX}${recipe.name}`,
-			label: recipe.name,
-			...(recipe.description ? { description: recipe.description } : {}),
-			source: "recipes",
-			inputs: recipe.inputs,
-			satisfiable: hint === undefined,
-			...(hint === undefined ? {} : { hint }),
-		};
+	): TriggerDescriptor => ({
+		id: `${PREFIX}${recipe.name}`,
+		label: recipe.name,
+		...(recipe.description ? { description: recipe.description } : {}),
+		source: "recipes",
+		inputs: {
+			[HARNESS]: {
+				type: "string",
+				required: true,
+				default: Harness.line(harness.argv),
+				label: "harness",
+				hint: `${Harness.from(harness.source)}; the prompt is added as its last word`,
+			},
+			...recipe.inputs,
+		},
+		satisfiable: blocked === undefined,
+		...(blocked === undefined ? {} : { hint: blocked }),
+	});
+
+	/**
+	 * The form's values as `Inputs.resolve` takes them: text as typed, which it converts to the
+	 * input's type as it does `--input`, an empty one left out, and the rest as JSON.
+	 */
+	const given = (values: Readonly<Record<string, unknown>>): Inputs.Given => {
+		const pairs: string[] = [];
+		const json: Record<string, unknown> = {};
+		for (const [name, value] of Object.entries(values)) {
+			if (name === HARNESS || value === "" || value === undefined) continue;
+			if (typeof value === "string") pairs.push(`${name}=${value}`);
+			else json[name] = value;
+		}
+		return { pairs, json: JSON.stringify(json) };
 	};
 
 	/** A recipe file that failed to parse, named after its file. */
@@ -95,17 +114,21 @@ export namespace RecipeDispatcher {
 			const project = await deps.project();
 			if (!project.ok) return project;
 			if (project.value === null) return ok([]);
-			const shortId = task.value.shortId ?? task.value.id;
-			const { recipes, errors } = Recipe.all(deps.host.z, project.value.root);
+			const { root } = project.value;
+			const { recipes, errors } = Recipe.all(deps.host.z, root);
 			const blocked = deps.runtime.missing();
-			return ok([
-				...recipes
-					.filter((recipe) => recipe.target === "issue")
-					.map((recipe) => descriptor(recipe, shortId, blocked)),
-				...errors.map(broken),
-			]);
+			const offered: TriggerDescriptor[] = [];
+			for (const recipe of recipes) {
+				if (recipe.target !== "issue") continue;
+				const harness = await harnessOf(deps.ctx, deps.settings, root, {
+					recipe,
+				});
+				if (!harness.ok) return harness;
+				offered.push(descriptor(recipe, harness.value, blocked));
+			}
+			return ok([...offered, ...errors.map(broken)]);
 		},
-		dispatch: async (triggerId, target, inputs) => {
+		dispatch: async (triggerId, target, inputs, edited) => {
 			if (triggerId === RUN_JOB) return runJob(deps, deps.ctx, target.id);
 			if (!triggerId.startsWith(PREFIX))
 				return err(new Error(`Unknown recipe trigger: ${triggerId}`));
@@ -121,15 +144,20 @@ export namespace RecipeDispatcher {
 			if (!recipe.ok) return recipe;
 			if (recipe.value.target !== "issue")
 				return err(new Error(`recipe "${recipe.value.name}" takes no target`));
-			const values = Inputs.resolve(host.z, recipe.value, {
-				pairs: [],
-				json: JSON.stringify(inputs ?? {}),
-			});
+			const values = Inputs.resolve(host.z, recipe.value, given(inputs ?? {}));
 			if (!values.ok) return values;
-			const configured = await ctx.settings("recipes", deps.settings, {
-				projectDir: root,
+			// An edited harness row is set at launch; one left as shown is the precedence's own.
+			const typed = inputs?.[HARNESS];
+			const launch =
+				typeof typed === "string" && edited?.includes(HARNESS)
+					? Harness.split(typed)
+					: undefined;
+			if (launch !== undefined && !launch.ok) return launch;
+			const harness = await harnessOf(ctx, deps.settings, root, {
+				launch: launch?.value,
+				recipe: recipe.value,
 			});
-			if (!configured.ok) return configured;
+			if (!harness.ok) return harness;
 			const on = {
 				kind: "issue",
 				id: target.id,
@@ -144,14 +172,14 @@ export namespace RecipeDispatcher {
 				prompt: (id) => promptOf(id, recipe.value, values.value, on),
 				target: on,
 				inputs: values.value,
-				harness: configured.value.harness,
+				harness: harness.value.argv,
 				actor: ctx.actor,
 			});
 			if (!started.ok) return started;
 			const { run, warnings } = started.value;
 			return ok(
 				[
-					`started run ${run.id} (${run.recipe.name} on ${target.shortId}) · kabane runs attach ${run.id}`,
+					`started run ${run.id} (${run.recipe.name} on ${target.shortId}) with ${Harness.describe(harness.value)} · kabane runs attach ${run.id}`,
 					...warnings,
 				].join(" · "),
 			);

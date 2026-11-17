@@ -30,6 +30,8 @@ export namespace Runs {
 		/** The runtime's own handle for what it started, which only that runtime reads. */
 		session: string;
 		inputs: Record<string, unknown>;
+		/** The command the run started, the prompt left out; absent on a run recorded before it was kept. */
+		harness?: string[];
 		state: State;
 		startedAt: string;
 		endedAt?: string;
@@ -70,6 +72,10 @@ export namespace Runs {
 						 )`,
 					),
 			},
+			{
+				name: "add-recipes-runs-harness",
+				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN harness TEXT`),
+			},
 		],
 		// A run names its issue without owning it: deleting the issue keeps its runs.
 		syncTables: [
@@ -97,6 +103,7 @@ export namespace Runs {
 			runtime: z.string(),
 			session: z.string(),
 			inputs: z.string(),
+			harness: z.string().nullable(),
 			state: z.enum(STATES),
 			started_at: z.string(),
 			ended_at: z.string().nullable(),
@@ -125,6 +132,18 @@ export namespace Runs {
 					`${TABLE}: run ${data.id} has inputs that are not a JSON object`,
 				),
 			);
+		const command = trySync((): unknown =>
+			data.harness === null ? null : JSON.parse(data.harness),
+		);
+		const harness = command.ok
+			? z.array(z.string()).nullable().safeParse(command.value)
+			: undefined;
+		if (!harness?.success)
+			return err(
+				new Error(
+					`${TABLE}: run ${data.id} has a harness that is not a list of words`,
+				),
+			);
 		return ok({
 			id: data.id,
 			recipe: { name: data.recipe, hash: data.recipe_hash },
@@ -138,6 +157,7 @@ export namespace Runs {
 			runtime: data.runtime,
 			session: data.session,
 			inputs: inputs.data,
+			...(harness.data === null ? {} : { harness: harness.data }),
 			state: data.state,
 			startedAt: data.started_at,
 			...(data.ended_at === null ? {} : { endedAt: data.ended_at }),
@@ -165,9 +185,9 @@ export namespace Runs {
 		host.store.write((tx) => {
 			tx.db.run(
 				`INSERT INTO ${TABLE} (id, recipe, recipe_hash, target_kind, target_id, scope_uri, dir,
-				   machine, cwd, runtime, session, inputs, state, started_at, ended_at, updated_at,
-				   updated_by)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				   machine, cwd, runtime, session, inputs, harness, state, started_at, ended_at,
+				   updated_at, updated_by)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					run.id,
 					run.recipe.name,
@@ -181,6 +201,7 @@ export namespace Runs {
 					run.runtime,
 					run.session,
 					JSON.stringify(run.inputs),
+					run.harness === undefined ? null : JSON.stringify(run.harness),
 					run.state,
 					run.startedAt,
 					run.endedAt ?? null,

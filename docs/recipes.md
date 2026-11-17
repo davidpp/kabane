@@ -28,8 +28,8 @@ Runs start in terminals of `hc` (herdr core), which must be on your `PATH`. With
 
 A recipe is `.kabane/recipes/<name>.md` at your project's root: the folder that already holds
 `.kabane/`, or the repository's root when there is none yet. The file name is the recipe's
-name (lowercase letters, digits, `-` and `_`). The frontmatter says what it works on and what
-it asks for; the body is the prompt.
+name (lowercase letters, digits, `-` and `_`). The frontmatter says what it works on, what
+it asks for and which harness it is written for; the body is the prompt.
 
 Keep it there, even for a recipe about one package. A `.kabane/` folder marks a project's
 root, so creating one in a subfolder makes that subfolder a separate project: every command
@@ -57,6 +57,7 @@ Write the result as one comment on {{target.shortId}}.
 | `description` | one line, shown when `kabane run` lists the recipes |
 | `target` | `issue`: the run works on an issue given with `--target`; `job`: it runs for a scheduled job (see [Jobs](#jobs)); `none` (the default): it takes none |
 | `inputs` | by name: `type` (`string`, the default, `number` or `boolean`), `required`, `default`, `options` (strings only), `label`, `hint` |
+| `harness` | the command this recipe starts, as a list (`[codex, exec]`), or one word (`codex`); the prompt is added as its last argument. Without it, `recipes.harness` (see [Which harness a run starts](#which-harness-a-run-starts)) |
 
 The body can use `{{inputs.<name>}}` and, with `target: issue` or `target: job`, `{{target.id}}`,
 `{{target.shortId}}` and `{{target.title}}`. An optional input left out with no default
@@ -69,9 +70,10 @@ recipe.
 From your project's folder, or any folder inside it:
 
 ```bash
-kabane run                                        # the recipes here, with their inputs
+kabane run                                        # the recipes here, their harness and inputs
 kabane run preliminary-research --target JCAB-12 --input depth=quick
 kabane run preliminary-research --target JCAB-12 --inputs '{"depth": "thorough"}'
+kabane run preliminary-research --target JCAB-12 --harness codex,exec
 ```
 
 Inputs come from `--input name=value` (repeat it), a JSON object given with `--inputs` or
@@ -91,6 +93,21 @@ on the target issue, prints the run's id and terminal, and returns.
 
 The harness reads its own configuration from that folder (its MCP servers, permissions and
 instructions); kabane adds nothing to it.
+
+### Which harness a run starts
+
+The most specific of these, first found wins:
+
+1. what you set when you start it: `kabane run --harness a,b,c`, or the harness row of the
+   board's form;
+2. a job's own `--harness`, for a job's runs;
+3. the recipe's `harness`;
+4. the `recipes.harness` setting;
+5. `claude`.
+
+`kabane run` with no recipe, `kabane job list` and `kabane job show` print the command each
+recipe or job would start and where it comes from (`from the recipe`, `from recipes.harness`);
+`kabane run` prints the one it started. `--harness` splits on commas, as `config set` does.
 
 ## Follow your runs
 
@@ -129,8 +146,11 @@ with no terminal fail with one line naming it. A run whose start was interrupted
 stays `live` with no terminal (an empty TERMINAL column), and every verb on it fails with
 "This run has no terminal: its start never recorded one".
 
-With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
-attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
+`kabane runs` ends each row with the harness the run started, as a command line without the
+prompt; a run recorded before kabane kept it shows `-`.
+
+With `--json`, `kabane run` prints `run` (the id), `session`, `harness` (`{ argv, source }`) and
+`attach` (the command that attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
 of runs with these fields:
 
 | Field | Meaning |
@@ -143,6 +163,7 @@ of runs with these fields:
 | `runtime` | what started the run: `hc` |
 | `session` | the runtime's own handle for it: for `hc`, the terminal's name |
 | `inputs` | the input values the run started with |
+| `harness` | the command the run started, as a list, without the prompt; absent on a run recorded before kabane kept it |
 | `state` | `live`, `running`, `waiting`, `idle` or `ended` |
 | `startedAt`, `endedAt` | ISO timestamps; `endedAt` once the run has ended |
 
@@ -168,13 +189,15 @@ and `kabane runs stop <id>` stops it. `X` on the issue's detail stops it too (th
 `X stop <recipe>`). Nothing is answered from the board.
 
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
-with its description. A recipe whose inputs all have a default and are choices, numbers or
-booleans opens a form first; `enter` starts it with those values, and the footer names the
-new run. A recipe with any free-text input opens no form: `enter` starts it at once with every
-input's default, and the card's header shows the values it got. To give other values, start it
-with `kabane run <recipe> --target <id> --input name=value`. A recipe with a required input that has no default cannot start from the board: the
-footer gives the `kabane run` command that does. A recipe file that does not parse is listed
-with its error and does not start.
+with its description. `enter` on one opens its form, which lists every value the run will
+get before anything starts: the harness first, as the command line it will start, with where
+it comes from under it (`from the recipe`, `from recipes.harness`), then each input with its
+default and hint. Every row can be changed. `h/l` move a choice, a number or a boolean; any
+other row is typed: type to add, `backspace` to delete, and `↑↓` leave it, since `j/k` are
+letters it takes. The harness row is a shell command line: quote a word with a space in it
+(`sh -c 'echo hi'`). `enter` starts the run with what the form shows, and the footer names the
+new run and its harness; a required row left empty takes the cursor instead. A recipe file
+that does not parse is listed with its error and does not start.
 
 ## Jobs
 
@@ -200,7 +223,7 @@ come from `--input name=value` and `--inputs '{…}'` as with `kabane run`, are 
 are never asked for: a required input that is missing is an error. `--schedule` is a cron
 expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
 machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
-`recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
+the recipe's `harness` and `recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
 default, `--session fresh`, starts a new one on each fire. To change it, close the job and add
 it again.
 
@@ -211,7 +234,8 @@ stays as written, and such a job takes no `--input`. Its runs are listed with `r
 recipe.
 
 `job list` shows each job's id, whether it is active or paused, its schedule, the next time it
-fires, its recipe (`-` for none), its harness, its session mode, the state of its latest run and its title. `pause` sets the job
+fires, its recipe (`-` for none), its session mode, the state of its latest run, its title, and
+the harness its next run starts with where that comes from. `pause` sets the job
 `someday` and `resume` sets it `next`. A job ends when you close it with `kabane done`; there is
 no delete.
 
@@ -306,8 +330,10 @@ nothing, so ticking every minute is cheap.
 
 ## Settings
 
-`recipes.harness` is the command a run starts, as a list; the prompt is added as its last
-argument. The default is `["claude"]`. `recipes.onAttention` is the command a tick runs when a
+`recipes.harness` is the command a run starts when the recipe names none, as a list; the prompt
+is added as its last argument. Unset, it is `claude`. A recipe's own `harness`, a job's
+`--harness` and `kabane run --harness` come before it ([Which harness a run
+starts](#which-harness-a-run-starts)). `recipes.onAttention` is the command a tick runs when a
 job's run needs you ("Hear when a run needs you", above); unset by default.
 
 ```bash

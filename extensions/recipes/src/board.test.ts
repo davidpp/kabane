@@ -356,7 +356,8 @@ inputs:
 Research {{target.shortId}} at {{inputs.depth}} depth in {{inputs.rounds}} rounds.
 `;
 
-const dispatcherWith = (runtime: Runtime) =>
+// `harness` is `recipes.harness` as a global setting; unset, the setting is absent.
+const dispatcherWith = (runtime: Runtime, harness?: string[]) =>
 	RecipeDispatcher.make({
 		host,
 		runtime,
@@ -365,12 +366,18 @@ const dispatcherWith = (runtime: Runtime) =>
 		ctx: {
 			cwd: project.root,
 			actor: "tester",
-			settings: Settings.port(async () => ok([])),
+			settings: Settings.port(async () =>
+				ok(
+					harness === undefined
+						? []
+						: [{ layer: "global", label: "test", value: { harness } }],
+				),
+			),
 		},
 	});
 
 describe("RecipeDispatcher", () => {
-	it("offers each recipe that targets an issue, its inputs one to one, and a broken one unsatisfiable", async () => {
+	it("offers each recipe that targets an issue, its harness then its inputs one to one, and a broken one unsatisfiable", async () => {
 		recipe("research", RESEARCH);
 		recipe("tidy", "---\ndescription: No target\n---\nTidy up.\n");
 		recipe(
@@ -386,15 +393,27 @@ describe("RecipeDispatcher", () => {
 		expect(
 			triggers.map(({ id, label, satisfiable }) => [id, label, satisfiable]),
 		).toEqual([
-			["recipe:ask", "ask", false],
+			["recipe:ask", "ask", true],
 			["recipe:research", "research", true],
 			["recipe:broken", "broken", false],
 			["recipe:odd:name", "odd:name", false],
 		]);
 		const [ask, research, broken] = triggers;
+		expect(Object.keys(research?.inputs ?? {})).toEqual([
+			"@harness",
+			"depth",
+			"rounds",
+		]);
 		expect(research).toMatchObject({
 			description: "Research an issue",
 			inputs: {
+				"@harness": {
+					type: "string",
+					required: true,
+					default: "claude",
+					label: "harness",
+					hint: "kabane's default; the prompt is added as its last word",
+				},
 				depth: {
 					type: "string",
 					options: ["quick", "medium", "thorough"],
@@ -404,9 +423,9 @@ describe("RecipeDispatcher", () => {
 				rounds: { type: "number", default: 2, required: false },
 			},
 		});
-		expect(ask?.hint).toBe(
-			`ask needs focus, which has no default: kabane run ask --target ${issue.shortId} --input focus=…`,
-		);
+		// A required text input is a row the human fills in, not a reason to refuse.
+		expect(ask?.inputs.focus).toEqual({ type: "string", required: true });
+		expect(ask?.hint).toBeUndefined();
 		expect(broken?.hint).toStartWith(
 			".kabane/recipes/broken.md: the frontmatter is not YAML",
 		);
@@ -441,12 +460,72 @@ describe("RecipeDispatcher", () => {
 			state: "live",
 		});
 		expect(notice).toBe(
-			`started run ${stored?.id} (research on ${issue.shortId}) · kabane runs attach ${stored?.id}`,
+			`started run ${stored?.id} (research on ${issue.shortId}) with claude  (kabane's default) · kabane runs attach ${stored?.id}`,
 		);
 		expect(hc.started[0]?.argv.at(-1)).toEndWith(
 			`Research ${issue.shortId} at thorough depth in 3 rounds.`,
 		);
 		expect(hc.started[0]?.argv.slice(0, -1)).toEqual(["claude"]);
+		expect(stored?.harness).toEqual(["claude"]);
+	});
+
+	it("shows the recipe's harness over the setting, and starts what the form shows, edited or not", async () => {
+		recipe(
+			"probe",
+			"---\ntarget: issue\nharness: [sh, -c, 'echo recipe']\ninputs:\n  topic:\n    required: true\n  depth:\n    type: number\n---\nProbe {{inputs.topic}} to {{inputs.depth}}.\n",
+		);
+		const hc = scripted();
+		const board = dispatcherWith(hc.runtime, ["sh", "-c", "echo setting"]);
+		const [probe] = value(await board.triggers(issue.id));
+		expect(probe?.inputs["@harness"]).toMatchObject({
+			default: "sh -c 'echo recipe'",
+			hint: "from the recipe; the prompt is added as its last word",
+		});
+		const target = { ...issue, brief: "" };
+		const shown = value(
+			await board.dispatch(
+				"recipe:probe",
+				target,
+				{ "@harness": "sh -c 'echo recipe'", topic: "auth", depth: "3" },
+				["topic", "depth"],
+			),
+		);
+		expect(shown).toContain("with sh -c 'echo recipe'  (from the recipe)");
+		expect(hc.started[0]?.argv.slice(0, -1)).toEqual([
+			"sh",
+			"-c",
+			"echo recipe",
+		]);
+		// A number typed as text arrives converted, as `--input` converts it.
+		expect(hc.started[0]?.argv.at(-1)).toEndWith("Probe auth to 3.");
+		const edited = value(
+			await board.dispatch(
+				"recipe:probe",
+				target,
+				{ "@harness": "sh -c 'echo edited'", topic: "auth", depth: "" },
+				["@harness", "topic"],
+			),
+		);
+		expect(edited).toContain("with sh -c 'echo edited'  (set at launch)");
+		expect(hc.started[1]?.argv.slice(0, -1)).toEqual([
+			"sh",
+			"-c",
+			"echo edited",
+		]);
+		const runs = value(await Runs.list(host, project.scopeUri));
+		expect(runs.map((run) => run.harness?.at(-1))).toEqual([
+			"echo edited",
+			"echo recipe",
+		]);
+		// A recipe that names no harness falls to the setting.
+		recipe("plain", "---\ntarget: issue\n---\nPlain.\n");
+		const plain = value(await board.triggers(issue.id)).find(
+			(t) => t.id === "recipe:plain",
+		);
+		expect(plain?.inputs["@harness"]).toMatchObject({
+			default: "sh -c 'echo setting'",
+			hint: "from recipes.harness; the prompt is added as its last word",
+		});
 	});
 });
 

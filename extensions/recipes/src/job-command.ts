@@ -12,11 +12,13 @@ import type {
 	Result,
 	Task,
 } from "@cabane/extension";
+import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { Jobs } from "./jobs";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
 import {
+	harnessOf,
 	projectOf,
 	promptOf,
 	requestPromptOf,
@@ -119,7 +121,7 @@ const sourceOf = (
 	root: string,
 	target: Recipe.Target,
 ): Result<{
-	recipe: Pick<Recipe.Recipe, "name" | "hash">;
+	recipe: Pick<Recipe.Recipe, "name" | "hash" | "harness">;
 	inputs: Record<string, Recipe.Value>;
 	prompt: (runId: string) => string;
 }> => {
@@ -202,14 +204,11 @@ const fire = async (
 			const stopped = await Runs.stop(d.host, d.runtime, run, ctx.actor);
 			if (!stopped.ok) return stopped;
 		}
-		let harness = job.harness;
-		if (harness === undefined) {
-			const configured = await ctx.settings("recipes", d.settings, {
-				projectDir: root,
-			});
-			if (!configured.ok) return configured;
-			harness = configured.value.harness;
-		}
+		const harness = await harnessOf(ctx, d.settings, root, {
+			job: job.harness,
+			recipe,
+		});
+		if (!harness.ok) return harness;
 		const started = await startRun(d.host, d.runtime, {
 			scopeUri: task.scopeUri ?? "",
 			root,
@@ -218,7 +217,7 @@ const fire = async (
 			prompt,
 			target,
 			inputs,
-			harness,
+			harness: harness.value.argv,
 			actor: ctx.actor,
 		});
 		if (!started.ok) return started;
@@ -235,6 +234,32 @@ const fire = async (
 		ctx.actor,
 	);
 	return fired.ok ? ok(line) : fired;
+};
+
+/**
+ * The harness the job's next fresh run would start, and where it comes from; with why not, when its
+ * recipe does not load or this machine has no folder to read it from.
+ */
+const harnessFor = async (
+	d: Deps,
+	ctx: Pick<Extension.Ctx, "settings" | "cwd">,
+	{ job }: Entry,
+	root: string | undefined,
+): Promise<Result<Harness.Chosen>> => {
+	let recipe: Recipe.Recipe | undefined;
+	if (job.harness === undefined && job.recipe !== undefined) {
+		if (root === undefined)
+			return err(
+				new Error("unknown: no folder on this machine to read its recipe from"),
+			);
+		const loaded = Recipe.load(d.host.z, root, job.recipe);
+		if (!loaded.ok) return loaded;
+		recipe = loaded.value;
+	}
+	return harnessOf(ctx, d.settings, root ?? ctx.cwd, {
+		job: job.harness,
+		recipe,
+	});
 };
 
 /** The recipe `job add` names and its inputs, checked now; none when it names none. */
@@ -349,6 +374,8 @@ const list = async (
 		if (!project.ok) return project.outcome;
 		scope = project.value.scopeUri;
 	}
+	const roots = await Jobs.roots(d.host);
+	if (!roots.ok) return d.host.outcome.failure(roots.error);
 	const found = await entries(d);
 	if (!found.ok) return d.host.outcome.failure(found.error);
 	const shown = found.value.filter(
@@ -367,16 +394,22 @@ const list = async (
 		const latest = runs.value[0];
 		const { job, task } = one;
 		const active = task.state === "next" ? "active" : "paused";
+		const harness = await harnessFor(
+			d,
+			ctx,
+			one,
+			roots.value.get(task.scopeUri ?? ""),
+		);
 		rows.push([
 			shortOf(task),
 			active,
 			job.schedule,
 			nextOf(job),
 			job.recipe ?? "-",
-			job.harness?.join(",") ?? "-",
 			job.session,
 			latest?.state ?? "-",
 			task.title,
+			harness.ok ? Harness.describe(harness.value) : harness.error.message,
 		]);
 		json.push({
 			id: task.id,
@@ -385,6 +418,7 @@ const list = async (
 			scope: task.scopeUri,
 			state: active,
 			...job,
+			...(harness.ok ? { starts: harness.value } : {}),
 			...(latest ? { latestRun: { id: latest.id, state: latest.state } } : {}),
 		});
 	}
@@ -397,10 +431,10 @@ const list = async (
 				"SCHEDULE",
 				"NEXT",
 				"RECIPE",
-				"HARNESS",
 				"SESSION",
 				"LAST RUN",
 				"TITLE",
+				"HARNESS",
 			],
 			...rows,
 		]),
@@ -418,6 +452,14 @@ const show = async (
 	if (!runs.ok) return d.host.outcome.failure(runs.error);
 	const { job, task } = found.value;
 	const recent = runs.value.slice(0, SHOWN_RUNS);
+	const roots = await Jobs.roots(d.host);
+	if (!roots.ok) return d.host.outcome.failure(roots.error);
+	const harness = await harnessFor(
+		d,
+		ctx,
+		found.value,
+		roots.value.get(task.scopeUri ?? ""),
+	);
 	const lines = [
 		`${shortOf(task)}  ${task.title}`,
 		`state     ${task.state === "next" ? "active" : task.state === "someday" ? "paused" : task.state}`,
@@ -425,7 +467,7 @@ const show = async (
 		...(job.recipe === undefined
 			? ["recipe    none: the request below is the prompt"]
 			: [`recipe    ${job.recipe}`, `inputs    ${JSON.stringify(job.inputs)}`]),
-		`harness   ${job.harness?.join(",") ?? "recipes.harness"}`,
+		`harness   ${harness.ok ? Harness.describe(harness.value) : harness.error.message}`,
 		`session   ${job.session === "keep" ? "keep: a fire types into the idle terminal" : "fresh: each fire starts a terminal"}`,
 		`last fire ${job.lastFiredAt ? when(new Date(job.lastFiredAt)) : "never"}`,
 		"",
@@ -450,6 +492,7 @@ const show = async (
 				title: task.title,
 				request: task.description,
 				...job,
+				...(harness.ok ? { starts: harness.value } : {}),
 			},
 			runs: recent,
 		},

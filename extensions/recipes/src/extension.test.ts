@@ -123,11 +123,38 @@ test("kabane run with no recipe lists the project's recipes and their inputs", (
 		code: 0,
 		stdout: [
 			"research --target <issue>  Research an issue",
+			"    harness claude  (kabane's default)",
 			"    --input depth=<quick|medium|thorough> (default medium)",
 			"    --input focus=<string> (required)",
 		].join("\n"),
 		stderr: "",
 	});
+});
+
+test("kabane run with no recipe names each recipe's harness and where it comes from", () => {
+	const { root, kabane } = setup();
+	writeFileSync(
+		join(root, ".kabane/recipes/probe.md"),
+		"---\nharness: [codex, exec]\n---\nProbe.\n",
+	);
+	expect(
+		kabane([
+			"config",
+			"set",
+			"recipes.harness",
+			"sh,-c,echo hi",
+			"--layer",
+			"global",
+		]).code,
+	).toBe(0);
+	expect(kabane(["run"]).stdout.split("\n")).toEqual([
+		"probe",
+		"    harness codex exec  (from the recipe)",
+		"research --target <issue>  Research an issue",
+		"    harness sh -c 'echo hi'  (from recipes.harness)",
+		"    --input depth=<quick|medium|thorough> (default medium)",
+		"    --input focus=<string> (required)",
+	]);
 });
 
 test("a broken recipe is an error naming its file, beside the recipes that parse", () => {

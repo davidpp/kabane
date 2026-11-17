@@ -4,6 +4,7 @@
 // does not have, shows what was last recorded.
 import { hostname } from "node:os";
 import type { Extension, Host, Outcome } from "@cabane/extension";
+import { Harness } from "./harness";
 import { ok } from "./result";
 import { projectOf, shortIdOf } from "./run-command";
 import { Runs } from "./runs";
@@ -178,10 +179,14 @@ export const runsCommand = (
 				: (targets.get(run.target.id) ?? run.target.id),
 			run.session,
 			age(run.startedAt),
+			run.harness === undefined ? "-" : Harness.line(run.harness),
 		]);
 		return host.outcome.success(
 			{ runs: shown },
-			pad([["ID", "STATE", "RECIPE", "TARGET", "TERMINAL", "AGE"], ...rows]),
+			pad([
+				["ID", "STATE", "RECIPE", "TARGET", "TERMINAL", "AGE", "HARNESS"],
+				...rows,
+			]),
 		);
 	};
 

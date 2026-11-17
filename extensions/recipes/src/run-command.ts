@@ -1,6 +1,6 @@
-// `kabane run <recipe> [--target <issue>] [--input k=v]… [--inputs <JSON>]`: render a recipe's prompt,
-// record the run, start the harness in a runtime terminal and return without waiting. With no
-// recipe it lists the project's recipes.
+// `kabane run <recipe> [--target <issue>] [--input k=v]… [--inputs <JSON>] [--harness a,b,c]`: render
+// a recipe's prompt, record the run, start the harness in a runtime terminal and return without
+// waiting. With no recipe it lists the project's recipes and the harness each would start.
 import { hostname } from "node:os";
 import { join, relative } from "node:path";
 import type {
@@ -10,6 +10,7 @@ import type {
 	ProjectScope,
 	Result,
 } from "@cabane/extension";
+import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
@@ -20,12 +21,13 @@ import type { Runtime } from "./runtime";
 export const settingsSchema = (z: Host["z"]) =>
 	z
 		.object({
+			// No default here: unset is how a recipe's own harness takes over (Harness.choose).
 			harness: z
 				.array(z.string().min(1))
 				.min(1)
-				.default(["claude"])
+				.optional()
 				.describe(
-					"The command a recipe run starts, as a list; the prompt is added as its last argument. Kabane adds no flags of its own. Default: claude.",
+					"The command a recipe run starts when the recipe names none, as a list; the prompt is added as its last argument. Kabane adds no flags of its own. Unset: claude.",
 				),
 			onAttention: z
 				.string()
@@ -38,7 +40,32 @@ export const settingsSchema = (z: Host["z"]) =>
 		.strict();
 
 const USAGE =
-	"kabane run [<recipe>] [--target <issue>] [--input name=value]... [--inputs '{\"name\": value}']";
+	"kabane run [<recipe>] [--target <issue>] [--input name=value]... [--inputs '{\"name\": value}'] [--harness a,b,c]";
+
+/** The harness a recipe starts when nothing is set at launch: a job's, the recipe's, the setting's. */
+export const harnessOf = async (
+	ctx: Pick<Extension.Ctx, "settings">,
+	settings: ReturnType<typeof settingsSchema>,
+	root: string,
+	given: {
+		launch?: readonly string[];
+		job?: readonly string[];
+		recipe?: Pick<Recipe.Recipe, "harness">;
+	},
+): Promise<Result<Harness.Chosen>> => {
+	const configured = await ctx.settings("recipes", settings, {
+		projectDir: root,
+	});
+	if (!configured.ok) return configured;
+	return ok(
+		Harness.choose({
+			launch: given.launch,
+			job: given.job,
+			recipe: given.recipe?.harness,
+			setting: configured.value.harness,
+		}),
+	);
+};
 
 /** The project the command runs in, or the one line that says there is none. */
 export const projectOf = async (
@@ -90,8 +117,9 @@ const preamble = (
 	return lines.join("\n");
 };
 
-const describe = (recipe: Recipe.Recipe): string => {
+const describe = (recipe: Recipe.Recipe, harness: Harness.Chosen): string => {
 	const head = `${recipe.name}${recipe.target === "none" ? "" : ` --target <${recipe.target}>`}${recipe.description ? `  ${recipe.description}` : ""}`;
+	const starts = `    harness ${Harness.describe(harness)}`;
 	const inputs = Object.entries(recipe.inputs).map(([name, input]) => {
 		const kind = input.options ? input.options.join("|") : input.type;
 		const extra = [
@@ -102,25 +130,37 @@ const describe = (recipe: Recipe.Recipe): string => {
 		].filter(Boolean);
 		return `    --input ${name}=<${kind}>${extra.length ? ` (${extra.join(", ")})` : ""}${input.hint ? `  ${input.hint}` : ""}`;
 	});
-	return [head, ...inputs].join("\n");
+	return [head, starts, ...inputs].join("\n");
 };
 
-const list = (host: Host, project: ProjectScope): Outcome => {
+const list = async (
+	host: Host,
+	ctx: Pick<Extension.Ctx, "settings">,
+	settings: ReturnType<typeof settingsSchema>,
+	project: ProjectScope,
+): Promise<Outcome> => {
 	const { recipes, errors } = Recipe.all(host.z, project.root);
+	const listed: { recipe: Recipe.Recipe; harness: Harness.Chosen }[] = [];
+	for (const recipe of recipes) {
+		const harness = await harnessOf(ctx, settings, project.root, { recipe });
+		if (!harness.ok) return host.outcome.failure(harness.error);
+		listed.push({ recipe, harness: harness.value });
+	}
 	const shown =
-		recipes.length > 0
-			? recipes.map(describe).join("\n")
+		listed.length > 0
+			? listed.map((one) => describe(one.recipe, one.harness)).join("\n")
 			: `No recipes in ${Recipe.DIR}/ of ${project.root}.`;
 	const broken = errors.map(({ error }) => `Error: ${error.message}`);
 	return {
 		exitCode: errors.length > 0 ? 1 : 0,
 		json: {
-			recipes: recipes.map(({ name, description, target, inputs, file }) => ({
-				name,
-				description,
-				target,
-				inputs,
-				file,
+			recipes: listed.map(({ recipe, harness }) => ({
+				name: recipe.name,
+				description: recipe.description,
+				target: recipe.target,
+				inputs: recipe.inputs,
+				file: recipe.file,
+				harness,
 			})),
 			errors: errors.map(({ error }) => error.message),
 		},
@@ -209,7 +249,7 @@ export type Start = {
 	target?: Recipe.Target;
 	/** The recipe's inputs, already resolved and validated. */
 	inputs: Record<string, Recipe.Value>;
-	/** The command the prompt is appended to: `recipes.harness`, or a job's own. */
+	/** The command the prompt is appended to, as `Harness.choose` picked it. */
 	harness: readonly string[];
 	actor: string;
 };
@@ -259,6 +299,7 @@ export const startRun = async (
 			runtime: runtime.name,
 			session: Runs.STARTING,
 			inputs,
+			harness: [...harness],
 			state: "live",
 			startedAt: new Date().toISOString(),
 		},
@@ -321,7 +362,7 @@ export const runCommand = (
 		const project = await projectOf(host, ctx.cwd, "run");
 		if (!project.ok) return project.outcome;
 		const [name, positional, ...extra] = args.positionals;
-		if (name === undefined) return list(host, project.value);
+		if (name === undefined) return list(host, ctx, settings, project.value);
 		// The inputs object may also follow the recipe name bare, as a positional.
 		if (
 			extra.length > 0 ||
@@ -353,10 +394,11 @@ export const runCommand = (
 			terminalAsk(),
 		);
 		if (!inputs.ok) return host.outcome.usage(inputs.error.message, USAGE);
-		const configured = await ctx.settings("recipes", settings, {
-			projectDir: project.value.root,
+		const harness = await harnessOf(ctx, settings, project.value.root, {
+			launch: host.args.flagCsv(args, "harness"),
+			recipe: recipe.value,
 		});
-		if (!configured.ok) return host.outcome.failure(configured.error);
+		if (!harness.ok) return host.outcome.failure(harness.error);
 		const started = await startRun(host, runtime, {
 			scopeUri: project.value.scopeUri,
 			root: project.value.root,
@@ -365,7 +407,7 @@ export const runCommand = (
 			prompt: (id) => promptOf(id, recipe.value, inputs.value, target.value),
 			...(target.value === undefined ? {} : { target: target.value }),
 			inputs: inputs.value,
-			harness: configured.value.harness,
+			harness: harness.value.argv,
 			actor: ctx.actor,
 		});
 		if (!started.ok) return host.outcome.failure(started.error);
@@ -375,11 +417,13 @@ export const runCommand = (
 			{
 				run: run.id,
 				session: run.session,
+				harness: harness.value,
 				attach: `kabane runs attach ${run.id}`,
 				...(warnings.length ? { warnings } : {}),
 			},
 			[
 				`Started run ${run.id} (${run.recipe.name}${on}) in ${run.runtime} terminal ${run.session}.`,
+				`Harness: ${Harness.describe(harness.value)}`,
 				`Attach: kabane runs attach ${run.id}`,
 				...warnings,
 			].join("\n"),
