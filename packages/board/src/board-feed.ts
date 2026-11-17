@@ -12,7 +12,7 @@ import { BoardChecklist } from "./checklist";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
 import { BoardNav } from "./nav";
-import type { SetNotice } from "./notice";
+import { type SetNotice, useOwnNotice } from "./notice";
 import type { Copilot, OpenRequests } from "./ports";
 
 const POLL_INTERVAL_MS = 5000;
@@ -129,6 +129,7 @@ export const useBoardFeed = ({
 	);
 
 	const fireFts = useSearch(basePath, filtersFor, { state, ref, update });
+	const loadError = useOwnNotice(setNotice);
 
 	// Reload columns using the filters implied by `s`, then merge them in preserving selection.
 	// When a query is active, re-fire the FTS search after the reload so tier-2 results stay merged.
@@ -138,11 +139,11 @@ export const useBoardFeed = ({
 			const result = feed.rows;
 			if (!result.ok) {
 				// Non-fatal: keep last-good state, surface as a transient notice.
-				setNotice({ text: result.error.message, tone: "error" });
+				loadError.raise({ text: result.error.message, tone: "error" });
 				return;
 			}
-			// Clear any previous poll-error notice on success.
-			setNotice((prev) => (prev?.tone === "error" ? null : prev));
+			// A good load takes back its own failure's notice, never an act's error the reload follows.
+			loadError.clear();
 			update((prev) =>
 				BoardChecklist.withProgress(
 					BoardNav.withSections(prev, result.value, feed.counts),
@@ -162,7 +163,7 @@ export const useBoardFeed = ({
 			activitySource,
 			refreshDetail,
 			update,
-			setNotice,
+			loadError,
 		],
 	);
 
