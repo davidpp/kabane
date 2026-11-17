@@ -207,17 +207,18 @@ a run reads `live` until it exits, so its job never fires again while it is ther
 Until that is fixed, [`hooks/claude-program-status.sh`](hooks/claude-program-status.sh) reports
 the state from Claude Code's own hook events: `working` when a prompt is sent and after each
 tool, `blocked` on a permission prompt or a question (Claude Code sends its `permission_prompt`
-notification for both), and `idle` when its turn ends. Add it to your user settings,
-`~/.claude/settings.json`, so every session gets it, with the path to your clone, merging these
-keys into the `hooks` you already have:
+notification for both), `idle` when its turn ends, and `error` when it ends on an API error.
+Add it to your user settings, `~/.claude/settings.json`, so every session gets it, with the path
+to your clone, merging these keys into the `hooks` you already have:
 
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "<your clone>/docs/hooks/claude-program-status.sh working" }] }],
-    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "<your clone>/docs/hooks/claude-program-status.sh working" }] }],
-    "Notification": [{ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": "<your clone>/docs/hooks/claude-program-status.sh blocked permission" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "<your clone>/docs/hooks/claude-program-status.sh idle" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" working" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" working" }] }],
+    "Notification": [{ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" blocked permission" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" idle" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" error" }] }]
   }
 }
 ```
