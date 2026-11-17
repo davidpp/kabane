@@ -36,8 +36,16 @@ inputs:
   focus:
     required: true
 ---
-Research {{target.shortId}} at {{inputs.depth}} depth, on {{inputs.focus}}.
 `;
+
+/** A project skill with nothing in it but its name: kabane only names it to the harness. */
+const skill = (root: string, name: string) => {
+	mkdirSync(join(root, ".agents/skills", name), { recursive: true });
+	writeFileSync(
+		join(root, ".agents/skills", name, "SKILL.md"),
+		`---\nname: ${name}\ndescription: ${name}\n---\n`,
+	);
+};
 
 const setup = (extensions: readonly string[] = ["recipes"]) => {
 	const folder = realpathSync(mkdtempSync(join(tmpdir(), "recipes-ext-")));
@@ -54,6 +62,7 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 	expect(Bun.spawnSync(["git", "init", "-q", root]).exitCode).toBe(0);
 	writeFileSync(join(root, ".kabane/scope"), "pinned\n");
 	writeFileSync(join(root, ".kabane/recipes/research.md"), RESEARCH);
+	skill(root, "research");
 	const kabane = (
 		args: string[],
 		options: { cwd?: string; path?: string } = {},
@@ -123,6 +132,7 @@ test("kabane run with no recipe lists the project's recipes and their inputs", (
 		code: 0,
 		stdout: [
 			"research --target <issue>  Research an issue",
+			"    skill research  (.agents/skills/research/SKILL.md)",
 			"    harness claude  (kabane's default)",
 			"    --input depth=<quick|medium|thorough> (default medium)",
 			"    --input focus=<string> (required)",
@@ -135,8 +145,9 @@ test("kabane run with no recipe names each recipe's harness and where it comes f
 	const { root, kabane } = setup();
 	writeFileSync(
 		join(root, ".kabane/recipes/probe.md"),
-		"---\nharness: [codex, exec]\n---\nProbe.\n",
+		"---\nharness: [codex, exec]\n---\n",
 	);
+	skill(root, "probe");
 	expect(
 		kabane([
 			"config",
@@ -149,8 +160,10 @@ test("kabane run with no recipe names each recipe's harness and where it comes f
 	).toBe(0);
 	expect(kabane(["run"]).stdout.split("\n")).toEqual([
 		"probe",
+		"    skill probe  (.agents/skills/probe/SKILL.md)",
 		"    harness codex exec  (from the recipe)",
 		"research --target <issue>  Research an issue",
+		"    skill research  (.agents/skills/research/SKILL.md)",
 		"    harness sh -c 'echo hi'  (from recipes.harness)",
 		"    --input depth=<quick|medium|thorough> (default medium)",
 		"    --input focus=<string> (required)",
@@ -159,18 +172,17 @@ test("kabane run with no recipe names each recipe's harness and where it comes f
 
 test("a broken recipe is an error naming its file, beside the recipes that parse", () => {
 	const { root, kabane } = setup();
-	writeFileSync(join(root, ".kabane/recipes/bad.md"), "Hello {{inputs.who}}\n");
+	writeFileSync(
+		join(root, ".kabane/recipes/bad.md"),
+		"---\nskill: gone\n---\n",
+	);
+	const why =
+		'Error: .kabane/recipes/bad.md: no skill "gone": kabane looked for .agents/skills/gone/SKILL.md and .claude/skills/gone/SKILL.md';
 	const listed = kabane(["run"]);
 	expect(listed.code).toBe(1);
 	expect(listed.stderr).toContain("research --target <issue>");
-	expect(listed.stderr).toContain(
-		"Error: .kabane/recipes/bad.md: {{inputs.who}} names no declared input",
-	);
-	expect(kabane(["run", "bad"])).toMatchObject({
-		code: 1,
-		stderr:
-			"Error: .kabane/recipes/bad.md: {{inputs.who}} names no declared input",
-	});
+	expect(listed.stderr).toContain(why);
+	expect(kabane(["run", "bad"])).toMatchObject({ code: 1, stderr: why });
 });
 
 test("outside a terminal, a missing required input is a usage error naming it", () => {

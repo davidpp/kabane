@@ -39,6 +39,7 @@ sections below.
 |---|---|
 | The first runtime is ACP, behind a port in `@cabane/acp` | The runtime is hc (herdr core), behind one adapter file in the extension. No port in `@cabane/acp`, no relay move. |
 | Asks are relayed to tracker questions | No relay. hc reports the terminal blocked, the run reads `waiting`, and the human attaches or sends text. |
+| A recipe is a prompt or a script: `body` is `{ kind: "prompt"; text }` or `{ kind: "script"; … }` | A recipe is a definition over a project skill (JCAB-537): frontmatter only (`description`, `target`, `inputs`, `harness`, and `skill`, which defaults to the file name), and a body is an error. The procedure is the skill, in `.agents/skills/<name>/SKILL.md` with `.claude/skills/<name>` a symlink to it, which the harness loads itself. Kabane sends its preamble, then "Use the <skill> skill.", the target and one line per input. No `{{…}}` substitution. |
 | Run states `queued`, `claimed`, `succeeded`, a lease | A run's state is what its program reported through OSC 7501: `live`, `running`, `waiting`, `idle`, `ended`. Kabane never claims success. |
 | Run rows in a first-party `@cabane/runs` | `recipes_runs`, in the extension's own module (JCAB-444:1). JCAB-461 decides whether it moves. |
 | A job is a module table, or a core kind | `job` is a third core item kind, left out of listings that name no kind (JCAB-522). Its schedule row, `kabane job` and `kabane job tick` are in the `recipes` extension, next to `startRun` (JCAB-523). |

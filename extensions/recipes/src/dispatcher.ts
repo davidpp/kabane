@@ -2,9 +2,10 @@
 // works on an issue, and `enter` opens its form: the harness first, as the command line it will
 // start and where that comes from, then every input with its default, each one the human can
 // change. `enter` on the form starts it through `startRun`, the function `kabane run` calls, with
-// what the form shows. A recipe file that does not parse is offered too, unsatisfiable,
-// with its error, so a broken recipe is never silently missing. On a job, `a` offers `job:run`, which
-// fires it now as `kabane job run` does, in its own scope's folder whatever the board's project.
+// what the form shows; beside its settings, the form names the skill the run will use. A recipe
+// file that does not parse is offered too, unsatisfiable, with its error, so a broken recipe is
+// never silently missing. On a job, `a` offers `job:run`, which fires it now as `kabane job run`
+// does, in its own scope's folder whatever the board's project.
 import { basename, relative } from "node:path";
 import type {
 	Dispatcher,
@@ -63,6 +64,14 @@ export namespace RecipeDispatcher {
 		},
 		satisfiable: blocked === undefined,
 		...(blocked === undefined ? {} : { hint: blocked }),
+		preview: [
+			[
+				{ text: "Uses the ", tone: "muted" },
+				{ text: recipe.skill, bold: true },
+				{ text: " skill", tone: "muted" },
+			],
+			[{ text: recipe.skillFile, tone: "muted" }],
+		],
 	});
 
 	/**

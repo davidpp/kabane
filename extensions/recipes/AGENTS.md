@@ -1,21 +1,21 @@
 # @cabane/recipes (extensions/recipes)
 
-The recipes extension: prompt recipes from a project's `.kabane/recipes/`, `kabane run` to start
+The recipes extension: recipes from a project's `.kabane/recipes/`, each naming a project skill, `kabane run` to start
 one in an `hc` (herdr core) terminal, `kabane runs` to list, read, send to, attach to and stop
 those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is what a user reads.
 
 | Where | What it holds |
 |---|---|
 | `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), both commands, the `hc-missing` doctor finding, the board ports |
-| `src/recipe.ts` | `Recipe.parse`, `load`, `all`, `render`: frontmatter (`harness` among it), placeholders, and the errors that name the file |
+| `src/recipe.ts` | `Recipe.parse`, `load`, `all`: frontmatter only (`skill` and `harness` among it), the skill's `SKILL.md` found in `.agents/skills/` or `.claude/skills/`, and the errors that name the file, a body's among them |
 | `src/harness.ts` | `Harness.choose`, the precedence (launch, job, recipe, `recipes.harness`, `claude`) and its source; `line` and `split`, the command line a human reads and types |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
-| `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `recipes.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets, which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
+| `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `recipes.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets (the preamble, then "Use the <skill> skill.", the target and one line per input), which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing, `attach`, `read`, `send`, `stop` |
 | `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
 | `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
-| `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, its harness row first, and `dispatch` through `startRun`; on a job, `job:run`, which fires it as `kabane job run` does |
+| `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, its harness row first and its skill in the form's preview, and `dispatch` through `startRun`; on a job, `job:run`, which fires it as `kabane job run` does |
 | `src/job-source.ts` | `RecipeJobs`: the board's `JobSource`, each job's schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs |
 | `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored; `reconcile` and `stop`, which `kabane runs` and the board share |
 | `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
@@ -156,7 +156,8 @@ bun test extensions/recipes                 # parsing, inputs, the hc mapping, t
 bun run --cwd extensions/recipes build      # dist/ is installed as a directory extension
 bun run sandbox config set extensions recipes --layer global
 bun run sandbox config set recipes.harness 'sh,-c,printf "%s\n" "$0"; read line; echo "got: $line"; sleep 600' --layer global
-# write a recipe into <repo>/.kabane/recipes/; the sandbox prints <repo> on its first line
+# write a recipe into <repo>/.kabane/recipes/ and its skill into <repo>/.agents/skills/<skill>/SKILL.md;
+# the sandbox prints <repo> on its first line
 bun run sandbox add "Probe" --kind issue
 bun run sandbox run <recipe> --target <id> --input name=value
 hc label <terminal> kabane.sandbox=1        # at once: mark it yours
@@ -197,5 +198,8 @@ a real checkout is the real tracker: only the maintainer runs that.
   `succeeded`.
 - Adding flags, MCP entries or a system prompt to the harness command. The harness reads the
   folder's own configuration.
+- Sending a skill's instructions in the prompt, or filling values into them. The harness loads
+  the skill the prompt names; the skill reads its target and inputs from the lines below that
+  sentence.
 - `--json` as an input flag: the CLI takes every `--json` as its output flag. The inputs
   object comes with `--inputs` or as the positional after the recipe name.

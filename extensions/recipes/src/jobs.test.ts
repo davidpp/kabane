@@ -18,7 +18,7 @@ import { createHostStore } from "@cabane/extension";
 import { z } from "zod";
 import { Jobs } from "./jobs";
 import { Kabane } from "./result";
-import { requestPromptOf } from "./run-command";
+import { promptOf, requestPromptOf } from "./run-command";
 import type { Runs } from "./runs";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
@@ -198,6 +198,33 @@ it("gives a job with no recipe the job preamble, then its request as written", (
 			// Not a template: a placeholder in a request stays as written.
 			"Check the {{inputs.x}} build and comment what broke.",
 		].join("\n"),
+	);
+});
+
+it("gives a recipe's run the preamble, then its skill by name, the target and each input given", () => {
+	const recipe = { name: "research", skill: "preliminary-research" };
+	const target = {
+		kind: "issue",
+		id: "ISSUE1",
+		shortId: "JCAB-7",
+		title: "A title",
+	} as const;
+	expect(promptOf("01RUN", recipe, { depth: "quick", rounds: 3 }, target)).toBe(
+		[
+			'[kabane run 01RUN, recipe "research"]',
+			"You were started in the background. Nobody is watching this terminal.",
+			"When a decision belongs to the human, file it with kabane_ask on JCAB-7 (the choices, your recommendation and why), then stop.",
+			"Write your result as a comment on JCAB-7 with kabane_comment.",
+			"",
+			"Use the preliminary-research skill.",
+			'Target: JCAB-7 ("A title")',
+			"depth: quick",
+			"rounds: 3",
+		].join("\n"),
+	);
+	// No target and no input with a value: the sentence alone.
+	expect(promptOf("01RUN", recipe, {}).split("\n\n")[1]).toBe(
+		"Use the preliminary-research skill.",
 	);
 });
 

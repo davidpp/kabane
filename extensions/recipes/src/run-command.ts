@@ -1,6 +1,7 @@
-// `kabane run <recipe> [--target <issue>] [--input k=v]… [--inputs <JSON>] [--harness a,b,c]`: render
-// a recipe's prompt, record the run, start the harness in a runtime terminal and return without
-// waiting. With no recipe it lists the project's recipes and the harness each would start.
+// `kabane run <recipe> [--target <issue>] [--input k=v]… [--inputs <JSON>] [--harness a,b,c]`: build
+// the prompt that names a recipe's skill, record the run, start the harness in a runtime terminal
+// and return without waiting. With no recipe it lists the project's recipes, the skill each uses
+// and the harness each would start.
 import { hostname } from "node:os";
 import { join, relative } from "node:path";
 import type {
@@ -87,7 +88,7 @@ export const projectOf = async (
 	return { ok: true, value: here.value };
 };
 
-/** What the agent reads before the prompt; `source` names where the prompt comes from. */
+/** What the agent reads before the request; `source` names where the request comes from. */
 const preamble = (
 	runId: string,
 	source: string,
@@ -119,6 +120,7 @@ const preamble = (
 
 const describe = (recipe: Recipe.Recipe, harness: Harness.Chosen): string => {
 	const head = `${recipe.name}${recipe.target === "none" ? "" : ` --target <${recipe.target}>`}${recipe.description ? `  ${recipe.description}` : ""}`;
+	const skill = `    skill ${recipe.skill}  (${recipe.skillFile})`;
 	const starts = `    harness ${Harness.describe(harness)}`;
 	const inputs = Object.entries(recipe.inputs).map(([name, input]) => {
 		const kind = input.options ? input.options.join("|") : input.type;
@@ -130,7 +132,7 @@ const describe = (recipe: Recipe.Recipe, harness: Harness.Chosen): string => {
 		].filter(Boolean);
 		return `    --input ${name}=<${kind}>${extra.length ? ` (${extra.join(", ")})` : ""}${input.hint ? `  ${input.hint}` : ""}`;
 	});
-	return [head, starts, ...inputs].join("\n");
+	return [head, skill, starts, ...inputs].join("\n");
 };
 
 const list = async (
@@ -219,14 +221,34 @@ export const shortIdOf = async (host: Host, id: string): Promise<string> => {
 	return task.ok && task.value ? (task.value.shortId ?? id) : id;
 };
 
-/** The text a run's harness gets: the preamble for run `runId`, then the recipe's rendered body. */
-export const promptOf = (
-	runId: string,
-	recipe: Recipe.Recipe,
-	inputs: Record<string, Recipe.Value>,
+/**
+ * What a recipe asks of the agent: its skill, by name in a plain sentence, the target and one line
+ * per input with a value. No `/` or `$`: the sigil differs between harnesses, and both start a
+ * skill the sentence names.
+ */
+const invocation = (
+	recipe: Pick<Recipe.Recipe, "skill">,
+	inputs: Readonly<Record<string, Recipe.Value>>,
 	target?: Recipe.Target,
 ): string =>
-	`${preamble(runId, `recipe "${recipe.name}"`, target)}\n\n${Recipe.render(recipe, inputs, target)}`;
+	[
+		`Use the ${recipe.skill} skill.`,
+		...(target === undefined
+			? []
+			: [`Target: ${target.shortId} ("${target.title}")`]),
+		...Object.entries(inputs).map(
+			([name, value]) => `${name}: ${String(value)}`,
+		),
+	].join("\n");
+
+/** The text a run's harness gets: the preamble for run `runId`, then the recipe's skill and values. */
+export const promptOf = (
+	runId: string,
+	recipe: Pick<Recipe.Recipe, "name" | "skill">,
+	inputs: Readonly<Record<string, Recipe.Value>>,
+	target?: Recipe.Target,
+): string =>
+	`${preamble(runId, `recipe "${recipe.name}"`, target)}\n\n${invocation(recipe, inputs, target)}`;
 
 /** The text a recipe-less job's run gets: the job preamble, then the job's request as written. */
 export const requestPromptOf = (
