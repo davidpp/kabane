@@ -17,7 +17,7 @@ export namespace Runs {
 	export type Run = {
 		id: string;
 		recipe: { name: string; hash: string };
-		/** What the run works on, when the recipe has a target; slice 1 writes `issue`. */
+		/** What the run works on, when the recipe has a target: `issue` or `job`. */
 		target?: { kind: string; id: string };
 		/** The scope's URI. */
 		scope: string;

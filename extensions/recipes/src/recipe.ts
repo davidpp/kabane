@@ -14,14 +14,20 @@ export namespace Recipe {
 		type: InputType;
 		default?: Value;
 	};
-	export type Target = { id: string; shortId: string; title: string };
+	/** What a run works on: an issue, or the job that scheduled it. */
+	export type Target = {
+		kind: "issue" | "job";
+		id: string;
+		shortId: string;
+		title: string;
+	};
 
 	export type Recipe = {
 		name: string;
 		/** The file, relative to the scope root. */
 		file: string;
 		description?: string;
-		target: "issue" | "none";
+		target: "issue" | "job" | "none";
 		inputs: Record<string, Input>;
 		body: string;
 		/** sha256 of the file's bytes, first 12 hex characters. */
@@ -51,7 +57,7 @@ export namespace Recipe {
 		return z
 			.object({
 				description: z.string().optional(),
-				target: z.enum(["issue", "none"]).default("none"),
+				target: z.enum(["issue", "job", "none"]).default("none"),
 				inputs: z.record(input).default({}),
 			})
 			.strict();
@@ -89,8 +95,8 @@ export namespace Recipe {
 			if (head === "target" && field !== undefined && more.length === 0) {
 				if (!(TARGET_FIELDS as readonly string[]).includes(field))
 					return `{{${key}}}: a target has ${TARGET_FIELDS.map((f) => `target.${f}`).join(", ")}`;
-				if (target === "issue") continue;
-				return `{{${key}}} needs "target: issue" in the frontmatter`;
+				if (target !== "none") continue;
+				return `{{${key}}} needs "target: issue" or "target: job" in the frontmatter`;
 			}
 			return `{{${key}}} is no placeholder: use inputs.<name> or target.<${TARGET_FIELDS.join("|")}>`;
 		}
@@ -221,7 +227,7 @@ export namespace Recipe {
 			if (head === "inputs")
 				return field in inputs ? String(inputs[field]) : "";
 			if (head === "target" && target !== undefined)
-				return target[field as keyof Target];
+				return target[field as (typeof TARGET_FIELDS)[number]];
 			return whole;
 		});
 }

@@ -2,7 +2,7 @@
 // state and the command that attaches to its terminal, and its one action stops it. The card has
 // no tab: kabane does not render a terminal, `kabane runs attach` shows it in hc. Every listing
 // reads this machine's unfinished runs from the runtime first, as `kabane runs` does. A run
-// without a target is not on the board.
+// without a target, or whose target is a job, is not on the board.
 import { hostname } from "node:os";
 import type {
 	ActivityCard,
@@ -83,7 +83,7 @@ export namespace RecipeActivity {
 	 * after its turn sits in until someone stops it.
 	 */
 	const listed = (runs: readonly Runs.Run[]): Runs.Run[] => {
-		const targeted = runs.filter((run) => run.target !== undefined);
+		const targeted = runs.filter((run) => run.target?.kind === "issue");
 		const finished = (run: Runs.Run) => STATUS[run.state] === "completed";
 		const inFlight = targeted.filter((run) => !finished(run)).length;
 		const recent = new Set(
@@ -156,7 +156,7 @@ export namespace RecipeActivity {
 			card: async (id) => {
 				const run = await one(id);
 				if (!run.ok) return run;
-				if (run.value?.target === undefined) return ok(null);
+				if (run.value?.target?.kind !== "issue") return ok(null);
 				return ok(card(await targeted(run.value)));
 			},
 			act: async (id, actionId) => {
