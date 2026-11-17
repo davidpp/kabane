@@ -8,6 +8,10 @@
             launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kabane.live-update.plist
   Remove:   launchctl bootout gui/$(id -u)/com.kabane.live-update
 
+  __LIVE__ fills both the working directory and KABANE_LIVE: the script finds the worktree it
+  updates from KABANE_LIVE, else the default beside the clone, never from where it runs. A worktree
+  at a custom path without KABANE_LIVE here would go stale while the default one moved.
+
   PATH below must reach `bun` (mise shims first) and `git`. `git fetch` runs with no terminal, so the
   clone's origin must fetch without a prompt. A run with nothing new fetches and does nothing else,
   so it runs every five minutes. A kabane process already running keeps the code it started with.
@@ -36,6 +40,8 @@
         <string>__HOME__/.local/share/mise/shims:__HOME__/.bun/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>KABANE_HOME</key>
         <string>__HOME__/.kabane</string>
+        <key>KABANE_LIVE</key>
+        <string>__LIVE__</string>
     </dict>
 
     <key>StandardOutPath</key>

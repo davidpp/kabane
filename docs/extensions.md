@@ -161,7 +161,11 @@ bun run --cwd ../kabane-live link-extensions
 `docs/schedule/com.kabane.live-update.plist` (macOS launchd) and
 `docs/schedule/kabane-live-update.cron` (Linux cron) run `bun run --cwd <live worktree> live`
 every five minutes. Their first lines say how to install them; replace `__LIVE__` with the
-worktree's path. The fetch runs with no terminal, so `origin` must fetch without a prompt.
+worktree's path. It fills both the working directory and `KABANE_LIVE` (the plist's
+`EnvironmentVariables`, the cron line's assignments): the script finds the worktree to update
+from `KABANE_LIVE`, else the default beside the clone, never from the folder it runs in, so a
+worktree at a custom path would go stale without it. The fetch runs with no terminal, so
+`origin` must fetch without a prompt.
 
 A kabane process already running, an MCP server or the board, keeps the code it started with.
 An update is live at that process's next start.
