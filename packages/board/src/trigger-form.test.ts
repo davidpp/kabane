@@ -55,20 +55,16 @@ const keys = (
 };
 
 describe("TriggerForm.fillable", () => {
-	test("every input with a default and options, a number or a boolean", () => {
+	test("any trigger with inputs: what h/l cannot step is typed", () => {
 		expect(TriggerForm.fillable(START)).toBe(true);
 		expect(TriggerForm.fillable(PLAIN)).toBe(false);
+		const typed = (input: TriggerDescriptor["inputs"][string]) =>
+			TriggerForm.typed(input);
+		expect(typed({ type: "string", required: true, default: "x" })).toBe(true);
+		expect(typed({ type: "number", required: false })).toBe(true);
+		expect(typed({ type: "number", required: false, default: 1 })).toBe(false);
 		expect(
-			TriggerForm.fillable({
-				...START,
-				inputs: { name: { type: "string", required: true, default: "x" } },
-			}),
-		).toBe(false);
-		expect(
-			TriggerForm.fillable({
-				...START,
-				inputs: { depth: { type: "number", required: false } },
-			}),
+			typed({ type: "string", required: false, options: ["a", "b"] }),
 		).toBe(false);
 	});
 });
@@ -187,5 +183,74 @@ describe("the form on the board", () => {
 		expect(
 			BoardNav.reduceMouse(none, { type: "formField", index: 1 }).state,
 		).toBe(none);
+	});
+
+	test("a typed field takes letters, backspace and up/down; h/l and j/k are its characters", () => {
+		const trigger: TriggerDescriptor = {
+			id: "recipe:probe",
+			label: "probe",
+			satisfiable: true,
+			inputs: {
+				"@harness": {
+					type: "string",
+					required: true,
+					default: "claude",
+					label: "harness",
+				},
+				topic: { type: "string", required: true },
+				depth: { type: "number", required: false, default: 2 },
+			},
+		};
+		const opened = keys(picker([trigger]), "return").state;
+		expect(opened.dispatch?.form?.values).toEqual({
+			"@harness": "claude",
+			topic: "",
+			depth: 2,
+		});
+		expect(
+			BoardNav.keySituation(opened, { linked: new Set(), events: false }),
+		).toMatchObject({ formTyping: true });
+		const typed = keys(opened, "backspace", "backspace", "backspace").state;
+		const sent = ["j", "l", " ", "h", "k"].reduce(
+			(state, char) =>
+				BoardNav.reduceKey(state, { name: char, sequence: char }, 0).state,
+			typed,
+		);
+		expect(sent.dispatch?.form?.values["@harness"]).toBe("clajl hk");
+		expect(sent.dispatch?.form?.field).toBe(0);
+		const form = sent.dispatch?.form;
+		expect(form && TriggerForm.changed(form, "@harness")).toBe(true);
+		expect(keys(sent, "down").state.dispatch?.form?.field).toBe(1);
+	});
+
+	test("enter with a required typed field empty focuses it and says so; filled, it fires", () => {
+		const trigger: TriggerDescriptor = {
+			id: "recipe:probe",
+			label: "probe",
+			satisfiable: true,
+			inputs: {
+				"@harness": { type: "string", required: true, default: "claude" },
+				topic: { type: "string", required: true, label: "Topic" },
+			},
+		};
+		const opened = keys(picker([trigger]), "return").state;
+		const refused = keys(opened, "return");
+		expect(refused.state.dispatch?.form?.field).toBe(1);
+		expect(refused.effect).toEqual({
+			type: "notice",
+			notice: { text: "Topic is required", tone: "error" },
+		});
+		const filled = BoardNav.reduceKey(
+			refused.state,
+			{ name: "x", sequence: "x" },
+			0,
+		).state;
+		expect(keys(filled, "return").effect).toEqual({
+			type: "dispatch",
+			triggerId: "recipe:probe",
+			id: "t1",
+			inputs: { "@harness": "claude", topic: "x" },
+			edited: ["topic"],
+		});
 	});
 });

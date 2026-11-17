@@ -326,13 +326,6 @@ export namespace SettingsView {
 		});
 	};
 
-	/** A single printable character: what typing adds to a typed value. */
-	const printable = (key: BoardNav.KeyInput): string | undefined => {
-		if (key.ctrl || key.meta || key.sequence?.length !== 1) return undefined;
-		const code = key.sequence.codePointAt(0) ?? 0;
-		return code >= 0x20 && code !== 0x7f ? key.sequence : undefined;
-	};
-
 	const select = (state: State, view: View, index: number): Step => {
 		const next = Math.max(0, Math.min(count(view) - 1, index));
 		return next === view.selected
@@ -526,7 +519,7 @@ export namespace SettingsView {
 		if (change.type === "type") {
 			if (key.name === "backspace")
 				return { type: "type", text: change.text.slice(0, -1) };
-			const char = printable(key);
+			const char = Grid.printable(key);
 			return char === undefined
 				? undefined
 				: { type: "type", text: change.text + char };

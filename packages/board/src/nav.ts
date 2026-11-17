@@ -2077,6 +2077,12 @@ export namespace BoardNav {
 		return context === "searchResults" ? "board" : context;
 	};
 
+	/** What the settings view or the trigger form says of the field in hand, when one is open. */
+	const overlaySituation = (state: BoardState): Keymap.Situation => ({
+		...(state.settings ? SettingsView.situation(state.settings) : {}),
+		...(state.dispatch?.form ? TriggerForm.situation(state.dispatch.form) : {}),
+	});
+
 	/**
 	 * The facts that decide which keys do something right now. `linked` and `events` come from the
 	 * host's data, which app.tsx holds and the reducer does not: the tasks pointing at an external
@@ -2126,7 +2132,7 @@ export namespace BoardNav {
 				state.dispatch !== null &&
 				!state.dispatch.loading &&
 				state.dispatch.triggers.length > 0,
-			...(state.settings ? SettingsView.situation(state.settings) : {}),
+			...overlaySituation(state),
 			...BoardTabs.situation(state),
 			lanes: card.lanes,
 		};

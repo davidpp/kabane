@@ -86,6 +86,8 @@ export namespace Keymap {
 		settingLayers?: boolean;
 		/** A save waits on its y/n. */
 		settingConfirming?: boolean;
+		/** The trigger form's field in hand is typed, so letters are its value's, not keys. */
+		formTyping?: boolean;
 	};
 
 	type Tier = "footer" | "help";
@@ -751,12 +753,28 @@ export namespace Keymap {
 					label: "change",
 					tier: "footer",
 					keys: ["h", "l", "left", "right"],
+					when: (s) => s.formTyping !== true,
 				},
 				{
 					key: "j/k",
 					label: "field",
 					tier: "footer",
 					keys: ["j", "k", "down", "up"],
+					when: (s) => s.formTyping !== true,
+				},
+				{
+					key: "⌫",
+					label: "delete",
+					tier: "footer",
+					keys: ["backspace"],
+					when: (s) => s.formTyping === true,
+				},
+				{
+					key: "↑↓",
+					label: "field",
+					tier: "footer",
+					keys: ["down", "up"],
+					when: (s) => s.formTyping === true,
 				},
 				{ key: "esc", label: "back", tier: "footer", keys: ["escape"] },
 			],

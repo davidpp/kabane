@@ -1,7 +1,7 @@
 // The grid the trigger form and the settings view share: a column of labelled values under section
-// titles, one in hand, `j/k` to walk it and `h/l` to step the value in hand. Each surface keeps its
-// own state, what a value looks like and what saving means; this owns what they lay out and read
-// the same way. Its row on screen is grid-view.tsx.
+// titles, one in hand, `j/k` to walk it, `h/l` to step the value in hand and typing to change a
+// typed one. Each surface keeps its own state, what a value looks like and what saving means; this
+// owns what they lay out and read the same way. Its row on screen is grid-view.tsx.
 import type { BoardNav } from "./nav";
 
 /** The label column at its widest. */
@@ -85,4 +85,11 @@ export namespace Grid {
 			: key.name === "h" || key.name === "left"
 				? -1
 				: undefined;
+
+	/** A single printable character: what typing adds to a typed value. */
+	export const printable = (key: BoardNav.KeyInput): string | undefined => {
+		if (key.ctrl || key.meta || key.sequence?.length !== 1) return undefined;
+		const code = key.sequence.codePointAt(0) ?? 0;
+		return code >= 0x20 && code !== 0x7f ? key.sequence : undefined;
+	};
 }

@@ -232,15 +232,18 @@ and the assembled brief (what `y` copies) and resolves to the footer notice.
 
 #### The trigger form
 
-A trigger whose every input has a `default` and either `options` or a `number` or `boolean` type
-is filled in on the board before it fires: `enter` on it opens its form instead. Each input is a
-row, called by its `label` (else its name) and filed under its `group`, a titled section, in the
-host's order. `j/k` move between rows, `h/l` change the one in hand (the next or previous option,
-wrapping; a number up or down, never below zero; a boolean on and off), a click focuses a row and
-a second click changes it, `enter` fires with every value, and `esc` goes back to the picker. A
-value still at its default is dimmed, and a changed one is bright with a `•` after it. `dispatch`
-gets the values as its third argument, by input name; an option input's value is the option, as
-written, so the host converts it back.
+A trigger with inputs is filled in on the board before it fires: `enter` on it opens its form
+instead. Each input is a row, called by its `label` (else its name) and filed under its `group`,
+a titled section, in the host's order. A row with `options`, or a `number` or `boolean` with a
+`default`, is stepped: `h/l` change it (the next or previous option, wrapping; a number up or
+down, never below zero; a boolean on and off). Every other row is typed, from its default or
+empty: in hand it shows a cursor, a printable key adds to it, `backspace` deletes and `↑↓` leave
+it, since `j/k` are letters it takes. `j/k` move between stepped rows, a click focuses a row and
+a second click changes a stepped one, `enter` fires with every value, and `esc` goes back to the
+picker. `enter` with a `required` row empty puts the cursor on it and names it in the footer
+instead. A value still at its default is dimmed, and a changed one is bright with a `•` after
+it. `dispatch` gets the values as its third argument, by input name; an option input's value is
+the option and a typed one the text, as written, so the host converts it back.
 
 The trigger's `preview`, lines of toned parts (`{ text, tone?, bold? }`, the tone a role such as
 `muted`, `working` or `accent`), sits at the centre with the settings in a column beside it, or

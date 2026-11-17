@@ -636,6 +636,44 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "trigger-recipe",
+		about:
+			"a recipe's launcher: the harness it will start and where from, a choice, a required text input",
+		width: 100,
+		height: 24,
+		render: () => (
+			<TriggerFormView
+				shortId="JCAB-443"
+				form={TriggerForm.open(Fixtures.RECIPE_RUN)}
+			/>
+		),
+	},
+	{
+		name: "trigger-recipe-typing",
+		about:
+			"the same launcher with the required text input in hand and typed, the harness edited",
+		width: 100,
+		height: 24,
+		render: () => {
+			const form = TriggerForm.open(Fixtures.RECIPE_RUN);
+			return (
+				<TriggerFormView
+					shortId="JCAB-443"
+					form={{
+						...form,
+						field: 2,
+						values: {
+							...form.values,
+							"@harness": "claude --model opus",
+							focus: "the auth flow",
+						},
+						edited: ["@harness", "focus"],
+					}}
+				/>
+			);
+		},
+	},
+	{
 		name: "board",
 		about: "a few cards, a parent expanded, the copilot's row collapsed",
 		width: 100,

@@ -656,6 +656,34 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 		],
 	};
 
+	/** A recipe's launcher as the recipes extension builds it: the harness, then its inputs. */
+	export const RECIPE_RUN: TriggerDescriptor = {
+		id: "recipe:preliminary-research",
+		label: "preliminary-research",
+		satisfiable: true,
+		inputs: {
+			"@harness": {
+				type: "string",
+				required: true,
+				default: "codex exec",
+				label: "harness",
+				hint: "from the recipe; the prompt is added as its last word",
+			},
+			depth: {
+				type: "string",
+				required: false,
+				default: "medium",
+				options: ["quick", "medium", "thorough"],
+				hint: "how far to follow prior issues",
+			},
+			focus: {
+				type: "string",
+				required: true,
+				hint: "what the implementer most needs to know",
+			},
+		},
+	};
+
 	/** The moment the jobs stories are read at, so "in 3h" stays put. */
 	export const JOBS_NOW = Date.parse("2026-11-17T06:00:00.000Z");
 
