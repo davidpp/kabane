@@ -9,6 +9,7 @@ import { useTerminalDimensions } from "@opentui/react";
 import { createContext, type ReactNode, useContext } from "react";
 import type { CopilotLog } from "./copilot-log";
 import { Keymap } from "./keymap";
+import type { BoardNav } from "./nav";
 import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
 
@@ -25,6 +26,21 @@ export const copilotIndicatorFg = (
 			return theme.done;
 		case "error":
 			return theme.failed;
+	}
+};
+
+/** A notice's colour: done for a success, failed for an error, the bar's own for information. */
+export const noticeFg = (
+	tone: BoardNav.Notice["tone"],
+	theme: Theme.Tokens,
+): string => {
+	switch (tone) {
+		case "success":
+			return theme.done;
+		case "error":
+			return theme.failed;
+		case "info":
+			return theme.text;
 	}
 };
 

@@ -51,7 +51,8 @@ export namespace BoardNav {
 	// app.tsx holds the flash longer.
 	export type Notice = {
 		text: string;
-		tone: "success" | "error";
+		// `info` says how things are, not that something the human did worked or failed.
+		tone: "success" | "error" | "info";
 		undoable?: boolean;
 	};
 
