@@ -230,8 +230,8 @@ like `job run`:
    conversation, so it remembers the earlier fires and keeps its prompt cache. When no terminal
    is left (its run `ended`, or hc no longer has it), it starts one as a `fresh` job does.
 
-A woken run stays one row in `kabane runs`, with the time it first started; `job show` and
-`job list` say when the job last fired and the state its session is in. Kabane adds no harness
+A woken run stays one row in `kabane runs`, with the time it first started. `job show` reports
+when the job last fired; `job list` shows its next fire and the state of its latest run. Kabane adds no harness
 flag to resume a session: a kept session lasts as long as its terminal, so a reboot or `kabane
 runs stop` ends it and the next fire starts a new one.
 
