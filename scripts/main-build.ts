@@ -145,7 +145,7 @@ const mainBuild = (argv: string[], env: NodeJS.ProcessEnv): string[] => {
 			[
 				"main-build: these are links, a contributor's own setup (bun link, bun run link-extensions); nothing was built:",
 				...linked.map((line) => `  ${line}`),
-				"Run it again with --replace-links to install the main build in their place.",
+				`To install the main build in their place, run in ${ROOT}: bun run main-build --replace-links`,
 			].join("\n"),
 		);
 
