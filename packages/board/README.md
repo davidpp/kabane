@@ -195,7 +195,8 @@ named after its jobs' folder when the source gives one, else the scope's id. Wit
 row is the job's id, title and whether it is paused.
 
 `enter` opens the job's detail view, which is an issue's (request, comments, log) with the
-`JobPanel` under its header; `esc` comes back to the tab. `s` pauses the job (`someday`), `n`
+`JobPanel` at the top of each section's scroll, so a long run history scrolls away rather than
+hiding the request and comments; `esc` comes back to the tab. `s` pauses the job (`someday`), `n`
 resumes it (`next`), and `a` opens the dispatcher on it, where a host offers what it can start
 on a job (the recipes extension's `run now`). `esc` or `q` on the list goes to the tracker. A
 click selects a row, and a click on the selected row opens it.

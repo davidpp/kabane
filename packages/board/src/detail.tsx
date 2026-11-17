@@ -179,7 +179,8 @@ export type DetailProps = {
 	pinned?: string;
 	// The decision asked under the header (DecisionPanel), or the row saying decisions wait.
 	decision?: ReactNode;
-	// What a job has that an issue does not, under the header (JobPanel): its schedule and runs.
+	// What a job has that an issue does not (JobPanel): its schedule and runs, at the top of the
+	// tab's scroll so a long run history never pushes the request and comments off screen.
 	job?: ReactNode;
 	// The checklist with this board's presses and its cursor (BoardChecklist.shown), and what a click
 	// on an item asks for. Absent, the records' items are drawn as they stand, the cursor on the first
@@ -365,7 +366,6 @@ export const Detail = ({
 				</box>
 			) : null}
 			{decision}
-			{job}
 			<TabBarRow summaries={summaries} active={tab} room={room} onTab={onTab} />
 			{/* Keyed by tab, so a switch opens the new tab at its top rather than at the old scroll. */}
 			<scrollbox
@@ -373,6 +373,7 @@ export const Detail = ({
 				ref={scrollRef}
 				style={{ flexGrow: 1, marginTop: 1 }}
 			>
+				{job}
 				<TabBody
 					tab={tab}
 					records={records}

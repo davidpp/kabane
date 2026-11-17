@@ -688,6 +688,7 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 			}),
 			facts: jobFacts({
 				inputs: { depth: "quick" },
+				harness: ["claude", "--model", "opus", "--permission-mode", "auto"],
 				runs: [
 					{
 						id: "01KA2Y6Q0F8V3M7C9H1T4B5N2D",
@@ -700,6 +701,24 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 						state: "ended",
 						startedAt: "2026-11-16T09:00:00.000Z",
 						open: "kabane runs attach 01KA0G1E5W2R8P3X6J9K7L4M1C",
+					},
+					{
+						id: "01K9YE0D4V1Q7N2W5H8J6K3L0B",
+						state: "ended",
+						startedAt: "2026-11-15T09:00:00.000Z",
+						open: "kabane runs attach 01K9YE0D4V1Q7N2W5H8J6K3L0B",
+					},
+					{
+						id: "01K9VC9C3T0P6M1V4G7H5J2K9A",
+						state: "ended",
+						startedAt: "2026-11-14T09:00:00.000Z",
+						open: "kabane runs attach 01K9VC9C3T0P6M1V4G7H5J2K9A",
+					},
+					{
+						id: "01K9SA8B2S9N5L0T3F6G4H1J8Z",
+						state: "ended",
+						startedAt: "2026-11-13T09:00:00.000Z",
+						open: "kabane runs attach 01K9SA8B2S9N5L0T3F6G4H1J8Z",
 					},
 				],
 			}),

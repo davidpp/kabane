@@ -288,7 +288,7 @@ needs you.
 
 | Key | On the Jobs tab |
 |---|---|
-| `enter` | the job's detail: its request and comments as an issue's, with its schedule, next fire, recipe, inputs, harness, session mode, folder and latest runs under the header |
+| `enter` | the job's detail: its request and comments as an issue's, with its schedule, next fire, recipe, inputs, harness, session mode, folder and latest runs at the top of each section, scrolling with it |
 | `a` | `run now`, which fires it as `kabane job run` does, in its own project's folder |
 | `s`, `n` | pause it (`someday`) and resume it (`next`) |
 | `esc` | back to the tracker |
