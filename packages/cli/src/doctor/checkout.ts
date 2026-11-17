@@ -29,7 +29,7 @@ export const checkoutBehind = (root: string): Doctor.Finding[] => {
 	// A package installed inside some other repository is not a kabane checkout.
 	if (top === null || realpathSync(top) !== realpathSync(root)) return [];
 	// A feature branch runs its own code on purpose and is behind main by design: only main, or
-	// the detached live worktree, stands for the kabane a person relies on.
+	// a detached checkout, stands for the kabane a person relies on.
 	const branch = git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
 	if (branch !== null && branch !== "main") return [];
 	// No origin/main ref fails the count, which reads as level.
@@ -42,7 +42,7 @@ export const checkoutBehind = (root: string): Doctor.Finding[] => {
 			id: "checkout-behind",
 			path: root,
 			severity: "suggest",
-			summary: `This kabane runs from ${root}, ${behind} commit${behind === 1 ? "" : "s"} behind its origin/main as last fetched. \`bun run live\` brings a live checkout forward; in a checkout you work in, merge origin/main.`,
+			summary: `This kabane runs from ${root}, ${behind} commit${behind === 1 ? "" : "s"} behind its origin/main as last fetched. Merge origin/main to bring it forward.`,
 		},
 	];
 };
