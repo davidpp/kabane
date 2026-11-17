@@ -177,7 +177,7 @@ with its error and does not start.
 
 ## Jobs
 
-A job runs a recipe on a schedule, in its project's folder. It is an item of kind `job`: its
+A job runs a recipe, or its own request, on a schedule, in its project's folder. It is an item of kind `job`: its
 title names it, its description is the standing request the agent reads each time, and its
 comments are what each run reported. Lists that name no kind leave jobs out; `kabane list
 --kind job` shows them.
@@ -185,6 +185,8 @@ comments are what each run reported. Lists that name no kind leave jobs out; `ka
 ```bash
 kabane job add wiki-maintenance --title "Keep the wiki current" --schedule "0 7 * * *" \
   --request "Fold this week's notes into the wiki pages they belong to"
+kabane job add --title "Check the nightly build" --schedule "0 8 * * *" \
+  --request "Check last night's build and comment what broke"   # no recipe
 kabane job list                 # this project's jobs; --all for every project's
 kabane job show JCAB-600        # the request, the inputs and the last runs
 kabane job pause JCAB-600       # resume JCAB-600 starts it again
@@ -201,8 +203,14 @@ machine's time zone. `--harness claude,--model,opus` gives this job its own comm
 default, `--session fresh`, starts a new one on each fire. To change it, close the job and add
 it again.
 
+With no recipe name, `--request` is required and is the prompt: each fire gives the agent the
+job preamble (below), then the request as the job's description reads at that moment, so an
+edit to the description takes effect at the next fire. It is not a template: `{{…}}` in it
+stays as written, and such a job takes no `--input`. Its runs are listed with `request` as their
+recipe.
+
 `job list` shows each job's id, whether it is active or paused, its schedule, the next time it
-fires, its recipe, its harness, its session mode, the state of its latest run and its title. `pause` sets the job
+fires, its recipe (`-` for none), its harness, its session mode, the state of its latest run and its title. `pause` sets the job
 `someday` and `resume` sets it `next`. A job ends when you close it with `kabane done`; there is
 no delete.
 

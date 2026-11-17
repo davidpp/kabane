@@ -18,6 +18,7 @@ import { createHostStore } from "@cabane/extension";
 import { z } from "zod";
 import { Jobs } from "./jobs";
 import { Kabane } from "./result";
+import { requestPromptOf } from "./run-command";
 import type { Runs } from "./runs";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
@@ -177,4 +178,52 @@ it("tells the human when a run starts waiting and when it finishes, once per cha
 	// A run first seen already there counts as entering it.
 	expect(Jobs.attention(undefined, "waiting")).toBe("waiting");
 	expect(Jobs.attention(undefined, "ended")).toBe("finished");
+});
+
+it("gives a job with no recipe the job preamble, then its request as written", () => {
+	const prompt = requestPromptOf(
+		"01RUN",
+		{ kind: "job", id: "JOB1", shortId: "JREP-1", title: "Morning check" },
+		"Check the {{inputs.x}} build and comment what broke.",
+	);
+	expect(prompt).toBe(
+		[
+			"[kabane run 01RUN, the job's request]",
+			"You were started in the background. Nobody is watching this terminal.",
+			'This is a scheduled background run of job JREP-1 ("Morning check").',
+			"Read the job with kabane_context on JREP-1: its description is the standing request, and its comments are what earlier runs reported.",
+			"When a decision belongs to the human, file it with kabane_ask on JREP-1 (the choices, your recommendation and why), then stop.",
+			"Write your result as one comment on JREP-1 with kabane_comment.",
+			"",
+			// Not a template: a placeholder in a request stays as written.
+			"Check the {{inputs.x}} build and comment what broke.",
+		].join("\n"),
+	);
+});
+
+it("stores a job with no recipe and reads it back with none", async () => {
+	const home = mkdtempSync(join(tmpdir(), "recipes-jobs-"));
+	try {
+		configureTestRuntime({ modules: [Jobs.module()] });
+		value(await Planner.init(home));
+		const task = value(
+			await Planner.addTask(home, { title: "Request job", kind: "job" }),
+		);
+		const host = {
+			store: createHostStore(
+				() => home,
+				() => ["recipes_jobs"],
+				"jobs test",
+			),
+			z,
+		};
+		const { recipe: _none, ...bare } = job({ taskId: task.id });
+		value(await Jobs.insert(host, bare, "test"));
+		const [stored] = value(await Jobs.all(host));
+		expect(stored).toEqual(bare);
+		expect(stored && "recipe" in stored).toBe(false);
+	} finally {
+		configureTestRuntime();
+		rmSync(home, { recursive: true, force: true });
+	}
 });

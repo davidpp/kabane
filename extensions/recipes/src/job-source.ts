@@ -2,7 +2,7 @@
 // what `kabane job show` prints, and its newest runs with the command that attaches to each. The
 // board draws it and never runs `hc`: a run's session opens in a terminal, through that command.
 import type { JobFacts, JobSource } from "@cabane/extension";
-import { type Deps, runsOf, SHOWN_RUNS } from "./job-command";
+import { type Deps, NO_RECIPE, runsOf, SHOWN_RUNS } from "./job-command";
 import { Jobs } from "./jobs";
 import { ok } from "./result";
 
@@ -31,7 +31,7 @@ export namespace RecipeJobs {
 					...(next.ok
 						? { next: next.value.toISOString() }
 						: { problem: next.error.message }),
-					recipe: job.recipe,
+					recipe: job.recipe ?? NO_RECIPE,
 					inputs: job.inputs,
 					...(job.harness ? { harness: job.harness } : {}),
 					session: job.session,

@@ -16,7 +16,7 @@ import { Inputs } from "./inputs";
 import { runJob } from "./job-command";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
-import { type settingsSchema, startRun } from "./run-command";
+import { promptOf, type settingsSchema, startRun } from "./run-command";
 import type { Runtime } from "./runtime";
 
 export namespace RecipeDispatcher {
@@ -130,17 +130,19 @@ export namespace RecipeDispatcher {
 				projectDir: root,
 			});
 			if (!configured.ok) return configured;
+			const on = {
+				kind: "issue",
+				id: target.id,
+				shortId: target.shortId,
+				title: target.title,
+			} as const;
 			const started = await startRun(host, deps.runtime, {
 				scopeUri,
 				root,
 				dir: relative(root, ctx.cwd),
 				recipe: recipe.value,
-				target: {
-					kind: "issue",
-					id: target.id,
-					shortId: target.shortId,
-					title: target.title,
-				},
+				prompt: (id) => promptOf(id, recipe.value, values.value, on),
+				target: on,
 				inputs: values.value,
 				harness: configured.value.harness,
 				actor: ctx.actor,

@@ -60,14 +60,14 @@ export const projectOf = async (
 	return { ok: true, value: here.value };
 };
 
-/** What the agent reads before the recipe's own prompt. */
+/** What the agent reads before the prompt; `source` names where the prompt comes from. */
 const preamble = (
 	runId: string,
-	recipe: string,
+	source: string,
 	target: Recipe.Target | undefined,
 ): string => {
 	const lines = [
-		`[kabane run ${runId}, recipe "${recipe}"]`,
+		`[kabane run ${runId}, ${source}]`,
 		"You were started in the background. Nobody is watching this terminal.",
 	];
 	if (target?.kind === "job")
@@ -186,7 +186,14 @@ export const promptOf = (
 	inputs: Record<string, Recipe.Value>,
 	target?: Recipe.Target,
 ): string =>
-	`${preamble(runId, recipe.name, target)}\n\n${Recipe.render(recipe, inputs, target)}`;
+	`${preamble(runId, `recipe "${recipe.name}"`, target)}\n\n${Recipe.render(recipe, inputs, target)}`;
+
+/** The text a recipe-less job's run gets: the job preamble, then the job's request as written. */
+export const requestPromptOf = (
+	runId: string,
+	target: Recipe.Target,
+	request: string,
+): string => `${preamble(runId, "the job's request", target)}\n\n${request}`;
 
 /** What starting a run takes: everything explicit, no cwd, no terminal, no settings read. */
 export type Start = {
@@ -195,7 +202,10 @@ export type Start = {
 	root: string;
 	/** The folder the run starts in, relative to `root` ("" at the root). */
 	dir: string;
-	recipe: Recipe.Recipe;
+	/** What the run row records of the prompt's source: a recipe, or a job's request. */
+	recipe: Pick<Recipe.Recipe, "name" | "hash">;
+	/** The text the harness gets, given the new run's id. */
+	prompt: (runId: string) => string;
 	target?: Recipe.Target;
 	/** The recipe's inputs, already resolved and validated. */
 	inputs: Record<string, Recipe.Value>;
@@ -215,13 +225,23 @@ type Started = { run: Runs.Run; warnings: string[] };
 export const startRun = async (
 	host: Host,
 	runtime: Runtime,
-	{ scopeUri, root, dir, recipe, target, inputs, harness, actor }: Start,
+	{
+		scopeUri,
+		root,
+		dir,
+		recipe,
+		prompt,
+		target,
+		inputs,
+		harness,
+		actor,
+	}: Start,
 ): Promise<Result<Started>> => {
 	const blocked = runtime.missing();
 	if (blocked !== undefined) return err(new Error(blocked));
 	const { name } = recipe;
 	const id = Runs.newId();
-	const text = promptOf(id, recipe, inputs, target);
+	const text = prompt(id);
 	const cwd = join(root, dir);
 	// Recorded before it starts, so a start that fails still leaves an ended run to see.
 	const stored = await Runs.insert(
@@ -342,6 +362,7 @@ export const runCommand = (
 			root: project.value.root,
 			dir: relative(project.value.root, ctx.cwd),
 			recipe: recipe.value,
+			prompt: (id) => promptOf(id, recipe.value, inputs.value, target.value),
 			...(target.value === undefined ? {} : { target: target.value }),
 			inputs: inputs.value,
 			harness: configured.value.harness,

@@ -9,7 +9,7 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 | `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), both commands, the `hc-missing` doctor finding, the board ports |
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`, `render`: frontmatter, placeholders, and the errors that name the file |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
-| `src/run-command.ts` | `startRun`, which starts a recipe from explicit inputs (scope, root, dir, recipe, target, inputs, harness, actor) and reads no cwd, TTY or setting; `promptOf`, the text it passes, which a kept job's wake sends; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
+| `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `promptOf`, the text a recipe's run gets, which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing, `attach`, `read`, `send`, `stop` |
 | `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
 | `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
@@ -56,7 +56,10 @@ show their last recorded state.
 
 A job is an item of kind `job` (title, description as the standing request, scope, state:
 `next` active, `someday` paused) created through `kabane_add`, plus its `recipes_jobs` row
-(`childOfTasks`, keyed by the item's id): schedule, recipe, inputs, harness, `session`
+(`childOfTasks`, keyed by the item's id): schedule, recipe (`""` for none: the column is
+`NOT NULL`, a read gives no `recipe`, and the prompt is `requestPromptOf`, the job preamble then
+the item's description as it reads at the fire, never rendered; the run row records recipe
+`request` and the request's hash), inputs, harness, `session`
 (`fresh` or `keep`; an appended migration added it, so a row from before reads `fresh`),
 `last_fired_at`.
 Due is the schedule's first time after `last_fired_at`, or after the row's creation, so missed

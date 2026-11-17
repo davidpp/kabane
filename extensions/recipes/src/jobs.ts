@@ -18,7 +18,8 @@ export namespace Jobs {
 		taskId: string;
 		/** A cron expression, read in this machine's time zone. */
 		schedule: string;
-		recipe: string;
+		/** The recipe it runs; absent, its prompt is the job's request (its item's description). */
+		recipe?: string;
 		inputs: Record<string, unknown>;
 		/** The command this job starts instead of `recipes.harness`. */
 		harness?: string[];
@@ -32,6 +33,9 @@ export namespace Jobs {
 	const SEEN = "recipes_attention";
 
 	type Store = Pick<Host, "store" | "z">;
+
+	/** The `recipe` column of a job with none: the column is NOT NULL, and "" names no recipe file. */
+	const NO_RECIPE = "";
 
 	export const module = (): KabaneModule => ({
 		name: "recipes-jobs",
@@ -134,7 +138,7 @@ export namespace Jobs {
 		return ok({
 			taskId: data.task_id,
 			schedule: data.schedule,
-			recipe: data.recipe,
+			...(data.recipe === NO_RECIPE ? {} : { recipe: data.recipe }),
 			inputs: parsedInputs.data,
 			...(parsedHarness.data === null ? {} : { harness: parsedHarness.data }),
 			session: data.session,
@@ -159,7 +163,7 @@ export namespace Jobs {
 					job.taskId,
 					job.taskId,
 					job.schedule,
-					job.recipe,
+					job.recipe ?? NO_RECIPE,
 					JSON.stringify(job.inputs),
 					job.harness === undefined ? null : JSON.stringify(job.harness),
 					job.session,
