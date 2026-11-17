@@ -46,7 +46,7 @@ export const formatTaskLine = (task: Task): string => {
 	const assignee = task.assignee ? ` @${task.assignee}` : "";
 	const review = task.needsReview ? " 👀" : "";
 	const subtask = task.parentTaskId ? " ↳" : "";
-	const kind = task.kind === "issue" ? "🔧" : "";
+	const kind = { task: "", issue: "🔧", job: "⏱" }[task.kind];
 	return `${subtask}${STATE_ICONS[task.state]} ${PRIORITY_ICONS[task.priority]} ${kind}${displayId(task)}  ${task.title}${assignee}${review}${deadline}${tags}`;
 };
 

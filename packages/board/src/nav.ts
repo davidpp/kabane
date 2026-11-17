@@ -457,7 +457,8 @@ export namespace BoardNav {
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
-	const KIND_CYCLE = ["all", "issue", "task"] as const satisfies KindFilter[];
+	// No job: a job is a standing request a schedule runs, listed by its own command, not the board.
+	const KIND_CYCLE: readonly KindFilter[] = ["all", "issue", "task"];
 	const STATUS_CYCLE = [
 		"open",
 		"done",
