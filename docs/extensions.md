@@ -131,10 +131,12 @@ A kabane linked to your clone runs whatever that checkout holds: your work in pr
 the clone that only ever sits on `origin/main`, so the tracker you rely on runs merged code and
 the checkout you work in stays free for anything.
 
+From the clone:
+
 ```bash
-bun run live                                  # from the clone: creates ../kabane-live
-cd ../kabane-live/packages/cli && bun link    # `kabane` on PATH, pointing at the live worktree
-cd ../kabane-live && bun run link-extensions  # the extensions, linked from it
+bun run live                                    # creates ../kabane-live
+(cd ../kabane-live/packages/cli && bun link)    # `kabane` on PATH, pointing at the live worktree
+bun run --cwd ../kabane-live link-extensions    # the extensions, linked from it
 ```
 
 The worktree is `../<clone folder>-live` beside the clone, or `$KABANE_LIVE` when set. It is
@@ -151,7 +153,7 @@ If your extensions are already linked to the clone, remove those links first:
 
 ```bash
 rm ~/.kabane/extensions/{loop,dispatch,recipes}   # the links, not the source
-cd ../kabane-live && bun run link-extensions
+bun run --cwd ../kabane-live link-extensions
 ```
 
 ### Keep it moving
