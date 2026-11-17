@@ -1,8 +1,9 @@
 # Agent work in kabane needs seven contracts and no workflow engine
 
-Status: proposal for JCAB-426 (parent JCAB-420), 2026-11-16. Nothing here is built. David
-answered the decisions on JCAB-426 the same day; they are summarized below and override any
-section that disagrees with them. Research behind it is attached to that issue:
+Status: proposal for JCAB-426 (parent JCAB-420), 2026-11-16. Two slices are built; "What is
+built" below says how they differ from the sections after it. David answered the decisions on
+JCAB-426 the same day; they are summarized below and override any section that disagrees with
+them. Research behind it is attached to that issue:
 the Jake recipe study (icitte `projects/kabane/research/recipe-primitive.md`), the always-on and
 code-mode notes in Second Brain, and the Codex reports on Coral, OpenMausBot, durable
 runtimes and cloud runtimes.
@@ -27,6 +28,25 @@ win.
 | Sessions | Kabane keeps session references. The store for performance, analytics and evals is a separate someday epic (JCAB-437): an existing tool with kabane's philosophy, adopted gradually and configured per user. |
 | Scope | Custom agents and jobs are always tied to a scope and a working folder. No user-level jobs in v1. |
 | MCP exposure | `kabane mcp` serves a small default set and turns the rest on per project through the existing settings layers (JCAB-438). A Cloudflare-style code-mode tool for the hidden tools comes later (JCAB-439). |
+
+## What is built, and where it differs from the proposal
+
+Slice 1 (JCAB-444, JCAB-445, JCAB-460, JCAB-515) and slice 2 (JCAB-521) live in the `recipes`
+extension. `docs/recipes.md` is the user's description; this table is the difference from the
+sections below.
+
+| Proposal below | Built |
+|---|---|
+| The first runtime is ACP, behind a port in `@cabane/acp` | The runtime is hc (herdr core), behind one adapter file in the extension. No port in `@cabane/acp`, no relay move. |
+| Asks are relayed to tracker questions | No relay. hc reports the terminal blocked, the run reads `waiting`, and the human attaches or sends text. |
+| Run states `queued`, `claimed`, `succeeded`, a lease | A run's state is what its program reported through OSC 7501: `live`, `running`, `waiting`, `idle`, `ended`. Kabane never claims success. |
+| Run rows in a first-party `@cabane/runs` | `recipes_runs`, in the extension's own module (JCAB-444:1). JCAB-461 decides whether it moves. |
+| A job is a module table, or a core kind | `job` is a third core item kind, left out of listings that name no kind (JCAB-522). Its schedule row, `kabane job` and `kabane job tick` are in the `recipes` extension, next to `startRun` (JCAB-523). |
+| A job may have no recipe; `schedule` is cron or RRULE; `watch`, `deliver`, `agent` | A job always runs a recipe with `target: job`. The schedule is a 5-field cron expression. No watch, delivery or profile field yet. |
+| A job's states `active`, `paused`, `done` | The item's own states: `next` is active, `someday` is paused, and a human marks it done. |
+| The router resolves a scope to a checkout | A machine-local table records each project's folder when a `kabane job` command runs in it; `tick` reads it and needs no cwd. No router. |
+| Continuing after a wait resumes a session or starts fresh | Each fire is a fresh session. A fire is skipped while the job's last run is live, running or waiting, and an idle terminal is stopped first. The job's comments are the memory between runs. A kept session is JCAB-524. |
+| The board shows an attention feed | The board shows a run's card on its issue, with its state and attach command, and renders no terminal. Jobs and their runs are not on the board; a jobs view, a notify hook and the attention feed are JCAB-524. |
 
 ## David's questions, answered in one place
 
