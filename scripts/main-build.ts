@@ -157,19 +157,6 @@ const mainBuild = (argv: string[], env: NodeJS.ProcessEnv): string[] => {
 		: undefined;
 	if (config && !config.ok) throw config.error;
 	const enabled = config?.value.extensions ?? [];
-	const ours = new Set(checkoutExtensions(ROOT));
-	const names = enabled.filter((name) => ours.has(name));
-	const targets = names.map((name) => join(home, "extensions", name));
-	const linked = links([bin, ...targets]);
-	if (linked.length && !replaceLinks)
-		throw new Error(
-			[
-				"main-build: these are links, a contributor's own setup (bun link, bun run link-extensions); nothing was built:",
-				...linked.map((line) => `  ${line}`),
-				`To install the main build in their place, run in ${ROOT}: bun run main-build --replace-links`,
-			].join("\n"),
-		);
-
 	run(["git", "fetch", "--quiet", "origin"], ROOT);
 	const commit = run(["git", "rev-parse", "origin/main^{commit}"], ROOT);
 	const stamp: UpdateMain.Stamp = {
@@ -190,6 +177,21 @@ const mainBuild = (argv: string[], env: NodeJS.ProcessEnv): string[] => {
 	);
 	run(["git", "worktree", "add", "--quiet", "--detach", source, commit], ROOT);
 	try {
+		// The extensions origin/main has, not the ones this checkout's working tree has.
+		const ours = new Set(checkoutExtensions(source));
+		const names = enabled.filter((name) => ours.has(name));
+		const linked = links([
+			bin,
+			...names.map((name) => join(home, "extensions", name)),
+		]);
+		if (linked.length && !replaceLinks)
+			throw new Error(
+				[
+					"main-build: these are links, a contributor's own setup (bun link, bun run link-extensions); nothing was built:",
+					...linked.map((line) => `  ${line}`),
+					`To install the main build in their place, run in ${ROOT}: bun run main-build --replace-links`,
+				].join("\n"),
+			);
 		// No lifecycle scripts: the repository's `prepare` would install git hooks into this clone.
 		run(
 			[process.execPath, "install", "--frozen-lockfile", "--ignore-scripts"],
