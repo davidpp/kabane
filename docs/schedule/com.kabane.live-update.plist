@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Moves the live checkout of a kabane clone to origin/main (macOS launchd). See docs/extensions.md,
+  "Run kabane from a checkout that follows main".
+
+  Install:  sed -e "s|__HOME__|$HOME|g" -e "s|__LIVE__|<the live worktree>|g" com.kabane.live-update.plist > ~/Library/LaunchAgents/com.kabane.live-update.plist
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kabane.live-update.plist
+  Remove:   launchctl bootout gui/$(id -u)/com.kabane.live-update
+
+  PATH below must reach `bun` (mise shims first) and `git`. `git fetch` runs with no terminal, so the
+  clone's origin must fetch without a prompt. A run with nothing new fetches and does nothing else,
+  so it runs every five minutes. A kabane process already running keeps the code it started with.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kabane.live-update</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>bun</string>
+        <string>run</string>
+        <string>--cwd</string>
+        <string>__LIVE__</string>
+        <string>live</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__HOME__/.local/share/mise/shims:__HOME__/.bun/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>KABANE_HOME</key>
+        <string>__HOME__/.kabane</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/.kabane/live-update.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.kabane/live-update.error.log</string>
+</dict>
+</plist>
