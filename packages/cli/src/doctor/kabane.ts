@@ -1,5 +1,6 @@
 import { ok, tryCatch } from "@cabane/core";
 import type { Doctor } from "@cabane/extension";
+import { checkout } from "./checkout";
 import { install } from "./install";
 import { project } from "./project";
 import { settings } from "./settings";
@@ -29,4 +30,5 @@ export const kabane: Doctor.Source[] = [
 	builtin("settings", settings),
 	{ name: "project", doctor: project },
 	builtin("install", install),
+	builtin("checkout", checkout),
 ];
