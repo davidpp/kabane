@@ -7,9 +7,11 @@ import type {
 	Header,
 	Dispatcher,
 	DispatchTarget,
+	JobFacts,
+	JobSource,
 	TriggerDescriptor,
 } from "@cabane/extension";
-import { Activity, Dispatchers, Headers } from "./merge";
+import { Activity, Dispatchers, Headers, JobSources } from "./merge";
 
 const card = (id: string, startedAt: string): ActivityCard => ({
 	id,
@@ -217,5 +219,33 @@ describe("Dispatchers.merge", () => {
 			broken,
 		}).triggers("01TASK");
 		expect(!triggers.ok && triggers.error.message).toBe("broken: no config");
+	});
+});
+
+describe("JobSources.merge", () => {
+	const facts = (recipe: string): JobFacts => ({
+		schedule: "0 9 * * *",
+		recipe,
+		inputs: {},
+		runs: [],
+	});
+	const source = (known: Record<string, JobFacts>): JobSource => ({
+		facts: async (ids) =>
+			ok(
+				Object.fromEntries(
+					ids.flatMap((id) => (known[id] ? [[id, known[id]]] : [])),
+				),
+			),
+	});
+
+	test("joins what each contributor knows, unprefixed, and a failing one hides nothing", async () => {
+		const merged = JobSources.merge({
+			recipes: source({ a: facts("wiki") }),
+			other: source({ b: facts("watch") }),
+			broken: { facts: async () => err(new Error("down")) },
+		});
+		const got = await merged.facts(["a", "b", "c"]);
+		expect(got.ok && Object.keys(got.value).toSorted()).toEqual(["a", "b"]);
+		expect(got.ok && got.value.a?.recipe).toBe("wiki");
 	});
 });

@@ -8,6 +8,8 @@ import type {
 	ActivitySource,
 	Header,
 	Dispatcher,
+	JobFacts,
+	JobSource,
 	TriggerDescriptor,
 } from "@cabane/extension";
 
@@ -165,4 +167,23 @@ export namespace Headers {
 		}
 		return merged;
 	};
+}
+
+export namespace JobSources {
+	/**
+	 * Every contributor's facts, as one record. Job ids are the tracker's, not minted by a
+	 * contributor, so none is prefixed; a job two contributors both describe goes to the later one.
+	 * A failing contributor describes nothing rather than hiding the others, as activity does.
+	 */
+	export const merge = (sources: Named<JobSource>): JobSource => ({
+		facts: async (jobIds) => {
+			const described = await Promise.all(
+				Object.values(sources).map((source) => source.facts(jobIds)),
+			);
+			const merged: Record<string, JobFacts> = {};
+			for (const facts of described)
+				if (facts.ok) Object.assign(merged, facts.value);
+			return ok(merged);
+		},
+	});
 }
