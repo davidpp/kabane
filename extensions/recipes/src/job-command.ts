@@ -15,13 +15,18 @@ import { Inputs } from "./inputs";
 import { Jobs } from "./jobs";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
-import { projectOf, type settingsSchema, startRun } from "./run-command";
+import {
+	projectOf,
+	promptOf,
+	type settingsSchema,
+	startRun,
+} from "./run-command";
 import { Runs } from "./runs";
 import { pad } from "./runs-command";
 import type { Runtime } from "./runtime";
 
 const USAGE = [
-	'kabane job add <recipe> --title <text> --schedule "<cron>" [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c]',
+	'kabane job add <recipe> --title <text> --schedule "<cron>" [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c] [--session fresh|keep]',
 	"kabane job list [--all]",
 	"kabane job show|pause|resume|run <id>",
 	"kabane job tick",
@@ -112,16 +117,13 @@ const fire = async (
 	if (!runs.ok) return runs;
 	const here = hostname();
 	const decision = Jobs.decide(
+		job.session,
 		runs.value.filter((run) => run.machine === here),
 	);
 	if (decision.kind === "skip")
 		return ok(
 			`${short}: skipped, run ${decision.run.id} is still ${decision.run.state}`,
 		);
-	for (const run of decision.stop) {
-		const stopped = await Runs.stop(d.host, d.runtime, run, ctx.actor);
-		if (!stopped.ok) return stopped;
-	}
 	const recipe = Recipe.load(d.host.z, root, job.recipe);
 	if (!recipe.ok) return recipe;
 	const inputs = Inputs.resolve(d.host.z, recipe.value, {
@@ -129,39 +131,64 @@ const fire = async (
 		json: JSON.stringify(job.inputs),
 	});
 	if (!inputs.ok) return inputs;
-	let harness = job.harness;
-	if (harness === undefined) {
-		const configured = await ctx.settings("recipes", d.settings, {
-			projectDir: root,
+	const target = {
+		kind: "job",
+		id: task.id,
+		shortId: short,
+		title: task.title,
+	} as const;
+	let line: string;
+	if (decision.kind === "wake") {
+		const { run } = decision;
+		if (d.runtime.send === undefined)
+			return err(
+				new Error(
+					`${short}: the ${d.runtime.name} runtime cannot type into run ${run.id}'s terminal`,
+				),
+			);
+		const sent = await d.runtime.send(
+			run.session,
+			promptOf(run.id, recipe.value, inputs.value, target),
+		);
+		if (!sent.ok) return sent;
+		line = `${short}: woke run ${run.id} (${run.recipe.name}) in ${run.runtime} terminal ${run.session}`;
+	} else {
+		for (const run of decision.stop) {
+			const stopped = await Runs.stop(d.host, d.runtime, run, ctx.actor);
+			if (!stopped.ok) return stopped;
+		}
+		let harness = job.harness;
+		if (harness === undefined) {
+			const configured = await ctx.settings("recipes", d.settings, {
+				projectDir: root,
+			});
+			if (!configured.ok) return configured;
+			harness = configured.value.harness;
+		}
+		const started = await startRun(d.host, d.runtime, {
+			scopeUri: task.scopeUri ?? "",
+			root,
+			dir: "",
+			recipe: recipe.value,
+			target,
+			inputs: inputs.value,
+			harness,
+			actor: ctx.actor,
 		});
-		if (!configured.ok) return configured;
-		harness = configured.value.harness;
+		if (!started.ok) return started;
+		const { run, warnings } = started.value;
+		line = [
+			`${short}: started run ${run.id} (${run.recipe.name}) in ${run.runtime} terminal ${run.session}`,
+			...warnings,
+		].join("\n");
 	}
-	const started = await startRun(d.host, d.runtime, {
-		scopeUri: task.scopeUri ?? "",
-		root,
-		dir: "",
-		recipe: recipe.value,
-		target: { kind: "job", id: task.id, shortId: short, title: task.title },
-		inputs: inputs.value,
-		harness,
-		actor: ctx.actor,
-	});
-	if (!started.ok) return started;
 	const fired = await Jobs.setFired(
 		d.host,
 		job.taskId,
 		now.toISOString(),
 		ctx.actor,
 	);
-	if (!fired.ok) return fired;
-	const { run, warnings } = started.value;
-	return ok(
-		[
-			`${short}: started run ${run.id} (${run.recipe.name}) in ${run.runtime} terminal ${run.session}`,
-			...warnings,
-		].join("\n"),
-	);
+	return fired.ok ? ok(line) : fired;
 };
 
 const add = async (
@@ -194,6 +221,13 @@ const add = async (
 		json: d.host.args.flagString(args, "inputs"),
 	});
 	if (!inputs.ok) return d.host.outcome.usage(inputs.error.message, USAGE);
+	const mode = d.host.args.flagString(args, "session") ?? "fresh";
+	const session = Jobs.SESSIONS.find((one) => one === mode);
+	if (session === undefined)
+		return d.host.outcome.usage(
+			`--session is fresh or keep, not "${mode}"`,
+			USAGE,
+		);
 	const request = d.host.args.flagString(args, "request");
 	const created = await d.host.record.call("kabane_add", {
 		title,
@@ -220,6 +254,7 @@ const add = async (
 			recipe: recipe.value.name,
 			inputs: inputs.value,
 			...(harness === undefined ? {} : { harness }),
+			session,
 			createdAt: now.toISOString(),
 		},
 		ctx.actor,
@@ -228,7 +263,7 @@ const add = async (
 	const short = task.data.shortId ?? task.data.id;
 	return d.host.outcome.success(
 		{ job: task.data.id, shortId: short, next: valid.value.toISOString() },
-		`Added job ${short} (${recipe.value.name}, "${schedule}"); it fires next at ${when(valid.value)}.`,
+		`Added job ${short} (${recipe.value.name}, "${schedule}", ${session} session); it fires next at ${when(valid.value)}.`,
 	);
 };
 
@@ -268,6 +303,7 @@ const list = async (
 			nextOf(job),
 			job.recipe,
 			job.harness?.join(",") ?? "-",
+			job.session,
 			latest?.state ?? "-",
 			task.title,
 		]);
@@ -291,6 +327,7 @@ const list = async (
 				"NEXT",
 				"RECIPE",
 				"HARNESS",
+				"SESSION",
 				"LAST RUN",
 				"TITLE",
 			],
@@ -317,6 +354,7 @@ const show = async (
 		`recipe    ${job.recipe}`,
 		`inputs    ${JSON.stringify(job.inputs)}`,
 		`harness   ${job.harness?.join(",") ?? "recipes.harness"}`,
+		`session   ${job.session === "keep" ? "keep: a fire types into the idle terminal" : "fresh: each fire starts a terminal"}`,
 		`last fire ${job.lastFiredAt ? when(new Date(job.lastFiredAt)) : "never"}`,
 		"",
 		task.description?.trim() || "(no request)",

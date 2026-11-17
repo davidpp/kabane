@@ -197,10 +197,12 @@ come from `--input name=value` and `--inputs '{…}'` as with `kabane run`, are 
 are never asked for: a required input that is missing is an error. `--schedule` is a cron
 expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
 machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
-`recipes.harness`.
+`recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
+default, `--session fresh`, starts a new one on each fire. To change it, close the job and add
+it again.
 
 `job list` shows each job's id, whether it is active or paused, its schedule, the next time it
-fires, its recipe, its harness, the state of its latest run and its title. `pause` sets the job
+fires, its recipe, its harness, its session mode, the state of its latest run and its title. `pause` sets the job
 `someday` and `resume` sets it `next`. A job ends when you close it with `kabane done`; there is
 no delete.
 
@@ -211,8 +213,18 @@ like `job run`:
 1. reads the job's runs on this machine from their terminals;
 2. skips the job when one is `live`, `running` or `waiting`, and says so; the job stays due for
    the next tick;
-3. stops each `idle` one, because a harness stays at its prompt after its turn;
-4. starts the recipe at the project's root, as `kabane run` would, with the job as its target.
+3. on a `fresh` job, stops each `idle` one, because a harness stays at its prompt after its
+   turn, then starts the recipe at the project's root, as `kabane run` would, with the job as
+   its target;
+4. on a `keep` job, types the recipe's prompt into the newest `idle` run's terminal, as `kabane
+   runs send` would, and stops and starts nothing. The harness answers it in the same
+   conversation, so it remembers the earlier fires and keeps its prompt cache. When no terminal
+   is left (its run `ended`, or hc no longer has it), it starts one as a `fresh` job does.
+
+A woken run stays one row in `kabane runs`, with the time it first started; `job show` and
+`job list` say when the job last fired and the state its session is in. Kabane adds no harness
+flag to resume a session: a kept session lasts as long as its terminal, so a reboot or `kabane
+runs stop` ends it and the next fire starts a new one.
 
 The run's preamble tells the agent it is a scheduled background run of the job, to read the job
 with `kabane_context` for the request and what earlier runs reported, to write its result as one
@@ -237,7 +249,7 @@ needs you.
 
 | Key | On the Jobs tab |
 |---|---|
-| `enter` | the job's detail: its request and comments as an issue's, with its schedule, next fire, recipe, inputs, harness, folder and latest runs under the header |
+| `enter` | the job's detail: its request and comments as an issue's, with its schedule, next fire, recipe, inputs, harness, session mode, folder and latest runs under the header |
 | `a` | `run now`, which fires it as `kabane job run` does, in its own project's folder |
 | `s`, `n` | pause it (`someday`) and resume it (`next`) |
 | `esc` | back to the tracker |

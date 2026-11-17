@@ -45,7 +45,7 @@ sections below.
 | A job may have no recipe; `schedule` is cron or RRULE; `watch`, `deliver`, `agent` | A job always runs a recipe with `target: job`. The schedule is a 5-field cron expression. No watch, delivery or profile field yet. |
 | A job's states `active`, `paused`, `done` | The item's own states: `next` is active, `someday` is paused, and a human marks it done. |
 | The router resolves a scope to a checkout | A machine-local table records each project's folder when a `kabane job` command runs in it; `tick` reads it and needs no cwd. No router. |
-| Continuing after a wait resumes a session or starts fresh | Each fire is a fresh session. A fire is skipped while the job's last run is live, running or waiting, and an idle terminal is stopped first. The job's comments are the memory between runs. A kept session is JCAB-524. |
+| Continuing after a wait resumes a session or starts fresh | Both, per job (JCAB-526). A fire is skipped while the job's last run is live, running or waiting. A `fresh` job stops its idle terminal and starts a new one; its comments are the memory between runs. A `keep` job types the prompt into its idle terminal with `hc send`, so the harness keeps its conversation, and starts one only when the terminal is gone. No resume by harness session id. |
 | The board shows an attention feed | The board shows a run's card on its issue, with its state and attach command, and renders no terminal. Jobs and their runs are not on the board; a jobs view, a notify hook and the attention feed are JCAB-524. |
 
 ## David's questions, answered in one place

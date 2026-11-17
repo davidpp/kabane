@@ -172,6 +172,15 @@ export const shortIdOf = async (host: Host, id: string): Promise<string> => {
 	return task.ok && task.value ? (task.value.shortId ?? id) : id;
 };
 
+/** The text a run's harness gets: the preamble for run `runId`, then the recipe's rendered body. */
+export const promptOf = (
+	runId: string,
+	recipe: Recipe.Recipe,
+	inputs: Record<string, Recipe.Value>,
+	target?: Recipe.Target,
+): string =>
+	`${preamble(runId, recipe.name, target)}\n\n${Recipe.render(recipe, inputs, target)}`;
+
 /** What starting a run takes: everything explicit, no cwd, no terminal, no settings read. */
 export type Start = {
 	scopeUri: string;
@@ -205,7 +214,7 @@ export const startRun = async (
 	if (blocked !== undefined) return err(new Error(blocked));
 	const { name } = recipe;
 	const id = Runs.newId();
-	const text = `${preamble(id, name, target)}\n\n${Recipe.render(recipe, inputs, target)}`;
+	const text = promptOf(id, recipe, inputs, target);
 	const cwd = join(root, dir);
 	// Recorded before it starts, so a start that fails still leaves an ended run to see.
 	const stored = await Runs.insert(

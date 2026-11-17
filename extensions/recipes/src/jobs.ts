@@ -6,6 +6,13 @@ import { err, ok, trySync } from "./result";
 import type { Runs } from "./runs";
 
 export namespace Jobs {
+	/**
+	 * What a fire does with the job's terminal: `fresh` starts a new one each time; `keep` types
+	 * the prompt into the last one while it is idle, so the harness keeps its conversation.
+	 */
+	export type Session = "fresh" | "keep";
+	export const SESSIONS = ["fresh", "keep"] as const;
+
 	export type Job = {
 		/** The job item's id. */
 		taskId: string;
@@ -15,6 +22,7 @@ export namespace Jobs {
 		inputs: Record<string, unknown>;
 		/** The command this job starts instead of `recipes.harness`. */
 		harness?: string[];
+		session: Session;
 		lastFiredAt?: string;
 		createdAt: string;
 	};
@@ -56,6 +64,13 @@ export namespace Jobs {
 					);
 				},
 			},
+			{
+				name: "add-recipes-jobs-session",
+				up: (db) =>
+					db.run(
+						`ALTER TABLE ${TABLE} ADD COLUMN session TEXT NOT NULL DEFAULT 'fresh'`,
+					),
+			},
 		],
 		syncTables: [
 			{
@@ -76,6 +91,7 @@ export namespace Jobs {
 				recipe: z.string(),
 				inputs: z.string(),
 				harness: z.string().nullable(),
+				session: z.enum(SESSIONS),
 				last_fired_at: z.string().nullable(),
 				created_at: z.string(),
 			})
@@ -107,6 +123,7 @@ export namespace Jobs {
 			recipe: data.recipe,
 			inputs: parsedInputs.data,
 			...(parsedHarness.data === null ? {} : { harness: parsedHarness.data }),
+			session: data.session,
 			...(data.last_fired_at === null
 				? {}
 				: { lastFiredAt: data.last_fired_at }),
@@ -121,9 +138,9 @@ export namespace Jobs {
 	): Promise<Result<Job>> =>
 		host.store.write((tx) => {
 			tx.db.run(
-				`INSERT INTO ${TABLE} (id, task_id, schedule, recipe, inputs, harness, last_fired_at,
-				   created_at, updated_at, updated_by)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO ${TABLE} (id, task_id, schedule, recipe, inputs, harness, session,
+				   last_fired_at, created_at, updated_at, updated_by)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					job.taskId,
 					job.taskId,
@@ -131,6 +148,7 @@ export namespace Jobs {
 					job.recipe,
 					JSON.stringify(job.inputs),
 					job.harness === undefined ? null : JSON.stringify(job.harness),
+					job.session,
 					job.lastFiredAt ?? null,
 					job.createdAt,
 					new Date().toISOString(),
@@ -219,20 +237,24 @@ export namespace Jobs {
 	};
 
 	/**
-	 * What a fire does, given this machine's runs of the job as their runtime reports them: skip
-	 * while one is in flight, otherwise stop the idle ones (a harness stays at its prompt after
-	 * its turn) and start a new one.
+	 * What a fire does, given this machine's runs of the job (newest first) as their runtime
+	 * reports them: skip while one is in flight. Otherwise a `fresh` job stops the idle ones (a
+	 * harness stays at its prompt after its turn) and starts a new one; a `keep` job wakes the
+	 * newest idle one with the prompt, and starts one only when none is left.
 	 */
 	type Fire =
 		| { kind: "skip"; run: Runs.Run }
+		| { kind: "wake"; run: Runs.Run }
 		| { kind: "start"; stop: Runs.Run[] };
 
-	export const decide = (runs: readonly Runs.Run[]): Fire => {
+	export const decide = (session: Session, runs: readonly Runs.Run[]): Fire => {
 		const busy = runs.find((run) =>
 			(["live", "running", "waiting"] as Runs.State[]).includes(run.state),
 		);
-		return busy
-			? { kind: "skip", run: busy }
-			: { kind: "start", stop: runs.filter((run) => run.state === "idle") };
+		if (busy) return { kind: "skip", run: busy };
+		const idle = runs.filter((run) => run.state === "idle");
+		if (session === "fresh") return { kind: "start", stop: idle };
+		const [newest] = idle;
+		return newest ? { kind: "wake", run: newest } : { kind: "start", stop: [] };
 	};
 }

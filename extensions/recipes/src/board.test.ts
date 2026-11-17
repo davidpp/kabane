@@ -100,6 +100,7 @@ const scripted = () => {
 	const started: Runtime.Start[] = [];
 	const stopped: string[] = [];
 	const got: string[] = [];
+	const sent: { session: string; text: string }[] = [];
 	const runtime: Runtime = {
 		name: "hc",
 		missing: () => undefined,
@@ -118,8 +119,12 @@ const scripted = () => {
 			states.set(session, "ended");
 			return ok(undefined);
 		},
+		send: async (session, text) => {
+			sent.push({ session, text });
+			return ok(undefined);
+		},
 	};
-	return { runtime, states, started, stopped, got };
+	return { runtime, states, started, stopped, got, sent };
 };
 
 let issue: { id: string; shortId: string; title: string };
@@ -478,7 +483,7 @@ describe("kabane runs send", () => {
 
 describe("RecipeJobs", () => {
 	// A job in another folder than the board's project, as JSEC-1 lives in the vault.
-	const vaultJob = async () => {
+	const vaultJob = async (session: Jobs.Session = "fresh") => {
 		const vault = join(folder, "vault");
 		mkdirSync(join(vault, ".kabane/recipes"), { recursive: true });
 		writeFileSync(
@@ -504,6 +509,7 @@ describe("RecipeJobs", () => {
 					recipe: "tidy",
 					inputs: { depth: "quick" },
 					harness: ["sh", "-c", "true"],
+					session,
 					createdAt: "2026-11-16T08:00:00.000Z",
 				},
 				"tester",
@@ -577,5 +583,34 @@ describe("RecipeJobs", () => {
 			state: "waiting",
 			open: `kabane runs attach ${latest?.id}`,
 		});
+	});
+
+	it("wakes a kept job's idle terminal with the prompt, and starts one once it has ended", async () => {
+		const { task, scopeUri } = await vaultJob("keep");
+		const hc = scripted();
+		const dispatcher = dispatcherWith(hc.runtime);
+		const fire = () =>
+			dispatcher.dispatch("job:run", {
+				id: task.id,
+				shortId: task.shortId ?? task.id,
+				title: task.title,
+				brief: "",
+			});
+		value(await fire());
+		const [first] = value(await Runs.list(host, scopeUri));
+		if (!first) throw new Error("the first fire recorded no run");
+		hc.states.set(first.session, "idle");
+		const woke = value(await fire());
+		expect(woke).toContain(`woke run ${first.id}`);
+		expect(hc.started).toHaveLength(1);
+		expect(hc.stopped).toEqual([]);
+		expect(hc.sent).toEqual([
+			{ session: first.session, text: hc.started[0]?.argv.at(-1) ?? "" },
+		]);
+		expect(value(await Runs.list(host, scopeUri))).toHaveLength(1);
+		hc.states.set(first.session, "ended");
+		expect(value(await fire())).toContain("started run");
+		expect(hc.started).toHaveLength(2);
+		expect(value(await Runs.list(host, scopeUri))).toHaveLength(2);
 	});
 });
