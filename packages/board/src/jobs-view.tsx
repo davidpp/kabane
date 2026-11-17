@@ -289,6 +289,11 @@ export const JobPanel = ({
 					<span fg={theme.muted}>the configured default</span>
 				)}
 			</Line>
+			<Line label="session">
+				{facts.session === "keep"
+					? "keep · wakes the idle one"
+					: "fresh · a new one each fire"}
+			</Line>
 			<Line label="folder">
 				{facts.folder ?? (
 					<span fg={theme.muted}>

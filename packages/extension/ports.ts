@@ -265,6 +265,8 @@ export type JobFacts = {
 	inputs: Readonly<Record<string, unknown>>;
 	// The command its runs start; absent, the source's configured default.
 	harness?: readonly string[];
+	// `fresh`: each fire starts a new session; `keep`: a fire wakes the job's idle session.
+	session: "fresh" | "keep";
 	// The folder its runs start in on this machine; absent when this machine has none yet.
 	folder?: string;
 	// Newest first, already capped by the source.

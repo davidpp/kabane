@@ -227,6 +227,7 @@ describe("JobSources.merge", () => {
 		schedule: "0 9 * * *",
 		recipe,
 		inputs: {},
+		session: "fresh",
 		runs: [],
 	});
 	const source = (known: Record<string, JobFacts>): JobSource => ({

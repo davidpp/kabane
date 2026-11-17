@@ -187,7 +187,7 @@ has several, `esc` drops it, and a click on the board closes it.
 The Jobs tab lists every open job on the device, whatever the board's scope, in one section per
 scope, and is in the bar only while there is one. A host's optional `JobSource` (`deps.jobs`,
 `BoardPorts.jobs` for an extension) gives each job's facts, the `JobFacts` of
-`@cabane/extension`: schedule, next fire, recipe, inputs, harness, folder and newest runs, each
+`@cabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
 with its state and the command that opens it. A row leads with its newest run's state; a
 `waiting` run reads `? waiting` in the accent, and the tab's `?n` counts those jobs. A section is
 named after its jobs' folder when the source gives one, else the scope's id. Without a source a

@@ -574,6 +574,7 @@ describe("RecipeJobs", () => {
 			recipe: "tidy",
 			inputs: { depth: "quick" },
 			harness: ["sh", "-c", "true"],
+			session: "fresh",
 			folder: vault,
 		});
 		// Fired just now, so it next fires at the schedule's first nine o'clock after this fire.

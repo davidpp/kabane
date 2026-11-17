@@ -29,6 +29,7 @@ const facts = (over: Partial<JobFacts> = {}): JobFacts => ({
 	recipe: "wiki-maintenance",
 	inputs: {},
 	harness: ["claude"],
+	session: "fresh",
 	runs: [],
 	...over,
 });

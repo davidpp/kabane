@@ -513,7 +513,7 @@ type Extension = {
   names follow the collision rule beside shortcuts below.
 - **`board`** keeps `activity` and `dispatcher` and takes headers as data (above). `jobs` is a
   `JobSource`: for the job ids the board lists from the tracker, every scope's, it gives each
-  one's schedule, next fire, recipe, inputs, harness, folder and recent runs as data, which the
+  one's schedule, next fire, recipe, inputs, harness, session mode, folder and recent runs as data, which the
   board's Jobs tab draws. Without one the tab lists the jobs with their title, scope and state
   only. Running a job now is a trigger its `dispatcher` offers on the job, not part of this port.
 - **`doctor`** uses `Doctor.Source["doctor"]` from `packages/extension/doctor.ts`: findings

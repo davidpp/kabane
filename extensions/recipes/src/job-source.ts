@@ -34,6 +34,7 @@ export namespace RecipeJobs {
 					recipe: job.recipe,
 					inputs: job.inputs,
 					...(job.harness ? { harness: job.harness } : {}),
+					session: job.session,
 					...(folder === undefined ? {} : { folder }),
 					runs: runs.value.slice(0, SHOWN_RUNS).map((run) => ({
 						id: run.id,

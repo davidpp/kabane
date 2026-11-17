@@ -665,6 +665,7 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 		recipe: "wiki-maintenance",
 		inputs: {},
 		harness: ["claude"],
+		session: "fresh",
 		folder: "/Users/david/Vaults/second-brain",
 		runs: [],
 		...over,
@@ -717,6 +718,7 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 				next: "2026-11-18T07:30:00.000Z",
 				recipe: "vertical-monitor",
 				harness: ["codex"],
+				session: "keep",
 				runs: [
 					{
 						id: "01KA1H2F6X3S9Q4Y7K0L8M5N2E",
