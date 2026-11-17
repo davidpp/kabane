@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteDb } from "@cabane/sqlite";
 import type { DbProvider } from "../db/port";
+import type { Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 import type { TaskDraft } from "../schemas";
 import { QUEUE_BYTES, serializedBytes } from "../task-output";
@@ -483,5 +484,35 @@ describe("concise task pages", () => {
 			expect(full.ok).toBe(true);
 			if (full.ok) expect(full.value?.state).toBe("done");
 		}
+	});
+});
+
+describe("jobs in listings", () => {
+	it("leaves jobs out unless the listing names the kind, in queryTasks, its pages and today", async () => {
+		const id = async (draft: TaskDraft) => (await add(draft))?.id ?? "";
+		const task = await id({ title: "task", state: "next" });
+		const issue = await id({ title: "issue", kind: "issue", state: "next" });
+		const job = await id({ title: "job", kind: "job", state: "next" });
+		const ids = (result: Result<{ id: string }[]>) =>
+			result.ok ? result.value.map((t) => t.id).sort() : result.error;
+
+		expect(ids(await Planner.queryTasks(base, {}))).toEqual(
+			[task, issue].sort(),
+		);
+		expect(ids(await Planner.queryTasks(base, { kind: "job" }))).toEqual([job]);
+		const page = await Planner.queryTaskPage(base, {});
+		expect(page.ok && page.value.items.map((t) => t.id)).not.toContain(job);
+
+		const today = await Planner.getToday(base);
+		expect(today.ok && today.value.next.map((t) => t.id).sort()).toEqual(
+			[task, issue].sort(),
+		);
+		const todayJobs = await Planner.getToday(base, { kind: "job" });
+		expect(todayJobs.ok && todayJobs.value.next.map((t) => t.id)).toEqual([
+			job,
+		]);
+
+		const byId = await Planner.getTask(base, job);
+		expect(byId.ok && byId.value?.kind).toBe("job");
 	});
 });

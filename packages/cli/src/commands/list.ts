@@ -20,7 +20,7 @@ export const list: Command = {
 	name: "list",
 	summary: "List open tasks (done and cancelled hidden unless --all)",
 	usage:
-		"kabane list [--state <state>] [--kind task|issue] [--priority <p>] [--assignee <who>] [--scope <uri>] [--tag <tag>] [--all] [--limit <n>] [--format concise|full] [--cursor <cursor>]",
+		"kabane list [--state <state>] [--kind task|issue|job] [--priority <p>] [--assignee <who>] [--scope <uri>] [--tag <tag>] [--all] [--limit <n>] [--format concise|full] [--cursor <cursor>]",
 	run: async (args, ctx) => {
 		const format = responseFormat(args);
 		if (!format.ok) return usage(format.error.message, list.usage);

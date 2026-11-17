@@ -104,15 +104,17 @@ export const TaskSourceSchema = z.enum([
 export type TaskSource = z.infer<typeof TaskSourceSchema>;
 
 /**
- * Item kind - discriminates between personal tasks and agent issues
+ * Item kind - discriminates between personal tasks, agent issues and scheduled jobs
  *
- * Both use same states but with different mental models:
+ * All use the same states but with different mental models:
  * - 'task': Personal GTD workflow (inbox → next → done)
  * - 'issue': Agent/dev workflow (backlog → in_progress → review → done)
+ * - 'job': A standing request a schedule runs. A listing that names no kind leaves jobs out.
  */
 export const ItemKindSchema = z.enum([
 	"task", // Personal GTD task (focus management, energy levels)
 	"issue", // Agent work item (evidence, verification, review)
+	"job", // Standing request a schedule runs
 ]);
 export type ItemKind = z.infer<typeof ItemKindSchema>;
 
@@ -153,7 +155,7 @@ export const TaskSchema = z.object({
 	/** Detailed description/notes (Markdown) */
 	description: z.string().optional(),
 
-	/** Item kind - 'task' (personal GTD) or 'issue' (agent work) */
+	/** Item kind - 'task' (personal GTD), 'issue' (agent work) or 'job' (scheduled) */
 	kind: ItemKindSchema.default("task"),
 
 	/** Current state in GTD workflow */
@@ -300,7 +302,7 @@ export const TaskQuerySchema = z.object({
 	/** Filter by single state */
 	state: TaskStateSchema.optional(),
 
-	/** Filter by item kind ('task' for personal GTD, 'issue' for agent work) */
+	/** Filter by item kind. Omitted, every kind but 'job' */
 	kind: ItemKindSchema.optional(),
 
 	/** Filter by priority */

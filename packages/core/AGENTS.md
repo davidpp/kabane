@@ -46,6 +46,8 @@ Tests import `./testing`, which configures the bun:sqlite provider. `packages/sq
 
 Both share the same states with different interpretation: `inbox` = triage (task) / backlog (issue); `next` = ready to work (task) / ready for an agent (issue); `in_progress` = human working (task) / agent working (issue).
 
+A third kind, `job`, is a standing request a schedule runs. A listing that names no kind leaves jobs out (`selectTaskQuery` and `selectTodayBucket` in `storage/task-selection.ts`, so `kabane list`, `kabane_list`, today and the board); naming `job` returns only jobs. Reads by id, search, comments and `done` treat a job like any item. `kind` is plain TEXT with no CHECK, so the kind needed no migration.
+
 ## GTD states (canonical — 7, hard enum)
 
 `TaskStateSchema` (`schemas/task.ts`) is a closed `z.enum`, the only one in the package: `inbox`, `next`, `in_progress`, `waiting`, `someday`, `done`, `cancelled`. `needs_review` is **not** a state; use the `needsReview` flag. `Planner.updateTask` validates at the top because hosts call storage directly.

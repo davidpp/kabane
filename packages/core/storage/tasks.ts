@@ -8,6 +8,7 @@ import { Modules } from "../module";
 import { err, ok, NotFoundError, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
+	type ItemKind,
 	type Task,
 	type TaskDraft,
 	TaskDraftSchema,
@@ -641,7 +642,7 @@ export namespace Planner {
 		opts: {
 			scopeUri?: string;
 			includeDone?: boolean;
-			kind?: "task" | "issue";
+			kind?: ItemKind;
 			/** Epoch ms to take today at. Default: now. */
 			now?: number;
 			/** IANA zone whose day is today. Default: `Runtime.timezone()`. */

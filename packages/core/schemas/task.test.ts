@@ -69,3 +69,14 @@ describe("TaskSchema deadline", () => {
 		).toBe(false);
 	});
 });
+
+describe("TaskSchema kind", () => {
+	it("accepts job as a third kind and refuses an unknown one", () => {
+		expect(
+			TaskDraftSchema.safeParse({ title: "Nightly", kind: "job" }).success,
+		).toBe(true);
+		expect(
+			TaskDraftSchema.safeParse({ title: "Nightly", kind: "cron" }).success,
+		).toBe(false);
+	});
+});

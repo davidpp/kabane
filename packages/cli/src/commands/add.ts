@@ -24,7 +24,7 @@ export const add: Command = {
 	name: "add",
 	summary: "Create a task (inbox by default)",
 	usage:
-		'kabane add "<title>" [--kind task|issue] [--state <state>] [--priority <p>] [--scope <uri>] [--assignee <who>] [--parent <id>] [--description <text>] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]',
+		'kabane add "<title>" [--kind task|issue|job] [--state <state>] [--priority <p>] [--scope <uri>] [--assignee <who>] [--parent <id>] [--description <text>] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]',
 	run: async (args, ctx) => {
 		const format = responseFormat(args);
 		if (!format.ok) return usage(format.error.message, add.usage);

@@ -1,7 +1,7 @@
 /** SQL selections shared by legacy records and opt-in concise pages. */
 import type { Db, SqlValue } from "../db/port";
 import { Runtime } from "../runtime";
-import type { Task, TaskQuery } from "../schemas";
+import type { ItemKind, Task, TaskQuery } from "../schemas";
 import { DeadlineSql } from "./deadline-sql";
 import { stateFilter, buildScopeFamilyMatch, TABLES } from "./helpers";
 
@@ -14,11 +14,18 @@ export type SearchOptions = {
 export type TodayOptions = {
 	scopeUri?: string;
 	includeDone?: boolean;
-	kind?: "task" | "issue";
+	kind?: ItemKind;
 	now?: number;
 	zone?: string;
 };
 export type TodayBucket = "overdue" | "dueToday" | "next";
+
+// A job is a standing request a schedule runs, not work to pick up: a listing that names no kind
+// leaves jobs out, and naming one returns only that kind.
+const kindClause = (kind: ItemKind | undefined): TaskSelection =>
+	kind
+		? { sql: "kind = ?", params: [kind] }
+		: { sql: "kind != 'job'", params: [] };
 
 export const scopeClause = (scope: string, column: string): TaskSelection => {
 	const family = buildScopeFamilyMatch(scope);
@@ -73,8 +80,10 @@ export const selectTaskQuery = (
 		conditions.push(scope.sql);
 		params.push(...scope.params);
 	}
+	const kind = kindClause(query.kind);
+	conditions.push(kind.sql);
+	params.push(...kind.params);
 	const equalities = [
-		["kind", query.kind],
 		["priority", query.priority],
 		["source", query.source],
 		["source_id", query.sourceId],
@@ -167,10 +176,9 @@ export const selectTodayBucket = (
 		conditions.push(scope.sql);
 		params.push(...scope.params);
 	}
-	if (opts.kind) {
-		conditions.push("kind = ?");
-		params.push(opts.kind);
-	}
+	const kind = kindClause(opts.kind);
+	conditions.push(kind.sql);
+	params.push(...kind.params);
 	const order =
 		bucket === "next"
 			? "priority ASC, created_at ASC"
