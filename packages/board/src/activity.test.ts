@@ -169,6 +169,15 @@ describe("BoardActivity.inFlightForTask / cardsForTask (pure)", () => {
 				none,
 			),
 		).toBe("probe has no events here");
+		// A waiting run on any machine is in flight too.
+		expect(
+			BoardActivity.noEvents(
+				BoardActivity.indexCards([{ ...quiet, status: "paused" }]),
+				"t1",
+				undefined,
+				none,
+			),
+		).toBe("probe has no events here · kabane runs attach run");
 		const idle = { ...quiet, status: "completed" as const };
 		expect(
 			BoardActivity.noEvents(
