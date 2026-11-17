@@ -118,7 +118,12 @@ export namespace RecipeDispatcher {
 				root,
 				dir: relative(root, ctx.cwd),
 				recipe: recipe.value,
-				target: { id: target.id, shortId: target.shortId, title: target.title },
+				target: {
+					kind: "issue",
+					id: target.id,
+					shortId: target.shortId,
+					title: target.title,
+				},
 				inputs: values.value,
 				harness: configured.value.harness,
 				actor: ctx.actor,

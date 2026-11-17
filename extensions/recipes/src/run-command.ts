@@ -63,7 +63,14 @@ const preamble = (
 		`[kabane run ${runId}, recipe "${recipe}"]`,
 		"You were started in the background. Nobody is watching this terminal.",
 	];
-	if (target === undefined)
+	if (target?.kind === "job")
+		lines.push(
+			`This is a scheduled background run of job ${target.shortId} ("${target.title}").`,
+			`Read the job with kabane_context on ${target.shortId}: its description is the standing request, and its comments are what earlier runs reported.`,
+			`When a decision belongs to the human, file it with kabane_ask on ${target.shortId} (the choices, your recommendation and why), then stop.`,
+			`Write your result as one comment on ${target.shortId} with kabane_comment.`,
+		);
+	else if (target === undefined)
 		lines.push(
 			"When a decision belongs to the human, write the question as your last message and stop.",
 			"Write your result as your last message.",
@@ -77,7 +84,7 @@ const preamble = (
 };
 
 const describe = (recipe: Recipe.Recipe): string => {
-	const head = `${recipe.name}${recipe.target === "issue" ? " --target <issue>" : ""}${recipe.description ? `  ${recipe.description}` : ""}`;
+	const head = `${recipe.name}${recipe.target === "none" ? "" : ` --target <${recipe.target}>`}${recipe.description ? `  ${recipe.description}` : ""}`;
 	const inputs = Object.entries(recipe.inputs).map(([name, input]) => {
 		const kind = input.options ? input.options.join("|") : input.type;
 		const extra = [
@@ -120,7 +127,7 @@ const terminalAsk = (): Inputs.Ask | undefined =>
 		? (question) => prompt(question.replace(/\s+$/, ""))
 		: undefined;
 
-/** The issue a recipe works on, checked against what the recipe declares. */
+/** The issue or job a recipe works on, checked against what the recipe declares. */
 const targetOf = async (
 	host: Host,
 	recipe: Recipe.Recipe,
@@ -129,28 +136,29 @@ const targetOf = async (
 	{ ok: true; value?: Recipe.Target } | { ok: false; outcome: Outcome }
 > => {
 	const fail = (outcome: Outcome) => ({ ok: false as const, outcome });
-	if (recipe.target === "issue" && id === undefined)
+	if (recipe.target !== "none" && id === undefined)
 		return fail(
 			host.outcome.usage(
-				`recipe "${recipe.name}" works on an issue: pass --target <issue>`,
+				`recipe "${recipe.name}" works on ${recipe.target === "job" ? "a job" : "an issue"}: pass --target <${recipe.target}>`,
 				USAGE,
 			),
 		);
 	if (recipe.target === "none" && id !== undefined)
 		return fail(
 			host.outcome.usage(
-				`recipe "${recipe.name}" takes no target (its frontmatter has no "target: issue")`,
+				`recipe "${recipe.name}" takes no target (its frontmatter has no "target")`,
 				USAGE,
 			),
 		);
-	if (id === undefined) return { ok: true };
+	if (id === undefined || recipe.target === "none") return { ok: true };
 	const task = await host.record.get({ id });
 	if (!task.ok) return fail(host.outcome.failure(task.error));
 	if (task.value === null)
-		return fail(host.outcome.failure(`No issue found: ${id}`));
+		return fail(host.outcome.failure(`No ${recipe.target} found: ${id}`));
 	return {
 		ok: true,
 		value: {
+			kind: recipe.target,
 			id: task.value.id,
 			shortId: task.value.shortId ?? task.value.id,
 			title: task.value.title,
@@ -175,7 +183,7 @@ export type Start = {
 	target?: Recipe.Target;
 	/** The recipe's inputs, already resolved and validated. */
 	inputs: Record<string, Recipe.Value>;
-	/** The command the prompt is appended to: `recipes.harness`. */
+	/** The command the prompt is appended to: `recipes.harness`, or a job's own. */
 	harness: readonly string[];
 	actor: string;
 };
@@ -186,7 +194,7 @@ type Started = { run: Runs.Run; warnings: string[] };
 /**
  * Record the run, start it in the runtime and log it on the target. `kabane run` calls it after
  * resolving its inputs from the cwd, its flags and its prompts; the board's dispatcher calls it
- * with the form's inputs.
+ * with the form's inputs; `kabane job` calls it with a job's stored inputs and its folder.
  */
 export const startRun = async (
 	host: Host,
@@ -207,7 +215,7 @@ export const startRun = async (
 			recipe: { name, hash: recipe.hash },
 			...(target === undefined
 				? {}
-				: { target: { kind: "issue", id: target.id } }),
+				: { target: { kind: target.kind, id: target.id } }),
 			scope: scopeUri,
 			dir,
 			machine: hostname(),
@@ -228,7 +236,9 @@ export const startRun = async (
 		cwd,
 		labels: {
 			"kabane.run": id,
-			...(target === undefined ? {} : { "kabane.issue": target.shortId }),
+			...(target === undefined
+				? {}
+				: { [`kabane.${target.kind}`]: target.shortId }),
 		},
 	});
 	if (!started.ok) {

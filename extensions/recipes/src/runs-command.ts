@@ -21,7 +21,7 @@ const age = (iso: string, now = Date.now()): string => {
 	return `${Math.floor(seconds / 86_400)}d`;
 };
 
-const pad = (rows: string[][]): string => {
+export const pad = (rows: string[][]): string => {
 	const widths = rows[0]?.map((_, column) =>
 		Math.max(...rows.map((row) => row[column]?.length ?? 0)),
 	);
@@ -145,10 +145,10 @@ export const runsCommand = (
 				: ok(stored.value);
 		if (!runs.ok) return host.outcome.failure(runs.error);
 		const shown = runs.value.filter((run) => all || run.state !== "ended");
-		// An issue target shows its short id; any other kind shows its id.
+		// A target, an issue or a job, shows its short id.
 		const targets = new Map<string, string>();
 		for (const { target } of shown)
-			if (target?.kind === "issue" && !targets.has(target.id))
+			if (target && !targets.has(target.id))
 				targets.set(target.id, await shortIdOf(host, target.id));
 		if (shown.length === 0)
 			return host.outcome.success(

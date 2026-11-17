@@ -1,8 +1,9 @@
-// The recipes extension: `kabane run` and `kabane runs`, its one setting, its doctor check, and on
+// The recipes extension: `kabane run`, `kabane runs` and `kabane job`, its one setting, its doctor check, and on
 // the board a card per run that names an issue and `a` offering the recipes that work on one.
 import type { Extension, Host } from "@cabane/extension";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
+import { jobCommand } from "./job-command";
 import { Kabane, ok } from "./result";
 import { runCommand, settingsSchema } from "./run-command";
 import { runsCommand } from "./runs-command";
@@ -15,7 +16,11 @@ export const recipes = (host: Host): Extension => {
 	return {
 		name: "recipes",
 		settings,
-		commands: [runCommand(host, settings, runtime), runsCommand(host, runtime)],
+		commands: [
+			runCommand(host, settings, runtime),
+			runsCommand(host, runtime),
+			jobCommand(host, settings, runtime),
+		],
 		// Ports for the board's project, the folder it was opened in.
 		board: async (ctx) => {
 			const project = () => host.scope.detect(ctx.cwd);

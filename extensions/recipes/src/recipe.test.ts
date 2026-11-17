@@ -109,6 +109,7 @@ describe("Recipe.render", () => {
 				recipe(),
 				{ depth: "quick", limit: 3 },
 				{
+					kind: "issue",
 					id: "01ABC",
 					shortId: "JCAB-7",
 					title: "A title",
