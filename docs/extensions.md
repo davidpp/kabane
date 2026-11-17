@@ -76,6 +76,7 @@ the end of `kabane --help`:
   dispatch  Print the dispatch template's stamp
   run       Start a project recipe in a background terminal
   runs      List recipe runs; attach to, read, send to or stop one
+  job       Run a project recipe on a schedule; list, pause, resume or fire jobs
 ```
 
 and `kabane doctor`, run in a project, reports their checks under their names. On a project with
