@@ -11,7 +11,7 @@ This repository has three:
 |---|---|
 | `loop` | `kabane loop`, which drives an issue or a parent issue's subtasks through coding harnesses on your machine; `a` on the board to start a run, with a tab per run; the copilot's procedures to start and advise a run; the `kabane_loop_advise` MCP tool; `loop.*` settings; doctor checks under `loop`. See [loop.md](loop.md). |
 | `dispatch` | The dispatch and grill skills for your projects; `/setup-dispatch` in the copilot, which writes a project's dispatch skill; `kabane dispatch stamp`; doctor checks under `dispatch`. See [its README](../extensions/dispatch/README.md). |
-| `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, answer, attach to and stop those runs; on the board, a card for each run that works on an issue, with its state and the command that attaches to it, and `a` on an issue to start a recipe; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
+| `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop those runs; on the board, a card for each run that works on an issue, with its state and the command that attaches to it, and `a` on an issue to start a recipe; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
 
 `a` on the board lists what the enabled extensions can start on an issue: a loop run, the
 project's recipes that target an issue, or both. Without the loop and recipes it does nothing.
@@ -75,7 +75,7 @@ the end of `kabane --help`:
   loop      Drive an issue, or a parent issue's subtasks, to completion through coding harnesses
   dispatch  Print the dispatch template's stamp
   run       Start a project recipe in a background terminal
-  runs      List recipe runs; attach to, read, answer or stop one
+  runs      List recipe runs; attach to, read, send to or stop one
 ```
 
 and `kabane doctor`, run in a project, reports their checks under their names. On a project with

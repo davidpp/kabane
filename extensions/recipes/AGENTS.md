@@ -1,7 +1,7 @@
 # @cabane/recipes (extensions/recipes)
 
 The recipes extension: prompt recipes from a project's `.kabane/recipes/`, `kabane run` to start
-one in an `hc` (herdr core) terminal, and `kabane runs` to list, read, answer, attach to and stop
+one in an `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop
 those runs. `docs/recipes.md` is what a user reads.
 
 | Where | What it holds |
@@ -10,11 +10,11 @@ those runs. `docs/recipes.md` is what a user reads.
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`, `render`: frontmatter, placeholders, and the errors that name the file |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a recipe from explicit inputs (scope, root, dir, recipe, target, inputs, harness, actor) and reads no cwd, TTY or setting; `kabane run`, which resolves those and calls it; the dispatcher calls it too |
-| `src/runs-command.ts` | `kabane runs`: the listing and `reconcile`, which the board shares, `attach`, `read`, `send`, `stop` |
+| `src/runs-command.ts` | `kabane runs`: the listing, `attach`, `read`, `send`, `stop` |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun` |
-| `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored |
-| `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, the optional `find` that recovers an interrupted start's session, and the optional terminal operations `read`, `send`, `attach` |
+| `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored; `reconcile` and `stop`, which `kabane runs` and the board share |
+| `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
 | `src/runtime-hc.ts` | the hc runtime; the only file that runs `hc` |
 | `modules.ts` | the modules entry: registers the run table, imports only `src/runs.ts` |
 
@@ -39,16 +39,9 @@ runtime reads: for hc, the terminal's name, which the adapter builds from the re
 run id. What a user reads calls `session` the run's terminal (the `TERMINAL` column of `kabane
 runs`, "in hc terminal …" from `kabane run`), because hc is the only runtime; `--json` and
 `docs/recipes.md`'s field table say `session`. A run is recorded before its runtime starts it, with `session` empty (`Runs.STARTING`)
-until `start` returns, so a start that fails still leaves an ended run. A start interrupted between the two
-writes leaves a `live` row with no session (JCAB-467:1): reconcile asks the runtime's optional
-`find(run)` for it (hc: `hc ls --all --label kabane.run=<id>`, the terminal whose name ends with
-the id's last six), records the session it finds, and ends the run when there is none.
-`Runs.endStarting` ends it only while its session is still `STARTING`, and `Runs.setSession` on a
-run still `STARTING` sets it `live` again, so a listing that runs during a start that is still
-on its way never ends it for good; on a run whose session a reconcile already recovered it keeps
-the state that reconcile read. `read`, `send`, `attach` and `stop` reconcile such a run first, and refuse it
-before any terminal call while its session is still `STARTING`; a runtime without `find` leaves
-it as recorded. The hc adapter also refuses an empty or blank terminal in every method before it spawns hc,
+until `start` returns, so a start that fails still leaves an ended run. A run whose start was interrupted
+stays `live` with no terminal: reconcile skips a run whose session is still `STARTING`, and a
+verb on it goes to the runtime. The hc adapter also refuses an empty or blank terminal in every method before it spawns hc,
 because hc reads `""` as no terminal given and picks one from the caller's scope. `kabane runs` leaves a run
 in a runtime it does not have as recorded, and `read`, `send` and `attach` on a run whose runtime
 has no terminal fail with one line naming the runtime.
@@ -101,9 +94,8 @@ Listing and `card` run `reconcile` first, as `kabane runs` does; retention follo
 source (every run in flight, the newest finished up to ten, where `idle` counts as finished as
 the board draws it). A card has no tab and no events (JCAB-483): kabane does not render a
 harness's terminal. The card carries the state and `kabane runs attach <id>`; hc shows the
-session. `Runtime.read` stays for `kabane runs read`. The only action is `stop`, which the board
-reaches only from a card's tab, so until it runs a card's actions from the issue's detail
-(JCAB-496) a run is stopped with `kabane runs stop`; answering stays in a terminal.
+session. `Runtime.read` stays for `kabane runs read`. The only action is `stop`, which `X` on the
+issue's detail runs (JCAB-496), as `kabane runs stop` does; answering stays in a terminal.
 
 Triggers are `recipe:<name>`. Inputs pass as declared; the board's form opens only when every
 input has a default and is a choice, number or boolean, and otherwise `dispatch` gets no

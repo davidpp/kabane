@@ -158,6 +158,12 @@ const targetOf = async (
 	};
 };
 
+/** The short id of task `id`, or `id` when it has none or cannot be read. */
+export const shortIdOf = async (host: Host, id: string): Promise<string> => {
+	const task = await host.record.get({ id });
+	return task.ok && task.value ? (task.value.shortId ?? id) : id;
+};
+
 /** What starting a run takes: everything explicit, no cwd, no terminal, no settings read. */
 export type Start = {
 	scopeUri: string;
@@ -231,7 +237,7 @@ export const startRun = async (
 			? started
 			: err(
 					new Error(
-						`${started.error.message}; the run row ${id} is still recorded as running: ${ended.error.message}`,
+						`${started.error.message}; the run row ${id} is still recorded as live: ${ended.error.message}`,
 					),
 				);
 	}
