@@ -18,6 +18,7 @@
 		"release:local": "bun scripts/release-local.ts",
 		"deploy": "bun scripts/deploy.ts",
 		"land": "bun scripts/land.ts",
+		"main-build": "bun scripts/main-build.ts",
 		"layers": "bun scripts/layers.ts",
 		"check": "bun run layers && bun run lint && bun run fmt:check && bun run quality",
 		"fix": "oxlint --fix && oxfmt",

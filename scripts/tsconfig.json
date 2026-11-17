@@ -7,7 +7,8 @@
 		"smoke.ts",
 		"layers*.ts",
 		"modules-entry*.ts",
-		"land*.ts"
+		"land*.ts",
+		"main-build*.ts"
 	],
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM"],
