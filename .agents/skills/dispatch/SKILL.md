@@ -73,7 +73,8 @@ says how. An item has no assignee, no state beyond done, and no brief; if it nee
 it's a subtask. In a wave, each subtask is one of the wave's issues, with a territory of its own.
 
 Decisions, research and ADRs go where AGENTS.md says they go: `wiki/`, which holds plans, design
-records and research and never `docs/`. Some of them may land in an issue's description, and
+records and research and never `docs/`. An ADR goes in `wiki/adr/`, and `wiki/adr/README.md` says
+when a decision warrants one. Some of them may land in an issue's description, and
 there they are already part of that issue's brief. For everything that lands elsewhere, attach
 it to each issue that relies on it with `kabane_contextAdd` (kind `ADR`, `research`, `doc` or
 `spec`), so that `kabane_context` puts it in the implementer's brief. A `file:` reference is

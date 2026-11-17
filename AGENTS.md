@@ -40,6 +40,11 @@ extension gets from kabane.
 `docs/` and the READMEs are for people who use kabane: usage, behaviour, configuration.
 Internal notes such as plans, design records and research go in `wiki/`, never in `docs/`.
 
+A lasting trade-off that someone will ask "why" about later gets an ADR in `wiki/adr/`: one
+page, numbered, from `wiki/adr/0000-template.md`. `wiki/adr/README.md` says when to write one. An
+issue that relies on an ADR attaches it with `kabane_contextAdd` (kind `ADR`, a `file:`
+reference), so it lands in the implementer's brief.
+
 Read the North Stars at the top of `PRODUCT.md` before a product or architecture decision.
 They are provisional: when one looks wrong, say so to the maintainer; never work around it
 quietly.
