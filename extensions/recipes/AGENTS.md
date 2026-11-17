@@ -6,13 +6,13 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 
 | Where | What it holds |
 |---|---|
-| `src/extension.ts` | the `(host) => Extension` factory: the `recipes.harness` setting, both commands, the `hc-missing` doctor finding, the board ports |
+| `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), both commands, the `hc-missing` doctor finding, the board ports |
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`, `render`: frontmatter, placeholders, and the errors that name the file |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a recipe from explicit inputs (scope, root, dir, recipe, target, inputs, harness, actor) and reads no cwd, TTY or setting; `promptOf`, the text it passes, which a kept job's wake sends; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing, `attach`, `read`, `send`, `stop` |
-| `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
-| `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`; the due rule and the fire decision |
+| `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
+| `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun`; on a job, `job:run`, which fires it as `kabane job run` does |
 | `src/job-source.ts` | `RecipeJobs`: the board's `JobSource`, each job's schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs |
@@ -68,6 +68,15 @@ only when none is idle (`Jobs.decide`). A wake writes no run row: one row per te
 `kabane runs` lists the session once, and `last_fired_at` records the fire. `tick` has no cwd:
 it reads the root from `recipes_roots`, which every `kabane job` command run inside a project
 writes and which is left out of `syncTables`, since a path belongs to one machine.
+
+Before it fires anything, `tick` reads each open job's newest run on this machine and runs
+`recipes.onAttention`, when set, once when that run enters `waiting` and once when it finishes
+(`idle` or `ended`): `Jobs.attention` is the rule, and `recipes_attention`, machine-local like
+`recipes_roots`, holds the state the tick last saw each run in. It is written whether or not the
+hook is set, so setting it later does not replay old finishes. The hook runs with `sh -c` in the
+run's folder with `KABANE_JOB`, `KABANE_JOB_TITLE`, `KABANE_RUN`, `KABANE_RUN_STATE`,
+`KABANE_ATTENTION`, `KABANE_FOLDER` and `KABANE_ATTACH`; a nonzero exit is one line of the tick's
+output and is not retried. A run has one id, so there is no separate run short id.
 
 ## State is read from hc
 

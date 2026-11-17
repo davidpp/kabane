@@ -237,6 +237,36 @@ skipped with a line that says to run `kabane job list` inside it. Jobs sync with
 items; the folders do not, so each machine that ticks needs one `kabane job` command in each
 project.
 
+### Hear when a run needs you
+
+`recipes.onAttention` is a shell command that `job tick` runs when a job's run needs you: once
+when it starts waiting on you (a permission, a question, a trust dialog), and once when it
+finishes (`idle` or `ended`). A run still waiting at the next tick does not run it again; one
+that waits again after it went back to work does. Only the newest run of each job on this
+machine counts, paused jobs included. Unset, the default, nothing runs.
+
+The command runs with `sh -c` in the run's folder, with these environment variables:
+
+| Variable | Holds |
+|---|---|
+| `KABANE_JOB` | the job's short id (`JCAB-600`) |
+| `KABANE_JOB_TITLE` | the job's title |
+| `KABANE_RUN` | the run's id |
+| `KABANE_RUN_STATE` | `waiting`, `idle` or `ended` |
+| `KABANE_ATTENTION` | `waiting`, or `finished` for `idle` and `ended` |
+| `KABANE_FOLDER` | the folder the run started in |
+| `KABANE_ATTACH` | the command that opens its session: `kabane runs attach <run id>` |
+
+```bash
+kabane config set recipes.onAttention \
+  'terminal-notifier -title "$KABANE_JOB $KABANE_ATTENTION" -message "$KABANE_JOB_TITLE: $KABANE_ATTACH"' \
+  --layer global
+```
+
+A hook that exits nonzero is reported on the tick's output with its last line of stderr, and
+changes nothing else: it is not retried. Under launchd, the command must be on the plist's
+`PATH`.
+
 ### Jobs on the board
 
 While this device has a job, the board has a Jobs tab after the tracker (tab 2; `{` and `}`
@@ -267,8 +297,9 @@ nothing, so ticking every minute is cheap.
 
 ## Settings
 
-One setting, `recipes.harness`: the command a run starts, as a list; the prompt is added as
-its last argument. The default is `["claude"]`.
+`recipes.harness` is the command a run starts, as a list; the prompt is added as its last
+argument. The default is `["claude"]`. `recipes.onAttention` is the command a tick runs when a
+job's run needs you ("Hear when a run needs you", above); unset by default.
 
 ```bash
 kabane config set recipes.harness codex --layer global

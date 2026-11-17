@@ -46,7 +46,8 @@ sections below.
 | A job's states `active`, `paused`, `done` | The item's own states: `next` is active, `someday` is paused, and a human marks it done. |
 | The router resolves a scope to a checkout | A machine-local table records each project's folder when a `kabane job` command runs in it; `tick` reads it and needs no cwd. No router. |
 | Continuing after a wait resumes a session or starts fresh | Both, per job (JCAB-526). A fire is skipped while the job's last run is live, running or waiting. A `fresh` job stops its idle terminal and starts a new one; its comments are the memory between runs. A `keep` job types the prompt into its idle terminal with `hc send`, so the harness keeps its conversation, and starts one only when the terminal is gone. No resume by harness session id. |
-| The board shows an attention feed | The board shows a run's card on its issue, with its state and attach command, and renders no terminal. Jobs and their runs are not on the board; a jobs view, a notify hook and the attention feed are JCAB-524. |
+| The board shows an attention feed | The board shows a run's card on its issue, with its state and attach command, and renders no terminal. A job's runs are on the board's Jobs tab (JCAB-525). No attention feed. |
+| Notification is a shell hook | `recipes.onAttention`, a shell command `kabane job tick` runs once when a job's newest run on the machine enters `waiting` and once when it finishes (`idle` or `ended`), with the facts in `KABANE_*` variables (JCAB-527). What the tick last saw of each run is a machine-local table. Only jobs' runs; no built-in notifier, no retry. |
 
 ## David's questions, answered in one place
 

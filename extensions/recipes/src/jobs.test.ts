@@ -158,3 +158,23 @@ it("reads a row written before the session column as a fresh job", async () => {
 		rmSync(home, { recursive: true, force: true });
 	}
 });
+
+it("tells the human when a run starts waiting and when it finishes, once per change", () => {
+	expect(Jobs.attention(undefined, "live")).toBeUndefined();
+	expect(Jobs.attention("live", "running")).toBeUndefined();
+	expect(Jobs.attention("running", "waiting")).toBe("waiting");
+	// The next tick sees it still waiting: nothing new.
+	expect(Jobs.attention("waiting", "waiting")).toBeUndefined();
+	expect(Jobs.attention("waiting", "running")).toBeUndefined();
+	expect(Jobs.attention("running", "waiting")).toBe("waiting");
+	expect(Jobs.attention("running", "idle")).toBe("finished");
+	expect(Jobs.attention("waiting", "ended")).toBe("finished");
+	// An idle terminal that then ends finished once.
+	expect(Jobs.attention("idle", "ended")).toBeUndefined();
+	expect(Jobs.attention("idle", "idle")).toBeUndefined();
+	// A kept session woken from idle finishes again.
+	expect(Jobs.attention("running", "idle")).toBe("finished");
+	// A run first seen already there counts as entering it.
+	expect(Jobs.attention(undefined, "waiting")).toBe("waiting");
+	expect(Jobs.attention(undefined, "ended")).toBe("finished");
+});

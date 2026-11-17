@@ -29,6 +29,7 @@ export namespace Jobs {
 
 	const TABLE = "recipes_jobs";
 	const ROOTS = "recipes_roots";
+	const SEEN = "recipes_attention";
 
 	type Store = Pick<Host, "store" | "z">;
 
@@ -69,6 +70,19 @@ export namespace Jobs {
 				up: (db) =>
 					db.run(
 						`ALTER TABLE ${TABLE} ADD COLUMN session TEXT NOT NULL DEFAULT 'fresh'`,
+					),
+			},
+			{
+				name: "create-recipes-attention",
+				// Machine-local, like the folders: the state this machine's tick last saw each run
+				// in, so the attention hook runs once per change. Not in syncTables.
+				up: (db) =>
+					db.run(
+						`CREATE TABLE IF NOT EXISTS ${SEEN} (
+						   run_id TEXT PRIMARY KEY,
+						   state TEXT NOT NULL,
+						   updated_at TEXT NOT NULL
+						 )`,
 					),
 			},
 		],
@@ -257,4 +271,60 @@ export namespace Jobs {
 		const [newest] = idle;
 		return newest ? { kind: "wake", run: newest } : { kind: "start", stop: [] };
 	};
+
+	/** What a run's state asks of the human: `waiting` on them, or `finished` (`idle` or `ended`). */
+	export type Attention = "waiting" | "finished";
+
+	const attentionOf = (state: Runs.State | undefined): Attention | undefined =>
+		state === "waiting"
+			? "waiting"
+			: state === "idle" || state === "ended"
+				? "finished"
+				: undefined;
+
+	/**
+	 * Whether a run seen in `state`, after it was last seen in `seen`, has just entered something
+	 * the human hears about. `idle` then `ended` is one finish; `waiting`, `running`, `waiting` is two.
+	 */
+	export const attention = (
+		seen: Runs.State | undefined,
+		state: Runs.State,
+	): Attention | undefined => {
+		const now = attentionOf(state);
+		return now === attentionOf(seen) ? undefined : now;
+	};
+
+	/** The state this machine's tick last saw run `runId` in. */
+	export const seen = (
+		host: Store,
+		runId: string,
+	): Promise<Result<Runs.State | undefined>> =>
+		host.store.read((db) => {
+			const { z } = host;
+			const row = z
+				.object({
+					state: z.enum(["live", "running", "waiting", "idle", "ended"]),
+				})
+				.nullable()
+				.safeParse(
+					db.query(`SELECT state FROM ${SEEN} WHERE run_id = ?`).get(runId),
+				);
+			if (!row.success) return err(new Error(`${SEEN}: ${row.error.message}`));
+			return ok(row.data?.state);
+		});
+
+	export const setSeen = (
+		host: Store,
+		runId: string,
+		state: Runs.State,
+	): Promise<Result<void>> =>
+		host.store.write((tx) => {
+			tx.db.run(
+				`INSERT INTO ${SEEN} (run_id, state, updated_at) VALUES (?, ?, ?)
+				 ON CONFLICT(run_id) DO UPDATE SET state = excluded.state,
+				   updated_at = excluded.updated_at`,
+				[runId, state, new Date().toISOString()],
+			);
+			return ok(undefined);
+		});
 }

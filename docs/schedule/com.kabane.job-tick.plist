@@ -9,8 +9,8 @@
 
   `kabane` is the globally installed binary at ~/.bun/bin/kabane; its shebang is `/usr/bin/env bun`, so
   PATH below must also reach `bun` itself (mise shims first), and `hc` and the harnesses the jobs start
-  (claude, codex), which a run looks up on the same PATH. A tick with nothing due does nothing, so it
-  runs every minute.
+  (claude, codex), which a run looks up on the same PATH, and the recipes.onAttention command if one
+  is set. A tick with nothing due does nothing, so it runs every minute.
 -->
 <plist version="1.0">
 <dict>

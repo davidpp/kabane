@@ -427,6 +427,76 @@ const runNow = async (
 		: d.host.outcome.failure(line.error);
 };
 
+/** Runs `command` with the facts of what `run` of the job asks of the human: why it failed, or undefined. */
+const runHook = async (
+	command: string,
+	{ task }: Entry,
+	run: Runs.Run,
+	attention: Jobs.Attention,
+): Promise<string | undefined> => {
+	const hook = Bun.spawn(["sh", "-c", command], {
+		cwd: run.cwd,
+		env: {
+			...process.env,
+			KABANE_JOB: shortOf(task),
+			KABANE_JOB_TITLE: task.title,
+			KABANE_RUN: run.id,
+			KABANE_RUN_STATE: run.state,
+			KABANE_ATTENTION: attention,
+			KABANE_FOLDER: run.cwd,
+			KABANE_ATTACH: `kabane runs attach ${run.id}`,
+		},
+		stdin: "ignore",
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+	const [code, stderr] = await Promise.all([
+		hook.exited,
+		new Response(hook.stderr).text(),
+	]);
+	if (code === 0) return undefined;
+	const said = stderr.trim().split("\n").at(-1);
+	return `exited ${code}${said ? `: ${said}` : ""}`;
+};
+
+/**
+ * Tells the human, through `recipes.onAttention`, when the newest run of a job on this machine has
+ * just entered `waiting` or finished. What this machine last saw is recorded whether or not the
+ * hook is set, so setting it later does not replay every past finish.
+ */
+const notify = async (
+	d: Deps,
+	ctx: Extension.Ctx,
+	one: Entry,
+	root: string | undefined,
+): Promise<Result<string | undefined>> => {
+	const runs = await runsOf(d, one, ctx.actor);
+	if (!runs.ok) return runs;
+	const here = hostname();
+	const run = runs.value.find((r) => r.machine === here);
+	if (run === undefined) return ok(undefined);
+	const seen = await Jobs.seen(d.host, run.id);
+	if (!seen.ok) return seen;
+	if (seen.value === run.state) return ok(undefined);
+	const attention = Jobs.attention(seen.value, run.state);
+	const saved = await Jobs.setSeen(d.host, run.id, run.state);
+	if (!saved.ok) return saved;
+	if (attention === undefined) return ok(undefined);
+	const configured = await ctx.settings("recipes", d.settings, {
+		projectDir: root ?? ctx.cwd,
+	});
+	if (!configured.ok) return configured;
+	const command = configured.value.onAttention;
+	if (command === undefined) return ok(undefined);
+	const failed = await runHook(command, one, run, attention);
+	const short = shortOf(one.task);
+	return ok(
+		failed === undefined
+			? `${short}: run ${run.id} is ${run.state}; recipes.onAttention ran`
+			: `${short}: run ${run.id} is ${run.state}; recipes.onAttention ${failed}`,
+	);
+};
+
 const tick = async (d: Deps, ctx: Extension.Ctx): Promise<Outcome> => {
 	const now = new Date();
 	const found = await entries(d);
@@ -434,6 +504,17 @@ const tick = async (d: Deps, ctx: Extension.Ctx): Promise<Outcome> => {
 	const roots = await Jobs.roots(d.host);
 	if (!roots.ok) return d.host.outcome.failure(roots.error);
 	const lines: string[] = [];
+	// Paused jobs too: a run that waits on the human still does after its job is paused.
+	for (const one of found.value) {
+		const said = await notify(
+			d,
+			ctx,
+			one,
+			roots.value.get(one.task.scopeUri ?? ""),
+		);
+		if (!said.ok) lines.push(`${shortOf(one.task)}: ${said.error.message}`);
+		else if (said.value !== undefined) lines.push(said.value);
+	}
 	for (const one of found.value) {
 		if (one.task.state !== "next") continue;
 		const short = shortOf(one.task);

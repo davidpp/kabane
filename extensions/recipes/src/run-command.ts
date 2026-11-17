@@ -27,6 +27,13 @@ export const settingsSchema = (z: Host["z"]) =>
 				.describe(
 					"The command a recipe run starts, as a list; the prompt is added as its last argument. Kabane adds no flags of its own. Default: claude.",
 				),
+			onAttention: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					"A shell command `kabane job tick` runs once each time a job's run starts waiting on you and once when it finishes, with the facts in KABANE_* environment variables. Unset, nothing runs.",
+				),
 		})
 		.strict();
 
