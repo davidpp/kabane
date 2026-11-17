@@ -1,0 +1,6 @@
+# Moves the live checkout of a kabane clone to origin/main (Linux cron). Replace both __LIVE__ with
+# the live worktree's path: the script finds the worktree it updates from KABANE_LIVE, else the
+# default beside the clone, never from where it runs. Then install with:
+#   crontab -l 2>/dev/null | cat - kabane-live-update.cron | crontab -
+# Assumes KABANE_HOME is the default ~/.kabane. PATH must reach `bun` and `git`, and origin must fetch without a prompt.
+*/5 * * * * PATH=$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin KABANE_HOME=$HOME/.kabane KABANE_LIVE=__LIVE__ bun run --cwd __LIVE__ live >> $HOME/.kabane/live-update.log 2>> $HOME/.kabane/live-update.error.log

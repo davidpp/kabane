@@ -124,6 +124,68 @@ extension and keeps the others:
 Extension loop: the entry could not be imported: Cannot find package '@cabane/acp' imported from /…/kabane/extensions/loop/src/commands.ts; repair the entry and its dependencies; or remove it from extensions with `kabane config set extensions <names> --layer global`.
 ```
 
+## Run kabane from a checkout that follows main
+
+A kabane linked to your clone runs whatever that checkout holds: your work in progress, or a
+`main` that stopped moving when you stopped pulling. `bun run live` keeps a second worktree of
+the clone that only ever sits on `origin/main`, so the tracker you rely on runs merged code and
+the checkout you work in stays free for anything.
+
+From the clone:
+
+```bash
+bun run live                                    # creates ../kabane-live
+(cd ../kabane-live/packages/cli && bun link)    # `kabane` on PATH, pointing at the live worktree
+bun run --cwd ../kabane-live link-extensions    # the extensions, linked from it
+```
+
+The worktree is `../<clone folder>-live` beside the clone, or `$KABANE_LIVE` when set. It is
+detached, because the clone holds `main`; nobody edits there. The first run creates it at
+`origin/main`, installs its dependencies and prints the two link commands; it does not run them.
+
+Each later run fetches `origin`. With nothing new it prints `live: up to date` and changes
+nothing. When `origin/main` moved, it copies the tracker database, checks out the new commit,
+runs `bun install --frozen-lockfile` and prints the old and new commit and how many commits it
+moved. A step that fails exits 1 with one line naming it, and the worktree stays on its commit.
+
+If your extensions are already linked to the clone, remove those links first:
+`link-extensions` never replaces a link that resolves elsewhere.
+
+```bash
+rm ~/.kabane/extensions/{loop,dispatch,recipes}   # the links, not the source
+bun run --cwd ../kabane-live link-extensions
+```
+
+### Keep it moving
+
+`docs/schedule/com.kabane.live-update.plist` (macOS launchd) and
+`docs/schedule/kabane-live-update.cron` (Linux cron) run `bun run --cwd <live worktree> live`
+every five minutes. Their first lines say how to install them; replace `__LIVE__` with the
+worktree's path. It fills both the working directory and `KABANE_LIVE` (the plist's
+`EnvironmentVariables`, the cron line's assignments): the script finds the worktree to update
+from `KABANE_LIVE`, else the default beside the clone, never from the folder it runs in, so a
+worktree at a custom path would go stale without it. The fetch runs with no terminal, so
+`origin` must fetch without a prompt.
+
+A kabane process already running, an MCP server or the board, keeps the code it started with.
+An update is live at that process's next start.
+
+`kabane doctor` says when the checkout it runs from is behind its `origin/main`, from the refs
+already fetched: `kabane/checkout-behind`. It checks `main` and a detached checkout; a feature
+branch is behind `main` by design and says nothing.
+
+### The backup
+
+Before it moves the worktree, `live` copies the database to
+`${KABANE_HOME:-$HOME/.kabane}/backups/kabane-before-live-update.db`, through SQLite, so the
+copy is whole while kabane processes hold the database open. Each update overwrites it. To put
+it back, stop every kabane process (MCP servers, the board, scheduled jobs), then:
+
+```bash
+cp ~/.kabane/backups/kabane-before-live-update.db ~/.kabane/kabane.db
+rm -f ~/.kabane/kabane.db-wal ~/.kabane/kabane.db-shm
+```
+
 ## Try them in the sandbox
 
 `bun run sandbox`, from a checkout, links `extensions/loop`, `extensions/dispatch` and
