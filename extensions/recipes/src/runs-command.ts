@@ -21,7 +21,7 @@ const age = (iso: string, now = Date.now()): string => {
 	return `${Math.floor(seconds / 86_400)}d`;
 };
 
-const pad = (rows: string[][]): string => {
+export const pad = (rows: string[][]): string => {
 	const widths = rows[0]?.map((_, column) =>
 		Math.max(...rows.map((row) => row[column]?.length ?? 0)),
 	);
