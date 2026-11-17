@@ -52,7 +52,7 @@ test("a checkout behind its origin/main ref is a finding that names it and the c
 			id: "checkout-behind",
 			path: dir,
 			severity: "suggest",
-			summary: `This kabane runs from ${dir}, 2 commits behind its origin/main as last fetched. \`bun run live\` brings a live checkout forward; in a checkout you work in, merge origin/main.`,
+			summary: `This kabane runs from ${dir}, 2 commits behind its origin/main as last fetched. Merge origin/main to bring it forward.`,
 		},
 	]);
 });
