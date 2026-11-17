@@ -2,7 +2,7 @@
 
 A recipe is a prompt you run again and again, kept as a file in your project. `kabane run`
 fills it in, starts your coding harness on it in a background terminal and returns at once;
-`kabane runs` shows what each run is doing and lets you read it, answer it, take it over or
+`kabane runs` shows what each run is doing and lets you read it, send to it, take it over or
 stop it.
 
 Recipes are the `recipes` extension. Without it, kabane has no `run` or `runs` command, and the
@@ -124,13 +124,9 @@ Kabane never says a run succeeded. `idle` means the agent stopped; what it did i
 wrote on the issue. A run started on another machine shows the state last recorded there and
 that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in a runtime
 this kabane does not have is treated the same way, and `read`, `send` and `attach` on a runtime
-with no terminal fail with one line naming it. A run whose start has not recorded a terminal
-yet (an empty TERMINAL column), because it is still starting or kabane was interrupted while it
-started, is looked up in hc by its `kabane.run` label whenever runs are listed: by `kabane runs`,
-a verb on it, or the board. When hc has its terminal, the run records it and goes on as usual.
-When hc has none, the run is shown `ended`; if its start was only still on its way, the run goes
-back to `live` once the start records its terminal. `read`, `send` and `attach` refuse a run
-with no terminal, and `stop` on one hc has no terminal for only says it is ended.
+with no terminal fail with one line naming it. A run whose start was interrupted
+stays `live` with no terminal (an empty TERMINAL column), and every verb on it fails with
+"This run has no terminal: its start never recorded one".
 
 With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
 attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
@@ -167,7 +163,8 @@ it.
 
 A run's card has no tab: the board does not show the terminal. To see or answer the session,
 run `kabane runs attach <id>`, which opens it in hc; `kabane runs read <id>` prints its screen
-and `kabane runs stop <id>` stops it. Nothing is answered from the board.
+and `kabane runs stop <id>` stops it. `X` on the issue's detail stops it too (the footer says
+`X stop <recipe>`). Nothing is answered from the board.
 
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
 with its description. A recipe whose inputs all have a default and are choices, numbers or

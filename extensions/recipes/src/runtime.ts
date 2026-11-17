@@ -13,11 +13,6 @@ export type Runtime = {
 	start(start: Runtime.Start): Promise<Result<string>>;
 	get(session: string): Promise<Result<Runs.State>>;
 	stop(session: string): Promise<Result<void>>;
-	/**
-	 * The session the runtime holds for run `run`, live or finished, or undefined when it has none.
-	 * Recovers a run recorded as starting whose start was interrupted before its session was written.
-	 */
-	find?(run: string): Promise<Result<string | undefined>>;
 	/** The session's screen. */
 	read?(session: string): Promise<Result<string>>;
 	/** Types `text` into the session. */

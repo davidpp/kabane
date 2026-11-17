@@ -15,8 +15,8 @@ import type {
 	StopAction,
 } from "@cabane/extension";
 import { err, ok } from "./result";
+import { shortIdOf } from "./run-command";
 import { Runs } from "./runs";
-import { reconcile } from "./runs-command";
 import type { Runtime } from "./runtime";
 
 export namespace RecipeActivity {
@@ -46,17 +46,10 @@ export namespace RecipeActivity {
 
 	const attach = (id: string): string => `kabane runs attach ${id}`;
 
-	/** A run with no session: still starting, or ended by a reconcile that found no terminal. */
-	const starting = (run: Runs.Run): string =>
-		run.state === "ended"
-			? `never started in ${run.runtime}; it is ended`
-			: "is still starting";
-
-	/** Whether this machine can act on the run's terminal: its own, started, and still there. */
+	/** Whether this machine may act on the run: its own, not yet ended. One with no terminal yet
+	 * counts; the runtime answers a verb on it. */
 	const reachable = (run: Runs.Run, here: string): boolean =>
-		run.machine === here &&
-		run.session !== Runs.STARTING &&
-		run.state !== "ended";
+		run.machine === here && run.state !== "ended";
 
 	export const card = (
 		{ run, shortId }: Targeted,
@@ -115,19 +108,16 @@ export namespace RecipeActivity {
 	}: Deps): ActivitySource => {
 		const shortIds = new Map<string, string>();
 
-		const shortIdOf = async (id: string): Promise<string> => {
-			const known = shortIds.get(id);
-			if (known !== undefined) return known;
-			const task = await host.record.get({ id });
-			const shortId = task.ok && task.value ? (task.value.shortId ?? id) : id;
-			shortIds.set(id, shortId);
-			return shortId;
+		const shortId = async (id: string): Promise<string> => {
+			const known = shortIds.get(id) ?? (await shortIdOf(host, id));
+			shortIds.set(id, known);
+			return known;
 		};
 
 		// Without the runtime nothing can be read, so the recorded states stand.
 		const current = (runs: Runs.Run[]): Promise<Result<Runs.Run[]>> =>
 			runtime.missing() === undefined
-				? reconcile(host, runtime, runs, actor)
+				? Runs.reconcile(host, runtime, runs, actor)
 				: Promise.resolve(ok(runs));
 
 		/** The run `id` of the board's project, as its runtime reports it now. */
@@ -145,7 +135,7 @@ export namespace RecipeActivity {
 
 		const targeted = async (run: Runs.Run): Promise<Targeted> => ({
 			run,
-			shortId: run.target ? await shortIdOf(run.target.id) : run.id,
+			shortId: run.target ? await shortId(run.target.id) : run.id,
 		});
 
 		return {
@@ -179,7 +169,7 @@ export namespace RecipeActivity {
 					return err(
 						new Error(
 							run.value.machine === hostname()
-								? `run ${id} ${run.value.session === Runs.STARTING ? starting(run.value) : `is ${run.value.state}`}: nothing to stop`
+								? `run ${id} is ${run.value.state}: nothing to stop`
 								: `run ${id} runs on ${run.value.machine}: stop it there`,
 						),
 					);
@@ -189,13 +179,8 @@ export namespace RecipeActivity {
 							`run ${id} runs in ${run.value.runtime}, which this kabane does not have`,
 						),
 					);
-				const stopped = await runtime.stop(run.value.session);
-				if (!stopped.ok) return stopped;
-				const now = await current([run.value]);
-				if (!now.ok) return now;
-				return ok(
-					`stopped run ${id}; it is ${now.value[0]?.state ?? run.value.state}`,
-				);
+				const state = await Runs.stop(host, runtime, run.value, actor);
+				return state.ok ? ok(`stopped run ${id}; it is ${state.value}`) : state;
 			},
 		};
 	};

@@ -307,56 +307,21 @@ test("a run in a runtime this kabane lacks keeps its recorded state, and its ver
 		});
 });
 
-test("a run with no terminal yet is refused by every verb before hc is called", () => {
+test("every verb on a run with no terminal yet stops at the hc adapter", () => {
 	const { kabane, seed } = setup();
 	kabane(["runs"]);
 	seed("01M7JT0TFJB7MF38VYDWCG0FFF", { session: "" });
-	// Without hc on PATH a call that reached the runtime would fail naming hc instead.
-	const refused = (verb: string, to = verb) => ({
-		code: 1,
-		stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0FFF has no terminal yet: its start has not finished, so there is nothing to ${to}`,
-	});
-	for (const verb of ["stop", "read", "attach"])
-		expect(kabane(["runs", verb, "fff"], { path: NO_HC })).toMatchObject(
-			refused(verb, verb === "attach" ? "attach to" : verb),
-		);
-	expect(kabane(["runs", "send", "fff", "yes"], { path: NO_HC })).toMatchObject(
-		refused("send", "send to"),
-	);
-});
-
-// Looks the runs up through the real hc by a kabane.run label no terminal carries: hc lists none,
-// and nothing of the human's is touched. Skipped where hc is not installed.
-test.skipIf(Bun.which("hc") === null)(
-	"a run interrupted before its session was written ends when hc holds no terminal for it",
-	() => {
-		const { kabane, seed } = setup();
-		kabane(["runs"]);
-		seed("01M7JT0TFJB7MF38VYDWCG0GGG", { session: "" });
-		seed("01M7JT0TFJB7MF38VYDWCG0HHH", { session: "" });
-		seed("01M7JT0TFJB7MF38VYDWCG0JJJ", { session: "" });
-		expect(kabane(["runs", "stop", "ggg"])).toMatchObject({
-			code: 0,
-			stdout:
-				"Run 01M7JT0TFJB7MF38VYDWCG0GGG never started in hc; it is ended.",
-		});
-		expect(kabane(["runs", "read", "hhh"])).toMatchObject({
+	// Without hc on PATH a call that went on to hc would fail naming hc instead.
+	for (const args of [["stop"], ["read"], ["attach"], ["send", "yes"]]) {
+		const [verb, ...rest] = args;
+		expect(
+			kabane(["runs", verb ?? "", "fff", ...rest], { path: NO_HC }),
+		).toMatchObject({
 			code: 1,
-			stderr:
-				"Error: Run 01M7JT0TFJB7MF38VYDWCG0HHH never started in hc: there is no terminal to read",
+			stderr: "Error: This run has no terminal: its start never recorded one",
 		});
-		const all = JSON.parse(kabane(["runs", "--all", "--json"]).stdout).runs as {
-			id: string;
-			state: string;
-			session: string;
-		}[];
-		expect(all.map((r) => [r.id.slice(-3), r.state, r.session])).toEqual([
-			["JJJ", "ended", ""],
-			["HHH", "ended", ""],
-			["GGG", "ended", ""],
-		]);
-	},
-);
+	}
+});
 
 // Reads one terminal through the real hc, by a name no terminal has: hc answers not found and
 // nothing of the human's is touched. Skipped where hc is not installed.
