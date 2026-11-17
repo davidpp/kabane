@@ -112,6 +112,7 @@ export namespace Keymap {
 		| "decisionText"
 		| "transcript"
 		| "cardTab"
+		| "jobs"
 		| "copilot"
 		| "palette"
 		| "prompt"
@@ -264,6 +265,63 @@ export namespace Keymap {
 	};
 
 	export const CONTEXTS: Readonly<Record<ContextId, Context>> = {
+		// The Jobs tab: the selected job's own keys lead, then the way back to the tracker.
+		jobs: {
+			name: "jobs",
+			sheet: true,
+			bindings: [
+				{
+					key: "enter",
+					label: "open",
+					tier: "footer",
+					keys: ["return"],
+					when: selection,
+				},
+				{
+					key: "a",
+					label: "run now",
+					tier: "footer",
+					keys: ["a"],
+					when: selection,
+				},
+				{
+					key: "s",
+					label: "pause",
+					tier: "footer",
+					keys: ["s"],
+					when: selection,
+				},
+				{
+					key: "n",
+					label: "resume",
+					tier: "footer",
+					keys: ["n"],
+					when: selection,
+				},
+				{ key: "esc", label: "tracker", tier: "footer", keys: ["escape"] },
+				{
+					key: "j/k",
+					label: "move",
+					tier: "help",
+					keys: ["j", "k", "down", "up"],
+				},
+				{
+					key: "y",
+					label: "copy brief",
+					tier: "help",
+					keys: ["y"],
+					when: selection,
+				},
+				{
+					key: "x",
+					label: "cancel job",
+					tier: "help",
+					keys: ["x"],
+					when: selection,
+				},
+				{ key: "r", label: "refresh", tier: "help", keys: ["r"] },
+			],
+		},
 		board: {
 			name: "board",
 			sheet: true,

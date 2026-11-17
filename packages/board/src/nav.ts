@@ -18,6 +18,7 @@ import { BoardDecisions } from "./decisions";
 import { DetailCard } from "./detail-card";
 import { DetailModel } from "./detail-model";
 import { ElicitationForm } from "./elicitation-form";
+import { BoardJobs } from "./jobs";
 import type { Keymap } from "./keymap";
 import { Paging } from "./paging";
 import type {
@@ -67,6 +68,8 @@ export namespace BoardNav {
 	type BackEntry = { taskId: string; tab?: DetailModel.Tab };
 	type BoardView =
 		| { type: "board" }
+		// The Jobs tab's list (tabs.ts); `enter` opens a job's detail over it.
+		| { type: "jobs" }
 		| {
 				type: "detail";
 				taskId: string;
@@ -426,8 +429,10 @@ export namespace BoardNav {
 		| { type: "toggleExpand"; row: number }
 		| { type: "copy" }
 		| { type: "detailTab"; tab: DetailModel.Tab }
-		// The tab bar: a card's tab, or the tracker (null).
+		// The tab bar: a card's tab, the Jobs tab, or the tracker (null).
 		| { type: "tab"; id: string | null }
+		// A row of the Jobs tab, by its job's id.
+		| { type: "job"; id: string }
 		// The pinned banner's `index`th answer.
 		| { type: "answer"; index: number }
 		// A lane chip on a card's tab (0 is every lane).
@@ -457,7 +462,7 @@ export namespace BoardNav {
 
 	const NONE: Effect = { type: "none" };
 	const SEARCH_OFF: SearchState = { mode: "off" };
-	// No job: a job is a standing request a schedule runs, listed by its own command, not the board.
+	// No job: a job is a standing request a schedule runs, listed on its own tab (jobs.ts).
 	const KIND_CYCLE: readonly KindFilter[] = ["all", "issue", "task"];
 	const STATUS_CYCLE = [
 		"open",
@@ -1314,7 +1319,8 @@ export namespace BoardNav {
 				for (const child of children) if (child.id === id) return child;
 			}
 		}
-		return undefined;
+		// A job is on its own tab, not in a section.
+		return state.tabs.jobs.list.find((job) => job.task.id === id)?.task;
 	};
 
 	// After any change that can hide the selected row (a collapse, a reload that dropped the task),
@@ -1870,9 +1876,60 @@ export namespace BoardNav {
 						CardTab.reduceKey(state, tabs.active, key));
 			return own ?? reduceEventsKey(state, key);
 		}
+		if (view.type === "jobs") return reduceJobsKey(state, key);
 		return view.type === "detail"
 			? reduceDetailKey(state, key)
 			: reduceBoardKey(state, key);
+	};
+
+	const withJobs = (
+		state: BoardState,
+		jobs: BoardJobs.Jobs,
+	): { state: BoardState; effect: Effect } => ({
+		state: { ...state, tabs: { ...state.tabs, jobs } },
+		effect: NONE,
+	});
+
+	// The Jobs tab: j/k move, `enter` opens the job's detail, `s` pauses it and `n` resumes it (its
+	// item's state), `a` offers what the host can start on it (run now), and the other keys for the
+	// task in hand act on it as on a tracker row. `esc`/`q` go to the tracker, as on a card's tab.
+	const reduceJobsKey = (
+		state: BoardState,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } => {
+		if (isChord(key)) return { state, effect: NONE };
+		const { jobs } = state.tabs;
+		switch (key.name) {
+			case "j":
+			case "down":
+				return withJobs(state, BoardJobs.move(jobs, 1));
+			case "k":
+			case "up":
+				return withJobs(state, BoardJobs.move(jobs, -1));
+			case "escape":
+			case "q":
+				return BoardTabs.toTracker(state);
+			case "r":
+				return { state, effect: { type: "reload" } };
+		}
+		const task = BoardJobs.selected(jobs)?.task;
+		if (!task) return { state, effect: NONE };
+		switch (key.name) {
+			case "return":
+			case "enter":
+				return {
+					state: { ...state, view: { type: "detail", taskId: task.id } },
+					effect: NONE,
+				};
+			case "s":
+				return jumpState(state, task, "someday", "paused");
+			case "n":
+				return jumpState(state, task, "next", "resumed");
+			default:
+				return (
+					reduceInHandKey(state, task.id, task, key) ?? { state, effect: NONE }
+				);
+		}
 	};
 
 	// ctrl-z: pop the most recent entry and emit its reverse patch as an applyUndo effect. Empty stack
@@ -2005,6 +2062,7 @@ export namespace BoardNav {
 			return state.tabs.active === null ? "transcript" : "cardTab";
 		if (state.view.type === "detail")
 			return BoardDecisions.typing(state) ? "decisionText" : "detail";
+		if (state.view.type === "jobs") return "jobs";
 		return state.search.mode === "committed" ? "searchResults" : "board";
 	};
 
@@ -2032,10 +2090,15 @@ export namespace BoardNav {
 		const inHand =
 			state.view.type === "detail"
 				? state.view.taskId
-				: rowOf(visibleRows(state), state.selectedId)?.task.id;
+				: state.view.type === "jobs"
+					? (state.tabs.jobs.selectedId ?? undefined)
+					: rowOf(visibleRows(state), state.selectedId)?.task.id;
 		const card = CardTab.situation(state);
 		return {
-			selection: rowOf(visibleRows(state), state.selectedId) !== undefined,
+			selection:
+				state.view.type === "jobs"
+					? BoardJobs.selected(state.tabs.jobs) !== undefined
+					: rowOf(visibleRows(state), state.selectedId) !== undefined,
 			linked: inHand !== undefined && facts.linked.has(inHand),
 			events: facts.events,
 			lifted: facts.lifted ?? [],
@@ -2217,6 +2280,12 @@ export namespace BoardNav {
 	// detail view is open (those handlers unmount with the board); `copy` is valid in both views. A
 	// modal (dispatch, help, settings) answers only its own clicks (clickModal). The copilot is not a
 	// modal: a click lands on the board, so it brings focus along with it.
+	// The clicks the tab bar's module answers: a tab, an answer on the question in hand, a job's row.
+	const isTabClick = (
+		action: MouseAction,
+	): action is Extract<MouseAction, { type: "tab" | "answer" | "job" }> =>
+		action.type === "tab" || action.type === "answer" || action.type === "job";
+
 	export const reduceMouse = (
 		incoming: BoardState,
 		action: MouseAction,
@@ -2238,8 +2307,7 @@ export namespace BoardNav {
 			return state.view.type === "detail"
 				? withDetailTab(state, action.tab)
 				: { state, effect: NONE };
-		if (action.type === "tab" || action.type === "answer")
-			return BoardTabs.reduceMouse(state, action);
+		if (isTabClick(action)) return BoardTabs.reduceMouse(state, action);
 		if (action.type === "lane") return CardTab.reduceLane(state, action.index);
 		// A hint the decision hands on goes where its key would: `esc back` to the view's `esc`.
 		if (action.type === "decisionKey")
@@ -2320,7 +2388,16 @@ export namespace BoardNav {
 		const back = state.view.back ?? [];
 		const previous = back.at(-1);
 		if (!previous)
-			return { state: { ...state, view: { type: "board" } }, effect: NONE };
+			return {
+				state: {
+					...state,
+					// A job's detail goes back to the Jobs tab it was opened on.
+					view: {
+						type: state.tabs.active === BoardTabs.JOBS ? "jobs" : "board",
+					},
+				},
+				effect: NONE,
+			};
 		const rest = back.slice(0, -1);
 		return {
 			state: {

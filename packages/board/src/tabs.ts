@@ -1,8 +1,9 @@
 // The tab bar and the attention queue, as plain functions over the board's state, beside the rest of
 // the key routing in nav.ts rather than inside it.
 //
-// The tracker is always the first tab. Every other tab is a host card that asked for one
-// (`ActivityCard.tab`), in the order it appeared; a finished card keeps its tab until `w` closes it,
+// The tracker is always the first tab. The Jobs tab follows it while this device has an open job
+// (jobs.ts). Every other tab is a host card that asked for one (`ActivityCard.tab`), in the order it
+// appeared; a finished card keeps its tab until `w` closes it,
 // and a closed one does not come back this session. While a card's tab is on screen the tracker's
 // own view is kept aside, so returning to it lands where the human left.
 //
@@ -13,6 +14,7 @@
 import { type ActivityCard, type CardAction } from "@cabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
+import { BoardJobs } from "./jobs";
 import type { BoardNav } from "./nav";
 import { isInFlight } from "./ports";
 import { BoardPrompt } from "./prompt";
@@ -66,7 +68,12 @@ export namespace BoardTabs {
 		picked: ReadonlyMap<string, readonly number[]>;
 		// Each card tab's own reading state, by card id.
 		views: ReadonlyMap<string, CardView>;
+		// The Jobs tab's rows; it is in the bar while there is one.
+		jobs: BoardJobs.Jobs;
 	};
+
+	/** The Jobs tab's id in `active`, which no card id takes: a host's ids carry its name first. */
+	export const JOBS = "@jobs";
 
 	/**
 	 * A question pinned over its task's detail view. `question` is a snapshot, so the banner can
@@ -89,6 +96,7 @@ export namespace BoardTabs {
 		answered: new Map(),
 		picked: new Map(),
 		views: new Map(),
+		jobs: BoardJobs.NONE,
 	};
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
@@ -204,7 +212,9 @@ export namespace BoardTabs {
 		};
 		if (fingerprint(next) === fingerprint(tabs)) return state;
 		const moved = { ...state, tabs: next };
-		return next.active !== null && !next.open.includes(next.active)
+		return next.active !== null &&
+			next.active !== JOBS &&
+			!next.open.includes(next.active)
 			? show(moved, null)
 			: moved;
 	};
@@ -234,6 +244,35 @@ export namespace BoardTabs {
 				}
 			: view;
 
+	/** Every tab in bar order: the tracker (null), the Jobs tab while it has rows, then the cards. */
+	export const order = (tabs: Tabs): (string | null)[] => [
+		null,
+		...(tabs.jobs.list.length > 0 ? [JOBS] : []),
+		...tabs.open,
+	];
+
+	/**
+	 * The poll's jobs, into the Jobs tab: it appears with the first job and goes with the last, the
+	 * tracker coming back if it was on screen. The same state when nothing moved.
+	 */
+	export const withJobs = (
+		state: State,
+		list: readonly BoardJobs.Job[],
+	): State => {
+		const jobs = BoardJobs.withList(state.tabs.jobs, list);
+		if (jobs === state.tabs.jobs) return state;
+		const moved = withTabs(state, { jobs });
+		return jobs.list.length === 0 && state.tabs.active === JOBS
+			? show(moved, null)
+			: moved;
+	};
+
+	/** `esc` on the Jobs tab: the tracker, as on a card's tab. */
+	export const toTracker = (state: State): Step => ({
+		state: show(state, null),
+		effect: NOTHING,
+	});
+
 	/** Put tab `id` on screen (null is the tracker), keeping the tracker's view for its return. */
 	const show = (state: State, id: string | null): State => {
 		const { tabs } = state;
@@ -246,6 +285,13 @@ export namespace BoardTabs {
 				view: tracker ?? { type: "board" },
 				tabs: { ...tabs, active: null, tracker: undefined },
 			};
+		if (id === JOBS)
+			return {
+				...state,
+				focus: "board",
+				view: { type: "jobs" },
+				tabs: { ...tabs, active: id, tracker },
+			};
 		return {
 			...state,
 			focus: "board",
@@ -256,7 +302,7 @@ export namespace BoardTabs {
 
 	// `{` `}`: the previous or next tab, the tracker included, wrapping.
 	const step = (state: State, delta: 1 | -1): Step => {
-		const all = [null, ...state.tabs.open];
+		const all = order(state.tabs);
 		if (all.length === 1) return notice(state, "no other tabs");
 		const at = all.indexOf(state.tabs.active);
 		const next = all[(at + delta + all.length) % all.length] ?? null;
@@ -565,13 +611,29 @@ export namespace BoardTabs {
 		return withTabs(pinned, { answered });
 	};
 
-	/** A click on a tab (null is the tracker), or on the `index`th answer of the question on screen. */
+	/**
+	 * A click on a tab (null is the tracker), on the `index`th answer of the question on screen, or on
+	 * a job's row: one selects it, and one on the selected row opens its detail, as `enter` does.
+	 */
 	export const reduceMouse = (
 		state: State,
 		action:
 			| { type: "tab"; id: string | null }
-			| { type: "answer"; index: number },
+			| { type: "answer"; index: number }
+			| { type: "job"; id: string },
 	): Step => {
+		if (action.type === "job") {
+			const { jobs } = state.tabs;
+			if (jobs.selectedId !== action.id)
+				return {
+					state: withTabs(state, { jobs: { ...jobs, selectedId: action.id } }),
+					effect: NOTHING,
+				};
+			return {
+				state: { ...state, view: { type: "detail", taskId: action.id } },
+				effect: NOTHING,
+			};
+		}
 		if (action.type === "answer") {
 			const { view, tabs } = state;
 			// A click on answer n is the digit n: one path, so the two can never disagree.
@@ -584,7 +646,7 @@ export namespace BoardTabs {
 						: null;
 			return answered ?? { state, effect: NOTHING };
 		}
-		const known = action.id === null || state.tabs.open.includes(action.id);
+		const known = order(state.tabs).includes(action.id);
 		return known && action.id !== state.tabs.active
 			? { state: show(state, action.id), effect: NOTHING }
 			: { state, effect: NOTHING };
@@ -632,7 +694,7 @@ export namespace BoardTabs {
 		return {
 			freeform: asked !== undefined && freeform(asked.question, asked.settled),
 			waiting: tabs.queue.length > 0,
-			tabs: tabs.open.length > 0,
+			tabs: order(tabs).length > 1,
 			closable:
 				tabs.active !== null && tabs.cards.get(tabs.active)?.finished === true,
 			back: banner?.cardId !== undefined && tabs.open.includes(banner.cardId),

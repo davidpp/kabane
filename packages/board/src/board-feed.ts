@@ -3,7 +3,7 @@
 // open later, a 5s poll that keeps it fresh, the reload a write asks for, and the FTS search merged
 // into the rows. Selection survives every reload by task id (BoardNav.withSections).
 import type { Task } from "@cabane/core";
-import type { ActivitySource } from "@cabane/extension";
+import type { ActivitySource, JobSource } from "@cabane/extension";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";
@@ -11,9 +11,11 @@ import type { BoardStore } from "./board-store";
 import { BoardChecklist } from "./checklist";
 import { BoardData } from "./data";
 import { BoardDecisions } from "./decisions";
+import type { BoardJobs } from "./jobs";
 import { BoardNav } from "./nav";
 import { type SetNotice, useOwnNotice } from "./notice";
 import type { Copilot, OpenRequests } from "./ports";
+import { BoardTabs } from "./tabs";
 
 const POLL_INTERVAL_MS = 5000;
 // Stable identity so a board with nothing linked doesn't re-render on it.
@@ -36,54 +38,112 @@ export type BoardFeed = {
 	reload: (s: BoardNav.BoardState) => Promise<void>;
 };
 
-// One read of what a load puts on the board: its rows, the host's activity, and the badges read
-// across the whole tracker (open decisions, checklist progress). A badge read that failed is
+// The Jobs tab's rows: every open job, with what the host's source says of each. A failed read of
+// the jobs is undefined, so the last-good rows stay; a failed or absent source leaves each job its
+// item alone, as a board without the extension shows it.
+const loadJobs = async (
+	basePath: string,
+	source: JobSource | undefined,
+): Promise<BoardJobs.Job[] | undefined> => {
+	const tasks = await BoardData.loadJobs(basePath);
+	if (!tasks.ok) return undefined;
+	const facts = source
+		? await source.facts(tasks.value.map((task) => task.id))
+		: undefined;
+	return tasks.value.map((task) => {
+		const described = facts?.ok ? facts.value[task.id] : undefined;
+		return described ? { task, facts: described } : { task };
+	});
+};
+
+// One read of what a load puts on the board: its rows, the host's activity, the jobs, and the badges
+// read across the whole tracker (open decisions, checklist progress). A badge read that failed is
 // undefined, so the last-good badges stay, as a failed activity read keeps the last-good map.
 const loadFeed = async (
 	basePath: string,
 	filters: BoardData.BoardFilters,
-	activitySource: ActivitySource,
+	{
+		activitySource,
+		jobSource,
+	}: { activitySource: ActivitySource; jobSource: JobSource | undefined },
 ) => {
-	const [rows, activity, counts, progress] = await Promise.all([
+	const [rows, activity, counts, progress, jobs] = await Promise.all([
 		BoardData.loadBoard(basePath, filters),
 		BoardActivity.loadActivity(activitySource),
 		BoardData.openQuestionCounts(basePath),
 		BoardData.checklistProgress(basePath),
+		loadJobs(basePath, jobSource),
 	]);
 	return {
 		rows,
 		activity,
 		counts: counts.ok ? counts.value : undefined,
 		progress: progress.ok ? progress.value : undefined,
+		jobs,
 	};
 };
+
+const withJobs = (
+	state: BoardNav.BoardState,
+	jobs: readonly BoardJobs.Job[] | undefined,
+): BoardNav.BoardState => (jobs ? BoardTabs.withJobs(state, jobs) : state);
+
+// A reload's rows, badges and jobs, merged into the state on screen.
+const withFeed = (
+	prev: BoardNav.BoardState,
+	sections: BoardData.BoardSection[],
+	feed: Awaited<ReturnType<typeof loadFeed>>,
+): BoardNav.BoardState =>
+	withJobs(
+		BoardChecklist.withProgress(
+			BoardNav.withSections(prev, sections, feed.counts),
+			feed.progress,
+		),
+		feed.jobs,
+	);
 
 // The first state over the first load's rows: the copilot's port in, the badges counted, and open on
 // the host's issue when it named one.
 const firstState = (
 	sections: BoardData.BoardSection[],
-	{ counts, progress }: Awaited<ReturnType<typeof loadFeed>>,
+	{ counts, progress, jobs }: Awaited<ReturnType<typeof loadFeed>>,
 	scoped: boolean,
 	copilot: Copilot | undefined,
 	open: { taskId: string } | undefined,
 ): BoardNav.BoardState => {
-	const first = BoardChecklist.withProgress(
-		BoardDecisions.withCounts(
-			BoardNav.withCopilotPort(BoardNav.init(sections, { scoped }), {
-				shortcuts: copilot?.shortcuts() ?? [],
-				actor: copilot?.actor ?? null,
-			}),
-			counts,
+	const first = withJobs(
+		BoardChecklist.withProgress(
+			BoardDecisions.withCounts(
+				BoardNav.withCopilotPort(BoardNav.init(sections, { scoped }), {
+					shortcuts: copilot?.shortcuts() ?? [],
+					actor: copilot?.actor ?? null,
+				}),
+				counts,
+			),
+			progress,
 		),
-		progress,
+		jobs,
 	);
 	return open ? BoardNav.openTask(first, open.taskId) : first;
+};
+
+// Why the first load failed, and a retry counter so the initial-load effect can be re-triggered by
+// `r` from the error screen.
+const useRetry = () => {
+	const [error, setError] = useState<string | null>(null);
+	const [retryCount, setRetryCount] = useState(0);
+	const retry = useCallback((): void => {
+		setError(null);
+		setRetryCount((c) => c + 1);
+	}, []);
+	return { error, setError, retryCount, retry };
 };
 
 export const useBoardFeed = ({
 	cwd,
 	basePath,
 	activitySource,
+	jobSource,
 	resolveScope,
 	copilot,
 	open,
@@ -94,6 +154,7 @@ export const useBoardFeed = ({
 	cwd: string;
 	basePath: string;
 	activitySource: ActivitySource;
+	jobSource: JobSource | undefined;
 	resolveScope: BoardData.ScopeResolver | undefined;
 	// Its shortcuts and actor go into the first state.
 	copilot: Copilot | undefined;
@@ -111,13 +172,7 @@ export const useBoardFeed = ({
 		BoardActivity.emptyActivity(),
 	);
 	const [linked, setLinked] = useState<ReadonlySet<string>>(EMPTY_LINKS);
-	const [error, setError] = useState<string | null>(null);
-	// A retry counter so the initial-load effect can be re-triggered by `r` from the error screen.
-	const [retryCount, setRetryCount] = useState(0);
-	const retry = useCallback((): void => {
-		setError(null);
-		setRetryCount((c) => c + 1);
-	}, []);
+	const { error, setError, retryCount, retry } = useRetry();
 
 	const filtersFor = useCallback(
 		(s: BoardNav.BoardState): BoardData.BoardFilters => ({
@@ -135,7 +190,8 @@ export const useBoardFeed = ({
 	// When a query is active, re-fire the FTS search after the reload so tier-2 results stay merged.
 	const reload = useCallback(
 		async (s: BoardNav.BoardState): Promise<void> => {
-			const feed = await loadFeed(basePath, filtersFor(s), activitySource);
+			const sources = { activitySource, jobSource };
+			const feed = await loadFeed(basePath, filtersFor(s), sources);
 			const result = feed.rows;
 			if (!result.ok) {
 				// Non-fatal: keep last-good state, surface as a transient notice.
@@ -144,12 +200,7 @@ export const useBoardFeed = ({
 			}
 			// A good load takes back its own failure's notice, never an act's error the reload follows.
 			loadError.clear();
-			update((prev) =>
-				BoardChecklist.withProgress(
-					BoardNav.withSections(prev, result.value, feed.counts),
-					feed.progress,
-				),
-			);
+			update((prev) => withFeed(prev, result.value, feed));
 			if (feed.activity.ok) setActivity(feed.activity.value);
 			const links = await BoardData.loadLinkedTaskIds(basePath, result.value);
 			if (links.ok) setLinked(links.value);
@@ -161,6 +212,7 @@ export const useBoardFeed = ({
 			filtersFor,
 			fireFts,
 			activitySource,
+			jobSource,
 			refreshDetail,
 			update,
 			loadError,
@@ -178,7 +230,10 @@ export const useBoardFeed = ({
 				...(detected ? { scopeUri: detected.scopeUri } : {}),
 				...(open ? { held: open.taskId } : {}),
 			};
-			const feed = await loadFeed(basePath, filters, activitySource);
+			const feed = await loadFeed(basePath, filters, {
+				activitySource,
+				jobSource,
+			});
 			const result = feed.rows;
 			if (cancelled) return;
 			setScope(detected);
@@ -200,10 +255,12 @@ export const useBoardFeed = ({
 		basePath,
 		resolveScope,
 		activitySource,
+		jobSource,
 		copilot,
 		open,
 		retryCount,
 		set,
+		setError,
 	]);
 
 	// 5s background poll — reloads with whatever filters are currently active.

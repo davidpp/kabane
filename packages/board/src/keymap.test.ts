@@ -258,6 +258,37 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			copilot: copilot({ turn: "running", hasLog: true }),
 		}),
 	],
+	// Two jobs, the second selected: `j` and `k` both have a row to go to.
+	jobs: [
+		state({
+			view: { type: "jobs" },
+			tabs: {
+				...TABS,
+				active: BoardTabs.JOBS,
+				jobs: {
+					list: [
+						{ task: task({ id: "j1", shortId: "JSEC-1", kind: "job" }) },
+						{ task: task({ id: "j2", shortId: "JSEC-2", kind: "job" }) },
+					],
+					selectedId: "j2",
+				},
+			},
+		}),
+		state({
+			view: { type: "jobs" },
+			tabs: {
+				...TABS,
+				active: BoardTabs.JOBS,
+				jobs: {
+					list: [
+						{ task: task({ id: "j1", shortId: "JSEC-1", kind: "job" }) },
+						{ task: task({ id: "j2", shortId: "JSEC-2", kind: "job" }) },
+					],
+					selectedId: "j1",
+				},
+			},
+		}),
+	],
 	cardTab: [
 		state({
 			view: { type: "events", cardId: LOOP, fromView: "board" },

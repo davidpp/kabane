@@ -1,8 +1,9 @@
 /** @jsxImportSource @opentui/react */
 // The tab bar across the top of every view, and the banner a session question leaves over the view
-// it is shown on. The tracker is always tab 1; every other tab is a host card that asked for one. A
-// tab's glyph is its card's state and its `?n` the questions its sessions are waiting on, so what is
-// blocked shows from any tab; the tracker's `?n` counts every question. Only the tab on screen
+// it is shown on. The tracker is always tab 1, and the Jobs tab follows it while there is a job;
+// every other tab is a host card that asked for one. A card tab's glyph is its card's state and its
+// `?n` the questions its sessions are waiting on, so what is blocked shows from any tab; the
+// tracker's `?n` counts every question, and the Jobs tab's the jobs whose run waits on the human. Only the tab on screen
 // animates: a running card on another tab is the still echo (spinner.ts).
 //
 // A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
@@ -12,6 +13,7 @@ import type { ActivityCard } from "@cabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
+import { BoardJobs } from "./jobs";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { BoardTabs } from "./tabs";
 import { type Theme, useTheme } from "./theme";
@@ -50,6 +52,7 @@ const glyphOf = (
 const tabParts = (
 	index: number,
 	card: ActivityCard | null,
+	name: string,
 	opts: {
 		onScreen: boolean;
 		waiting: number;
@@ -64,11 +67,7 @@ const tabParts = (
 		...(card
 			? [glyphOf(card, onScreen, opts.spinnerFrame, theme), { text: " ", fg }]
 			: []),
-		{
-			text: card ? (card.taskShortId ?? card.label) : "tracker",
-			fg,
-			bold: onScreen,
-		},
+		{ text: name, fg, bold: onScreen },
 		...(opts.waiting > 0
 			? [{ text: ` ?${opts.waiting}`, fg: theme.accent, bold: true }]
 			: []),
@@ -77,6 +76,8 @@ const tabParts = (
 };
 
 type Tab = {
+	// The card's id, JOBS, or null for the tracker.
+	id: string | null;
 	card: ActivityCard | null;
 	// Its place in the bar, which its number shows.
 	index: number;
@@ -125,31 +126,44 @@ export const TabBar = ({
 	// Every card the board holds; the bar picks the open tabs' out of them, in tab order.
 	cards: readonly ActivityCard[];
 	spinnerFrame: string;
-	// A click on a tab: its card's id, or null for the tracker.
+	// A click on a tab: its card's id, BoardTabs.JOBS, or null for the tracker.
 	onSelect?: (id: string | null) => void;
 }): ReactNode => {
 	const theme = useTheme();
 	const { width } = useTerminalDimensions();
-	const all: Tab[] = [
-		null,
-		// A tab whose card the poll has not brought yet is skipped.
-		...tabs.open.flatMap((id) => cards.find((card) => card.id === id) ?? []),
-	].map((card, index) => {
-		const onScreen = (card?.id ?? null) === tabs.active;
-		const waiting = BoardTabs.waitingOn(tabs, card?.id ?? null);
-		return {
-			card,
-			index,
-			onScreen,
-			waiting,
-			parts: tabParts(index + 1, card, {
+	const all: Tab[] = BoardTabs.order(tabs)
+		.flatMap((id) => {
+			if (id === null || id === BoardTabs.JOBS)
+				return [{ id, card: null as ActivityCard | null }];
+			// A tab whose card the poll has not brought yet is skipped.
+			const card = cards.find((one) => one.id === id);
+			return card ? [{ id, card }] : [];
+		})
+		.map(({ id, card }, index) => {
+			const onScreen = id === tabs.active;
+			const waiting =
+				id === BoardTabs.JOBS
+					? BoardJobs.waitingCount(tabs.jobs)
+					: BoardTabs.waitingOn(tabs, id);
+			const name = card
+				? (card.taskShortId ?? card.label)
+				: id === null
+					? "tracker"
+					: "jobs";
+			return {
+				id,
+				card,
+				index,
 				onScreen,
 				waiting,
-				spinnerFrame,
-				theme,
-			}),
-		};
-	});
+				parts: tabParts(index + 1, card, name, {
+					onScreen,
+					waiting,
+					spinnerFrame,
+					theme,
+				}),
+			};
+		});
 	const { shown, hidden } = fitting(all, width);
 	return (
 		<box
@@ -159,8 +173,7 @@ export const TabBar = ({
 				backgroundColor: theme.surface.raised,
 			}}
 		>
-			{shown.map(({ card, index, onScreen, parts }) => {
-				const id = card?.id ?? null;
+			{shown.map(({ id, index, onScreen, parts }) => {
 				const bg = onScreen ? theme.surface.selected : theme.surface.raised;
 				return (
 					// One cell per tab, so a click lands on the tab it means.

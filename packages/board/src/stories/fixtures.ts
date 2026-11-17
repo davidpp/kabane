@@ -12,6 +12,7 @@ import {
 import type {
 	ActivityCard,
 	HeaderPart,
+	JobFacts,
 	TriggerDescriptor,
 	SettingKind,
 } from "@cabane/extension";
@@ -22,6 +23,7 @@ import {
 	type QuestionView,
 } from "@cabane/questions";
 import type { BoardData } from "../data";
+import type { BoardJobs } from "../jobs";
 import type { BoardNav } from "../nav";
 import type { CopilotElicitation, SettingRow } from "../ports";
 import type { BoardTabs } from "../tabs";
@@ -653,4 +655,86 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 			[{ text: "budget.concurrency = 1 · shared files", tone: "muted" }],
 		],
 	};
+
+	/** The moment the jobs stories are read at, so "in 3h" stays put. */
+	export const JOBS_NOW = Date.parse("2026-11-17T06:00:00.000Z");
+
+	const jobFacts = (over: Partial<JobFacts>): JobFacts => ({
+		schedule: "0 9 * * *",
+		next: "2026-11-17T09:00:00.000Z",
+		recipe: "wiki-maintenance",
+		inputs: {},
+		harness: ["claude"],
+		folder: "/Users/david/Vaults/second-brain",
+		runs: [],
+		...over,
+	});
+
+	/**
+	 * Three jobs in two scopes: one whose run waits on the human, one paused, and one a source
+	 * never described (a board without the extension sees them all this way).
+	 */
+	export const JOBS: readonly BoardJobs.Job[] = [
+		{
+			task: task({
+				id: "01H000000000000000000000J1",
+				shortId: "JSEC-1",
+				title: "Keep the wiki current",
+				kind: "job",
+				scopeUri: "kabane://scope/second-brain",
+				description:
+					"Read the week's notes and fold what changed into the wiki.",
+			}),
+			facts: jobFacts({
+				inputs: { depth: "quick" },
+				runs: [
+					{
+						id: "01KA2Y6Q0F8V3M7C9H1T4B5N2D",
+						state: "waiting",
+						startedAt: "2026-11-17T05:00:00.000Z",
+						open: "kabane runs attach 01KA2Y6Q0F8V3M7C9H1T4B5N2D",
+					},
+					{
+						id: "01KA0G1E5W2R8P3X6J9K7L4M1C",
+						state: "ended",
+						startedAt: "2026-11-16T09:00:00.000Z",
+						open: "kabane runs attach 01KA0G1E5W2R8P3X6J9K7L4M1C",
+					},
+				],
+			}),
+		},
+		{
+			task: task({
+				id: "01H000000000000000000000J2",
+				shortId: "JSEC-2",
+				title: "Watch the vertical for new launches",
+				kind: "job",
+				state: "someday",
+				scopeUri: "kabane://scope/second-brain",
+			}),
+			facts: jobFacts({
+				schedule: "30 7 * * 1-5",
+				next: "2026-11-18T07:30:00.000Z",
+				recipe: "vertical-monitor",
+				harness: ["codex"],
+				runs: [
+					{
+						id: "01KA1H2F6X3S9Q4Y7K0L8M5N2E",
+						state: "idle",
+						startedAt: "2026-11-16T07:30:00.000Z",
+						open: "kabane runs attach 01KA1H2F6X3S9Q4Y7K0L8M5N2E",
+					},
+				],
+			}),
+		},
+		{
+			task: task({
+				id: "01H000000000000000000000J3",
+				shortId: "JCAB-9",
+				title: "Sweep stale branches",
+				kind: "job",
+				scopeUri: "kabane://scope/kabane",
+			}),
+		},
+	];
 }

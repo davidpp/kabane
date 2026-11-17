@@ -83,7 +83,8 @@ closes them all; a click still opens or closes one row against it.
 
 #### Tabs and the questions waiting on you
 
-The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then
+The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then,
+while the device has an open job (`kind: job`), the Jobs tab (below); then
 one tab per card with `tab: true`, a new one opening at the end, several at once oldest first by
 `startedAt`, labelled with the card's state glyph
 and its `taskShortId` (else its `label`). The tab is the card's event log. A finished card keeps its
@@ -180,6 +181,23 @@ what it is for (`message → JREP-2`), with `input` as its placeholder. While it
 the keyboard: `enter` sends to `act` with the text, `⇧enter`/`ctrl+j` make a newline, paste works,
 `up` on an empty buffer recalls what was sent from it before, `tab` aims it at another lane when it
 has several, `esc` drops it, and a click on the board closes it.
+
+#### The Jobs tab
+
+The Jobs tab lists every open job on the device, whatever the board's scope, in one section per
+scope, and is in the bar only while there is one. A host's optional `JobSource` (`deps.jobs`,
+`BoardPorts.jobs` for an extension) gives each job's facts, the `JobFacts` of
+`@cabane/extension`: schedule, next fire, recipe, inputs, harness, folder and newest runs, each
+with its state and the command that opens it. A row leads with its newest run's state; a
+`waiting` run reads `? waiting` in the accent, and the tab's `?n` counts those jobs. A section is
+named after its jobs' folder when the source gives one, else the scope's id. Without a source a
+row is the job's id, title and whether it is paused.
+
+`enter` opens the job's detail view, which is an issue's (request, comments, log) with the
+`JobPanel` under its header; `esc` comes back to the tab. `s` pauses the job (`someday`), `n`
+resumes it (`next`), and `a` opens the dispatcher on it, where a host offers what it can start
+on a job (the recipes extension's `run now`). `esc` or `q` on the list goes to the tracker. A
+click selects a row, and a click on the selected row opens it.
 
 #### Lanes on a card's tab
 

@@ -158,8 +158,8 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --all` says which of the two it is |
 
 Every run in flight (`live`, `running` or `waiting`) is listed, and the newest finished ones (`idle` or
-`ended`) up to ten runs in all. A run with no target, or a job's run, is not on the board: `kabane runs` lists
-it.
+`ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists
+it. A job's run is on the board's Jobs tab, under its job (below).
 
 A run's card has no tab: the board does not show the terminal. To see or answer the session,
 run `kabane runs attach <id>`, which opens it in hc; `kabane runs read <id>` prints its screen
@@ -224,6 +224,27 @@ job` command run inside a project records it. A job whose project has no folder 
 skipped with a line that says to run `kabane job list` inside it. Jobs sync with your other
 items; the folders do not, so each machine that ticks needs one `kabane job` command in each
 project.
+
+### Jobs on the board
+
+While this device has a job, the board has a Jobs tab after the tracker (tab 2; `{` and `}`
+walk to it, or click it). It lists the jobs of every project on this device, not only the
+board's, one section per project named after its folder. Each row shows the state of the
+job's latest run, its id and title, then as much as fits of: `? waiting` when that run waits on
+you, `paused`, when it fires next, its schedule, its recipe and its harness. A waiting run is
+in the accent color, and the tab counts them (`jobs ?1`), so you see from any tab that a job
+needs you.
+
+| Key | On the Jobs tab |
+|---|---|
+| `enter` | the job's detail: its request and comments as an issue's, with its schedule, next fire, recipe, inputs, harness, folder and latest runs under the header |
+| `a` | `run now`, which fires it as `kabane job run` does, in its own project's folder |
+| `s`, `n` | pause it (`someday`) and resume it (`next`) |
+| `esc` | back to the tracker |
+
+Each run in the detail shows its state, when it started and `kabane runs attach <id>`, which
+opens its session in hc; the board does not show the session. A board without the recipes
+extension still lists the jobs, with only their id, title, project and whether they are paused.
 
 ### Tick on a schedule
 

@@ -30,6 +30,8 @@ import { DetailModel } from "./detail-model";
 import type { Fresh } from "./detail-records";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
+import { BoardJobs } from "./jobs";
+import { JobPanel, JobsView } from "./jobs-view";
 import type { Keymap } from "./keymap";
 import { type LiftedReader, LiftedReaderSheet } from "./lifted-reader";
 import { BoardNav } from "./nav";
@@ -88,10 +90,15 @@ export const useScreenRefs = (
 	const prompt = useRef<TextareaRenderable | null>(null);
 
 	// Whenever selection changes (j/k, mouse), scroll the minimum distance to reveal it. Each row box
-	// carries id `row-<taskId>`, which scrollChildIntoView resolves.
-	const selectedId = state?.view.type === "board" ? state.selectedId : null;
+	// carries id `row-<taskId>` (a job's `job-<taskId>`), which scrollChildIntoView resolves.
+	const selectedId =
+		state?.view.type === "board"
+			? `row-${state.selectedId}`
+			: state?.view.type === "jobs"
+				? `job-${state.tabs.jobs.selectedId}`
+				: null;
 	useEffect(() => {
-		if (selectedId) list.current?.scrollChildIntoView(`row-${selectedId}`);
+		if (selectedId) list.current?.scrollChildIntoView(selectedId);
 	}, [selectedId]);
 
 	// Each press on a checklist item brings its row into view, so `space` on one scrolled off by
@@ -222,6 +229,8 @@ export const Screen = (props: ScreenProps): ReactNode => {
 						<EventsScreen {...view} />
 					) : state.view.type === "detail" ? (
 						<DetailScreen {...view} />
+					) : state.view.type === "jobs" ? (
+						<JobsScreen {...view} />
 					) : (
 						<BoardScreen {...view} />
 					)}
@@ -432,6 +441,7 @@ const DetailScreen = ({
 	const { taskId, banner } = state.view;
 	const task = BoardNav.taskById(state, taskId);
 	const taskCards = BoardActivity.cardsForTask(activity, taskId, task?.shortId);
+	const job = state.tabs.jobs.list.find((one) => one.task.id === taskId);
 	return (
 		<>
 			<PinnedQuestion
@@ -464,6 +474,11 @@ const DetailScreen = ({
 				keys={keys}
 				onCopy={() => input.dispatchMouse({ type: "copy" })}
 				decision={<DecisionSlot state={state} input={input} />}
+				job={
+					job ? (
+						<JobPanel facts={job.facts} paused={BoardJobs.paused(job.task)} />
+					) : undefined
+				}
 				checklist={BoardChecklist.shown(state)}
 				onItem={(id) => input.dispatchMouse({ type: "checklistItem", id })}
 				onOpenTask={(id) =>
@@ -512,5 +527,24 @@ const BoardScreen = ({
 		pane={pane}
 		announcement={state.announcement}
 		onDismissAnnouncement={() => input.dispatchMouse({ type: "announcement" })}
+	/>
+);
+
+// The Jobs tab's list.
+const JobsScreen = ({
+	state,
+	notice,
+	refs,
+	input,
+	keys,
+	pane,
+}: ViewProps): ReactNode => (
+	<JobsView
+		jobs={state.tabs.jobs}
+		scrollRef={refs.list}
+		notice={notice}
+		keys={keys}
+		pane={pane}
+		onSelect={(id) => input.dispatchMouse({ type: "job", id })}
 	/>
 );
