@@ -50,6 +50,7 @@ import { settingsSchema } from "./run-command";
 import { Runs } from "./runs";
 import { runsCommand } from "./runs-command";
 import type { Runtime } from "./runtime";
+import { HcRuntime } from "./runtime-hc";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
 
@@ -300,6 +301,21 @@ describe("RecipeActivity", () => {
 		expect(card?.actions).toBeUndefined();
 		const again = await (source.act?.(one.id, "stop", {}) ?? ok(""));
 		expect(again.ok).toBe(false);
+	});
+
+	it("offers stop on a run with no terminal yet, and the hc adapter answers it", async () => {
+		const starting = run("01M7JT0TFJB7MF38VYDWCG0501", {
+			session: Runs.STARTING,
+			state: "live",
+		});
+		value(await Runs.insert(host, starting, "t"));
+		const source = sourceWith(HcRuntime.runtime(host.z));
+		const card = value(await (source.card?.(starting.id) ?? ok(null)));
+		expect(card?.actions?.map((action) => action.id)).toEqual(["stop"]);
+		const stopped = await (source.act?.(starting.id, "stop", {}) ?? ok(""));
+		expect(stopped.ok ? stopped.value : stopped.error.message).toBe(
+			"This run has no terminal: its start never recorded one",
+		);
 	});
 });
 

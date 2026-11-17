@@ -46,7 +46,8 @@ export namespace RecipeActivity {
 
 	const attach = (id: string): string => `kabane runs attach ${id}`;
 
-	/** Whether this machine can act on the run's terminal: its own, and still there. */
+	/** Whether this machine may act on the run: its own, not yet ended. One with no terminal yet
+	 * counts; the runtime answers a verb on it. */
 	const reachable = (run: Runs.Run, here: string): boolean =>
 		run.machine === here && run.state !== "ended";
 
