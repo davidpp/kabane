@@ -228,6 +228,22 @@ it("gives a recipe's run the preamble, then its skill by name, the target and ea
 	);
 });
 
+it("gives a recipe with its own prompt the preamble, then its body with the target and inputs filled in", () => {
+	const recipe = {
+		name: "wiki",
+		body: "Maintain {{target.shortId}} ({{target.title}}), starting with {{inputs.focus}}.",
+	};
+	const target = {
+		kind: "job",
+		id: "JOB1",
+		shortId: "JSEC-1",
+		title: "Wiki",
+	} as const;
+	expect(
+		promptOf("01RUN", recipe, { focus: "overviews" }, target).split("\n\n")[1],
+	).toBe("Maintain JSEC-1 (Wiki), starting with overviews.");
+});
+
 it("stores a job with no recipe and reads it back with none", async () => {
 	const home = mkdtempSync(join(tmpdir(), "recipes-jobs-"));
 	try {

@@ -84,9 +84,28 @@ describe("Recipe.parse", () => {
 		);
 	});
 
-	it("refuses a body, saying where the prompt goes", () => {
-		expect(message(parsed("---\ntarget: issue\n---\nResearch it.\n"))).toBe(
-			`${FILE}: a recipe has no body: the prompt belongs in the skill. Move it to .agents/skills/research/SKILL.md, with name: research and a description in its frontmatter; make .claude/skills/research a symlink to ../../.agents/skills/research so Claude Code finds it too; leave only the frontmatter here`,
+	it("takes a body with no skill as the recipe's own prompt, and looks for no skill", () => {
+		const text = `---\ntarget: issue\n---\n\nFix {{target.shortId}}.\n`;
+		const own = parsed(text, ".kabane/recipes/nowhere.md");
+		expect(own.ok && own.value).toMatchObject({
+			name: "nowhere",
+			target: "issue",
+			body: "Fix {{target.shortId}}.",
+		});
+		expect(own.ok && "skillFile" in own.value).toBe(false);
+		// A file with no frontmatter is all body.
+		const plain = parsed("Tidy the README.\n", ".kabane/recipes/tidy.md");
+		expect(plain.ok && plain.value).toMatchObject({
+			name: "tidy",
+			target: "none",
+			body: "Tidy the README.",
+		});
+		expect(plain.ok && "skill" in plain.value).toBe(false);
+	});
+
+	it("refuses a skill and a body together, saying to pick one", () => {
+		expect(message(parsed("---\nskill: tidy\n---\nResearch it.\n"))).toBe(
+			`${FILE}: a recipe has a skill or a body, not both: remove "skill: tidy" to make the body its prompt, or remove the body to use the skill`,
 		);
 	});
 
@@ -133,7 +152,14 @@ describe("Recipe.parse", () => {
 			'its default "c" is not one of its options (a, b)',
 		],
 		["---\nskill: ../x\n---\n", "skill: a skill's name is lowercase letters"],
-		["Research it.\n", "a recipe has no body"],
+		["---\nskill: tidy\n---\nGo.\n", "a skill or a body, not both"],
+		["Use {{inputs.nope}}\n", "{{inputs.nope}} names no declared input"],
+		["Fix {{target.id}}\n", '{{target.id}} needs "target: issue"'],
+		[
+			"---\ntarget: issue\n---\nFix {{target.url}}\n",
+			"{{target.url}}: a target has target.id, target.shortId, target.title",
+		],
+		["Hi {{name}}\n", "{{name}} is no placeholder"],
 	])("refuses %j, naming the file", (text, why) => {
 		const result = parsed(text);
 		expect(result.ok).toBe(false);
@@ -145,6 +171,28 @@ describe("Recipe.parse", () => {
 		expect(message(parsed("", ".kabane/recipes/Big Name.md"))).toContain(
 			"a recipe's file name is lowercase letters",
 		);
+	});
+});
+
+describe("Recipe.render", () => {
+	it("fills inputs and the target, and leaves an optional input with no value empty", () => {
+		const written = parsed(
+			`${RESEARCH}\nResearch {{target.shortId}} ({{target.title}}) at {{ inputs.depth }} depth, {{inputs.limit}} sources, verbose {{inputs.verbose}}.\n`,
+		);
+		if (!written.ok) throw written.error;
+		if (!("body" in written.value)) throw new Error("expected a body");
+		expect(
+			Recipe.render(
+				written.value,
+				{ depth: "quick", limit: 3 },
+				{
+					kind: "issue",
+					id: "01ABC",
+					shortId: "JCAB-7",
+					title: "A title",
+				},
+			),
+		).toBe("Research JCAB-7 (A title) at quick depth, 3 sources, verbose .");
 	});
 });
 
