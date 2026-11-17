@@ -11,6 +11,7 @@ import {
 	type RegistryInstall,
 	type UpdateHost,
 } from "../update-install";
+import { UpdateMain } from "../update-main";
 import { runUpdateProcess } from "../update-process";
 import {
 	compareVersions,
@@ -22,6 +23,7 @@ import {
 	versionCore,
 	withinVersionPolicy,
 } from "../update-version";
+import { mainBuild } from "../version";
 
 const MetadataSchema = z.object({
 	name: z.literal("kabane"),
@@ -412,10 +414,88 @@ const updateBinary = async (
 	);
 };
 
+/**
+ * A main build: the source's main against the stamped commit, and on update the clone that built
+ * it builds and installs main again over the running binary.
+ */
+const updateMain = async (
+	stamp: UpdateMain.Stamp,
+	host: Host,
+	check: boolean,
+): Promise<Outcome> => {
+	const moved = await UpdateMain.status(stamp, host.env);
+	if (!moved.ok)
+		return reply("error", `${moved.error} No update attempted.`, 1, {
+			channel: "main",
+		});
+	const details = {
+		channel: "main",
+		installedCommit: stamp.commit,
+		...(moved.value.kind === "level"
+			? {}
+			: { candidateCommit: moved.value.head }),
+		...(moved.value.kind === "behind"
+			? { commitsBehind: moved.value.commits }
+			: {}),
+	};
+	const said = UpdateMain.describe(stamp, moved.value);
+	if (moved.value.kind === "level") return reply("current", said, 0, details);
+	const { clone } = stamp.source;
+	const present = UpdateMain.cloneExists(stamp);
+	if (check)
+		return reply(
+			"candidate",
+			present
+				? `${said} kabane update builds main in ${clone} and installs it.`
+				: `${said} ${clone}, the clone that built it, is gone: run ${UpdateMain.COMMAND} in a kabane clone.`,
+			0,
+			details,
+		);
+	if (!present)
+		return reply(
+			"manual_only",
+			`${said} ${clone}, the clone that built it, is gone: run ${UpdateMain.COMMAND} in a kabane clone. Nothing was replaced.`,
+			1,
+			details,
+		);
+	const executable = trySync(() => realpathSync(host.bin));
+	if (!executable.ok)
+		return reply(
+			"unsupported",
+			`Cannot resolve the running executable ${host.bin}; run ${UpdateMain.COMMAND} in ${clone}. No update attempted.`,
+			1,
+			details,
+		);
+	// The build's own output is progress for the person, so it goes to stderr and stdout stays
+	// this command's reply.
+	const built = trySync(() =>
+		Bun.spawnSync(["bun", "scripts/main-build.ts", "--bin", executable.value], {
+			cwd: clone,
+			env: host.env,
+			stdio: ["ignore", 2, 2],
+		}),
+	);
+	if (!built.ok || built.value.exitCode !== 0)
+		return reply(
+			"error",
+			`${UpdateMain.COMMAND} in ${clone} failed${built.ok ? "" : " to start (is bun on PATH?)"}; its output above says where. It replaces the install only after every build succeeded.`,
+			1,
+			details,
+		);
+	return reply(
+		"updated",
+		`Built main in ${clone} and installed it at ${executable.value}. Restart running board/MCP sessions.`,
+		0,
+		{ ...details, restartRequired: true },
+	);
+};
+
 /** How the running kabane was started and where releases are read; tests pass their own. */
 export type Host = UpdateHost & {
 	/** A standalone binary from `bun build --compile`, which replaces itself. */
 	compiled: boolean;
+	/** The stamp of a main build (`version.ts`), which takes main rather than releases. */
+	mainBuild: UpdateMain.Stamp | undefined;
 	/** This machine's release target, when a binary is published for it. */
 	target: string | undefined;
 	source: UpdateBinary.Source;
@@ -436,6 +516,8 @@ export const runUpdate = async (
 			"Only --check is supported; choose other versions/channels manually.",
 			USAGE,
 		);
+	if (host.mainBuild)
+		return updateMain(host.mainBuild, host, args.flags.check === true);
 	if (host.compiled)
 		return updateBinary(host, runningVersion, args.flags.check === true);
 	const install = await inspectRegistryInstall(host);
@@ -482,7 +564,7 @@ export const runUpdate = async (
 export const update: Command = {
 	name: "update",
 	summary:
-		"check a candidate on the installed channel, or update a standalone binary or a verified Bun registry install",
+		"check a candidate on the installed channel, or update a standalone binary, a main build or a verified Bun registry install",
 	usage: USAGE,
 	standalone: true,
 	run: (args) =>
@@ -493,6 +575,7 @@ export const update: Command = {
 				bun: process.execPath,
 				env: process.env,
 				compiled: Self.compiled(),
+				mainBuild,
 				target: UpdateBinary.target(),
 				source: UpdateBinary.source(process.env),
 			},

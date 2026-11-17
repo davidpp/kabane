@@ -178,6 +178,7 @@ const update = (
 			bun: process.execPath,
 			env: { PATH: "/usr/bin:/bin", ...env },
 			compiled: true,
+			mainBuild: undefined,
 			target: TARGET,
 			source: {
 				registry: server.url.origin,

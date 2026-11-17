@@ -6,11 +6,15 @@
  * Bun's registry and proxy settings do not apply. Every failure says nothing: a notice is never
  * worth an error on screen. The hint is the install's own: `kabane update`, `mise up kabane`, or
  * a manual update where `kabane update` would refuse.
+ *
+ * A main build hears of main instead (update-main.ts): how many commits main has past its stamp,
+ * cached for an hour in `KABANE_HOME/update-check-main.json`, since main moves more often than
+ * releases do and reading it is one `git ls-remote` while it has not moved.
  */
 
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Announcer } from "@cabane/board";
 import { ok, type Result, tryCatch, trySync } from "@cabane/core";
 import { z } from "zod";
@@ -18,6 +22,7 @@ import { version } from "../package.json";
 import { Self } from "./self";
 import { UpdateBinary } from "./update-binary";
 import { inspectRegistryInstall } from "./update-install";
+import { UpdateMain } from "./update-main";
 import {
 	compareVersions,
 	type DistTags,
@@ -26,7 +31,7 @@ import {
 	onChannel,
 	withinVersionPolicy,
 } from "./update-version";
-import { bundled } from "./version";
+import { bundled, mainBuild } from "./version";
 
 export namespace UpdateNotice {
 	export const FILE = "update-check.json";
@@ -53,18 +58,22 @@ export namespace UpdateNotice {
 	};
 
 	// A check dated in the future is a clock that moved, so it is not trusted to be recent.
-	const fresh = (cache: Cache, now: number): boolean => {
+	const fresh = (
+		cache: { checkedAt: string },
+		now: number,
+		maxAgeMs = MAX_AGE_MS,
+	): boolean => {
 		const age = now - Date.parse(cache.checkedAt);
-		return age >= 0 && age < MAX_AGE_MS;
+		return age >= 0 && age < maxAgeMs;
 	};
 
 	// Through a temporary file, so a second board writing at the same moment never leaves half a file.
-	const writeCache = (home: string, cache: Cache): Promise<Result<void>> =>
+	const writeCache = (path: string, cache: unknown): Promise<Result<void>> =>
 		tryCatch(async () => {
-			await mkdir(home, { recursive: true });
-			const temporary = `${cachePath(home)}.${process.pid}.tmp`;
+			await mkdir(dirname(path), { recursive: true });
+			const temporary = `${path}.${process.pid}.tmp`;
 			await writeFile(temporary, `${JSON.stringify(cache, null, 2)}\n`);
-			await rename(temporary, cachePath(home));
+			await rename(temporary, path);
 		});
 
 	/** The release newer than `runningVersion` that its channel and version policy take, if any. */
@@ -106,7 +115,7 @@ export namespace UpdateNotice {
 		if (cached && fresh(cached, now)) return candidate(version, cached);
 		const fetched = await UpdateBinary.fetchTags(registry, version, timeoutMs);
 		if (!fetched.ok) return cached && candidate(version, cached);
-		await writeCache(home, {
+		await writeCache(cachePath(home), {
 			...fetched.value,
 			checkedAt: new Date(now).toISOString(),
 		});
@@ -161,6 +170,73 @@ export namespace UpdateNotice {
 	export const line = (release: string, from: Install): string =>
 		`kabane ${release} is out · ${HINTS[from]}`;
 
+	const MAIN_FILE = "update-check-main.json";
+	const MAIN_MAX_AGE_MS = 60 * 60 * 1000;
+
+	const MainCacheSchema = z.object({
+		/** The stamped commit the status was read for; another build reads again. */
+		commit: z.string(),
+		status: z.discriminatedUnion("kind", [
+			z.object({ kind: z.literal("level") }),
+			z.object({
+				kind: z.literal("behind"),
+				head: z.string(),
+				commits: z.number().int().positive(),
+			}),
+			z.object({ kind: z.literal("gone"), head: z.string() }),
+		]),
+		checkedAt: z.string().datetime(),
+	});
+
+	/**
+	 * Where main stands against a main build's stamp: from the cache while it is under an hour old
+	 * and was read for this stamp, else from the source and written back. A source that cannot be
+	 * read falls back on the cache for this stamp, else undefined.
+	 */
+	export const checkMain = async ({
+		home,
+		stamp,
+		now = Date.now(),
+		env = process.env,
+	}: {
+		home: string;
+		stamp: UpdateMain.Stamp;
+		now?: number;
+		env?: NodeJS.ProcessEnv;
+	}): Promise<UpdateMain.Status | undefined> => {
+		const path = join(home, MAIN_FILE);
+		const read = await tryCatch(async (): Promise<unknown> =>
+			JSON.parse(await readFile(path, "utf8")),
+		);
+		const parsed = read.ok ? MainCacheSchema.safeParse(read.value) : undefined;
+		const cached =
+			parsed?.success && parsed.data.commit === stamp.commit
+				? parsed.data
+				: undefined;
+		if (cached && fresh(cached, now, MAIN_MAX_AGE_MS)) return cached.status;
+		const moved = await UpdateMain.status(stamp, env);
+		if (!moved.ok) return cached?.status;
+		await writeCache(path, {
+			commit: stamp.commit,
+			status: moved.value,
+			checkedAt: new Date(now).toISOString(),
+		});
+		return moved.value;
+	};
+
+	/** The notice for a main build that main has moved past, with what rebuilds it. */
+	export const mainLine = (
+		moved: UpdateMain.Status,
+		cloneExists: boolean,
+	): string | null => {
+		if (moved.kind === "level") return null;
+		const said =
+			moved.kind === "behind"
+				? `main is ${moved.commits} commit${moved.commits === 1 ? "" : "s"} past this build`
+				: "main no longer has this build's commit";
+		return `${said} · ${cloneExists ? "run kabane update" : `run ${UpdateMain.COMMAND} in a kabane clone`}`;
+	};
+
 	/**
 	 * The board's announcer for this device. Only the published bundle hears of a release: a run
 	 * from source is ahead of the release its package.json names, and `kabane update` does not
@@ -170,6 +246,12 @@ export namespace UpdateNotice {
 	export const announcer = (home: string): Announcer => ({
 		announce: async () => {
 			if (!bundled) return ok(null);
+			if (mainBuild) {
+				const moved = await checkMain({ home, stamp: mainBuild });
+				return ok(
+					moved ? mainLine(moved, UpdateMain.cloneExists(mainBuild)) : null,
+				);
+			}
 			const release = await check({ home, version });
 			return ok(release === undefined ? null : line(release, await install()));
 		},
