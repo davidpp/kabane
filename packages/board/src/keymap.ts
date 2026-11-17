@@ -86,6 +86,8 @@ export namespace Keymap {
 		settingLayers?: boolean;
 		/** A save waits on its y/n. */
 		settingConfirming?: boolean;
+		/** The trigger form's field in hand is typed, so letters are its value's, not keys. */
+		formTyping?: boolean;
 	};
 
 	type Tier = "footer" | "help";
@@ -112,6 +114,7 @@ export namespace Keymap {
 		| "decisionText"
 		| "transcript"
 		| "cardTab"
+		| "jobs"
 		| "copilot"
 		| "palette"
 		| "prompt"
@@ -195,7 +198,7 @@ export namespace Keymap {
 		NEXT_QUESTION,
 		{
 			key: "{ }",
-			label: "previous · next tab",
+			label: "previous · next tab, or 1-9",
 			tier: "help",
 			keys: ["{", "}"],
 			when: (s) => s.tabs === true,
@@ -264,6 +267,63 @@ export namespace Keymap {
 	};
 
 	export const CONTEXTS: Readonly<Record<ContextId, Context>> = {
+		// The Jobs tab: the selected job's own keys lead, then the way back to the tracker.
+		jobs: {
+			name: "jobs",
+			sheet: true,
+			bindings: [
+				{
+					key: "enter",
+					label: "open",
+					tier: "footer",
+					keys: ["return"],
+					when: selection,
+				},
+				{
+					key: "a",
+					label: "run now",
+					tier: "footer",
+					keys: ["a"],
+					when: selection,
+				},
+				{
+					key: "s",
+					label: "pause",
+					tier: "footer",
+					keys: ["s"],
+					when: selection,
+				},
+				{
+					key: "n",
+					label: "resume",
+					tier: "footer",
+					keys: ["n"],
+					when: selection,
+				},
+				{ key: "esc", label: "tracker", tier: "footer", keys: ["escape"] },
+				{
+					key: "j/k",
+					label: "move",
+					tier: "help",
+					keys: ["j", "k", "down", "up"],
+				},
+				{
+					key: "y",
+					label: "copy brief",
+					tier: "help",
+					keys: ["y"],
+					when: selection,
+				},
+				{
+					key: "x",
+					label: "cancel job",
+					tier: "help",
+					keys: ["x"],
+					when: selection,
+				},
+				{ key: "r", label: "refresh", tier: "help", keys: ["r"] },
+			],
+		},
 		board: {
 			name: "board",
 			sheet: true,
@@ -693,12 +753,28 @@ export namespace Keymap {
 					label: "change",
 					tier: "footer",
 					keys: ["h", "l", "left", "right"],
+					when: (s) => s.formTyping !== true,
 				},
 				{
 					key: "j/k",
 					label: "field",
 					tier: "footer",
 					keys: ["j", "k", "down", "up"],
+					when: (s) => s.formTyping !== true,
+				},
+				{
+					key: "⌫",
+					label: "delete",
+					tier: "footer",
+					keys: ["backspace"],
+					when: (s) => s.formTyping === true,
+				},
+				{
+					key: "↑↓",
+					label: "field",
+					tier: "footer",
+					keys: ["down", "up"],
+					when: (s) => s.formTyping === true,
 				},
 				{ key: "esc", label: "back", tier: "footer", keys: ["escape"] },
 			],

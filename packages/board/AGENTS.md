@@ -2,7 +2,7 @@
 
 A client: the terminal kanban, in React over OpenTUI. It reads the record through core and the
 data modules (`src/data.ts`, `BoardData`) and learns everything else from ports a host hands to
-`startBoard(deps)` (`src/start.tsx`): `ActivitySource`, `Dispatcher`, `Copilot`,
+`startBoard(deps)` (`src/start.tsx`): `ActivitySource`, `Dispatcher`, `JobSource`, `Copilot`,
 `SettingsSource`, `Announcer`, `OpenRequests`, card headers and `resolveScope`. Each port has a
 no-op default, so the board runs with none. `README.md` describes every port and view; read the
 section for the one you change. `DESIGN.md` at the root holds the visual rules and the theme's
@@ -33,7 +33,9 @@ its files, and `systemPrompt` appends them after base kabane's text.
 
 Where things are drawn: `src/app.tsx` holds the state and wires the ports; `src/board.tsx` is
 the board view, one row per card; `src/detail.tsx` an issue's detail; `src/tab-bar.tsx` and
-`src/event-view.tsx` a card's tab and its events; `src/footer.tsx` the footer.
+`src/event-view.tsx` a card's tab and its events; `src/jobs.ts` and `src/jobs-view.tsx` the
+Jobs tab, whose rows live in `tabs.jobs` and whose detail is the tracker's with `JobPanel` in it;
+`src/footer.tsx` the footer.
 
 Read before writing: `src/ports.ts`, a small component with its test and story
 (`src/plan-block.tsx`, `src/plan-block.test.ts`, the `plan` story in `src/stories/index.tsx`),

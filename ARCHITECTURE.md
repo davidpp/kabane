@@ -190,7 +190,7 @@ produces them and are imported directly by their readers:
   `ActivityToolDetail`, `NoticeSeverity`, `ActivityEvent`, `ActivitySource`), the dispatch types
   (`TriggerInput`, `TriggerDescriptor`, `DispatchTarget`, `Dispatcher`), the panel types
   (`PanelTone`, `PanelPart`, `PanelLine`), the header types (`Header`, `HeaderView`,
-  `HeaderPart`), the settings field types `settings.ts` uses
+  `HeaderPart`), the job types (`JobRunState`, `JobRun`, `JobFacts`, `JobSource`), the settings field types `settings.ts` uses
   (`SettingValue`, `SettingKind`, `SettingField`), and `CopilotShortcut`, which an extension
   contributes (below). A constant an extension compares against, such as `STOP_ACTION`
   (`"stop"`), is the string literal type `StopAction` in the contract; the board and loop
@@ -511,7 +511,11 @@ type Extension = {
 
 - **`commands`, `settings`, `looks`** are defined in `packages/extension/contract.ts`. Command
   names follow the collision rule beside shortcuts below.
-- **`board`** keeps `activity` and `dispatcher` and takes headers as data (above).
+- **`board`** keeps `activity` and `dispatcher` and takes headers as data (above). `jobs` is a
+  `JobSource`: for the job ids the board lists from the tracker, every scope's, it gives each
+  one's schedule, next fire, recipe, inputs, harness, session mode, folder and recent runs as data, which the
+  board's Jobs tab draws. Without one the tab lists the jobs with their title, scope and state
+  only. Running a job now is a trigger its `dispatcher` offers on the job, not part of this port.
 - **`doctor`** uses `Doctor.Source["doctor"]` from `packages/extension/doctor.ts`: findings
   with a stable `id`, a severity of `auto`, `mention`,
   `suggest` or `route`, and an optional `fix` returning `Result<string>`. A check returns

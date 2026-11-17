@@ -45,6 +45,8 @@ import {
 import { z } from "zod";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
+import { RecipeJobs } from "./job-source";
+import { Jobs } from "./jobs";
 import { Kabane } from "./result";
 import { settingsSchema } from "./run-command";
 import { Runs } from "./runs";
@@ -74,7 +76,7 @@ const hostFor = (basePath: string): Host => ({
 	}),
 	store: createHostStore(
 		() => basePath,
-		() => ["recipes_runs"],
+		() => ["recipes_runs", "recipes_jobs", "recipes_roots"],
 		"recipes test",
 	),
 	scope: { detect: async () => ok(project), idOf: ScopeUri.getScopeId },
@@ -98,6 +100,7 @@ const scripted = () => {
 	const started: Runtime.Start[] = [];
 	const stopped: string[] = [];
 	const got: string[] = [];
+	const sent: { session: string; text: string }[] = [];
 	const runtime: Runtime = {
 		name: "hc",
 		missing: () => undefined,
@@ -116,14 +119,18 @@ const scripted = () => {
 			states.set(session, "ended");
 			return ok(undefined);
 		},
+		send: async (session, text) => {
+			sent.push({ session, text });
+			return ok(undefined);
+		},
 	};
-	return { runtime, states, started, stopped, got };
+	return { runtime, states, started, stopped, got, sent };
 };
 
 let issue: { id: string; shortId: string; title: string };
 
 beforeEach(async () => {
-	configureTestRuntime({ modules: [Runs.module()] });
+	configureTestRuntime({ modules: [Runs.module(), Jobs.module()] });
 	folder = realpathSync(mkdtempSync(join(tmpdir(), "recipes-board-")));
 	home = join(folder, "home");
 	const root = join(folder, "project");
@@ -349,7 +356,8 @@ inputs:
 Research {{target.shortId}} at {{inputs.depth}} depth in {{inputs.rounds}} rounds.
 `;
 
-const dispatcherWith = (runtime: Runtime) =>
+// `harness` is `recipes.harness` as a global setting; unset, the setting is absent.
+const dispatcherWith = (runtime: Runtime, harness?: string[]) =>
 	RecipeDispatcher.make({
 		host,
 		runtime,
@@ -358,12 +366,18 @@ const dispatcherWith = (runtime: Runtime) =>
 		ctx: {
 			cwd: project.root,
 			actor: "tester",
-			settings: Settings.port(async () => ok([])),
+			settings: Settings.port(async () =>
+				ok(
+					harness === undefined
+						? []
+						: [{ layer: "global", label: "test", value: { harness } }],
+				),
+			),
 		},
 	});
 
 describe("RecipeDispatcher", () => {
-	it("offers each recipe that targets an issue, its inputs one to one, and a broken one unsatisfiable", async () => {
+	it("offers each recipe that targets an issue, its harness then its inputs one to one, and a broken one unsatisfiable", async () => {
 		recipe("research", RESEARCH);
 		recipe("tidy", "---\ndescription: No target\n---\nTidy up.\n");
 		recipe(
@@ -379,15 +393,27 @@ describe("RecipeDispatcher", () => {
 		expect(
 			triggers.map(({ id, label, satisfiable }) => [id, label, satisfiable]),
 		).toEqual([
-			["recipe:ask", "ask", false],
+			["recipe:ask", "ask", true],
 			["recipe:research", "research", true],
 			["recipe:broken", "broken", false],
 			["recipe:odd:name", "odd:name", false],
 		]);
 		const [ask, research, broken] = triggers;
+		expect(Object.keys(research?.inputs ?? {})).toEqual([
+			"@harness",
+			"depth",
+			"rounds",
+		]);
 		expect(research).toMatchObject({
 			description: "Research an issue",
 			inputs: {
+				"@harness": {
+					type: "string",
+					required: true,
+					default: "claude",
+					label: "harness",
+					hint: "kabane's default; the prompt is added as its last word",
+				},
 				depth: {
 					type: "string",
 					options: ["quick", "medium", "thorough"],
@@ -397,9 +423,9 @@ describe("RecipeDispatcher", () => {
 				rounds: { type: "number", default: 2, required: false },
 			},
 		});
-		expect(ask?.hint).toBe(
-			`ask needs focus, which has no default: kabane run ask --target ${issue.shortId} --input focus=…`,
-		);
+		// A required text input is a row the human fills in, not a reason to refuse.
+		expect(ask?.inputs.focus).toEqual({ type: "string", required: true });
+		expect(ask?.hint).toBeUndefined();
 		expect(broken?.hint).toStartWith(
 			".kabane/recipes/broken.md: the frontmatter is not YAML",
 		);
@@ -434,12 +460,72 @@ describe("RecipeDispatcher", () => {
 			state: "live",
 		});
 		expect(notice).toBe(
-			`started run ${stored?.id} (research on ${issue.shortId}) · kabane runs attach ${stored?.id}`,
+			`started run ${stored?.id} (research on ${issue.shortId}) with claude  (kabane's default) · kabane runs attach ${stored?.id}`,
 		);
 		expect(hc.started[0]?.argv.at(-1)).toEndWith(
 			`Research ${issue.shortId} at thorough depth in 3 rounds.`,
 		);
 		expect(hc.started[0]?.argv.slice(0, -1)).toEqual(["claude"]);
+		expect(stored?.harness).toEqual(["claude"]);
+	});
+
+	it("shows the recipe's harness over the setting, and starts what the form shows, edited or not", async () => {
+		recipe(
+			"probe",
+			"---\ntarget: issue\nharness: [sh, -c, 'echo recipe']\ninputs:\n  topic:\n    required: true\n  depth:\n    type: number\n---\nProbe {{inputs.topic}} to {{inputs.depth}}.\n",
+		);
+		const hc = scripted();
+		const board = dispatcherWith(hc.runtime, ["sh", "-c", "echo setting"]);
+		const [probe] = value(await board.triggers(issue.id));
+		expect(probe?.inputs["@harness"]).toMatchObject({
+			default: "sh -c 'echo recipe'",
+			hint: "from the recipe; the prompt is added as its last word",
+		});
+		const target = { ...issue, brief: "" };
+		const shown = value(
+			await board.dispatch(
+				"recipe:probe",
+				target,
+				{ "@harness": "sh -c 'echo recipe'", topic: "auth", depth: "3" },
+				["topic", "depth"],
+			),
+		);
+		expect(shown).toContain("with sh -c 'echo recipe'  (from the recipe)");
+		expect(hc.started[0]?.argv.slice(0, -1)).toEqual([
+			"sh",
+			"-c",
+			"echo recipe",
+		]);
+		// A number typed as text arrives converted, as `--input` converts it.
+		expect(hc.started[0]?.argv.at(-1)).toEndWith("Probe auth to 3.");
+		const edited = value(
+			await board.dispatch(
+				"recipe:probe",
+				target,
+				{ "@harness": "sh -c 'echo edited'", topic: "auth", depth: "" },
+				["@harness", "topic"],
+			),
+		);
+		expect(edited).toContain("with sh -c 'echo edited'  (set at launch)");
+		expect(hc.started[1]?.argv.slice(0, -1)).toEqual([
+			"sh",
+			"-c",
+			"echo edited",
+		]);
+		const runs = value(await Runs.list(host, project.scopeUri));
+		expect(runs.map((run) => run.harness?.at(-1))).toEqual([
+			"echo edited",
+			"echo recipe",
+		]);
+		// A recipe that names no harness falls to the setting.
+		recipe("plain", "---\ntarget: issue\n---\nPlain.\n");
+		const plain = value(await board.triggers(issue.id)).find(
+			(t) => t.id === "recipe:plain",
+		);
+		expect(plain?.inputs["@harness"]).toMatchObject({
+			default: "sh -c 'echo setting'",
+			hint: "from recipes.harness; the prompt is added as its last word",
+		});
 	});
 });
 
@@ -471,5 +557,140 @@ describe("kabane runs send", () => {
 			`Sent to ${waiting.session}.`,
 		]);
 		expect(sends).toEqual(["hi there"]);
+	});
+});
+
+describe("RecipeJobs", () => {
+	// A job in another folder than the board's project, as JSEC-1 lives in the vault.
+	const vaultJob = async (session: Jobs.Session = "fresh") => {
+		const vault = join(folder, "vault");
+		mkdirSync(join(vault, ".kabane/recipes"), { recursive: true });
+		writeFileSync(
+			join(vault, ".kabane/recipes/tidy.md"),
+			"---\ndescription: Tidy\ninputs:\n  depth:\n    default: quick\n---\nTidy the vault, {{inputs.depth}}.\n",
+		);
+		const scopeUri = ScopeUri.format({ scopeId: "vault" });
+		value(await Jobs.setRoot(host, scopeUri, vault));
+		const task = value(
+			await Planner.addTask(home, {
+				title: "Keep the wiki tidy",
+				kind: "job",
+				scopeUri,
+				state: "next",
+			}),
+		);
+		value(
+			await Jobs.insert(
+				host,
+				{
+					taskId: task.id,
+					schedule: "0 9 * * *",
+					recipe: "tidy",
+					inputs: { depth: "quick" },
+					harness: ["sh", "-c", "true"],
+					session,
+					createdAt: "2026-11-16T08:00:00.000Z",
+				},
+				"tester",
+			),
+		);
+		return { task, vault, scopeUri };
+	};
+
+	it("offers run now on a job, and fires it in the job's own folder", async () => {
+		const { task, vault, scopeUri } = await vaultJob();
+		const hc = scripted();
+		const dispatcher = dispatcherWith(hc.runtime);
+		expect(
+			value(await dispatcher.triggers(task.id)).map(({ id, satisfiable }) => [
+				id,
+				satisfiable,
+			]),
+		).toEqual([["job:run", true]]);
+		const notice = value(
+			await dispatcher.dispatch("job:run", {
+				id: task.id,
+				shortId: task.shortId ?? task.id,
+				title: task.title,
+				brief: "",
+			}),
+		);
+		const [stored] = value(await Runs.list(host, scopeUri));
+		expect(stored).toMatchObject({
+			recipe: { name: "tidy" },
+			target: { kind: "job", id: task.id },
+			cwd: vault,
+		});
+		expect(notice).toContain(`started run ${stored?.id} (tidy)`);
+		expect(hc.started[0]?.argv.slice(0, 3)).toEqual(["sh", "-c", "true"]);
+	});
+
+	it("describes the jobs asked for: schedule, next fire, folder and runs with their attach command", async () => {
+		const { task, vault } = await vaultJob();
+		const hc = scripted();
+		value(
+			await dispatcherWith(hc.runtime).dispatch("job:run", {
+				id: task.id,
+				shortId: task.shortId ?? task.id,
+				title: task.title,
+				brief: "",
+			}),
+		);
+		const [session] = hc.states.keys();
+		if (session) hc.states.set(session, "waiting");
+		const facts = value(
+			await RecipeJobs.source({
+				host,
+				runtime: hc.runtime,
+				settings: settingsSchema(z),
+				actor: "tester",
+			}).facts([task.id, issue.id]),
+		);
+		expect(Object.keys(facts)).toEqual([task.id]);
+		const described = facts[task.id];
+		expect(described).toMatchObject({
+			schedule: "0 9 * * *",
+			recipe: "tidy",
+			inputs: { depth: "quick" },
+			harness: ["sh", "-c", "true"],
+			session: "fresh",
+			folder: vault,
+		});
+		// Fired just now, so it next fires at the schedule's first nine o'clock after this fire.
+		expect(new Date(described?.next ?? "").getHours()).toBe(9);
+		const [latest] = described?.runs ?? [];
+		expect(latest).toMatchObject({
+			state: "waiting",
+			open: `kabane runs attach ${latest?.id}`,
+		});
+	});
+
+	it("wakes a kept job's idle terminal with the prompt, and starts one once it has ended", async () => {
+		const { task, scopeUri } = await vaultJob("keep");
+		const hc = scripted();
+		const dispatcher = dispatcherWith(hc.runtime);
+		const fire = () =>
+			dispatcher.dispatch("job:run", {
+				id: task.id,
+				shortId: task.shortId ?? task.id,
+				title: task.title,
+				brief: "",
+			});
+		value(await fire());
+		const [first] = value(await Runs.list(host, scopeUri));
+		if (!first) throw new Error("the first fire recorded no run");
+		hc.states.set(first.session, "idle");
+		const woke = value(await fire());
+		expect(woke).toContain(`woke run ${first.id}`);
+		expect(hc.started).toHaveLength(1);
+		expect(hc.stopped).toEqual([]);
+		expect(hc.sent).toEqual([
+			{ session: first.session, text: hc.started[0]?.argv.at(-1) ?? "" },
+		]);
+		expect(value(await Runs.list(host, scopeUri))).toHaveLength(1);
+		hc.states.set(first.session, "ended");
+		expect(value(await fire())).toContain("started run");
+		expect(hc.started).toHaveLength(2);
+		expect(value(await Runs.list(host, scopeUri))).toHaveLength(2);
 	});
 });

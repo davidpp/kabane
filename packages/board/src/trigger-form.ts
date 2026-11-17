@@ -1,10 +1,12 @@
-// A trigger's settings, filled in on the board before it fires: the form `a` opens over a trigger
-// whose every input it can hold (`fillable`). Plain functions over the board's state, like the other
-// key routers, so the keys and the clicks are tested without a renderer.
+// A trigger's settings, filled in on the board before it fires: the form `a` opens over any trigger
+// with inputs (`fillable`). Plain functions over the board's state, like the other key routers, so
+// the keys and the clicks are tested without a renderer.
 //
-// The form holds an input that starts from a default and that `h/l` can move: through its options,
-// up and down for a number, on and off for a boolean. `j/k` walk the fields in the host's order,
-// `enter` fires the trigger with every value, and `esc` goes back to the picker with the trigger
+// `h/l` move an input that has somewhere to go: through its options, up and down for a number with
+// a default, on and off for a boolean with one. Every other input is typed: in hand, a printable
+// key adds to it, `backspace` takes the last character off, and `up/down` leave it, since `j/k`
+// are letters it takes. `j/k` walk the fields in the host's order, `enter` fires the trigger with
+// every value unless a required one is empty, and `esc` goes back to the picker with the trigger
 // still selected, one level per press like every other `esc` on the board.
 import type { TriggerDescriptor, TriggerInput } from "@cabane/extension";
 import { Grid } from "./grid";
@@ -26,18 +28,22 @@ export namespace TriggerForm {
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
 
-	/** An input the form can hold: it starts from a default, and `h/l` has somewhere to move it. */
-	const holds = (input: TriggerInput): boolean =>
-		input.default !== undefined &&
-		((input.options?.length ?? 0) > 0 ||
-			input.type === "number" ||
-			input.type === "boolean");
+	/** An input `h/l` has somewhere to move: options, or a number or boolean from a default. */
+	const steps = (input: TriggerInput): boolean =>
+		(input.options?.length ?? 0) > 0 ||
+		(input.default !== undefined &&
+			(input.type === "number" || input.type === "boolean"));
 
-	/** A trigger with inputs, every one of which the form can hold. */
-	export const fillable = (trigger: TriggerDescriptor): boolean => {
-		const inputs = Object.values(trigger.inputs);
-		return inputs.length > 0 && inputs.every(holds);
-	};
+	/** An input the human types: every one `h/l` cannot move. Its value is the text as typed. */
+	export const typed = (input: TriggerInput): boolean => !steps(input);
+
+	/** A trigger with inputs: the form holds every one, stepped or typed. */
+	export const fillable = (trigger: TriggerDescriptor): boolean =>
+		Object.keys(trigger.inputs).length > 0;
+
+	/** Where a field starts: its default, or an empty text for a typed one without. */
+	const initial = (input: TriggerInput): unknown =>
+		input.default ?? (typed(input) ? "" : undefined);
 
 	/** The form over `trigger`, on its first field, every value at its default. */
 	export const open = (trigger: TriggerDescriptor): Form => ({
@@ -46,15 +52,23 @@ export namespace TriggerForm {
 		values: Object.fromEntries(
 			Object.entries(trigger.inputs).map(([name, input]) => [
 				name,
-				input.default,
+				initial(input),
 			]),
 		),
 		edited: [],
 	});
 
 	/** Whether the human moved `name` off its default. */
-	export const changed = (form: Form, name: string): boolean =>
-		form.values[name] !== form.trigger.inputs[name]?.default;
+	export const changed = (form: Form, name: string): boolean => {
+		const input = form.trigger.inputs[name];
+		return input !== undefined && form.values[name] !== initial(input);
+	};
+
+	/** What the keys and the footer go by: whether the field in hand is typed. */
+	export const situation = (form: Form): { formTyping: boolean } => {
+		const input = inHand(form)?.input;
+		return { formTyping: input !== undefined && typed(input) };
+	};
 
 	/** What `step` moves through: a trigger's input, or a setting's field and looked-up steps. */
 	export type Steps = {
@@ -92,6 +106,16 @@ export namespace TriggerForm {
 
 	const names = (form: Form): string[] => Object.keys(form.trigger.inputs);
 
+	const inHand = (
+		form: Form,
+	): { name: string; input: TriggerInput } | undefined => {
+		const name = names(form)[form.field];
+		const input = name === undefined ? undefined : form.trigger.inputs[name];
+		return name === undefined || input === undefined
+			? undefined
+			: { name, input };
+	};
+
 	const focus = (state: State, form: Form, field: number): Step => {
 		const last = names(form).length - 1;
 		const next = Math.max(0, Math.min(last, field));
@@ -100,15 +124,13 @@ export namespace TriggerForm {
 			: { state: withForm(state, { ...form, field: next }), effect: NOTHING };
 	};
 
-	const change = (state: State, form: Form, by: 1 | -1): Step => {
-		const name = names(form)[form.field];
-		const input = name === undefined ? undefined : form.trigger.inputs[name];
-		if (name === undefined || input === undefined)
-			return { state, effect: NOTHING };
-		const values = {
-			...form.values,
-			[name]: step(input, form.values[name], by),
-		};
+	const set = (
+		state: State,
+		form: Form,
+		name: string,
+		value: unknown,
+	): Step => {
+		const values = { ...form.values, [name]: value };
 		const edited = form.edited.includes(name)
 			? form.edited
 			: [...form.edited, name];
@@ -118,10 +140,61 @@ export namespace TriggerForm {
 		};
 	};
 
-	/** `enter`: the picker closes and the trigger fires on the task with the form's values. */
+	const change = (state: State, form: Form, by: 1 | -1): Step => {
+		const field = inHand(form);
+		return field === undefined
+			? { state, effect: NOTHING }
+			: set(
+					state,
+					form,
+					field.name,
+					step(field.input, form.values[field.name], by),
+				);
+	};
+
+	/** A key on a typed field: a character added, the last one taken off, or undefined for neither. */
+	const type = (
+		state: State,
+		form: Form,
+		name: string,
+		key: BoardNav.KeyInput,
+	): Step | undefined => {
+		const text = String(form.values[name] ?? "");
+		if (key.name === "backspace")
+			return text === ""
+				? undefined
+				: set(state, form, name, text.slice(0, -1));
+		const char = Grid.printable(key);
+		return char === undefined ? undefined : set(state, form, name, text + char);
+	};
+
+	/**
+	 * `enter`: the picker closes and the trigger fires on the task with the form's values. A required
+	 * field left empty takes the focus instead, with a notice that names it.
+	 */
 	const fire = (state: State, form: Form): Step => {
 		const taskId = state.dispatch?.taskId;
 		if (taskId === undefined) return { state, effect: NOTHING };
+		const empty = names(form).findIndex((name) => {
+			const value = form.values[name];
+			return (
+				form.trigger.inputs[name]?.required === true &&
+				(value === undefined || value === "")
+			);
+		});
+		if (empty !== -1) {
+			const name = names(form)[empty] ?? "";
+			return {
+				state: withForm(state, { ...form, field: empty }),
+				effect: {
+					type: "notice",
+					notice: {
+						text: `${form.trigger.inputs[name]?.label ?? name} is required`,
+						tone: "error",
+					},
+				},
+			};
+		}
 		return {
 			state: { ...state, dispatch: null },
 			effect: {
@@ -140,30 +213,39 @@ export namespace TriggerForm {
 		form: Form,
 		key: BoardNav.KeyInput,
 	): Step => {
-		const move = Grid.moveBy(key);
-		if (move !== undefined) return focus(state, form, form.field + move);
-		const by = Grid.stepBy(key);
-		if (by !== undefined) return change(state, form, by);
 		switch (key.name) {
 			case "escape":
 				return { state: withForm(state, undefined), effect: NOTHING };
 			case "return":
 			case "enter":
 				return fire(state, form);
-			default:
-				return { state, effect: NOTHING };
 		}
+		const field = inHand(form);
+		if (field !== undefined && typed(field.input)) {
+			if (key.name === "up" || key.name === "down")
+				return focus(state, form, form.field + (key.name === "down" ? 1 : -1));
+			return type(state, form, field.name, key) ?? { state, effect: NOTHING };
+		}
+		const move = Grid.moveBy(key);
+		if (move !== undefined) return focus(state, form, form.field + move);
+		const by = Grid.stepBy(key);
+		return by === undefined
+			? { state, effect: NOTHING }
+			: change(state, form, by);
 	};
 
 	/**
 	 * A click on the `index`th field: it takes the focus, and a click on the field already in hand
-	 * moves its value on, as `l` does (the board's click-then-click, with no double-click timing).
+	 * moves its value on, as `l` does (the board's click-then-click, with no double-click timing). A
+	 * typed field in hand stays as it is.
 	 */
 	export const click = (state: State, index: number): Step => {
 		const form = state.dispatch?.form;
 		if (!form) return { state, effect: NOTHING };
-		return index === form.field
-			? change(state, form, 1)
-			: focus(state, form, index);
+		if (index !== form.field) return focus(state, form, index);
+		const field = inHand(form);
+		return field === undefined || typed(field.input)
+			? { state, effect: NOTHING }
+			: change(state, form, 1);
 	};
 }

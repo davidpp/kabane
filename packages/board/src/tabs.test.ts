@@ -377,8 +377,9 @@ describe("a card's tab answers its question in place", () => {
 		const past = press(s, "3");
 		expect(past.effect.type).toBe("none");
 		expect(past.state).toBe(s);
+		// With none, a digit is the tab it numbers, as on the tracker.
 		const quiet = onTab(withLoop([card()], [SOLO_Q]));
-		expect(press(quiet, "1").state).toBe(quiet);
+		expect(press(quiet, "1").state.tabs.active).toBeNull();
 	});
 
 	it("a shifted digit is not a digit: shift+1 reported by its base key never answers", () => {

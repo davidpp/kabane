@@ -275,7 +275,7 @@ const triggerPreview = (trigger: TriggerDescriptor): string[] => {
 	lines.push(...desc.split("\n").slice(0, 4));
 	const inputEntries = Object.entries(trigger.inputs);
 	// A trigger with a form says so rather than listing what the form is about to show.
-	if (TriggerForm.fillable(trigger)) {
+	if (trigger.satisfiable && TriggerForm.fillable(trigger)) {
 		lines.push("");
 		lines.push(
 			`enter opens its ${inputEntries.length} settings before it starts`,

@@ -261,6 +261,17 @@ export namespace BoardData {
 		return ok(matches ? task : undefined);
 	};
 
+	// Every open job on the device, whatever its scope or its board filters, oldest first: the Jobs
+	// tab's rows. A paused one (someday) included; a closed one is no longer a job.
+	export const loadJobs = async (basePath: string): Promise<Result<Task[]>> =>
+		Planner.queryTasks(basePath, {
+			kind: "job",
+			includeDeferred: true,
+			limit: OPEN_LIMIT,
+			orderBy: "createdAt",
+			orderDir: "asc",
+		});
+
 	// FTS5 search for tier-2 results (description/tag matches, done beyond the loaded window, open
 	// tasks beyond the per-state caps). Returns flat tasks — the board merge fn handles section placement.
 	export const searchBoard = async (

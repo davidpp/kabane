@@ -28,8 +28,8 @@ Runs start in terminals of `hc` (herdr core), which must be on your `PATH`. With
 
 A recipe is `.kabane/recipes/<name>.md` at your project's root: the folder that already holds
 `.kabane/`, or the repository's root when there is none yet. The file name is the recipe's
-name (lowercase letters, digits, `-` and `_`). The frontmatter says what it works on and what
-it asks for; the body is the prompt.
+name (lowercase letters, digits, `-` and `_`). The frontmatter says what it works on, what
+it asks for and which harness it is written for; the body is the prompt.
 
 Keep it there, even for a recipe about one package. A `.kabane/` folder marks a project's
 root, so creating one in a subfolder makes that subfolder a separate project: every command
@@ -57,6 +57,7 @@ Write the result as one comment on {{target.shortId}}.
 | `description` | one line, shown when `kabane run` lists the recipes |
 | `target` | `issue`: the run works on an issue given with `--target`; `job`: it runs for a scheduled job (see [Jobs](#jobs)); `none` (the default): it takes none |
 | `inputs` | by name: `type` (`string`, the default, `number` or `boolean`), `required`, `default`, `options` (strings only), `label`, `hint` |
+| `harness` | the command this recipe starts, as a list (`[codex, exec]`), or one word (`codex`); the prompt is added as its last argument. Without it, `recipes.harness` (see [Which harness a run starts](#which-harness-a-run-starts)) |
 
 The body can use `{{inputs.<name>}}` and, with `target: issue` or `target: job`, `{{target.id}}`,
 `{{target.shortId}}` and `{{target.title}}`. An optional input left out with no default
@@ -69,9 +70,10 @@ recipe.
 From your project's folder, or any folder inside it:
 
 ```bash
-kabane run                                        # the recipes here, with their inputs
+kabane run                                        # the recipes here, their harness and inputs
 kabane run preliminary-research --target JCAB-12 --input depth=quick
 kabane run preliminary-research --target JCAB-12 --inputs '{"depth": "thorough"}'
+kabane run preliminary-research --target JCAB-12 --harness codex,exec
 ```
 
 Inputs come from `--input name=value` (repeat it), a JSON object given with `--inputs` or
@@ -92,6 +94,21 @@ on the target issue, prints the run's id and terminal, and returns.
 The harness reads its own configuration from that folder (its MCP servers, permissions and
 instructions); kabane adds nothing to it.
 
+### Which harness a run starts
+
+The most specific of these, first found wins:
+
+1. what you set when you start it: `kabane run --harness a,b,c`, or the harness row of the
+   board's form;
+2. a job's own `--harness`, for a job's runs;
+3. the recipe's `harness`;
+4. the `recipes.harness` setting;
+5. `claude`.
+
+`kabane run` with no recipe, `kabane job list` and `kabane job show` print the command each
+recipe or job would start and where it comes from (`from the recipe`, `from recipes.harness`);
+`kabane run` prints the one it started. `--harness` splits on commas, as `config set` does.
+
 ## Follow your runs
 
 ```bash
@@ -103,7 +120,8 @@ kabane runs attach <id>     # take the terminal over; ctrl+\ gives it back
 kabane runs stop <id>       # end its program
 ```
 
-`<id>` is the run's id or its last few characters, as long as one run ends with them; the
+`<id>` is the run's whole id, which works from any folder whatever project the run is in, or
+its last few characters within this project, as long as one run ends with them; the
 terminal's name ends with the id's last six. A run's state is what its program last reported
 to its terminal, read each time runs are listed. Programs report through OSC 7501, herdr's
 Program Status Protocol; kabane never guesses a state from the screen:
@@ -128,8 +146,11 @@ with no terminal fail with one line naming it. A run whose start was interrupted
 stays `live` with no terminal (an empty TERMINAL column), and every verb on it fails with
 "This run has no terminal: its start never recorded one".
 
-With `--json`, `kabane run` prints `run` (the id), `session` and `attach` (the command that
-attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
+`kabane runs` ends each row with the harness the run started, as a command line without the
+prompt; a run recorded before kabane kept it shows `-`.
+
+With `--json`, `kabane run` prints `run` (the id), `session`, `harness` (`{ argv, source }`) and
+`attach` (the command that attaches to it), plus `warnings` when there are any. `kabane runs --json` prints `runs`, a list
 of runs with these fields:
 
 | Field | Meaning |
@@ -142,6 +163,7 @@ of runs with these fields:
 | `runtime` | what started the run: `hc` |
 | `session` | the runtime's own handle for it: for `hc`, the terminal's name |
 | `inputs` | the input values the run started with |
+| `harness` | the command the run started, as a list, without the prompt; absent on a run recorded before kabane kept it |
 | `state` | `live`, `running`, `waiting`, `idle` or `ended` |
 | `startedAt`, `endedAt` | ISO timestamps; `endedAt` once the run has ended |
 
@@ -158,8 +180,8 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --all` says which of the two it is |
 
 Every run in flight (`live`, `running` or `waiting`) is listed, and the newest finished ones (`idle` or
-`ended`) up to ten runs in all. A run with no target, or a job's run, is not on the board: `kabane runs` lists
-it.
+`ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists
+it. A job's run is on the board's Jobs tab, under its job (below).
 
 A run's card has no tab: the board does not show the terminal. To see or answer the session,
 run `kabane runs attach <id>`, which opens it in hc; `kabane runs read <id>` prints its screen
@@ -167,17 +189,19 @@ and `kabane runs stop <id>` stops it. `X` on the issue's detail stops it too (th
 `X stop <recipe>`). Nothing is answered from the board.
 
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
-with its description. A recipe whose inputs all have a default and are choices, numbers or
-booleans opens a form first; `enter` starts it with those values, and the footer names the
-new run. A recipe with any free-text input opens no form: `enter` starts it at once with every
-input's default, and the card's header shows the values it got. To give other values, start it
-with `kabane run <recipe> --target <id> --input name=value`. A recipe with a required input that has no default cannot start from the board: the
-footer gives the `kabane run` command that does. A recipe file that does not parse is listed
-with its error and does not start.
+with its description. `enter` on one opens its form, which lists every value the run will
+get before anything starts: the harness first, as the command line it will start, with where
+it comes from under it (`from the recipe`, `from recipes.harness`), then each input with its
+default and hint. Every row can be changed. `h/l` move a choice, a number or a boolean; any
+other row is typed: type to add, `backspace` to delete, and `↑↓` leave it, since `j/k` are
+letters it takes. The harness row is a shell command line: quote a word with a space in it
+(`sh -c 'echo hi'`). `enter` starts the run with what the form shows, and the footer names the
+new run and its harness; a required row left empty takes the cursor instead. A recipe file
+that does not parse is listed with its error and does not start.
 
 ## Jobs
 
-A job runs a recipe on a schedule, in its project's folder. It is an item of kind `job`: its
+A job runs a recipe, or its own request, on a schedule, in its project's folder. It is an item of kind `job`: its
 title names it, its description is the standing request the agent reads each time, and its
 comments are what each run reported. Lists that name no kind leave jobs out; `kabane list
 --kind job` shows them.
@@ -185,6 +209,8 @@ comments are what each run reported. Lists that name no kind leave jobs out; `ka
 ```bash
 kabane job add wiki-maintenance --title "Keep the wiki current" --schedule "0 7 * * *" \
   --request "Fold this week's notes into the wiki pages they belong to"
+kabane job add --title "Check the nightly build" --schedule "0 8 * * *" \
+  --request "Check last night's build and comment what broke"   # no recipe
 kabane job list                 # this project's jobs; --all for every project's
 kabane job show JCAB-600        # the request, the inputs and the last runs
 kabane job pause JCAB-600       # resume JCAB-600 starts it again
@@ -197,10 +223,19 @@ come from `--input name=value` and `--inputs '{…}'` as with `kabane run`, are 
 are never asked for: a required input that is missing is an error. `--schedule` is a cron
 expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
 machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
-`recipes.harness`.
+the recipe's `harness` and `recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
+default, `--session fresh`, starts a new one on each fire. To change it, close the job and add
+it again.
+
+With no recipe name, `--request` is required and is the prompt: each fire gives the agent the
+job preamble (below), then the request as the job's description reads at that moment, so an
+edit to the description takes effect at the next fire. It is not a template: `{{…}}` in it
+stays as written, and such a job takes no `--input`. Its runs are listed with `request` as their
+recipe.
 
 `job list` shows each job's id, whether it is active or paused, its schedule, the next time it
-fires, its recipe, its harness, the state of its latest run and its title. `pause` sets the job
+fires, its recipe (`-` for none), its session mode, the state of its latest run, its title, and
+the harness its next run starts with where that comes from. `pause` sets the job
 `someday` and `resume` sets it `next`. A job ends when you close it with `kabane done`; there is
 no delete.
 
@@ -211,8 +246,18 @@ like `job run`:
 1. reads the job's runs on this machine from their terminals;
 2. skips the job when one is `live`, `running` or `waiting`, and says so; the job stays due for
    the next tick;
-3. stops each `idle` one, because a harness stays at its prompt after its turn;
-4. starts the recipe at the project's root, as `kabane run` would, with the job as its target.
+3. on a `fresh` job, stops each `idle` one, because a harness stays at its prompt after its
+   turn, then starts the recipe at the project's root, as `kabane run` would, with the job as
+   its target;
+4. on a `keep` job, types the recipe's prompt into the newest `idle` run's terminal, as `kabane
+   runs send` would, and stops and starts nothing. The harness answers it in the same
+   conversation, so it remembers the earlier fires and keeps its prompt cache. When no terminal
+   is left (its run `ended`, or hc no longer has it), it starts one as a `fresh` job does.
+
+A woken run stays one row in `kabane runs`, with the time it first started. `job show` reports
+when the job last fired; `job list` shows its next fire and the state of its latest run. Kabane adds no harness
+flag to resume a session: a kept session lasts as long as its terminal, so a reboot or `kabane
+runs stop` ends it and the next fire starts a new one.
 
 The run's preamble tells the agent it is a scheduled background run of the job, to read the job
 with `kabane_context` for the request and what earlier runs reported, to write its result as one
@@ -225,6 +270,57 @@ skipped with a line that says to run `kabane job list` inside it. Jobs sync with
 items; the folders do not, so each machine that ticks needs one `kabane job` command in each
 project.
 
+### Hear when a run needs you
+
+`recipes.onAttention` is a shell command that `job tick` runs when a job's run needs you: once
+when it starts waiting on you (a permission, a question, a trust dialog), and once when it
+finishes (`idle` or `ended`). A run still waiting at the next tick does not run it again; one
+that waits again after it went back to work does. Only the newest run of each job on this
+machine counts, paused jobs included. Unset, the default, nothing runs.
+
+The command runs with `sh -c` in the run's folder, with these environment variables:
+
+| Variable | Holds |
+|---|---|
+| `KABANE_JOB` | the job's short id (`JCAB-600`) |
+| `KABANE_JOB_TITLE` | the job's title |
+| `KABANE_RUN` | the run's id |
+| `KABANE_RUN_STATE` | `waiting`, `idle` or `ended` |
+| `KABANE_ATTENTION` | `waiting`, or `finished` for `idle` and `ended` |
+| `KABANE_FOLDER` | the folder the run started in |
+| `KABANE_ATTACH` | the command that opens its session: `kabane runs attach <run id>` |
+
+```bash
+kabane config set recipes.onAttention \
+  'terminal-notifier -title "$KABANE_JOB $KABANE_ATTENTION" -message "$KABANE_JOB_TITLE: $KABANE_ATTACH"' \
+  --layer global
+```
+
+A hook that exits nonzero is reported on the tick's output with its last line of stderr, and
+changes nothing else: it is not retried. Under launchd, the command must be on the plist's
+`PATH`.
+
+### Jobs on the board
+
+While this device has a job, the board has a Jobs tab after the tracker (tab 2; `2`, `{` and `}`
+reach it, or click it). It lists the jobs of every project on this device, not only the
+board's, one section per project named after its folder. Each row shows the state of the
+job's latest run, its id and title, then as much as fits of: `? waiting` when that run waits on
+you, `paused`, when it fires next, its schedule, its recipe and its harness. A waiting run is
+in the accent color, and the tab counts them (`jobs ?1`), so you see from any tab that a job
+needs you.
+
+| Key | On the Jobs tab |
+|---|---|
+| `enter` | the job's detail: its request and comments as an issue's, with its schedule, next fire, recipe, inputs, harness, session mode, folder and latest runs at the top of each section, scrolling with it |
+| `a` | `run now`, which fires it as `kabane job run` does, in its own project's folder |
+| `s`, `n` | pause it (`someday`) and resume it (`next`) |
+| `esc` | back to the tracker |
+
+Each run in the detail shows its state, when it started and `kabane runs attach <id>`, which
+opens its session in hc; the board does not show the session. A board without the recipes
+extension still lists the jobs, with only their id, title, project and whether they are paused.
+
 ### Tick on a schedule
 
 On macOS, `docs/schedule/com.kabane.job-tick.plist` runs `kabane job tick` every minute with
@@ -234,8 +330,11 @@ nothing, so ticking every minute is cheap.
 
 ## Settings
 
-One setting, `recipes.harness`: the command a run starts, as a list; the prompt is added as
-its last argument. The default is `["claude"]`.
+`recipes.harness` is the command a run starts when the recipe names none, as a list; the prompt
+is added as its last argument. Unset, it is `claude`. A recipe's own `harness`, a job's
+`--harness` and `kabane run --harness` come before it ([Which harness a run
+starts](#which-harness-a-run-starts)). `recipes.onAttention` is the command a tick runs when a
+job's run needs you ("Hear when a run needs you", above); unset by default.
 
 ```bash
 kabane config set recipes.harness codex --layer global

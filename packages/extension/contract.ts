@@ -9,7 +9,7 @@ import type { z } from "zod";
 import type { ParsedArgs } from "./args";
 import type { Doctor } from "./doctor";
 import type { Outcome } from "./outcome";
-import type { ActivitySource, Header, Dispatcher } from "./ports";
+import type { ActivitySource, Dispatcher, Header, JobSource } from "./ports";
 import type { Settings } from "./settings";
 
 export type Extension = {
@@ -73,5 +73,7 @@ export namespace Extension {
 		activity?: ActivitySource;
 		dispatcher?: Dispatcher;
 		headers?: Readonly<Record<string, Header>>;
+		/** Facts about the device's jobs, for the board's Jobs tab, whatever scope they are in. */
+		jobs?: JobSource;
 	};
 }

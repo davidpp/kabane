@@ -83,14 +83,16 @@ closes them all; a click still opens or closes one row against it.
 
 #### Tabs and the questions waiting on you
 
-The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then
+The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then,
+while the device has an open job (`kind: job`), the Jobs tab (below); then
 one tab per card with `tab: true`, a new one opening at the end, several at once oldest first by
 `startedAt`, labelled with the card's state glyph
 and its `taskShortId` (else its `label`). The tab is the card's event log. A finished card keeps its
 tab until `w` closes it, and a closed one does not come back: `w` also calls the source's optional
 `dismiss(id)`, so a host that remembers it stops listing the card across a relaunch (without
 `dismiss`, it stays closed for this session only). `{` and `}` walk the
-tabs, wrapping; a click on a tab switches to it. Starting work does not switch tabs. Only the tab on
+tabs, wrapping; a tab's number (1-9) goes to it from the board, the Jobs tab, or a card's tab with no
+question that takes the digit; a click on a tab switches to it. Starting work does not switch tabs. Only the tab on
 screen animates its spinner; a running card on another tab is the still `●`. A bar wider than the
 pane keeps the tracker, the tab on screen and every tab with a `?n`, then what fits of the rest, and
 counts the others in a `+n` cell.
@@ -181,6 +183,24 @@ the keyboard: `enter` sends to `act` with the text, `⇧enter`/`ctrl+j` make a n
 `up` on an empty buffer recalls what was sent from it before, `tab` aims it at another lane when it
 has several, `esc` drops it, and a click on the board closes it.
 
+#### The Jobs tab
+
+The Jobs tab lists every open job on the device, whatever the board's scope, in one section per
+scope, and is in the bar only while there is one. A host's optional `JobSource` (`deps.jobs`,
+`BoardPorts.jobs` for an extension) gives each job's facts, the `JobFacts` of
+`@cabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
+with its state and the command that opens it. A row leads with its newest run's state; a
+`waiting` run reads `? waiting` in the accent, and the tab's `?n` counts those jobs. A section is
+named after its jobs' folder when the source gives one, else the scope's id. Without a source a
+row is the job's id, title and whether it is paused.
+
+`enter` opens the job's detail view, which is an issue's (request, comments, log) with the
+`JobPanel` at the top of each section's scroll, so a long run history scrolls away rather than
+hiding the request and comments; `esc` comes back to the tab. `s` pauses the job (`someday`), `n`
+resumes it (`next`), and `a` opens the dispatcher on it, where a host offers what it can start
+on a job (the recipes extension's `run now`). `esc` or `q` on the list goes to the tracker. A
+click selects a row, and a click on the selected row opens it.
+
 #### Lanes on a card's tab
 
 A card may split its stream into `lanes` (one per agent session, say), naming them with `laneNoun`
@@ -212,15 +232,18 @@ and the assembled brief (what `y` copies) and resolves to the footer notice.
 
 #### The trigger form
 
-A trigger whose every input has a `default` and either `options` or a `number` or `boolean` type
-is filled in on the board before it fires: `enter` on it opens its form instead. Each input is a
-row, called by its `label` (else its name) and filed under its `group`, a titled section, in the
-host's order. `j/k` move between rows, `h/l` change the one in hand (the next or previous option,
-wrapping; a number up or down, never below zero; a boolean on and off), a click focuses a row and
-a second click changes it, `enter` fires with every value, and `esc` goes back to the picker. A
-value still at its default is dimmed, and a changed one is bright with a `•` after it. `dispatch`
-gets the values as its third argument, by input name; an option input's value is the option, as
-written, so the host converts it back.
+A trigger with inputs is filled in on the board before it fires: `enter` on it opens its form
+instead. Each input is a row, called by its `label` (else its name) and filed under its `group`,
+a titled section, in the host's order. A row with `options`, or a `number` or `boolean` with a
+`default`, is stepped: `h/l` change it (the next or previous option, wrapping; a number up or
+down, never below zero; a boolean on and off). Every other row is typed, from its default or
+empty: in hand it shows a cursor, a printable key adds to it, `backspace` deletes and `↑↓` leave
+it, since `j/k` are letters it takes. `j/k` move between stepped rows, a click focuses a row and
+a second click changes a stepped one, `enter` fires with every value, and `esc` goes back to the
+picker. `enter` with a `required` row empty puts the cursor on it and names it in the footer
+instead. A value still at its default is dimmed, and a changed one is bright with a `•` after
+it. `dispatch` gets the values as its third argument, by input name; an option input's value is
+the option and a typed one the text, as written, so the host converts it back.
 
 The trigger's `preview`, lines of toned parts (`{ text, tone?, bold? }`, the tone a role such as
 `muted`, `working` or `accent`), sits at the centre with the settings in a column beside it, or

@@ -8,6 +8,7 @@ import {
 	type ActivitySource,
 	type Header,
 	type Dispatcher,
+	type JobSource,
 } from "@cabane/extension";
 import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
@@ -49,6 +50,8 @@ export type AppProps = {
 	resolveScope?: BoardData.ScopeResolver;
 	// A host's own header for its cards, by card kind. Absent → every card tab heads with its title.
 	headers?: Readonly<Record<string, Header>>;
+	// Absent → the Jobs tab lists each job with its title, scope and state only.
+	jobs?: JobSource;
 	// Absent → nothing is announced.
 	announcer?: Announcer;
 	// Absent → the `,` view says settings are not available here.
@@ -201,6 +204,7 @@ export const App = ({
 	copilot,
 	resolveScope,
 	headers,
+	jobs,
 	announcer = noAnnouncer,
 	settings,
 	open,
@@ -215,6 +219,7 @@ export const App = ({
 			cwd,
 			basePath,
 			activitySource,
+			jobSource: jobs,
 			resolveScope,
 			copilot,
 			open,

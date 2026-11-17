@@ -4,6 +4,7 @@
 // does not have, shows what was last recorded.
 import { hostname } from "node:os";
 import type { Extension, Host, Outcome } from "@cabane/extension";
+import { Harness } from "./harness";
 import { ok } from "./result";
 import { projectOf, shortIdOf } from "./run-command";
 import { Runs } from "./runs";
@@ -35,19 +36,30 @@ export const pad = (rows: string[][]): string => {
 		.join("\n");
 };
 
-/** The one run of this scope `key` names, on this machine. */
+/**
+ * The one run `key` names, on this machine: a whole run id from any folder, whatever project it ran
+ * in, as every printed attach command gives it; a shorter key within the project of `cwd`.
+ */
 const resolve = async (
 	host: Host,
-	scope: string,
+	cwd: string,
 	key: string | undefined,
 	verb: string,
 ): Promise<{ ok: true; value: Runs.Run } | { ok: false; outcome: Outcome }> => {
 	const fail = (outcome: Outcome) => ({ ok: false as const, outcome });
 	if (key === undefined)
 		return fail(host.outcome.usage(`runs ${verb} needs a run id`, USAGE));
-	const found = await Runs.find(host, scope, key);
-	if (!found.ok) return fail(host.outcome.failure(found.error));
-	const [run, other] = found.value;
+	const exact = await Runs.byId(host, key);
+	if (!exact.ok) return fail(host.outcome.failure(exact.error));
+	let found = exact.value;
+	if (found.length === 0) {
+		const project = await projectOf(host, cwd, "runs");
+		if (!project.ok) return project;
+		const inProject = await Runs.find(host, project.value.scopeUri, key);
+		if (!inProject.ok) return fail(host.outcome.failure(inProject.error));
+		found = inProject.value;
+	}
+	const [run, other] = found;
 	if (run === undefined)
 		return fail(
 			host.outcome.failure(
@@ -57,7 +69,7 @@ const resolve = async (
 	if (other !== undefined)
 		return fail(
 			host.outcome.failure(
-				`"${key}" names ${found.value.length} runs (${found.value.map((r) => r.id).join(", ")}); give more of the id`,
+				`"${key}" names ${found.length} runs (${found.map((r) => r.id).join(", ")}); give more of the id`,
 			),
 		);
 	if (run.machine !== hostname())
@@ -167,10 +179,14 @@ export const runsCommand = (
 				: (targets.get(run.target.id) ?? run.target.id),
 			run.session,
 			age(run.startedAt),
+			run.harness === undefined ? "-" : Harness.line(run.harness),
 		]);
 		return host.outcome.success(
 			{ runs: shown },
-			pad([["ID", "STATE", "RECIPE", "TARGET", "TERMINAL", "AGE"], ...rows]),
+			pad([
+				["ID", "STATE", "RECIPE", "TARGET", "TERMINAL", "AGE", "HARNESS"],
+				...rows,
+			]),
 		);
 	};
 
@@ -179,12 +195,16 @@ export const runsCommand = (
 		summary: "List recipe runs; attach to, read, send to or stop one",
 		usage: USAGE,
 		run: async (args, ctx) => {
-			const project = await projectOf(host, ctx.cwd, "runs");
-			if (!project.ok) return project.outcome;
-			const scope = project.value.scopeUri;
 			const [verb, key, ...words] = args.positionals;
-			if (verb === undefined)
-				return listing(ctx, scope, host.args.flagBool(args, "all"));
+			if (verb === undefined) {
+				const project = await projectOf(host, ctx.cwd, "runs");
+				if (!project.ok) return project.outcome;
+				return listing(
+					ctx,
+					project.value.scopeUri,
+					host.args.flagBool(args, "all"),
+				);
+			}
 			if (!["attach", "read", "send", "stop"].includes(verb))
 				return host.outcome.usage(`Unknown runs subcommand: ${verb}`, USAGE);
 			if (verb !== "send" && words.length > 0)
@@ -192,7 +212,7 @@ export const runsCommand = (
 					`Unexpected arguments: ${words.join(" ")}`,
 					USAGE,
 				);
-			const found = await resolve(host, scope, key, verb);
+			const found = await resolve(host, ctx.cwd, key, verb);
 			if (!found.ok) return found.outcome;
 			return operate(host, runtime, ctx.actor, {
 				run: found.value,

@@ -6,6 +6,7 @@ import {
 	type BoardDeps,
 	Dispatchers,
 	Headers,
+	JobSources,
 	type OpenRequests,
 	type SettingsSource,
 	startBoard,
@@ -23,6 +24,7 @@ import {
 	type Header,
 	type Dispatcher,
 	type Extension,
+	type JobSource,
 	failure,
 	flagString,
 	type Outcome,
@@ -148,10 +150,11 @@ const extensionPorts = async (
 	extensions: readonly Extension[],
 	ctx: Ctx,
 	refusals: Extensions.Refusal[],
-): Promise<Pick<BoardDeps, "activity" | "dispatcher" | "headers">> => {
+): Promise<Pick<BoardDeps, "activity" | "dispatcher" | "headers" | "jobs">> => {
 	const activity: Record<string, ActivitySource> = {};
 	const dispatchers: Record<string, Dispatcher> = {};
 	const headers: Record<string, Readonly<Record<string, Header>>> = {};
+	const jobs: Record<string, JobSource> = {};
 	for (const extension of extensions) {
 		const called = await tryCatch(async () => extension.board?.(ctx));
 		if (!called.ok) {
@@ -165,6 +168,7 @@ const extensionPorts = async (
 		if (ports?.activity) activity[extension.name] = ports.activity;
 		if (ports?.dispatcher) dispatchers[extension.name] = ports.dispatcher;
 		if (ports?.headers) headers[extension.name] = ports.headers;
+		if (ports?.jobs) jobs[extension.name] = ports.jobs;
 	}
 	return {
 		...(Object.keys(activity).length > 0
@@ -176,6 +180,7 @@ const extensionPorts = async (
 		...(Object.keys(headers).length > 0
 			? { headers: Headers.merge(headers) }
 			: {}),
+		...(Object.keys(jobs).length > 0 ? { jobs: JobSources.merge(jobs) } : {}),
 	};
 };
 

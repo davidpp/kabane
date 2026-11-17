@@ -240,6 +240,47 @@ export interface Dispatcher {
 	): Promise<Result<string>>;
 }
 
+// A job's run as its runtime last reported it. `waiting` is a session that wants the human.
+export type JobRunState = "live" | "running" | "waiting" | "idle" | "ended";
+
+export type JobRun = {
+	id: string;
+	state: JobRunState;
+	// ISO timestamp.
+	startedAt: string;
+	// The command that opens the run's session in a terminal, for the human to copy: the board
+	// never renders a session itself.
+	open: string;
+};
+
+// What a job is beyond its item (title, request, scope, state): how and when it runs, and its
+// runs. The board draws it; a client without a source shows the item alone.
+export type JobFacts = {
+	// The schedule as the job was given it (a cron expression).
+	schedule: string;
+	// When it fires next, ISO; absent when it never will, with why in `problem`.
+	next?: string;
+	problem?: string;
+	recipe: string;
+	inputs: Readonly<Record<string, unknown>>;
+	// The command its runs start; absent, the source's configured default.
+	harness?: readonly string[];
+	// `fresh`: each fire starts a new session; `keep`: a fire wakes the job's idle session.
+	session: "fresh" | "keep";
+	// The folder its runs start in on this machine; absent when this machine has none yet.
+	folder?: string;
+	// Newest first, already capped by the source.
+	runs: readonly JobRun[];
+};
+
+// Facts about jobs the board already lists from the tracker. A job the source does not know is
+// left out of the record.
+export interface JobSource {
+	facts(
+		jobIds: readonly string[],
+	): Promise<Result<Readonly<Record<string, JobFacts>>>>;
+}
+
 // What a setting's value is, as its schema declares it (`Settings.fields` in @cabane/extension):
 // the kinds of `CopilotFormField`, plus a list, a record and a group of settings. `other` is a value
 // no kind describes. `optional`: absent is a valid setting; `default`: what the schema fills in when

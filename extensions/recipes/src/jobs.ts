@@ -6,23 +6,36 @@ import { err, ok, trySync } from "./result";
 import type { Runs } from "./runs";
 
 export namespace Jobs {
+	/**
+	 * What a fire does with the job's terminal: `fresh` starts a new one each time; `keep` types
+	 * the prompt into the last one while it is idle, so the harness keeps its conversation.
+	 */
+	export type Session = "fresh" | "keep";
+	export const SESSIONS = ["fresh", "keep"] as const;
+
 	export type Job = {
 		/** The job item's id. */
 		taskId: string;
 		/** A cron expression, read in this machine's time zone. */
 		schedule: string;
-		recipe: string;
+		/** The recipe it runs; absent, its prompt is the job's request (its item's description). */
+		recipe?: string;
 		inputs: Record<string, unknown>;
 		/** The command this job starts instead of `recipes.harness`. */
 		harness?: string[];
+		session: Session;
 		lastFiredAt?: string;
 		createdAt: string;
 	};
 
 	const TABLE = "recipes_jobs";
 	const ROOTS = "recipes_roots";
+	const SEEN = "recipes_attention";
 
 	type Store = Pick<Host, "store" | "z">;
+
+	/** The `recipe` column of a job with none: the column is NOT NULL, and "" names no recipe file. */
+	const NO_RECIPE = "";
 
 	export const module = (): KabaneModule => ({
 		name: "recipes-jobs",
@@ -56,6 +69,26 @@ export namespace Jobs {
 					);
 				},
 			},
+			{
+				name: "add-recipes-jobs-session",
+				up: (db) =>
+					db.run(
+						`ALTER TABLE ${TABLE} ADD COLUMN session TEXT NOT NULL DEFAULT 'fresh'`,
+					),
+			},
+			{
+				name: "create-recipes-attention",
+				// Machine-local, like the folders: the state this machine's tick last saw each run
+				// in, so the attention hook runs once per change. Not in syncTables.
+				up: (db) =>
+					db.run(
+						`CREATE TABLE IF NOT EXISTS ${SEEN} (
+						   run_id TEXT PRIMARY KEY,
+						   state TEXT NOT NULL,
+						   updated_at TEXT NOT NULL
+						 )`,
+					),
+			},
 		],
 		syncTables: [
 			{
@@ -76,6 +109,7 @@ export namespace Jobs {
 				recipe: z.string(),
 				inputs: z.string(),
 				harness: z.string().nullable(),
+				session: z.enum(SESSIONS),
 				last_fired_at: z.string().nullable(),
 				created_at: z.string(),
 			})
@@ -104,9 +138,10 @@ export namespace Jobs {
 		return ok({
 			taskId: data.task_id,
 			schedule: data.schedule,
-			recipe: data.recipe,
+			...(data.recipe === NO_RECIPE ? {} : { recipe: data.recipe }),
 			inputs: parsedInputs.data,
 			...(parsedHarness.data === null ? {} : { harness: parsedHarness.data }),
+			session: data.session,
 			...(data.last_fired_at === null
 				? {}
 				: { lastFiredAt: data.last_fired_at }),
@@ -121,16 +156,17 @@ export namespace Jobs {
 	): Promise<Result<Job>> =>
 		host.store.write((tx) => {
 			tx.db.run(
-				`INSERT INTO ${TABLE} (id, task_id, schedule, recipe, inputs, harness, last_fired_at,
-				   created_at, updated_at, updated_by)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO ${TABLE} (id, task_id, schedule, recipe, inputs, harness, session,
+				   last_fired_at, created_at, updated_at, updated_by)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					job.taskId,
 					job.taskId,
 					job.schedule,
-					job.recipe,
+					job.recipe ?? NO_RECIPE,
 					JSON.stringify(job.inputs),
 					job.harness === undefined ? null : JSON.stringify(job.harness),
+					job.session,
 					job.lastFiredAt ?? null,
 					job.createdAt,
 					new Date().toISOString(),
@@ -219,20 +255,80 @@ export namespace Jobs {
 	};
 
 	/**
-	 * What a fire does, given this machine's runs of the job as their runtime reports them: skip
-	 * while one is in flight, otherwise stop the idle ones (a harness stays at its prompt after
-	 * its turn) and start a new one.
+	 * What a fire does, given this machine's runs of the job (newest first) as their runtime
+	 * reports them: skip while one is in flight. Otherwise a `fresh` job stops the idle ones (a
+	 * harness stays at its prompt after its turn) and starts a new one; a `keep` job wakes the
+	 * newest idle one with the prompt, and starts one only when none is left.
 	 */
 	type Fire =
 		| { kind: "skip"; run: Runs.Run }
+		| { kind: "wake"; run: Runs.Run }
 		| { kind: "start"; stop: Runs.Run[] };
 
-	export const decide = (runs: readonly Runs.Run[]): Fire => {
+	export const decide = (session: Session, runs: readonly Runs.Run[]): Fire => {
 		const busy = runs.find((run) =>
 			(["live", "running", "waiting"] as Runs.State[]).includes(run.state),
 		);
-		return busy
-			? { kind: "skip", run: busy }
-			: { kind: "start", stop: runs.filter((run) => run.state === "idle") };
+		if (busy) return { kind: "skip", run: busy };
+		const idle = runs.filter((run) => run.state === "idle");
+		if (session === "fresh") return { kind: "start", stop: idle };
+		const [newest] = idle;
+		return newest ? { kind: "wake", run: newest } : { kind: "start", stop: [] };
 	};
+
+	/** What a run's state asks of the human: `waiting` on them, or `finished` (`idle` or `ended`). */
+	export type Attention = "waiting" | "finished";
+
+	const attentionOf = (state: Runs.State | undefined): Attention | undefined =>
+		state === "waiting"
+			? "waiting"
+			: state === "idle" || state === "ended"
+				? "finished"
+				: undefined;
+
+	/**
+	 * Whether a run seen in `state`, after it was last seen in `seen`, has just entered something
+	 * the human hears about. `idle` then `ended` is one finish; `waiting`, `running`, `waiting` is two.
+	 */
+	export const attention = (
+		seen: Runs.State | undefined,
+		state: Runs.State,
+	): Attention | undefined => {
+		const now = attentionOf(state);
+		return now === attentionOf(seen) ? undefined : now;
+	};
+
+	/** The state this machine's tick last saw run `runId` in. */
+	export const seen = (
+		host: Store,
+		runId: string,
+	): Promise<Result<Runs.State | undefined>> =>
+		host.store.read((db) => {
+			const { z } = host;
+			const row = z
+				.object({
+					state: z.enum(["live", "running", "waiting", "idle", "ended"]),
+				})
+				.nullable()
+				.safeParse(
+					db.query(`SELECT state FROM ${SEEN} WHERE run_id = ?`).get(runId),
+				);
+			if (!row.success) return err(new Error(`${SEEN}: ${row.error.message}`));
+			return ok(row.data?.state);
+		});
+
+	export const setSeen = (
+		host: Store,
+		runId: string,
+		state: Runs.State,
+	): Promise<Result<void>> =>
+		host.store.write((tx) => {
+			tx.db.run(
+				`INSERT INTO ${SEEN} (run_id, state, updated_at) VALUES (?, ?, ?)
+				 ON CONFLICT(run_id) DO UPDATE SET state = excluded.state,
+				   updated_at = excluded.updated_at`,
+				[runId, state, new Date().toISOString()],
+			);
+			return ok(undefined);
+		});
 }

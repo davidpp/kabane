@@ -123,11 +123,38 @@ test("kabane run with no recipe lists the project's recipes and their inputs", (
 		code: 0,
 		stdout: [
 			"research --target <issue>  Research an issue",
+			"    harness claude  (kabane's default)",
 			"    --input depth=<quick|medium|thorough> (default medium)",
 			"    --input focus=<string> (required)",
 		].join("\n"),
 		stderr: "",
 	});
+});
+
+test("kabane run with no recipe names each recipe's harness and where it comes from", () => {
+	const { root, kabane } = setup();
+	writeFileSync(
+		join(root, ".kabane/recipes/probe.md"),
+		"---\nharness: [codex, exec]\n---\nProbe.\n",
+	);
+	expect(
+		kabane([
+			"config",
+			"set",
+			"recipes.harness",
+			"sh,-c,echo hi",
+			"--layer",
+			"global",
+		]).code,
+	).toBe(0);
+	expect(kabane(["run"]).stdout.split("\n")).toEqual([
+		"probe",
+		"    harness codex exec  (from the recipe)",
+		"research --target <issue>  Research an issue",
+		"    harness sh -c 'echo hi'  (from recipes.harness)",
+		"    --input depth=<quick|medium|thorough> (default medium)",
+		"    --input focus=<string> (required)",
+	]);
 });
 
 test("a broken recipe is an error naming its file, beside the recipes that parse", () => {
@@ -287,6 +314,26 @@ test("runs lists the runs in flight unless --all, and refuses another machine's 
 	expect(kabane(["runs", "read", "aa"]).stderr).toStartWith(
 		'Error: "aa" names 2 runs',
 	);
+});
+
+test("a run's whole id reaches it from any folder, another project's or none; a short key stays in the project", () => {
+	const { kabane, seed, home, root } = setup();
+	kabane(["runs"]);
+	seed("01M7JT0TFJB7MF38VYDWCG0GGG", { machine: "elsewhere" });
+	const other = join(dirname(root), "other");
+	mkdirSync(join(other, ".kabane"), { recursive: true });
+	expect(Bun.spawnSync(["git", "init", "-q", other]).exitCode).toBe(0);
+	writeFileSync(join(other, ".kabane/scope"), "other\n");
+	// The machine check is past the lookup: reaching it says the run was found.
+	const found = `Error: Run 01M7JT0TFJB7MF38VYDWCG0GGG runs on elsewhere, not on this machine (${hostname()}); attach it there`;
+	for (const cwd of [other, home])
+		expect(
+			kabane(["runs", "attach", "01m7jt0tfjb7mf38vydwcg0ggg"], { cwd }),
+		).toMatchObject({ code: 1, stderr: found });
+	expect(kabane(["runs", "attach", "ggg"], { cwd: other }).stderr).toBe(
+		'Error: No run "ggg" in this project; kabane runs --all lists them',
+	);
+	expect(kabane(["runs", "attach", "ggg"], { cwd: home }).code).toBe(1);
 });
 
 test("a run in a runtime this kabane lacks keeps its recorded state, and its verbs name that runtime", () => {

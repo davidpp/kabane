@@ -20,8 +20,6 @@ import { Segments } from "./segments";
 import { type Theme, useTheme } from "./theme";
 import { TriggerForm } from "./trigger-form";
 
-const HINTS = Keymap.footer("dispatchForm");
-
 // The settings column beside the preview: label, value and the change mark, fixed so the preview
 // gets every other column. Below this width the two stack.
 const SETTINGS_COLS = 46;
@@ -32,9 +30,15 @@ const MAX_WIDTH = 140;
 // The box's padding above and below, and the title with the gap under it.
 const CHROME_ROWS = 4;
 
-/** A form value as its row shows it: booleans as on and off, everything else as written. */
+/** A form value as its row shows it: booleans as on and off, nothing as nothing, the rest as written. */
 const shown = (value: unknown): string =>
-	value === true ? "on" : value === false ? "off" : String(value);
+	value === true
+		? "on"
+		: value === false
+			? "off"
+			: value === undefined
+				? ""
+				: String(value);
 
 // A group row starts a section: titled, or untitled for ungrouped inputs that follow a group, so
 // they do not read as the previous title's.
@@ -45,6 +49,9 @@ type Row =
 			index: number;
 			label: string;
 			value: string;
+			// Typed rather than stepped: in hand it shows a cursor, not `‹ ›`.
+			typed: boolean;
+			required: boolean;
 			changed: boolean;
 			hint?: string;
 	  };
@@ -68,6 +75,8 @@ const formRows = (form: TriggerForm.Form): Row[] =>
 			index: line.index,
 			label: input.label ?? name,
 			value: shown(form.values[name]),
+			typed: TriggerForm.typed(input),
+			required: input.required,
 			changed: TriggerForm.changed(form, name),
 			hint: input.hint,
 		};
@@ -109,7 +118,13 @@ const Field = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const valueCols = Math.max(0, cols - labelCols - 4);
-	const value = focused ? `‹ ${row.value} ›` : `  ${row.value}`;
+	// A typed value in hand keeps its end, where the cursor is, in view.
+	const value = !focused
+		? // An empty required row says so, since `enter` will stop on it.
+			`  ${row.value === "" && row.required ? "required" : row.value}`
+		: row.typed
+			? `  ${row.value.slice(-Math.max(0, valueCols - 3))}▏`
+			: `‹ ${row.value} ›`;
 	return (
 		<box
 			id={fieldId(row.index)}
@@ -253,6 +268,7 @@ const bodyHeight = (
  */
 const layoutOf = (
 	pane: { width: number; height: number },
+	hintLine: number,
 	rows: readonly Row[],
 	previewRows: (room: number) => number,
 ): Layout => {
@@ -264,9 +280,7 @@ const layoutOf = (
 	const preview = previewRows(previewRoom);
 	const settings = rowsHeight(rows, (side ? SETTINGS_COLS : inner) - 1);
 	const whole = bodyHeight(side, preview, settings);
-	const hints =
-		Keymap.hintLine(HINTS).length <= inner &&
-		whole + CHROME_ROWS + 2 <= pane.height;
+	const hints = hintLine <= inner && whole + CHROME_ROWS + 2 <= pane.height;
 	const room = Math.max(0, pane.height - CHROME_ROWS - (hints ? 2 : 0));
 	// Stacked, the gap under the preview comes out of the room too.
 	const shown =
@@ -346,7 +360,13 @@ export const TriggerFormView = ({
 		(form.trigger.preview ?? []).flatMap((line) =>
 			Segments.wrap(segmentsOf(line, theme), room),
 		);
-	const layout = layoutOf(pane, rows, (room) => wrapped(room).length);
+	const hints = Keymap.footer("dispatchForm", TriggerForm.situation(form));
+	const layout = layoutOf(
+		pane,
+		Keymap.hintLine(hints).length,
+		rows,
+		(room) => wrapped(room).length,
+	);
 	const preview = clipped(
 		wrapped(layout.previewRoom),
 		layout.previewRows,
@@ -407,7 +427,7 @@ export const TriggerFormView = ({
 			</box>
 			{layout.hints ? (
 				<box style={{ marginTop: 1, flexShrink: 0 }}>
-					<HintRow hints={HINTS} />
+					<HintRow hints={hints} />
 				</box>
 			) : null}
 		</box>

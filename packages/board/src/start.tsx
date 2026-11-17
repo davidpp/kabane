@@ -7,6 +7,7 @@ import {
 	type ActivitySource,
 	type Header,
 	type Dispatcher,
+	type JobSource,
 } from "@cabane/extension";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
@@ -42,6 +43,9 @@ export type BoardDeps = {
 	// A host's own header for its cards, by card kind. Default: none, every card tab heads with its
 	// one-line title.
 	headers?: Readonly<Record<string, Header>>;
+	// Facts about the device's jobs for the Jobs tab. Default: none, the tab lists each job with its
+	// title, scope and state only.
+	jobs?: JobSource;
 	// One line to show over the board's footer once it is up. Default: none, nothing announced.
 	announcer?: Announcer;
 	// Every setting and its layer, for the `,` view, read when it opens. Default: none, the view
@@ -87,6 +91,7 @@ export const startBoard = async (deps: BoardDeps): Promise<void> => {
 						copilot={deps.copilot}
 						resolveScope={deps.resolveScope}
 						headers={deps.headers}
+						jobs={deps.jobs}
 						announcer={deps.announcer}
 						settings={deps.settings}
 						open={deps.open}

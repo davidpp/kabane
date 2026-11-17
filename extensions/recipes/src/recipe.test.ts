@@ -52,6 +52,20 @@ describe("Recipe.parse", () => {
 		expect(research.hash).toMatch(/^[0-9a-f]{12}$/);
 	});
 
+	it("reads harness as a list, a single word as a list of one, and none as absent", () => {
+		const front = (harness: string) =>
+			parsed(`---\nharness: ${harness}\n---\nGo.\n`, ".kabane/recipes/go.md");
+		const listed = front("[sh, -c, 'echo hi']");
+		expect(listed.ok && listed.value.harness).toEqual(["sh", "-c", "echo hi"]);
+		const one = front("codex");
+		expect(one.ok && one.value.harness).toEqual(["codex"]);
+		expect(recipe().harness).toBeUndefined();
+		expect(message(front("codex exec"))).toBe(
+			".kabane/recipes/go.md: harness: a harness is one word, or a list with one word per item: [codex, exec]",
+		);
+		expect(message(front("[]"))).toContain(".kabane/recipes/go.md: harness");
+	});
+
 	it("takes a file with no frontmatter as a prompt with no target and no inputs", () => {
 		const plain = parsed("Tidy the README.\n", ".kabane/recipes/tidy.md");
 		expect(plain.ok && plain.value).toMatchObject({

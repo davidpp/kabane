@@ -179,6 +179,7 @@ const FORM_TRIGGER = {
 	inputs: {
 		size: { type: "number", required: false, default: 2 },
 		on: { type: "boolean", required: false, default: false },
+		note: { type: "string", required: false, default: "x" },
 	},
 	satisfiable: true,
 };
@@ -258,6 +259,37 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			copilot: copilot({ turn: "running", hasLog: true }),
 		}),
 	],
+	// Two jobs, the second selected: `j` and `k` both have a row to go to.
+	jobs: [
+		state({
+			view: { type: "jobs" },
+			tabs: {
+				...TABS,
+				active: BoardTabs.JOBS,
+				jobs: {
+					list: [
+						{ task: task({ id: "j1", shortId: "JSEC-1", kind: "job" }) },
+						{ task: task({ id: "j2", shortId: "JSEC-2", kind: "job" }) },
+					],
+					selectedId: "j2",
+				},
+			},
+		}),
+		state({
+			view: { type: "jobs" },
+			tabs: {
+				...TABS,
+				active: BoardTabs.JOBS,
+				jobs: {
+					list: [
+						{ task: task({ id: "j1", shortId: "JSEC-1", kind: "job" }) },
+						{ task: task({ id: "j2", shortId: "JSEC-2", kind: "job" }) },
+					],
+					selectedId: "j1",
+				},
+			},
+		}),
+	],
 	cardTab: [
 		state({
 			view: { type: "events", cardId: LOOP, fromView: "board" },
@@ -324,8 +356,9 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 			dispatch: { taskId: "p", triggers: TRIGGERS, selected, loading: false },
 		}),
 	),
-	// A form of two fields, on each: j has somewhere to go from the first, k from the second.
-	dispatchForm: [0, 1].map((field) =>
+	// A form of three fields, on each: j has somewhere to go from the first, k from the second, and
+	// the third is typed.
+	dispatchForm: [0, 1, 2].map((field) =>
 		state({
 			dispatch: {
 				taskId: "p",

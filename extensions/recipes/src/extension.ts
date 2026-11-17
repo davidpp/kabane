@@ -1,9 +1,11 @@
 // The recipes extension: `kabane run`, `kabane runs` and `kabane job`, its one setting, its doctor check, and on
-// the board a card per run that names an issue and `a` offering the recipes that work on one.
+// the board a card per run that names an issue, `a` offering the recipes that work on one (and
+// running a job now), and the facts of every job for the Jobs tab.
 import type { Extension, Host } from "@cabane/extension";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
 import { jobCommand } from "./job-command";
+import { RecipeJobs } from "./job-source";
 import { Kabane, ok } from "./result";
 import { runCommand, settingsSchema } from "./run-command";
 import { runsCommand } from "./runs-command";
@@ -21,7 +23,7 @@ export const recipes = (host: Host): Extension => {
 			runsCommand(host, runtime),
 			jobCommand(host, settings, runtime),
 		],
-		// Ports for the board's project, the folder it was opened in.
+		// Ports for the board's project, the folder it was opened in; jobs are every scope's.
 		board: async (ctx) => {
 			const project = () => host.scope.detect(ctx.cwd);
 			return {
@@ -37,6 +39,12 @@ export const recipes = (host: Host): Extension => {
 					project,
 					settings,
 					ctx,
+				}),
+				jobs: RecipeJobs.source({
+					host,
+					runtime,
+					settings,
+					actor: ctx.actor,
 				}),
 			};
 		},

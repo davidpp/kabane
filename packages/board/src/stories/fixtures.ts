@@ -12,6 +12,7 @@ import {
 import type {
 	ActivityCard,
 	HeaderPart,
+	JobFacts,
 	TriggerDescriptor,
 	SettingKind,
 } from "@cabane/extension";
@@ -22,6 +23,7 @@ import {
 	type QuestionView,
 } from "@cabane/questions";
 import type { BoardData } from "../data";
+import type { BoardJobs } from "../jobs";
 import type { BoardNav } from "../nav";
 import type { CopilotElicitation, SettingRow } from "../ports";
 import type { BoardTabs } from "../tabs";
@@ -653,4 +655,135 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 			[{ text: "budget.concurrency = 1 · shared files", tone: "muted" }],
 		],
 	};
+
+	/** A recipe's launcher as the recipes extension builds it: the harness, then its inputs. */
+	export const RECIPE_RUN: TriggerDescriptor = {
+		id: "recipe:preliminary-research",
+		label: "preliminary-research",
+		satisfiable: true,
+		inputs: {
+			"@harness": {
+				type: "string",
+				required: true,
+				default: "codex exec",
+				label: "harness",
+				hint: "from the recipe; the prompt is added as its last word",
+			},
+			depth: {
+				type: "string",
+				required: false,
+				default: "medium",
+				options: ["quick", "medium", "thorough"],
+				hint: "how far to follow prior issues",
+			},
+			focus: {
+				type: "string",
+				required: true,
+				hint: "what the implementer most needs to know",
+			},
+		},
+	};
+
+	/** The moment the jobs stories are read at, so "in 3h" stays put. */
+	export const JOBS_NOW = Date.parse("2026-11-17T06:00:00.000Z");
+
+	const jobFacts = (over: Partial<JobFacts>): JobFacts => ({
+		schedule: "0 9 * * *",
+		next: "2026-11-17T09:00:00.000Z",
+		recipe: "wiki-maintenance",
+		inputs: {},
+		harness: ["claude"],
+		session: "fresh",
+		folder: "/Users/david/Vaults/second-brain",
+		runs: [],
+		...over,
+	});
+
+	/**
+	 * Three jobs in two scopes: one whose run waits on the human, one paused, and one a source
+	 * never described (a board without the extension sees them all this way).
+	 */
+	export const JOBS: readonly BoardJobs.Job[] = [
+		{
+			task: task({
+				id: "01H000000000000000000000J1",
+				shortId: "JSEC-1",
+				title: "Keep the wiki current",
+				kind: "job",
+				scopeUri: "kabane://scope/second-brain",
+				description:
+					"Read the week's notes and fold what changed into the wiki.",
+			}),
+			facts: jobFacts({
+				inputs: { depth: "quick" },
+				harness: ["claude", "--model", "opus", "--permission-mode", "auto"],
+				runs: [
+					{
+						id: "01KA2Y6Q0F8V3M7C9H1T4B5N2D",
+						state: "waiting",
+						startedAt: "2026-11-17T05:00:00.000Z",
+						open: "kabane runs attach 01KA2Y6Q0F8V3M7C9H1T4B5N2D",
+					},
+					{
+						id: "01KA0G1E5W2R8P3X6J9K7L4M1C",
+						state: "ended",
+						startedAt: "2026-11-16T09:00:00.000Z",
+						open: "kabane runs attach 01KA0G1E5W2R8P3X6J9K7L4M1C",
+					},
+					{
+						id: "01K9YE0D4V1Q7N2W5H8J6K3L0B",
+						state: "ended",
+						startedAt: "2026-11-15T09:00:00.000Z",
+						open: "kabane runs attach 01K9YE0D4V1Q7N2W5H8J6K3L0B",
+					},
+					{
+						id: "01K9VC9C3T0P6M1V4G7H5J2K9A",
+						state: "ended",
+						startedAt: "2026-11-14T09:00:00.000Z",
+						open: "kabane runs attach 01K9VC9C3T0P6M1V4G7H5J2K9A",
+					},
+					{
+						id: "01K9SA8B2S9N5L0T3F6G4H1J8Z",
+						state: "ended",
+						startedAt: "2026-11-13T09:00:00.000Z",
+						open: "kabane runs attach 01K9SA8B2S9N5L0T3F6G4H1J8Z",
+					},
+				],
+			}),
+		},
+		{
+			task: task({
+				id: "01H000000000000000000000J2",
+				shortId: "JSEC-2",
+				title: "Watch the vertical for new launches",
+				kind: "job",
+				state: "someday",
+				scopeUri: "kabane://scope/second-brain",
+			}),
+			facts: jobFacts({
+				schedule: "30 7 * * 1-5",
+				next: "2026-11-18T07:30:00.000Z",
+				recipe: "vertical-monitor",
+				harness: ["codex"],
+				session: "keep",
+				runs: [
+					{
+						id: "01KA1H2F6X3S9Q4Y7K0L8M5N2E",
+						state: "idle",
+						startedAt: "2026-11-16T07:30:00.000Z",
+						open: "kabane runs attach 01KA1H2F6X3S9Q4Y7K0L8M5N2E",
+					},
+				],
+			}),
+		},
+		{
+			task: task({
+				id: "01H000000000000000000000J3",
+				shortId: "JCAB-9",
+				title: "Sweep stale branches",
+				kind: "job",
+				scopeUri: "kabane://scope/kabane",
+			}),
+		},
+	];
 }

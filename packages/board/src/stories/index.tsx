@@ -19,6 +19,8 @@ import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
 import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
+import { BoardJobs } from "../jobs";
+import { JobPanel, JobsView } from "../jobs-view";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import type { BoardNav } from "../nav";
 import type { CopilotElicitation } from "../ports";
@@ -565,7 +567,55 @@ const HeaderStory = (): ReactNode => {
 	);
 };
 
+// The Jobs tab on screen under the bar, its waiting job selected.
+const JOBS_TABS: BoardTabs.Tabs = {
+	...BoardTabs.NONE,
+	active: BoardTabs.JOBS,
+	jobs: BoardJobs.withList(BoardTabs.NONE.jobs, Fixtures.JOBS),
+};
+
+const JobsStory = (): ReactNode => (
+	<box style={{ flexDirection: "column", flexGrow: 1 }}>
+		<TabBar tabs={JOBS_TABS} cards={[]} spinnerFrame={SPINNER_IDLE} />
+		<JobsView jobs={JOBS_TABS.jobs} now={Fixtures.JOBS_NOW} />
+	</box>
+);
+
+const [WIKI_JOB] = Fixtures.JOBS;
+
 export const STORIES: readonly Story[] = [
+	{
+		name: "jobs",
+		about:
+			"the Jobs tab: two scopes, a run waiting on the human, a paused job, one no source describes",
+		width: 100,
+		height: 14,
+		render: () => <JobsStory />,
+	},
+	{
+		name: "job-detail",
+		about:
+			"a job's detail: its schedule, recipe, folder and runs with their attach command",
+		width: 100,
+		height: 24,
+		render: () =>
+			WIKI_JOB ? (
+				<Detail
+					taskId={WIKI_JOB.task.id}
+					task={WIKI_JOB.task}
+					records={ok(Fixtures.records(WIKI_JOB.task))}
+					scrollRef={createRef<ScrollBoxRenderable>()}
+					job={
+						<JobPanel
+							facts={WIKI_JOB.facts}
+							paused={false}
+							now={Fixtures.JOBS_NOW}
+						/>
+					}
+					keys={{ context: "detail", situation: {} }}
+				/>
+			) : null,
+	},
 	{
 		name: "card-header",
 		about: "Toned data rows, a series color, bold text and a clipped line",
@@ -584,6 +634,44 @@ export const STORIES: readonly Story[] = [
 				form={TriggerForm.open(Fixtures.ADVISED_RUN)}
 			/>
 		),
+	},
+	{
+		name: "trigger-recipe",
+		about:
+			"a recipe's launcher: the harness it will start and where from, a choice, a required text input",
+		width: 100,
+		height: 24,
+		render: () => (
+			<TriggerFormView
+				shortId="JCAB-443"
+				form={TriggerForm.open(Fixtures.RECIPE_RUN)}
+			/>
+		),
+	},
+	{
+		name: "trigger-recipe-typing",
+		about:
+			"the same launcher with the required text input in hand and typed, the harness edited",
+		width: 100,
+		height: 24,
+		render: () => {
+			const form = TriggerForm.open(Fixtures.RECIPE_RUN);
+			return (
+				<TriggerFormView
+					shortId="JCAB-443"
+					form={{
+						...form,
+						field: 2,
+						values: {
+							...form.values,
+							"@harness": "claude --model opus",
+							focus: "the auth flow",
+						},
+						edited: ["@harness", "focus"],
+					}}
+				/>
+			);
+		},
 	},
 	{
 		name: "board",
