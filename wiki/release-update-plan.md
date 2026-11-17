@@ -7,6 +7,41 @@ full test matrix. External setup and live release verification remain human-owne
 no release version is selected here. The accepted token-efficiency work remains unchanged.
 Parent approved fail-closed refusal of the pinned-Bun missing-global-bin case.
 
+## Amendment 2026-11-17: a third channel, main (JCAB-543)
+
+Decision 2 below ("stable-only, no channel override in v1") was already widened by the beta
+channel (`X.Y.Z-beta.N` on npm `beta`). JCAB-543 adds a third: **main**, a build of an arbitrary
+commit of `main`. David asked for a non-versioned build that installs like a release and ties
+into the update notice, local first and shaped so a CI rolling build can feed the same channel
+later. It replaces `bun run live` (JCAB-541, removed in PR #83), which ran kabane from a second
+source checkout: not what an installed user runs.
+
+- **Identity is a stamp, not a version.** `scripts/build-binary.ts` compiles in
+  `process.env.KABANE_MAIN_BUILD`, the JSON of `{ channel: "main", commit, date, source }`.
+  The package version stays whatever `packages/cli/package.json` says, so `ChannelVersionSchema`
+  and the release paths are untouched; `kabane --version` prints `<version> (main <sha7>, <date>)`.
+  Turned down: a SemVer prerelease such as `X.Y.Z-main.<n>`, which every version comparison would
+  then have to order against releases, and which says nothing about the commit.
+- **Newer means main has commits after the stamp**, read from the source's remote: `git
+  ls-remote` first, then a blobless bare clone into a temporary directory to count, removed
+  after. Nobody's checkout is fetched into. A stamp main no longer contains (a force push) is
+  reported as such. Turned down: fetching into the recorded clone (its refs are the
+  contributor's), and a persistent cache repository in `KABANE_HOME` (state to keep right for a
+  check that runs at most hourly).
+- **The source is a seam.** The stamp's `source` is `{ kind: "clone", clone, remote }` today.
+  A CI rolling prerelease adds a second kind, checked against its release and replaced through
+  `UpdateBinary`'s download and checksum path, on this same channel.
+- **Install is `bun run main-build`** in a clone: from a temporary worktree of `origin/main`,
+  the binary and the enabled extensions of the repository, then a SQLite `VACUUM INTO` backup of
+  the database, then the binary at `$BUN_INSTALL/bin/kabane` and the extensions in
+  `$KABANE_HOME/extensions/`. Symlinks there (`bun link`, `link-extensions`) are replaced only
+  with `--replace-links`. `kabane update` on a main build runs it from the recorded clone.
+- **The board's notice** reads the same status, cached an hour in
+  `KABANE_HOME/update-check-main.json` (releases keep their daily `update-check.json`).
+
+The release and update contract below is otherwise unchanged; `latest` and `beta` installs behave
+exactly as before.
+
 ## Approved decisions
 
 1. Approve a manually dispatched release workflow, defaulting to nonpublishing verification,
