@@ -339,8 +339,20 @@ it("reconcile leaves a run with no session yet as recorded, without asking the r
 	expect(hc.got).toEqual([]);
 });
 
-const recipe = (name: string, text: string) =>
+/** A project skill with nothing in it but its name: kabane only names it to the harness. */
+const skill = (root: string, name: string) => {
+	mkdirSync(join(root, ".agents/skills", name), { recursive: true });
+	writeFileSync(
+		join(root, ".agents/skills", name, "SKILL.md"),
+		`---\nname: ${name}\ndescription: ${name}\n---\n`,
+	);
+};
+
+/** Recipe `name`, and the skill it names after itself. */
+const recipe = (name: string, text: string) => {
 	writeFileSync(join(project.root, ".kabane/recipes", `${name}.md`), text);
+	skill(project.root, name);
+};
 
 const RESEARCH = `---
 description: Research an issue
@@ -353,7 +365,6 @@ inputs:
     type: number
     default: 2
 ---
-Research {{target.shortId}} at {{inputs.depth}} depth in {{inputs.rounds}} rounds.
 `;
 
 // `harness` is `recipes.harness` as a global setting; unset, the setting is absent.
@@ -379,14 +390,14 @@ const dispatcherWith = (runtime: Runtime, harness?: string[]) =>
 describe("RecipeDispatcher", () => {
 	it("offers each recipe that targets an issue, its harness then its inputs one to one, and a broken one unsatisfiable", async () => {
 		recipe("research", RESEARCH);
-		recipe("tidy", "---\ndescription: No target\n---\nTidy up.\n");
+		recipe("tidy", "---\ndescription: No target\n---\n");
 		recipe(
 			"ask",
-			"---\ntarget: issue\ninputs:\n  focus:\n    required: true\n---\nOn {{inputs.focus}}.\n",
+			"---\ntarget: issue\ninputs:\n  focus:\n    required: true\n---\n",
 		);
-		recipe("broken", "---\ntarget: issue\ninputs: [\n---\nBody.\n");
+		recipe("broken", "---\ntarget: issue\ninputs: [\n---\n");
 		// A `:` in the file's name: the trigger is named from the file, not from its error's text.
-		recipe("odd:name", "---\ntarget: issue\ninputs: [\n---\nBody.\n");
+		recipe("odd:name", "---\ntarget: issue\ninputs: [\n---\n");
 		const triggers = value(
 			await dispatcherWith(scripted().runtime).triggers(issue.id),
 		);
@@ -422,6 +433,15 @@ describe("RecipeDispatcher", () => {
 				},
 				rounds: { type: "number", default: 2, required: false },
 			},
+			// Beside the form's settings: the skill the run will use, and where it is.
+			preview: [
+				[
+					{ text: "Uses the ", tone: "muted" },
+					{ text: "research", bold: true },
+					{ text: " skill", tone: "muted" },
+				],
+				[{ text: ".agents/skills/research/SKILL.md", tone: "muted" }],
+			],
 		});
 		// A required text input is a row the human fills in, not a reason to refuse.
 		expect(ask?.inputs.focus).toEqual({ type: "string", required: true });
@@ -463,7 +483,7 @@ describe("RecipeDispatcher", () => {
 			`started run ${stored?.id} (research on ${issue.shortId}) with claude  (kabane's default) · kabane runs attach ${stored?.id}`,
 		);
 		expect(hc.started[0]?.argv.at(-1)).toEndWith(
-			`Research ${issue.shortId} at thorough depth in 3 rounds.`,
+			`\n\nUse the research skill.\nTarget: ${issue.shortId} ("${issue.title}")\ndepth: thorough\nrounds: 3`,
 		);
 		expect(hc.started[0]?.argv.slice(0, -1)).toEqual(["claude"]);
 		expect(stored?.harness).toEqual(["claude"]);
@@ -472,7 +492,7 @@ describe("RecipeDispatcher", () => {
 	it("shows the recipe's harness over the setting, and starts what the form shows, edited or not", async () => {
 		recipe(
 			"probe",
-			"---\ntarget: issue\nharness: [sh, -c, 'echo recipe']\ninputs:\n  topic:\n    required: true\n  depth:\n    type: number\n---\nProbe {{inputs.topic}} to {{inputs.depth}}.\n",
+			"---\ntarget: issue\nharness: [sh, -c, 'echo recipe']\ninputs:\n  topic:\n    required: true\n  depth:\n    type: number\n---\n",
 		);
 		const hc = scripted();
 		const board = dispatcherWith(hc.runtime, ["sh", "-c", "echo setting"]);
@@ -497,7 +517,7 @@ describe("RecipeDispatcher", () => {
 			"echo recipe",
 		]);
 		// A number typed as text arrives converted, as `--input` converts it.
-		expect(hc.started[0]?.argv.at(-1)).toEndWith("Probe auth to 3.");
+		expect(hc.started[0]?.argv.at(-1)).toEndWith("\ntopic: auth\ndepth: 3");
 		const edited = value(
 			await board.dispatch(
 				"recipe:probe",
@@ -518,7 +538,7 @@ describe("RecipeDispatcher", () => {
 			"echo recipe",
 		]);
 		// A recipe that names no harness falls to the setting.
-		recipe("plain", "---\ntarget: issue\n---\nPlain.\n");
+		recipe("plain", "---\ntarget: issue\n---\n");
 		const plain = value(await board.triggers(issue.id)).find(
 			(t) => t.id === "recipe:plain",
 		);
@@ -567,8 +587,9 @@ describe("RecipeJobs", () => {
 		mkdirSync(join(vault, ".kabane/recipes"), { recursive: true });
 		writeFileSync(
 			join(vault, ".kabane/recipes/tidy.md"),
-			"---\ndescription: Tidy\ninputs:\n  depth:\n    default: quick\n---\nTidy the vault, {{inputs.depth}}.\n",
+			"---\ndescription: Tidy\ninputs:\n  depth:\n    default: quick\n---\n",
 		);
+		skill(vault, "tidy");
 		const scopeUri = ScopeUri.format({ scopeId: "vault" });
 		value(await Jobs.setRoot(host, scopeUri, vault));
 		const task = value(

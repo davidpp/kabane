@@ -1,4 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { err, ok, tryCatch, trySync } from "@cabane/core";
 import { z } from "zod";
 import { Inputs } from "./inputs";
@@ -6,6 +9,21 @@ import { Recipe } from "./recipe";
 import { Kabane } from "./result";
 
 Kabane.bind({ result: { ok, err, tryCatch, trySync } });
+
+// A project with the skills the recipes below name: research and go in Codex's folder, tidy in
+// Claude Code's.
+const ROOT = mkdtempSync(join(tmpdir(), "recipe-parse-"));
+afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+const skill = (folder: string, name: string) => {
+	mkdirSync(join(ROOT, folder, name), { recursive: true });
+	writeFileSync(
+		join(ROOT, folder, name, "SKILL.md"),
+		`---\nname: ${name}\ndescription: ${name}\n---\n`,
+	);
+};
+skill(".agents/skills", "research");
+skill(".agents/skills", "go");
+skill(".claude/skills", "tidy");
 
 const FILE = ".kabane/recipes/research.md";
 const RESEARCH = `---
@@ -21,11 +39,9 @@ inputs:
   verbose:
     type: boolean
 ---
-
-Research {{target.shortId}} ({{target.title}}) at {{ inputs.depth }} depth, {{inputs.limit}} sources, verbose {{inputs.verbose}}.
 `;
 
-const parsed = (text: string, file = FILE) => Recipe.parse(z, file, text);
+const parsed = (text: string, file = FILE) => Recipe.parse(z, ROOT, file, text);
 const recipe = (): Recipe.Recipe => {
 	const result = parsed(RESEARCH);
 	if (!result.ok) throw result.error;
@@ -35,7 +51,7 @@ const message = (result: { ok: boolean; error?: Error }) =>
 	result.ok ? "ok" : result.error?.message;
 
 describe("Recipe.parse", () => {
-	it("reads the frontmatter, the body and a hash of the file", () => {
+	it("reads the frontmatter, the skill named after the recipe and a hash of both files", () => {
 		const research = recipe();
 		expect(research).toMatchObject({
 			name: "research",
@@ -47,14 +63,36 @@ describe("Recipe.parse", () => {
 				limit: { type: "number", required: true },
 				verbose: { type: "boolean", required: false },
 			},
+			skill: "research",
+			skillFile: ".agents/skills/research/SKILL.md",
 		});
-		expect(research.body.startsWith("Research {{target.shortId}}")).toBe(true);
 		expect(research.hash).toMatch(/^[0-9a-f]{12}$/);
+	});
+
+	it("takes the skill the frontmatter names, from Claude Code's folder when Codex's has none", () => {
+		const named = parsed("---\nskill: tidy\n---\n");
+		expect(named.ok && named.value).toMatchObject({
+			name: "research",
+			skill: "tidy",
+			skillFile: ".claude/skills/tidy/SKILL.md",
+		});
+	});
+
+	it("names both places it looked when the skill is in neither", () => {
+		expect(message(parsed("---\nskill: absent\n---\n"))).toBe(
+			`${FILE}: no skill "absent": kabane looked for .agents/skills/absent/SKILL.md and .claude/skills/absent/SKILL.md`,
+		);
+	});
+
+	it("refuses a body, saying where the prompt goes", () => {
+		expect(message(parsed("---\ntarget: issue\n---\nResearch it.\n"))).toBe(
+			`${FILE}: a recipe has no body: the prompt belongs in the skill. Move it to .agents/skills/research/SKILL.md, with name: research and a description in its frontmatter; make .claude/skills/research a symlink to ../../.agents/skills/research so Claude Code finds it too; leave only the frontmatter here`,
+		);
 	});
 
 	it("reads harness as a list, a single word as a list of one, and none as absent", () => {
 		const front = (harness: string) =>
-			parsed(`---\nharness: ${harness}\n---\nGo.\n`, ".kabane/recipes/go.md");
+			parsed(`---\nharness: ${harness}\n---\n`, ".kabane/recipes/go.md");
 		const listed = front("[sh, -c, 'echo hi']");
 		expect(listed.ok && listed.value.harness).toEqual(["sh", "-c", "echo hi"]);
 		const one = front("codex");
@@ -66,42 +104,36 @@ describe("Recipe.parse", () => {
 		expect(message(front("[]"))).toContain(".kabane/recipes/go.md: harness");
 	});
 
-	it("takes a file with no frontmatter as a prompt with no target and no inputs", () => {
-		const plain = parsed("Tidy the README.\n", ".kabane/recipes/tidy.md");
+	it("takes an empty file as a recipe with no target and no inputs", () => {
+		const plain = parsed("", ".kabane/recipes/tidy.md");
 		expect(plain.ok && plain.value).toMatchObject({
 			name: "tidy",
 			target: "none",
 			inputs: {},
-			body: "Tidy the README.",
+			skill: "tidy",
 		});
 	});
 
 	it.each([
-		["---\ntarget: issue\nBody\n", "the frontmatter has no closing ---"],
-		["---\ntarget: [\n---\nBody\n", "the frontmatter is not YAML"],
-		["---\ntarget: repo\n---\nBody\n", "target: Invalid enum value"],
-		["---\ntitle: x\n---\nBody\n", "Unrecognized key(s) in object: 'title'"],
-		["---\ninputs:\n  n:\n    type: date\n---\nBody\n", "inputs.n.type"],
+		["---\ntarget: issue\n", "the frontmatter has no closing ---"],
+		["---\ntarget: [\n---\n", "the frontmatter is not YAML"],
+		["---\ntarget: repo\n---\n", "target: Invalid enum value"],
+		["---\ntitle: x\n---\n", "Unrecognized key(s) in object: 'title'"],
+		["---\ninputs:\n  n:\n    type: date\n---\n", "inputs.n.type"],
 		[
-			"---\ninputs:\n  n:\n    type: number\n    options: [a]\n---\nB\n",
+			"---\ninputs:\n  n:\n    type: number\n    options: [a]\n---\n",
 			'input "n": options need type string',
 		],
 		[
-			"---\ninputs:\n  n:\n    type: number\n    default: x\n---\nB\n",
+			"---\ninputs:\n  n:\n    type: number\n    default: x\n---\n",
 			'input "n": its default "x" is not a number',
 		],
 		[
-			"---\ninputs:\n  d:\n    options: [a, b]\n    default: c\n---\nB\n",
+			"---\ninputs:\n  d:\n    options: [a, b]\n    default: c\n---\n",
 			'its default "c" is not one of its options (a, b)',
 		],
-		["---\ndescription: x\n---\n\n", "the body is empty"],
-		["Use {{inputs.nope}}\n", "{{inputs.nope}} names no declared input"],
-		["Fix {{target.id}}\n", '{{target.id}} needs "target: issue"'],
-		[
-			"---\ntarget: issue\n---\nFix {{target.url}}\n",
-			"{{target.url}}: a target has target.id, target.shortId, target.title",
-		],
-		["Hi {{name}}\n", "{{name}} is no placeholder"],
+		["---\nskill: ../x\n---\n", "skill: a skill's name is lowercase letters"],
+		["Research it.\n", "a recipe has no body"],
 	])("refuses %j, naming the file", (text, why) => {
 		const result = parsed(text);
 		expect(result.ok).toBe(false);
@@ -110,26 +142,9 @@ describe("Recipe.parse", () => {
 	});
 
 	it("refuses a file name that is not a recipe name", () => {
-		expect(message(parsed("Body\n", ".kabane/recipes/Big Name.md"))).toContain(
+		expect(message(parsed("", ".kabane/recipes/Big Name.md"))).toContain(
 			"a recipe's file name is lowercase letters",
 		);
-	});
-});
-
-describe("Recipe.render", () => {
-	it("fills inputs and the target, and leaves an optional input with no value empty", () => {
-		expect(
-			Recipe.render(
-				recipe(),
-				{ depth: "quick", limit: 3 },
-				{
-					kind: "issue",
-					id: "01ABC",
-					shortId: "JCAB-7",
-					title: "A title",
-				},
-			),
-		).toBe("Research JCAB-7 (A title) at quick depth, 3 sources, verbose .");
 	});
 });
 
@@ -203,8 +218,9 @@ describe("Inputs.resolve", () => {
 	it("shows options as a numbered list and takes the number", () => {
 		const choice = Recipe.parse(
 			z,
-			".kabane/recipes/pick.md",
-			"---\ninputs:\n  depth:\n    options: [quick, thorough]\n    required: true\n    label: Depth\n---\nGo {{inputs.depth}}\n",
+			ROOT,
+			".kabane/recipes/go.md",
+			"---\ninputs:\n  depth:\n    options: [quick, thorough]\n    required: true\n    label: Depth\n---\n",
 		);
 		if (!choice.ok) throw choice.error;
 		const asked: string[] = [];
