@@ -110,7 +110,7 @@ const update = (env: NodeJS.ProcessEnv): string[] => {
 	}
 	const moved = run(["git", "rev-list", "--count", `${old}..${target}`], live);
 	return [
-		`live: ${old.slice(0, 9)} -> ${target.slice(0, 9)}, ${moved} commits${backup ? `, database copied to ${backup}` : ""}`,
+		`live: ${old.slice(0, 9)} -> ${target.slice(0, 9)}, ${moved} commit${moved === "1" ? "" : "s"}${backup ? `, database copied to ${backup}` : ""}`,
 	];
 };
 
