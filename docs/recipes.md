@@ -166,16 +166,20 @@ recipe or job would start and where it comes from (`from the recipe`, `from reci
 
 ```bash
 kabane runs                 # this project's runs that have not ended, newest first
-kabane runs --all           # ended ones too
+kabane runs --ended         # ended ones too
+kabane runs --all           # every project's, from any folder, with a PROJECT column
 kabane runs read <id>       # print the terminal's screen
 kabane runs send <id> yes   # type an answer into it and press enter
 kabane runs attach <id>     # take the terminal over; ctrl+\ gives it back
 kabane runs stop <id>       # end its program
 ```
 
-`<id>` is the run's whole id, which works from any folder whatever project the run is in, or
-its last few characters within this project, as long as one run ends with them; the
-terminal's name ends with the id's last six. A run's state is what its program last reported
+`--all` and `--ended` go together: `kabane runs --all --ended` lists every run this device
+knows. `<id>` is the run's whole id, or its last few characters; the terminal's name ends with
+the id's last six. Kabane looks for it in the current project first, then in every project on
+this device, so a command printed for one project works from any folder, or from none. When
+the characters you gave end the ids of two runs, the error lists both with their project; give
+more of the id. A run's state is what its program last reported
 to its terminal, read each time runs are listed. Programs report through OSC 7501, herdr's
 Program Status Protocol; kabane never guesses a state from the screen:
 
@@ -230,7 +234,7 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | `running` | in flight, with a spinner: the issue's row shows the recipe's name and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
 | `live` | paused, with no spinner, since nothing says the program is working: the issue's row shows `⏸ <recipe> · paused · live`, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
 | `waiting` | paused, with no spinner: the issue's row shows `⏸ <recipe> · paused` and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy. The agent waits on you: answer it with `kabane runs attach <id>` |
-| `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --all` says which of the two it is |
+| `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --ended` says which of the two it is |
 
 Every run in flight (`live`, `running` or `waiting`) is listed, and the newest finished ones (`idle` or
 `ended`) up to ten runs in all. A run with no target is not on the board: `kabane runs` lists

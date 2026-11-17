@@ -96,10 +96,12 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 			state?: string;
 			runtime?: string;
 			session?: string;
+			/** A folder of the project to record it in; this one when absent. */
+			cwd?: string;
 		} = {},
 	) => {
-		// The scope this project resolves to, read from an issue made here.
-		const added = kabane(["add", "Scope probe", "--json"]);
+		// The scope the folder resolves to, read from an issue made there.
+		const added = kabane(["add", "Scope probe", "--json"], { cwd: fields.cwd });
 		const scope = JSON.parse(added.stdout).scopeUri as string;
 		const db = new Database(join(home, "kabane.db"));
 		try {
@@ -263,8 +265,8 @@ test("a run with every input but no hc on PATH fails with one line naming hc, an
 	expect(JSON.parse(json.stdout || json.stderr).error).toStartWith(
 		"hc (herdr core) is not on PATH",
 	);
-	expect(kabane(["runs", "--all"], { path: NO_HC }).stdout).toBe(
-		"No runs in this project.",
+	expect(kabane(["runs", "--ended"], { path: NO_HC }).stdout).toBe(
+		"No runs in this project; --all shows every project's.",
 	);
 	const doctor = JSON.parse(
 		kabane(["doctor", "--json"], { path: NO_HC }).stdout,
@@ -290,10 +292,10 @@ test("run and runs outside a project fail with one line", () => {
 test("runs refuses an unknown run and an unknown subcommand", () => {
 	const { kabane } = setup();
 	expect(kabane(["runs"]).stdout).toBe(
-		"No runs in flight in this project; --all shows ended ones.",
+		"No runs in flight in this project; --ended shows ended ones, --all shows every project's.",
 	);
 	expect(kabane(["runs", "read", "ABC123"]).stderr).toBe(
-		'Error: No run "ABC123" in this project; kabane runs --all lists them',
+		'Error: No run "ABC123" in any project; kabane runs --all --ended lists them all',
 	);
 	expect(kabane(["runs", "poke", "x"]).code).toBe(2);
 });
@@ -308,7 +310,7 @@ test("with the extension not enabled, run and runs are unknown and help lists ne
 	expect(help).not.toMatch(/^\s+runs\s/m);
 });
 
-test("runs lists the runs in flight unless --all, and refuses another machine's run by name", () => {
+test("runs lists the runs in flight unless --ended, and refuses another machine's run by name", () => {
 	const { kabane, seed } = setup();
 	kabane(["runs"]); // opens the store, which creates the run table
 	seed("01M7JT0TFJB7MF38VYDWCG0AAA", { machine: "elsewhere" });
@@ -322,7 +324,7 @@ test("runs lists the runs in flight unless --all, and refuses another machine's 
 		"running (on elsewhere)",
 	);
 	const all = JSON.parse(
-		kabane(["runs", "--all", "--json"], { path: NO_HC }).stdout,
+		kabane(["runs", "--ended", "--json"], { path: NO_HC }).stdout,
 	);
 	expect(all.runs.map((r: { state: string }) => r.state).sort()).toEqual([
 		"ended",
@@ -336,29 +338,81 @@ test("runs lists the runs in flight unless --all, and refuses another machine's 
 	expect(kabane(["runs", "send", "AAA", "yes"]).stderr).toContain(
 		"runs on elsewhere",
 	);
-	expect(kabane(["runs", "read", "aa"]).stderr).toStartWith(
-		'Error: "aa" names 2 runs',
+	expect(kabane(["runs", "read", "aa"]).stderr).toBe(
+		'Error: "aa" names 2 runs (01M7JT0TFJB7MF38VYDWCG0BAA in pinned, 01M7JT0TFJB7MF38VYDWCG0AAA in pinned); give more of the id',
 	);
 });
 
-test("a run's whole id reaches it from any folder, another project's or none; a short key stays in the project", () => {
+test("a run's id, whole or its end, reaches it from any folder: this project's first, then any project's or none", () => {
 	const { kabane, seed, home, root } = setup();
 	kabane(["runs"]);
-	seed("01M7JT0TFJB7MF38VYDWCG0GGG", { machine: "elsewhere" });
 	const other = join(dirname(root), "other");
 	mkdirSync(join(other, ".kabane"), { recursive: true });
 	expect(Bun.spawnSync(["git", "init", "-q", other]).exitCode).toBe(0);
 	writeFileSync(join(other, ".kabane/scope"), "other\n");
-	// The machine check is past the lookup: reaching it says the run was found.
-	const found = `Error: Run 01M7JT0TFJB7MF38VYDWCG0GGG runs on elsewhere, not on this machine (${hostname()}); attach it there`;
-	for (const cwd of [other, home])
+	seed("01M7JT0TFJB7MF38VYDWCG0GGG", { machine: "elsewhere" });
+	seed("01M7JT0TFJB7MF38VYDWCG1HHH", { machine: "elsewhere" });
+	seed("01M7JT0TFJB7MF38VYDWCG2HHH", { machine: "elsewhere", cwd: other });
+	// The machine check is past the lookup: reaching it names the run that was found.
+	const found = (id: string) =>
+		`Error: Run ${id} runs on elsewhere, not on this machine (${hostname()}); attach it there`;
+	for (const cwd of [other, home]) {
 		expect(
 			kabane(["runs", "attach", "01m7jt0tfjb7mf38vydwcg0ggg"], { cwd }),
-		).toMatchObject({ code: 1, stderr: found });
-	expect(kabane(["runs", "attach", "ggg"], { cwd: other }).stderr).toBe(
-		'Error: No run "ggg" in this project; kabane runs --all lists them',
+		).toMatchObject({ code: 1, stderr: found("01M7JT0TFJB7MF38VYDWCG0GGG") });
+		expect(kabane(["runs", "attach", "ggg"], { cwd })).toMatchObject({
+			code: 1,
+			stderr: found("01M7JT0TFJB7MF38VYDWCG0GGG"),
+		});
+	}
+	// One run in each project ends with "hhh": each project finds its own; outside both, it names both.
+	expect(kabane(["runs", "attach", "hhh"]).stderr).toBe(
+		found("01M7JT0TFJB7MF38VYDWCG1HHH"),
 	);
-	expect(kabane(["runs", "attach", "ggg"], { cwd: home }).code).toBe(1);
+	expect(kabane(["runs", "attach", "hhh"], { cwd: other }).stderr).toBe(
+		found("01M7JT0TFJB7MF38VYDWCG2HHH"),
+	);
+	expect(kabane(["runs", "attach", "hhh"], { cwd: home }).stderr).toBe(
+		'Error: "hhh" names 2 runs (01M7JT0TFJB7MF38VYDWCG2HHH in other, 01M7JT0TFJB7MF38VYDWCG1HHH in pinned); give more of the id',
+	);
+});
+
+test("runs --all lists every project's runs with their project, from any folder", () => {
+	const { kabane, seed, home, root } = setup();
+	kabane(["runs"]);
+	const other = join(dirname(root), "other");
+	mkdirSync(join(other, ".kabane"), { recursive: true });
+	expect(Bun.spawnSync(["git", "init", "-q", other]).exitCode).toBe(0);
+	writeFileSync(join(other, ".kabane/scope"), "other\n");
+	seed("01M7JT0TFJB7MF38VYDWCG0AAA", { machine: "elsewhere" });
+	seed("01M7JT0TFJB7MF38VYDWCG0BBB", { machine: "elsewhere", cwd: other });
+	seed("01M7JT0TFJB7MF38VYDWCG0CCC", {
+		machine: "elsewhere",
+		state: "ended",
+		cwd: other,
+	});
+	const ids = (args: string[], cwd?: string) =>
+		JSON.parse(
+			kabane(["runs", ...args, "--json"], { cwd, path: NO_HC }).stdout,
+		).runs.map((r: { id: string }) => r.id);
+	expect(ids([])).toEqual(["01M7JT0TFJB7MF38VYDWCG0AAA"]);
+	expect(ids(["--all"], home).sort()).toEqual([
+		"01M7JT0TFJB7MF38VYDWCG0AAA",
+		"01M7JT0TFJB7MF38VYDWCG0BBB",
+	]);
+	expect(ids(["--all", "--ended"]).sort()).toEqual([
+		"01M7JT0TFJB7MF38VYDWCG0AAA",
+		"01M7JT0TFJB7MF38VYDWCG0BBB",
+		"01M7JT0TFJB7MF38VYDWCG0CCC",
+	]);
+	const table = kabane(["runs", "--all"], { path: NO_HC }).stdout.split("\n");
+	expect(table[0]).toStartWith("ID                          PROJECT  STATE");
+	expect(table.slice(1).map((row) => row.split(/\s+/).slice(0, 2))).toEqual(
+		expect.arrayContaining([
+			["01M7JT0TFJB7MF38VYDWCG0AAA", "pinned"],
+			["01M7JT0TFJB7MF38VYDWCG0BBB", "other"],
+		]),
+	);
 });
 
 test("a run in a runtime this kabane lacks keeps its recorded state, and its verbs name that runtime", () => {
@@ -412,7 +466,7 @@ test.skipIf(Bun.which("hc") === null)(
 			),
 		).toEqual(["01M7JT0TFJB7MF38VYDWCG0DDD"]);
 		const all = JSON.parse(
-			kabane(["runs", "--all", "--json"], { path: NO_HC }).stdout,
+			kabane(["runs", "--ended", "--json"], { path: NO_HC }).stdout,
 		).runs as { id: string; state: string; endedAt?: string }[];
 		const gone = all.find((r) => r.id.endsWith("CCC"));
 		expect(gone?.state).toBe("ended");

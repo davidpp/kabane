@@ -1,8 +1,9 @@
-// `kabane runs [--all]` and `kabane runs attach|read|send|stop <id>`. A run's state is what its
+// `kabane runs [--all] [--ended]` and `kabane runs attach|read|send|stop <id>`. A run's state is what its
 // runtime says: every listing reads this machine's unfinished runs from the runtime first and
 // writes back the ones that moved. A run started on another machine, or in a runtime this kabane
 // does not have, shows what was last recorded.
 import { hostname } from "node:os";
+import { basename } from "node:path";
 import type { Extension, Host, Outcome } from "@cabane/extension";
 import { Harness } from "./harness";
 import { ok } from "./result";
@@ -11,7 +12,7 @@ import { Runs } from "./runs";
 import type { Runtime } from "./runtime";
 
 const USAGE =
-	"kabane runs [--all] | kabane runs attach|read|stop <id> | kabane runs send <id> <text>";
+	"kabane runs [--all] [--ended] | kabane runs attach|read|stop <id> | kabane runs send <id> <text>";
 
 /** "4m", "2h", "3d": how long ago `iso` was. */
 const age = (iso: string, now = Date.now()): string => {
@@ -37,8 +38,17 @@ export const pad = (rows: string[][]): string => {
 };
 
 /**
- * The one run `key` names, on this machine: a whole run id from any folder, whatever project it ran
- * in, as every printed attach command gives it; a shorter key within the project of `cwd`.
+ * A scope's name as a reader knows it: its id, the folder's name when the id is a path (a
+ * repository's scope), or the URI when it has none.
+ */
+const projectName = (host: Host, uri: string): string => {
+	const id = host.scope.idOf(uri);
+	return id.ok ? basename(id.value) : uri;
+};
+
+/**
+ * The one run `key` names, its whole id or the end of it, on this machine: looked for in the
+ * project of `cwd` first, then in every scope, so a command printed in one folder works in any.
  */
 const resolve = async (
 	host: Host,
@@ -49,27 +59,30 @@ const resolve = async (
 	const fail = (outcome: Outcome) => ({ ok: false as const, outcome });
 	if (key === undefined)
 		return fail(host.outcome.usage(`runs ${verb} needs a run id`, USAGE));
-	const exact = await Runs.byId(host, key);
-	if (!exact.ok) return fail(host.outcome.failure(exact.error));
-	let found = exact.value;
-	if (found.length === 0) {
-		const project = await projectOf(host, cwd, "runs");
-		if (!project.ok) return project;
-		const inProject = await Runs.find(host, project.value.scopeUri, key);
+	const here = await host.scope.detect(cwd);
+	if (!here.ok) return fail(host.outcome.failure(here.error));
+	let found: Runs.Run[] = [];
+	if (here.value !== null) {
+		const inProject = await Runs.find(host, here.value.scopeUri, key);
 		if (!inProject.ok) return fail(host.outcome.failure(inProject.error));
 		found = inProject.value;
+	}
+	if (found.length === 0) {
+		const anywhere = await Runs.find(host, undefined, key);
+		if (!anywhere.ok) return fail(host.outcome.failure(anywhere.error));
+		found = anywhere.value;
 	}
 	const [run, other] = found;
 	if (run === undefined)
 		return fail(
 			host.outcome.failure(
-				`No run "${key}" in this project; kabane runs --all lists them`,
+				`No run "${key}" in any project; kabane runs --all --ended lists them all`,
 			),
 		);
 	if (other !== undefined)
 		return fail(
 			host.outcome.failure(
-				`"${key}" names ${found.length} runs (${found.map((r) => r.id).join(", ")}); give more of the id`,
+				`"${key}" names ${found.length} runs (${found.map((r) => `${r.id} in ${projectName(host, r.scope)}`).join(", ")}); give more of the id`,
 			),
 		);
 	if (run.machine !== hostname())
@@ -145,8 +158,9 @@ export const runsCommand = (
 ): Extension.Command => {
 	const listing = async (
 		ctx: Extension.Ctx,
-		scope: string,
-		all: boolean,
+		/** One project's scope, or none for every project's runs. */
+		scope: string | undefined,
+		ended: boolean,
 	): Promise<Outcome> => {
 		const stored = await Runs.list(host, scope);
 		if (!stored.ok) return host.outcome.failure(stored.error);
@@ -156,22 +170,27 @@ export const runsCommand = (
 				? await Runs.reconcile(host, runtime, stored.value, ctx.actor)
 				: ok(stored.value);
 		if (!runs.ok) return host.outcome.failure(runs.error);
-		const shown = runs.value.filter((run) => all || run.state !== "ended");
+		const shown = runs.value.filter((run) => ended || run.state !== "ended");
 		// A target, an issue or a job, shows its short id.
 		const targets = new Map<string, string>();
 		for (const { target } of shown)
 			if (target && !targets.has(target.id))
 				targets.set(target.id, await shortIdOf(host, target.id));
-		if (shown.length === 0)
+		if (shown.length === 0) {
+			const where = scope === undefined ? "" : " in this project";
+			const more = [
+				ended ? undefined : "--ended shows ended ones",
+				scope === undefined ? undefined : "--all shows every project's",
+			].filter(Boolean);
 			return host.outcome.success(
 				{ runs: [] },
-				all
-					? "No runs in this project."
-					: "No runs in flight in this project; --all shows ended ones.",
+				`No runs${ended ? "" : " in flight"}${where}${more.length > 0 ? `; ${more.join(", ")}` : ""}.`,
 			);
+		}
 		const here = hostname();
 		const rows = shown.map((run) => [
 			run.id,
+			...(scope === undefined ? [projectName(host, run.scope)] : []),
 			run.machine === here ? run.state : `${run.state} (on ${run.machine})`,
 			run.recipe.name,
 			run.target === undefined
@@ -184,7 +203,16 @@ export const runsCommand = (
 		return host.outcome.success(
 			{ runs: shown },
 			pad([
-				["ID", "STATE", "RECIPE", "TARGET", "TERMINAL", "AGE", "HARNESS"],
+				[
+					"ID",
+					...(scope === undefined ? ["PROJECT"] : []),
+					"STATE",
+					"RECIPE",
+					"TARGET",
+					"TERMINAL",
+					"AGE",
+					"HARNESS",
+				],
 				...rows,
 			]),
 		);
@@ -197,13 +225,12 @@ export const runsCommand = (
 		run: async (args, ctx) => {
 			const [verb, key, ...words] = args.positionals;
 			if (verb === undefined) {
+				const ended = host.args.flagBool(args, "ended");
+				if (host.args.flagBool(args, "all"))
+					return listing(ctx, undefined, ended);
 				const project = await projectOf(host, ctx.cwd, "runs");
 				if (!project.ok) return project.outcome;
-				return listing(
-					ctx,
-					project.value.scopeUri,
-					host.args.flagBool(args, "all"),
-				);
+				return listing(ctx, project.value.scopeUri, ended);
 			}
 			if (!["attach", "read", "send", "stop"].includes(verb))
 				return host.outcome.usage(`Unknown runs subcommand: ${verb}`, USAGE);

@@ -12,7 +12,7 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 | `src/harness.ts` | `Harness.choose`, the precedence (launch, job, recipe, `recipes.harness`, `claude`) and its source; `line` and `split`, the command line a human reads and types |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `recipes.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets (the preamble, then "Use the <skill> skill.", the target and one line per input, or the rendered body), which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
-| `src/runs-command.ts` | `kabane runs`: the listing, `attach`, `read`, `send`, `stop` |
+| `src/runs-command.ts` | `kabane runs`: the listing (this project's, or every project's with `--all`; ended runs with `--ended`), `attach`, `read`, `send`, `stop` on a run found by id in this project first, then in every scope |
 | `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
 | `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
@@ -166,7 +166,8 @@ bun run sandbox runs
 bun run sandbox runs read <id>
 bun run sandbox runs send <id> some text
 bun run sandbox runs stop <id>
-bun run sandbox runs --all                  # ended
+bun run sandbox runs --ended                # ended
+bun run sandbox runs --all                  # every project's
 hc rm <terminal>                            # each terminal you started
 ```
 

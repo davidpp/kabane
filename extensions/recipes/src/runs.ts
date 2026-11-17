@@ -324,25 +324,40 @@ export namespace Runs {
 		return ok(runs);
 	};
 
-	/** The scope's runs, newest first. */
-	export const list = (host: Store, scope: string): Promise<Result<Run[]>> =>
-		host.store.read((db) => select(host.z, db, "scope_uri = ?", [scope]));
+	/** Only `scope`'s runs, or with none, every scope's. */
+	const inScope = (
+		scope: string | undefined,
+		where: string,
+		params: string[],
+	): [string, string[]] =>
+		scope === undefined
+			? [where, params]
+			: [`scope_uri = ? AND (${where})`, [scope, ...params]];
 
-	/** The run whose whole id is `id`, case aside, in whichever scope it ran. */
-	export const byId = (host: Store, id: string): Promise<Result<Run[]>> =>
-		host.store.read((db) => select(host.z, db, "id = ?", [id.toUpperCase()]));
+	/** The runs of `scope`, or of every scope with none, newest first. */
+	export const list = (
+		host: Store,
+		scope: string | undefined,
+	): Promise<Result<Run[]>> =>
+		host.store.read((db) => select(host.z, db, ...inScope(scope, "1 = 1", [])));
 
-	/** The scope's runs whose id is `key` or ends with it, case aside. */
+	/**
+	 * The runs whose id is `key` or ends with it, case aside, in `scope`, or in every scope with
+	 * none.
+	 */
 	export const find = (
 		host: Store,
-		scope: string,
+		scope: string | undefined,
 		key: string,
 	): Promise<Result<Run[]>> =>
 		host.store.read((db) =>
-			select(host.z, db, "scope_uri = ? AND (id = ? OR id LIKE ?)", [
-				scope,
-				key.toUpperCase(),
-				`%${key.toUpperCase().replace(/[%_]/g, "")}`,
-			]),
+			select(
+				host.z,
+				db,
+				...inScope(scope, "id = ? OR id LIKE ?", [
+					key.toUpperCase(),
+					`%${key.toUpperCase().replace(/[%_]/g, "")}`,
+				]),
+			),
 		);
 }

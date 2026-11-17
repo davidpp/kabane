@@ -141,6 +141,28 @@ it("finds a run by its id or a case-insensitive suffix, and returns every run an
 	expect(await ids("zzz")).toEqual([]);
 });
 
+it("finds and lists across every scope when given none", async () => {
+	value(await Runs.insert(host, run("01M7JT0TFJB7MF38VYDWCGAPKX"), "t"));
+	value(
+		await Runs.insert(
+			host,
+			run("01M7JT0TFJB7MF38VYDWCGBPKX", { scope: "kabane://scope/other" }),
+			"t",
+		),
+	);
+	const ids = async (scope: string | undefined, key: string) =>
+		value(await Runs.find(host, scope, key))
+			.map((r) => r.id)
+			.sort();
+	expect(await ids(SCOPE, "bpkx")).toEqual([]);
+	expect(await ids(undefined, "bpkx")).toEqual(["01M7JT0TFJB7MF38VYDWCGBPKX"]);
+	expect(await ids(undefined, "pkx")).toEqual([
+		"01M7JT0TFJB7MF38VYDWCGAPKX",
+		"01M7JT0TFJB7MF38VYDWCGBPKX",
+	]);
+	expect(value(await Runs.list(host, undefined))).toHaveLength(2);
+});
+
 it("refuses a row it cannot read, as one from another device's ops might be", async () => {
 	value(await Runs.insert(host, run("01M7JT0TFJB7MF38VYDWCG0001"), "t"));
 	value(
