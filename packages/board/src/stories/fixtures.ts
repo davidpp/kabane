@@ -226,7 +226,7 @@ export namespace Fixtures {
 	 * `waiting` as paused, and its detail ends with the command that attaches to it.
 	 */
 	export const waitingRun = (on: Task): ActivityCard => ({
-		id: "recipes:01M7JZQ9PDZYZKDTYX93KKZTZC",
+		id: "01M7JZQ9PDZYZKDTYX93KKZTZC",
 		kind: "runs",
 		label: "research",
 		status: "paused",
