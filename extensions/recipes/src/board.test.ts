@@ -515,55 +515,32 @@ describe("RecipeDispatcher", () => {
 });
 
 describe("kabane runs send", () => {
-	/** A runtime whose program waits on its human: `send` types only when forced. */
-	const blocked = () => {
-		const sends: { text: string; force: boolean | undefined }[] = [];
+	it("types into a waiting run like any other", async () => {
+		const sends: string[] = [];
 		const runtime: Runtime = {
 			...scripted().runtime,
-			send: async (_session, text, options) => {
-				sends.push({ text, force: options?.force });
-				return ok(options?.force === true ? "sent" : "waiting");
+			send: async (_session, text) => {
+				sends.push(text);
+				return ok(undefined);
 			},
 		};
-		return { runtime, sends };
-	};
-	const send = (runtime: Runtime, argv: string[]) =>
-		runsCommand(host, runtime).run(parseArgs(["send", ...argv]), {
-			home,
-			store: home,
-			cwd: project.root,
-			actor: "tester",
-			harnessMode: "auto",
-			settings: Settings.port(async () => ok([])),
-		});
-
-	it("refuses a waiting run in one line that names attach and --force, and types nothing", async () => {
-		const hc = blocked();
 		const waiting = run("01M7JT0TFJB7MF38VYDWCG0400", { state: "waiting" });
 		value(await Runs.insert(host, waiting, "t"));
-		const outcome = await send(hc.runtime, [waiting.id, "hi", "there"]);
-		expect(outcome.exitCode).toBe(1);
-		expect(outcome.text).toBe(
-			`Error: Run ${waiting.id} is waiting on you; answer it with kabane runs attach ${waiting.id}, or add --force to type into it anyway`,
+		const outcome = await runsCommand(host, runtime).run(
+			parseArgs(["send", waiting.id, "hi", "there"]),
+			{
+				home,
+				store: home,
+				cwd: project.root,
+				actor: "tester",
+				harnessMode: "auto",
+				settings: Settings.port(async () => ok([])),
+			},
 		);
-		expect(outcome.text).not.toContain("\n");
-		expect(hc.sends).toEqual([{ text: "hi there", force: false }]);
-	});
-
-	it("hands --force to the runtime, with the word the parser binds to the flag kept as the text's first", async () => {
-		const hc = blocked();
-		const waiting = run("01M7JT0TFJB7MF38VYDWCG0401", { state: "waiting" });
-		value(await Runs.insert(host, waiting, "t"));
-		const outcome = await send(hc.runtime, [
-			waiting.id,
-			"--force",
-			"hi",
-			"there",
-		]);
 		expect([outcome.exitCode, outcome.text]).toEqual([
 			0,
 			`Sent to ${waiting.session}.`,
 		]);
-		expect(hc.sends).toEqual([{ text: "hi there", force: true }]);
+		expect(sends).toEqual(["hi there"]);
 	});
 });

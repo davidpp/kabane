@@ -10,7 +10,7 @@ import { Runs } from "./runs";
 import type { Runtime } from "./runtime";
 
 const USAGE =
-	"kabane runs [--all] | kabane runs attach|read|stop <id> | kabane runs send <id> [--force] <text>";
+	"kabane runs [--all] | kabane runs attach|read|stop <id> | kabane runs send <id> <text>";
 
 /** "4m", "2h", "3d": how long ago `iso` was. */
 const age = (iso: string, now = Date.now()): string => {
@@ -172,19 +172,13 @@ const settle = async (
 };
 
 /** `attach`, `read`, `send` or `stop` on one run of this machine. */
-type Operation = {
-	run: Runs.Run;
-	verb: string;
-	words: string[];
-	/** `send --force`: type even while the program waits on its human. */
-	force: boolean;
-};
+type Operation = { run: Runs.Run; verb: string; words: string[] };
 
 const operate = async (
 	host: Host,
 	runtime: Runtime,
 	actor: string,
-	{ run: resolved, verb, words, force }: Operation,
+	{ run: resolved, verb, words }: Operation,
 ): Promise<Outcome> => {
 	if (resolved.runtime !== runtime.name)
 		return host.outcome.failure(
@@ -208,19 +202,17 @@ const operate = async (
 			: host.outcome.failure(screen.error);
 	}
 	if (verb === "send") {
+		if (words.length === 0)
+			return host.outcome.usage("runs send needs the text to type", USAGE);
 		if (runtime.send === undefined) return lacks("send to");
 		const text = words.join(" ");
-		const sent = await runtime.send(run.session, text, { force });
-		if (!sent.ok) return host.outcome.failure(sent.error);
-		// Kabane mirrors the runtime's safety default and never forces on its own.
-		return sent.value === "waiting"
-			? host.outcome.failure(
-					`Run ${run.id} is waiting on you; answer it with kabane runs attach ${run.id}, or add --force to type into it anyway`,
-				)
-			: host.outcome.success(
+		const sent = await runtime.send(run.session, text);
+		return sent.ok
+			? host.outcome.success(
 					{ run: run.id, sent: text },
 					`Sent to ${run.session}.`,
-				);
+				)
+			: host.outcome.failure(sent.error);
 	}
 	if (verb === "stop") {
 		const stopped = await runtime.stop(run.session);
@@ -303,19 +295,11 @@ export const runsCommand = (
 			const project = await projectOf(host, ctx.cwd, "runs");
 			if (!project.ok) return project.outcome;
 			const scope = project.value.scopeUri;
-			const [verb, key, ...typed] = args.positionals;
-			// The parser takes the word after a flag as its value, so `send <id> --force yes` leaves
-			// `yes` on the flag: it is the text's first word.
-			const force =
-				host.args.flagBool(args, "force") ||
-				host.args.flagList(args, "force").length > 0;
-			const words = [...host.args.flagList(args, "force"), ...typed];
+			const [verb, key, ...words] = args.positionals;
 			if (verb === undefined)
 				return listing(ctx, scope, host.args.flagBool(args, "all"));
 			if (!["attach", "read", "send", "stop"].includes(verb))
 				return host.outcome.usage(`Unknown runs subcommand: ${verb}`, USAGE);
-			if (verb === "send" && words.length === 0)
-				return host.outcome.usage("runs send needs the text to type", USAGE);
 			if (verb !== "send" && words.length > 0)
 				return host.outcome.usage(
 					`Unexpected arguments: ${words.join(" ")}`,
@@ -327,7 +311,6 @@ export const runsCommand = (
 				run: found.value,
 				verb,
 				words,
-				force,
 			});
 		},
 	};

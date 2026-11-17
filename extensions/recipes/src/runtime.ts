@@ -20,15 +20,8 @@ export type Runtime = {
 	find?(run: string): Promise<Result<string | undefined>>;
 	/** The session's screen. */
 	read?(session: string): Promise<Result<string>>;
-	/**
-	 * Types `text` into the session. Resolves to `waiting` without typing when the program waits on
-	 * its human (a permission, a question) and `force` is not set: typing would answer its dialog.
-	 */
-	send?(
-		session: string,
-		text: string,
-		options?: { force?: boolean },
-	): Promise<Result<"sent" | "waiting">>;
+	/** Types `text` into the session. */
+	send?(session: string, text: string): Promise<Result<void>>;
 	/** Puts this terminal on the session until the human detaches; resolves to the exit code. */
 	attach?(session: string): Promise<Result<number>>;
 };
