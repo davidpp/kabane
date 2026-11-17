@@ -1,6 +1,12 @@
 import { Database } from "bun:sqlite";
 import { afterAll, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { backupDatabase, backupFile, decide, livePath } from "./live";
@@ -40,6 +46,25 @@ describe("live", () => {
 		]);
 		copy.close();
 		open.close();
+	});
+
+	it("keeps the previous backup when a copy fails", () => {
+		const home = join(TMP, "failing");
+		mkdirSync(home);
+		const db = new Database(join(home, "kabane.db"));
+		db.run("CREATE TABLE tasks (title TEXT)");
+		db.run("INSERT INTO tasks VALUES ('kept')");
+		db.close();
+		backupDatabase(home);
+		writeFileSync(join(home, "kabane.db"), "not a database");
+
+		expect(() => backupDatabase(home)).toThrow();
+
+		const copy = new Database(backupFile(home), { readonly: true });
+		expect(copy.query("SELECT title FROM tasks").all()).toEqual([
+			{ title: "kept" },
+		]);
+		copy.close();
 	});
 
 	it("skips the copy when the home has no database", () => {

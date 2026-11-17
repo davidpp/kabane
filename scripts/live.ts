@@ -13,7 +13,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { DB_NAME, resolveHome } from "../packages/cli/src/config";
 
@@ -41,14 +41,17 @@ export const backupDatabase = (home: string): string | null => {
 	if (!existsSync(source)) return null;
 	const target = backupFile(home);
 	mkdirSync(dirname(target), { recursive: true });
-	// VACUUM INTO refuses a file that exists.
-	rmSync(target, { force: true });
+	// VACUUM INTO refuses a file that exists, and the previous backup stays until the new copy is
+	// whole: a copy that fails leaves it in place.
+	const partial = `${target}.partial`;
+	rmSync(partial, { force: true });
 	const db = new Database(source, { readonly: true });
 	try {
-		db.run("VACUUM INTO ?", [target]);
+		db.run("VACUUM INTO ?", [partial]);
 	} finally {
 		db.close();
 	}
+	renameSync(partial, target);
 	return target;
 };
 
