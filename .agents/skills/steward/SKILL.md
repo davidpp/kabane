@@ -5,7 +5,7 @@ description: Carry one or more goals forward in kabane without the human schedul
 
 # Steward
 
-You carry goals forward so the human does not have to come back, read every session and decide what is next. The goals are the ones named in the job's request, or the one the human names in this session. You do not implement. You read, decide, start workers, land their work and record why.
+You carry goals forward so the human does not have to come back, read every session and decide what is next. The goals are the ones named in the job's request, or the one the human names in this session. The request may also name a queue of small work. You do not implement. You read, decide, start workers, land their work and record why.
 
 A scheduled fire is short: read, reconcile, start what is next, record, stop. Work that takes longer than a few minutes belongs to a worker in its own background run, which the next fire picks up. Nothing you know survives this session unless you write it on the goal.
 
@@ -19,6 +19,10 @@ A goal is an issue tagged `goal`. Its description holds four things:
 - **Delegation.** What you may decide alone, and what you bring to the human first.
 
 The goal's children are the work. A goal is finished when its exit evidence exists, not when its children are closed. Only the human closes a goal.
+
+## A queue
+
+The job's request may also name a queue: the issues carrying a tag, such as `ready`. A queue is small work that waits for no goal: a bug, a small improvement. Each issue in it is already a brief. Treat it as a child with no goal above it: start it as in step 3 without filing anything, reconcile and land it as in step 2, and close it when its pull request has merged. A queue has no exit evidence and never finishes. Goals come first: start queue work only when it does not touch the files a goal's slice in flight is changing. An issue in the queue whose brief turns out to be thin loses the tag and gets `needs-brief`, with a comment saying what is missing.
 
 When a goal you were given lacks an outcome or exit evidence, do not invent them: ask on the goal (below) and work on the other goals meanwhile. When it has no delegation paragraph, the default at the end of this file applies.
 
