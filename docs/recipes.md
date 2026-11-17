@@ -195,6 +195,37 @@ Any program can report its own state, a script set as `recipes.harness` included
 `printf '\033]7501;state=working:app=my-agent\033\\'`, with `state` one of `working`, `blocked`,
 `idle`, `done` or `error`. `blocked` shows `waiting`; `idle`, `done` and `error` show `idle`.
 
+**A Claude Code run that stays `live`.** Claude Code reports OSC 7501 itself, but only when the
+terminal answers its startup probe within 2 seconds. When its startup keeps it busy longer than
+that (MCP servers connecting, a prompt given on the command line), it reports nothing for the
+whole session; about one prompted run in three did so on a laptop with a few MCP servers. Such
+a run reads `live` until it exits, so its job never fires again while it is there and
+`recipes.onAttention` never hears about it. Upstream:
+[anthropics/claude-code#105534](https://github.com/anthropics/claude-code/issues/105534) and
+[#103022](https://github.com/anthropics/claude-code/issues/103022).
+
+Until that is fixed, [`hooks/claude-program-status.sh`](hooks/claude-program-status.sh) reports
+the state from Claude Code's own hook events: `working` when a prompt is sent and after each
+tool, `blocked` on a permission prompt or a question (Claude Code sends its `permission_prompt`
+notification for both), `idle` when its turn ends, and `error` when it ends on an API error.
+Add it to your user settings, `~/.claude/settings.json`, so every session gets it, with the path
+to your clone, merging these keys into the `hooks` you already have:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" working" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" working" }] }],
+    "Notification": [{ "matcher": "permission_prompt", "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" blocked permission" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" idle" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "\"<your clone>/docs/hooks/claude-program-status.sh\" error" }] }]
+  }
+}
+```
+
+A session whose own report works gets both, and kabane reads the same state from either.
+Remove the hooks once Claude Code fixes the probe.
+
 Kabane never says a run succeeded. `idle` means the agent stopped; what it did is what it
 wrote on the issue. A run started on another machine shows the state last recorded there and
 that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in a runtime
