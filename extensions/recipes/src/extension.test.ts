@@ -170,6 +170,19 @@ test("kabane run with no recipe names each recipe's harness and where it comes f
 	]);
 });
 
+test("kabane run with no recipe says a recipe with a body has its own prompt", () => {
+	const { root, kabane } = setup();
+	writeFileSync(
+		join(root, ".kabane/recipes/tidy.md"),
+		"---\ndescription: Tidy the README\n---\nTidy the README.\n",
+	);
+	expect(kabane(["run"]).stdout.split("\n").slice(-3)).toEqual([
+		"tidy  Tidy the README",
+		"    its own prompt  (.kabane/recipes/tidy.md)",
+		"    harness claude  (kabane's default)",
+	]);
+});
+
 test("a broken recipe is an error naming its file, beside the recipes that parse", () => {
 	const { root, kabane } = setup();
 	writeFileSync(

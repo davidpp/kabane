@@ -1,7 +1,7 @@
 // `kabane run <recipe> [--target <issue>] [--input k=v]… [--inputs <JSON>] [--harness a,b,c]`: build
-// the prompt that names a recipe's skill, record the run, start the harness in a runtime terminal
-// and return without waiting. With no recipe it lists the project's recipes, the skill each uses
-// and the harness each would start.
+// the prompt that names a recipe's skill or fills in its own body, record the run, start the
+// harness in a runtime terminal and return without waiting. With no recipe it lists the project's
+// recipes, the skill each uses or that it has its own prompt, and the harness each would start.
 import { hostname } from "node:os";
 import { join, relative } from "node:path";
 import type {
@@ -120,7 +120,10 @@ const preamble = (
 
 const describe = (recipe: Recipe.Recipe, harness: Harness.Chosen): string => {
 	const head = `${recipe.name}${recipe.target === "none" ? "" : ` --target <${recipe.target}>`}${recipe.description ? `  ${recipe.description}` : ""}`;
-	const skill = `    skill ${recipe.skill}  (${recipe.skillFile})`;
+	const skill =
+		"skill" in recipe
+			? `    skill ${recipe.skill}  (${recipe.skillFile})`
+			: `    its own prompt  (${recipe.file})`;
 	const starts = `    harness ${Harness.describe(harness)}`;
 	const inputs = Object.entries(recipe.inputs).map(([name, input]) => {
 		const kind = input.options ? input.options.join("|") : input.type;
@@ -227,7 +230,7 @@ export const shortIdOf = async (host: Host, id: string): Promise<string> => {
  * skill the sentence names.
  */
 const invocation = (
-	recipe: Pick<Recipe.Recipe, "skill">,
+	recipe: Pick<Recipe.Skilled, "skill">,
 	inputs: Readonly<Record<string, Recipe.Value>>,
 	target?: Recipe.Target,
 ): string =>
@@ -241,14 +244,19 @@ const invocation = (
 		),
 	].join("\n");
 
-/** The text a run's harness gets: the preamble for run `runId`, then the recipe's skill and values. */
+/**
+ * The text a run's harness gets: the preamble for run `runId`, then the recipe's skill and values,
+ * or its body with them filled in.
+ */
 export const promptOf = (
 	runId: string,
-	recipe: Pick<Recipe.Recipe, "name" | "skill">,
+	recipe:
+		| Pick<Recipe.Skilled, "name" | "skill">
+		| Pick<Recipe.Written, "name" | "body">,
 	inputs: Readonly<Record<string, Recipe.Value>>,
 	target?: Recipe.Target,
 ): string =>
-	`${preamble(runId, `recipe "${recipe.name}"`, target)}\n\n${invocation(recipe, inputs, target)}`;
+	`${preamble(runId, `recipe "${recipe.name}"`, target)}\n\n${"skill" in recipe ? invocation(recipe, inputs, target) : Recipe.render(recipe, inputs, target)}`;
 
 /** The text a recipe-less job's run gets: the job preamble, then the job's request as written. */
 export const requestPromptOf = (

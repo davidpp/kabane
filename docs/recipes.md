@@ -1,8 +1,9 @@
 # Recipes
 
-A recipe is a procedure you run again and again: a project skill, and a file in your project
-that says what the skill works on and what it asks for. `kabane run` starts your coding harness
-on it in a background terminal and returns at once;
+A recipe is a procedure you run again and again: a file in your project that says what it works
+on and what it asks for, with the procedure in a project skill or, for a small one, in the file
+itself. `kabane run` starts your coding harness on it in a background terminal and returns at
+once;
 `kabane runs` shows what each run is doing and lets you read it, send to it, take it over or
 stop it. `kabane job` runs a recipe on a schedule.
 
@@ -27,8 +28,13 @@ Runs start in terminals of `hc` (herdr core), which must be on your `PATH`. With
 
 ## Write a recipe
 
-A recipe has two parts: a skill, which holds the procedure, and a recipe file, which holds
-everything kabane needs to start it.
+A recipe file holds everything kabane needs to start a run. The procedure the run follows is in
+one of two places: a project skill the file names, or the file's own body. Use a skill for a
+procedure worth keeping, which you also run by hand or share between recipes; it is the
+preferred form. Use a body for a small recipe, where a skill would be more than the prompt
+needs.
+
+### With a skill
 
 The skill is an [Agent Skill](https://agentskills.io/specification) in your project:
 `.agents/skills/<skill>/SKILL.md`, with `name` and `description` in its frontmatter and the
@@ -40,9 +46,9 @@ and the harness loads it.
 
 The recipe file is `.kabane/recipes/<name>.md` at your project's root: the folder that already
 holds `.kabane/`, or the repository's root when there is none yet. The file name is the
-recipe's name (lowercase letters, digits, `-` and `_`). It is frontmatter only: what the recipe
-works on, what it asks for, which harness it is written for and which skill it runs. A recipe
-with anything below its frontmatter is an error that says where to move it.
+recipe's name (lowercase letters, digits, `-` and `_`). For a skill, it is frontmatter only:
+what the recipe works on, what it asks for, which harness it is written for and which skill it
+runs.
 
 Keep it there, even for a recipe about one package. A `.kabane/` folder marks a project's
 root, so creating one in a subfolder makes that subfolder a separate project: every command
@@ -68,15 +74,15 @@ inputs:
 | Field | Meaning |
 |---|---|
 | `description` | one line, shown when `kabane run` lists the recipes |
-| `skill` | the project skill the run uses; without it, the skill with the recipe's own name. Several recipes can name one skill |
+| `skill` | the project skill the run uses; without it, the skill with the recipe's own name, unless the file has a body, which is then the prompt. Several recipes can name one skill |
 | `target` | `issue`: the run works on an issue given with `--target`; `job`: it runs for a scheduled job (see [Jobs](#jobs)); `none` (the default): it takes none |
 | `inputs` | by name: `type` (`string`, the default, `number` or `boolean`), `required`, `default`, `options` (strings only), `label`, `hint` |
 | `harness` | the command this recipe starts, as a list (`[codex, exec]`), or one word (`codex`); the prompt is added as its last argument. Without it, `recipes.harness` (see [Which harness a run starts](#which-harness-a-run-starts)) |
 
 Kabane looks for the skill in `.agents/skills/<skill>/SKILL.md`, then in
-`.claude/skills/<skill>/SKILL.md`, under the project's root. A skill in neither, a field or an
-input the frontmatter does not allow, or a recipe with a body is an error naming the file:
-kabane never skips a broken recipe.
+`.claude/skills/<skill>/SKILL.md`, under the project's root. A skill in neither, or a field or
+an input the frontmatter does not allow, is an error naming the file: kabane never skips a
+broken recipe.
 
 The skill does not get its values filled in. Write it to read them from what the run gives it
 (below): "the target issue you were given", "the depth: quick, medium or thorough; medium if
@@ -84,12 +90,24 @@ none was given". Do not set Claude Code's `disable-model-invocation: true` on it
 the model from loading the skill, and kabane relies on the model loading it from the sentence it
 sends.
 
+### With its own prompt
+
+A recipe file with text below its frontmatter, and no `skill`, uses that text as its prompt, and
+kabane looks for no skill. The frontmatter is the same as above, without `skill`. The body can
+use `{{inputs.<name>}}` and, with `target: issue` or `target: job`, `{{target.id}}`,
+`{{target.shortId}}` and `{{target.title}}`, which kabane fills in before it sends the prompt.
+An optional input left out with no default reads as nothing. A placeholder the recipe cannot
+fill is an error naming the file. A file with no frontmatter at all is a body with no target and
+no inputs.
+
+A recipe with both a `skill` and a body is an error that says to pick one.
+
 ## Run one
 
 From your project's folder, or any folder inside it:
 
 ```bash
-kabane run                                        # the recipes here, their skill, harness and inputs
+kabane run                                        # the recipes here, their skill or own prompt, harness and inputs
 kabane run preliminary-research --target JCAB-12 --input depth=quick
 kabane run preliminary-research --target JCAB-12 --inputs '{"depth": "thorough"}'
 kabane run preliminary-research --target JCAB-12 --harness codex,exec
@@ -121,7 +139,8 @@ is filed with `kabane_ask` on the target issue before the agent stops, and that 
 on the issue as a comment. With `target: none` there is no issue to file on, so the preamble
 asks the agent to write its question or its result as its last message, which `kabane runs
 read` shows. The sentence uses no `/` or `$`, which differ between harnesses: Claude Code and
-Codex each start the skill it names. `kabane run` records the
+Codex each start the skill it names. A recipe with its own prompt gets the same preamble, then
+its body with the placeholders filled in, in place of the sentence. `kabane run` records the
 run, starts the harness in a new terminal in the current folder, logs a `run:<id>` reference
 on the target issue, prints the run's id and terminal, and returns.
 
@@ -190,7 +209,7 @@ of runs with these fields:
 | Field | Meaning |
 |---|---|
 | `id` | the run's id |
-| `recipe` | `{ name, hash }`: the recipe and a hash of its file and its skill's `SKILL.md` as the run started |
+| `recipe` | `{ name, hash }`: the recipe and a hash of its file, and of its skill's `SKILL.md` when it uses one, as the run started |
 | `target` | `{ kind, id }`: what the run works on, absent when the recipe takes none: kind `issue` or `job`, and the item's full id |
 | `scope`, `dir`, `cwd` | the scope's URI, the folder relative to its root (`""` at the root), and that folder's full path |
 | `machine` | the host name of the machine the run started on |
@@ -224,7 +243,7 @@ and `kabane runs stop <id>` stops it. `X` on the issue's detail stops it too (th
 
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
 with its description. `enter` on one opens its form, which names the skill the run uses and its
-file, and lists every value the run will get before anything starts: the harness first, as the command line it will start, with where
+file, or says the recipe has its own prompt and names the recipe's file, and lists every value the run will get before anything starts: the harness first, as the command line it will start, with where
 it comes from under it (`from the recipe`, `from recipes.harness`), then each input with its
 default and hint. Every row can be changed. `h/l` move a choice, a number or a boolean; any
 other row is typed: type to add, `backspace` to delete, and `↑↓` leave it, since `j/k` are

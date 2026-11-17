@@ -1,8 +1,9 @@
 // A recipe is `<root>/.kabane/recipes/<name>.md`: YAML frontmatter that declares its target, its
-// inputs, the harness it is written for and the project skill it runs, and no body. The procedure
-// is the skill, in `.agents/skills/<skill>/SKILL.md` or `.claude/skills/<skill>/SKILL.md`, which the
-// harness loads itself. A file that does not parse is an error naming it, never a recipe skipped in
-// silence.
+// inputs and the harness it is written for, and its prompt, one of two kinds. A project skill, in
+// `.agents/skills/<skill>/SKILL.md` or `.claude/skills/<skill>/SKILL.md`, which the harness loads
+// itself: the frontmatter's `skill`, or with no body the skill named after the recipe. Or its own
+// body, with `{{...}}` placeholders kabane fills in. A file that does not parse is an error naming
+// it, never a recipe skipped in silence.
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
@@ -24,7 +25,8 @@ export namespace Recipe {
 		title: string;
 	};
 
-	export type Recipe = {
+	/** What every recipe has, whichever kind its prompt is. */
+	type Common = {
 		name: string;
 		/** The file, relative to the scope root. */
 		file: string;
@@ -33,17 +35,25 @@ export namespace Recipe {
 		inputs: Record<string, Input>;
 		/** The command this recipe starts, ahead of `recipes.harness`. */
 		harness?: string[];
+		/** sha256 of the recipe file's bytes, then its skill's when it uses one, first 12 hex characters. */
+		hash: string;
+	};
+	/** A recipe that names a project skill. */
+	export type Skilled = Common & {
 		/** The project skill the run uses: the frontmatter's `skill`, or the recipe's name. */
 		skill: string;
 		/** The skill's SKILL.md, relative to the scope root. */
 		skillFile: string;
-		/** sha256 of the recipe file's bytes then its skill's, first 12 hex characters. */
-		hash: string;
 	};
+	/** A recipe whose body is its prompt. */
+	export type Written = Common & { body: string };
+	export type Recipe = Skilled | Written;
 
 	export const DIR = ".kabane/recipes";
 	const NAME = /^[a-z0-9][a-z0-9_-]*$/;
 	const INPUT_NAME = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+	const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
+	const TARGET_FIELDS = ["id", "shortId", "title"] as const;
 	/** Where a skill is looked for, in order: Codex reads the first, Claude Code the second. */
 	const SKILL_DIRS = [".agents/skills", ".claude/skills"] as const;
 
@@ -110,8 +120,55 @@ export namespace Recipe {
 		return undefined;
 	};
 
+	/** A placeholder the body uses that this recipe cannot fill, or undefined. */
+	const placeholderProblem = (
+		body: string,
+		inputs: Record<string, Input>,
+		target: Recipe["target"],
+	): string | undefined => {
+		for (const [, key = ""] of body.matchAll(PLACEHOLDER)) {
+			const [head, field, ...more] = key.split(".");
+			if (head === "inputs" && field !== undefined && more.length === 0) {
+				if (field in inputs) continue;
+				return `{{${key}}} names no declared input`;
+			}
+			if (head === "target" && field !== undefined && more.length === 0) {
+				if (!(TARGET_FIELDS as readonly string[]).includes(field))
+					return `{{${key}}}: a target has ${TARGET_FIELDS.map((f) => `target.${f}`).join(", ")}`;
+				if (target !== "none") continue;
+				return `{{${key}}} needs "target: issue" or "target: job" in the frontmatter`;
+			}
+			return `{{${key}}} is no placeholder: use inputs.<name> or target.<${TARGET_FIELDS.join("|")}>`;
+		}
+		return undefined;
+	};
+
+	/** A recipe file's frontmatter, as YAML gives it, and its body, trimmed. */
+	const split = (text: string): Result<{ front: unknown; body: string }> => {
+		const lines = text.split("\n");
+		if (lines[0]?.trimEnd() !== "---")
+			return ok({ front: {}, body: text.trim() });
+		const end = lines.slice(1).findIndex((line) => line.trimEnd() === "---");
+		if (end === -1) return err(new Error("the frontmatter has no closing ---"));
+		const yaml = trySync(() =>
+			Bun.YAML.parse(lines.slice(1, end + 1).join("\n")),
+		);
+		if (!yaml.ok)
+			return err(
+				new Error(`the frontmatter is not YAML: ${yaml.error.message}`),
+			);
+		return ok({
+			front: yaml.value ?? {},
+			body: lines
+				.slice(end + 2)
+				.join("\n")
+				.trim(),
+		});
+	};
+
 	/**
-	 * Parse one recipe file's text and find its skill under `root`. `file` names it in every error.
+	 * Parse one recipe file's text and, unless its body is its prompt, find its skill under `root`.
+	 * `file` names it in every error.
 	 */
 	export const parse = (
 		z: Host["z"],
@@ -125,37 +182,43 @@ export namespace Recipe {
 			return fail(
 				"a recipe's file name is lowercase letters, digits, - and _, starting with a letter or digit",
 			);
-		const lines = text.split("\n");
-		let front: unknown = {};
-		let bodyLines = lines;
-		if (lines[0]?.trimEnd() === "---") {
-			const end = lines.slice(1).findIndex((line) => line.trimEnd() === "---");
-			if (end === -1) return fail("the frontmatter has no closing ---");
-			const yaml = trySync(() =>
-				Bun.YAML.parse(lines.slice(1, end + 1).join("\n")),
-			);
-			if (!yaml.ok)
-				return fail(`the frontmatter is not YAML: ${yaml.error.message}`);
-			front = yaml.value ?? {};
-			bodyLines = lines.slice(end + 2);
-		}
-		const parsed = schema(z).safeParse(front);
+		const parts = split(text);
+		if (!parts.ok) return fail(parts.error.message);
+		const parsed = schema(z).safeParse(parts.value.front);
 		if (!parsed.success) {
 			const issue = parsed.error.issues[0];
 			const where = issue?.path.join(".") || "the frontmatter";
 			return fail(`${where}: ${issue?.message ?? "invalid"}`);
 		}
 		const { description, target, inputs, harness } = parsed.data;
-		const skill = parsed.data.skill ?? name;
 		for (const [key, input] of Object.entries(inputs)) {
 			const problem = inputProblem(key, input);
 			if (problem !== undefined) return fail(problem);
 		}
+		const common = {
+			name,
+			file,
+			...(description === undefined ? {} : { description }),
+			target,
+			inputs,
+			...(harness === undefined ? {} : { harness }),
+		};
+		const { body } = parts.value;
+		if (body.length > 0) {
+			if (parsed.data.skill !== undefined)
+				return fail(
+					`a recipe has a skill or a body, not both: remove "skill: ${parsed.data.skill}" to make the body its prompt, or remove the body to use the skill`,
+				);
+			const placeholder = placeholderProblem(body, inputs, target);
+			if (placeholder !== undefined) return fail(placeholder);
+			return ok({
+				...common,
+				body,
+				hash: createHash("sha256").update(text).digest("hex").slice(0, 12),
+			});
+		}
+		const skill = parsed.data.skill ?? name;
 		const [skillFile, other] = skillPaths(skill);
-		if (bodyLines.join("\n").trim().length > 0)
-			return fail(
-				`a recipe has no body: the prompt belongs in the skill. Move it to ${skillFile}, with name: ${skill} and a description in its frontmatter; make ${SKILL_DIRS[1]}/${skill} a symlink to ../../${SKILL_DIRS[0]}/${skill} so Claude Code finds it too; leave only the frontmatter here`,
-			);
 		const found = skillPaths(skill).find((path) =>
 			existsSync(join(root, path)),
 		);
@@ -166,12 +229,7 @@ export namespace Recipe {
 		const procedure = trySync(() => readFileSync(join(root, found)));
 		if (!procedure.ok) return fail(`${found}: ${procedure.error.message}`);
 		return ok({
-			name,
-			file,
-			...(description === undefined ? {} : { description }),
-			target,
-			inputs,
-			...(harness === undefined ? {} : { harness }),
+			...common,
 			skill,
 			skillFile: found,
 			hash: createHash("sha256")
@@ -241,4 +299,20 @@ export namespace Recipe {
 		}
 		return { recipes, errors };
 	};
+
+	/** The body with its placeholders filled. `parse` has checked every one can be. */
+	export const render = (
+		recipe: Pick<Written, "body">,
+		inputs: Readonly<Record<string, Value>>,
+		target?: Target,
+	): string =>
+		recipe.body.replace(PLACEHOLDER, (whole, key: string) => {
+			const [head, field = ""] = key.split(".");
+			// An optional input left out with no default reads as nothing.
+			if (head === "inputs")
+				return field in inputs ? String(inputs[field]) : "";
+			if (head === "target" && target !== undefined)
+				return target[field as (typeof TARGET_FIELDS)[number]];
+			return whole;
+		});
 }
