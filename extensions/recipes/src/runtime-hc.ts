@@ -133,6 +133,17 @@ export namespace HcRuntime {
 	};
 
 	/**
+	 * `hc send`'s argv. `--force`: hc refuses to type into a terminal whose program reported
+	 * blocked, and kabane types what it is asked to.
+	 */
+	export const sendArgs = (terminal: string, text: string): string[] => [
+		"--json",
+		"--force",
+		terminal,
+		text,
+	];
+
+	/**
 	 * Why `terminal` cannot be handed to hc, or undefined when it names one. hc reads an empty
 	 * terminal as none given and picks one from the caller's scope, which may be the human's own.
 	 */
@@ -210,13 +221,7 @@ export namespace HcRuntime {
 			},
 			read: (terminal) => call("read", terminal, [terminal]),
 			send: async (terminal, text) => {
-				// --force: hc refuses a terminal whose program reported blocked; kabane types what it is asked to.
-				const sent = await call("send", terminal, [
-					"--json",
-					"--force",
-					terminal,
-					text,
-				]);
+				const sent = await call("send", terminal, sendArgs(terminal, text));
 				return sent.ok ? ok(undefined) : sent;
 			},
 			stop: async (terminal) => {

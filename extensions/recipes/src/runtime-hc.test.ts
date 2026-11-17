@@ -57,6 +57,16 @@ it("reads hc get's JSON through a schema, and refuses a shape hc does not print"
 	if (!text.ok) expect(text.error.message).toContain("hc get printed no JSON");
 });
 
+it("passes --force to hc send, before the terminal and the text", () => {
+	// Without it hc exits 9 on a terminal whose program reported blocked, and types nothing.
+	expect(HcRuntime.sendArgs("t3m", "hi there")).toEqual([
+		"--json",
+		"--force",
+		"t3m",
+		"hi there",
+	]);
+});
+
 it("names hc when it is not on PATH", () => {
 	expect(HcRuntime.missing("/nonexistent")).toContain(
 		"hc (herdr core) is not on PATH",
