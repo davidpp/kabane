@@ -1,7 +1,8 @@
 // Starting a recipe from the board: `a` on an issue offers each recipe of the board's project that
 // works on an issue, with its inputs as the form's, and `enter` starts it through `startRun`, the
 // function `kabane run` calls. A recipe file that does not parse is offered too, unsatisfiable,
-// with its error, so a broken recipe is never silently missing.
+// with its error, so a broken recipe is never silently missing. On a job, `a` offers `job:run`, which
+// fires it now as `kabane job run` does, in its own scope's folder whatever the board's project.
 import { basename, relative } from "node:path";
 import type {
 	Dispatcher,
@@ -12,6 +13,7 @@ import type {
 	TriggerDescriptor,
 } from "@cabane/extension";
 import { Inputs } from "./inputs";
+import { runJob } from "./job-command";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
 import { type settingsSchema, startRun } from "./run-command";
@@ -19,6 +21,7 @@ import type { Runtime } from "./runtime";
 
 export namespace RecipeDispatcher {
 	const PREFIX = "recipe:";
+	const RUN_JOB = "job:run";
 
 	type Deps = {
 		host: Host;
@@ -71,14 +74,27 @@ export namespace RecipeDispatcher {
 		};
 	};
 
+	/** `a` on a job: fire it now. Blocked only when the runtime is missing. */
+	const runNow = (blocked: string | undefined): TriggerDescriptor => ({
+		id: RUN_JOB,
+		label: "run now",
+		description: "fire this job now, as kabane job run does",
+		source: "recipes",
+		inputs: {},
+		satisfiable: blocked === undefined,
+		...(blocked === undefined ? {} : { hint: blocked }),
+	});
+
 	export const make = (deps: Deps): Dispatcher => ({
 		triggers: async (taskId) => {
+			const task = await deps.host.record.get({ id: taskId });
+			if (!task.ok) return task;
+			if (task.value?.kind === "job")
+				return ok([runNow(deps.runtime.missing())]);
+			if (task.value === null || task.value.kind !== "issue") return ok([]);
 			const project = await deps.project();
 			if (!project.ok) return project;
 			if (project.value === null) return ok([]);
-			const task = await deps.host.record.get({ id: taskId });
-			if (!task.ok) return task;
-			if (task.value === null || task.value.kind !== "issue") return ok([]);
 			const shortId = task.value.shortId ?? task.value.id;
 			const { recipes, errors } = Recipe.all(deps.host.z, project.value.root);
 			const blocked = deps.runtime.missing();
@@ -90,6 +106,7 @@ export namespace RecipeDispatcher {
 			]);
 		},
 		dispatch: async (triggerId, target, inputs) => {
+			if (triggerId === RUN_JOB) return runJob(deps, deps.ctx, target.id);
 			if (!triggerId.startsWith(PREFIX))
 				return err(new Error(`Unknown recipe trigger: ${triggerId}`));
 			const project = await deps.project();

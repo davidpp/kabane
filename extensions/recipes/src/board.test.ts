@@ -45,6 +45,8 @@ import {
 import { z } from "zod";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
+import { RecipeJobs } from "./job-source";
+import { Jobs } from "./jobs";
 import { Kabane } from "./result";
 import { settingsSchema } from "./run-command";
 import { Runs } from "./runs";
@@ -74,7 +76,7 @@ const hostFor = (basePath: string): Host => ({
 	}),
 	store: createHostStore(
 		() => basePath,
-		() => ["recipes_runs"],
+		() => ["recipes_runs", "recipes_jobs", "recipes_roots"],
 		"recipes test",
 	),
 	scope: { detect: async () => ok(project), idOf: ScopeUri.getScopeId },
@@ -123,7 +125,7 @@ const scripted = () => {
 let issue: { id: string; shortId: string; title: string };
 
 beforeEach(async () => {
-	configureTestRuntime({ modules: [Runs.module()] });
+	configureTestRuntime({ modules: [Runs.module(), Jobs.module()] });
 	folder = realpathSync(mkdtempSync(join(tmpdir(), "recipes-board-")));
 	home = join(folder, "home");
 	const root = join(folder, "project");
@@ -471,5 +473,109 @@ describe("kabane runs send", () => {
 			`Sent to ${waiting.session}.`,
 		]);
 		expect(sends).toEqual(["hi there"]);
+	});
+});
+
+describe("RecipeJobs", () => {
+	// A job in another folder than the board's project, as JSEC-1 lives in the vault.
+	const vaultJob = async () => {
+		const vault = join(folder, "vault");
+		mkdirSync(join(vault, ".kabane/recipes"), { recursive: true });
+		writeFileSync(
+			join(vault, ".kabane/recipes/tidy.md"),
+			"---\ndescription: Tidy\ninputs:\n  depth:\n    default: quick\n---\nTidy the vault, {{inputs.depth}}.\n",
+		);
+		const scopeUri = ScopeUri.format({ scopeId: "vault" });
+		value(await Jobs.setRoot(host, scopeUri, vault));
+		const task = value(
+			await Planner.addTask(home, {
+				title: "Keep the wiki tidy",
+				kind: "job",
+				scopeUri,
+				state: "next",
+			}),
+		);
+		value(
+			await Jobs.insert(
+				host,
+				{
+					taskId: task.id,
+					schedule: "0 9 * * *",
+					recipe: "tidy",
+					inputs: { depth: "quick" },
+					harness: ["sh", "-c", "true"],
+					createdAt: "2026-11-16T08:00:00.000Z",
+				},
+				"tester",
+			),
+		);
+		return { task, vault, scopeUri };
+	};
+
+	it("offers run now on a job, and fires it in the job's own folder", async () => {
+		const { task, vault, scopeUri } = await vaultJob();
+		const hc = scripted();
+		const dispatcher = dispatcherWith(hc.runtime);
+		expect(
+			value(await dispatcher.triggers(task.id)).map(({ id, satisfiable }) => [
+				id,
+				satisfiable,
+			]),
+		).toEqual([["job:run", true]]);
+		const notice = value(
+			await dispatcher.dispatch("job:run", {
+				id: task.id,
+				shortId: task.shortId ?? task.id,
+				title: task.title,
+				brief: "",
+			}),
+		);
+		const [stored] = value(await Runs.list(host, scopeUri));
+		expect(stored).toMatchObject({
+			recipe: { name: "tidy" },
+			target: { kind: "job", id: task.id },
+			cwd: vault,
+		});
+		expect(notice).toContain(`started run ${stored?.id} (tidy)`);
+		expect(hc.started[0]?.argv.slice(0, 3)).toEqual(["sh", "-c", "true"]);
+	});
+
+	it("describes the jobs asked for: schedule, next fire, folder and runs with their attach command", async () => {
+		const { task, vault } = await vaultJob();
+		const hc = scripted();
+		value(
+			await dispatcherWith(hc.runtime).dispatch("job:run", {
+				id: task.id,
+				shortId: task.shortId ?? task.id,
+				title: task.title,
+				brief: "",
+			}),
+		);
+		const [session] = hc.states.keys();
+		if (session) hc.states.set(session, "waiting");
+		const facts = value(
+			await RecipeJobs.source({
+				host,
+				runtime: hc.runtime,
+				settings: settingsSchema(z),
+				actor: "tester",
+			}).facts([task.id, issue.id]),
+		);
+		expect(Object.keys(facts)).toEqual([task.id]);
+		const described = facts[task.id];
+		expect(described).toMatchObject({
+			schedule: "0 9 * * *",
+			recipe: "tidy",
+			inputs: { depth: "quick" },
+			harness: ["sh", "-c", "true"],
+			folder: vault,
+		});
+		// Fired just now, so it next fires at the schedule's first nine o'clock after this fire.
+		expect(new Date(described?.next ?? "").getHours()).toBe(9);
+		const [latest] = described?.runs ?? [];
+		expect(latest).toMatchObject({
+			state: "waiting",
+			open: `kabane runs attach ${latest?.id}`,
+		});
 	});
 });

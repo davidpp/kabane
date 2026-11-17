@@ -14,7 +14,8 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 | `src/job-command.ts` | `kabane job`: `add`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which fires the due jobs through `startRun` |
 | `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`; the due rule and the fire decision |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
-| `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun` |
+| `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, and `dispatch` through `startRun`; on a job, `job:run`, which fires it as `kabane job run` does |
+| `src/job-source.ts` | `RecipeJobs`: the board's `JobSource`, each job's schedule, next fire, recipe, inputs, harness, folder and newest runs |
 | `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored; `reconcile` and `stop`, which `kabane runs` and the board share |
 | `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
 | `src/runtime-hc.ts` | the hc runtime; the only file that runs `hc` |
@@ -94,8 +95,14 @@ always passes it, so `kabane runs send` types into a waiting run like any other 
 ## On the board
 
 `Extension.board` gives the board's project (`host.scope.detect(ctx.cwd)`, read on each call) an
-`ActivitySource` and a `Dispatcher`; a device without the extension has neither. Only runs whose
-target is an issue are cards: a run without one, or a job's run, is not on the issue board (JCAB-426).
+`ActivitySource` and a `Dispatcher`, and a `JobSource` over every scope's jobs; a device without the
+extension has none of them. Only runs whose target is an issue are cards: a run without one, or a
+job's run, is not on the issue board (JCAB-426). A job's runs are on the board's Jobs tab instead,
+through `RecipeJobs`: what `kabane job show` prints, as data, and for each of the newest five runs
+its state and `kabane runs attach <id>`. Its runs are reconciled on each call, as `kabane job list`
+does. `a` on a job offers `job:run`, which fires it now in its scope's folder from
+`recipes_roots`, whatever the board's project; pause and resume are the item's state, which the
+board writes itself.
 
 | Run state | `ActivityStatus` | Why |
 |---|---|---|

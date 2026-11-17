@@ -27,10 +27,10 @@ const USAGE = [
 	"kabane job tick",
 ].join("\n       ");
 
-/** How many runs `job show` lists. */
-const SHOWN_RUNS = 5;
+/** How many runs `job show` and the board list. */
+export const SHOWN_RUNS = 5;
 
-type Entry = { job: Jobs.Job; task: Task };
+export type Entry = { job: Jobs.Job; task: Task };
 
 const shortOf = (task: Task): string => task.shortId ?? task.id;
 
@@ -43,7 +43,7 @@ const when = (date: Date): string => {
 	return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
 };
 
-type Deps = {
+export type Deps = {
 	host: Host;
 	settings: ReturnType<typeof settingsSchema>;
 	runtime: Runtime;
@@ -78,7 +78,7 @@ const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
 };
 
 /** The job's runs, newest first, as their runtime reports them now. */
-const runsOf = async (
+export const runsOf = async (
 	d: Deps,
 	{ task }: Entry,
 	actor: string,
@@ -101,7 +101,7 @@ const nextOf = (job: Jobs.Job): string => {
 /** One fire of a job in `root`: the line that says what it did. */
 const fire = async (
 	d: Deps,
-	ctx: Extension.Ctx,
+	ctx: Pick<Extension.Ctx, "actor" | "settings">,
 	found: Entry,
 	root: string,
 	now: Date,
@@ -363,18 +363,27 @@ const setState = async (
 	);
 };
 
+/** Fire the job `key` names now, in its scope's folder on this machine: the line that says what it did. */
+export const runJob = async (
+	d: Deps,
+	ctx: Pick<Extension.Ctx, "actor" | "settings">,
+	key: string,
+): Promise<Result<string>> => {
+	const found = await entry(d, key);
+	if (!found.ok) return found;
+	const roots = await Jobs.roots(d.host);
+	if (!roots.ok) return roots;
+	const root = roots.value.get(found.value.task.scopeUri ?? "");
+	if (root === undefined) return err(new Error(noFolder(found.value)));
+	return fire(d, ctx, found.value, root, new Date());
+};
+
 const runNow = async (
 	d: Deps,
 	ctx: Extension.Ctx,
 	key: string,
 ): Promise<Outcome> => {
-	const found = await entry(d, key);
-	if (!found.ok) return d.host.outcome.failure(found.error);
-	const roots = await Jobs.roots(d.host);
-	if (!roots.ok) return d.host.outcome.failure(roots.error);
-	const root = roots.value.get(found.value.task.scopeUri ?? "");
-	if (root === undefined) return d.host.outcome.failure(noFolder(found.value));
-	const line = await fire(d, ctx, found.value, root, new Date());
+	const line = await runJob(d, ctx, key);
 	return line.ok
 		? d.host.outcome.success({ line: line.value }, line.value)
 		: d.host.outcome.failure(line.error);
