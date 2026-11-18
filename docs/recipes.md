@@ -302,6 +302,7 @@ kabane job add --title "Check the nightly build" --schedule "0 8 * * *" \
 kabane job add --title "Tidy the inbox" --schedule "0 9 * * 1" \
   --request "Triage the inbox" --project ~/Projects/notes   # from any folder
 kabane job edit JCAB-600 --schedule "0 9 * * *" --harness codex
+kabane job edit JCAB-600 --check 'test -n "$(git status --porcelain)"'   # only when there is something to do
 kabane job list                 # this project's jobs; --all for every project's
 kabane job show JCAB-600        # the request, the inputs and the last runs
 kabane job pause JCAB-600       # resume JCAB-600 starts it again
@@ -318,14 +319,16 @@ are never asked for: a required input that is missing is an error. `--schedule` 
 expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
 machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
 the recipe's `harness` and `recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
-default, `--session fresh`, starts a new one on each fire.
+default, `--session fresh`, starts a new one on each fire. `--check "<shell>"` makes each due
+fire start the run only when that command exits 0 ([Fire only when there is something to
+do](#fire-only-when-there-is-something-to-do)).
 
 `job edit <id>` changes a job from any folder, only in the fields you give, and says what it
 changed and when the job fires next: `--title` and `--request` (the item's title and
-description, as `kabane edit` would change them), `--schedule`, `--harness`, `--session`, and the
+description, as `kabane edit` would change them), `--schedule`, `--harness`, `--session`, `--check`, and the
 inputs, checked against the recipe as `job add` checks them: `--inputs '{…}'` replaces them,
 each `--input name=value` sets one. `--harness none` drops the job's own command, so the
-recipe's `harness` or `recipes.harness` applies again. A new schedule counts from the job's last
+recipe's `harness` or `recipes.harness` applies again, and `--check none` drops the job's check. A new schedule counts from the job's last
 fire, or from when it was added, as a tick does. A job's project does not change: to move one,
 close it and add it again.
 
@@ -348,10 +351,12 @@ like `job run`:
 1. reads the job's runs on this machine from their terminals;
 2. skips the job when one is `live`, `running` or `waiting`, and says so; the job stays due for
    the next tick;
-3. on a `fresh` job, stops each `idle` one, because a harness stays at its prompt after its
+3. on a fire `job tick` makes, runs the job's check when it has one, and when the check fails,
+   starts nothing ([below](#fire-only-when-there-is-something-to-do)); `job run` skips this step;
+4. on a `fresh` job, stops each `idle` one, because a harness stays at its prompt after its
    turn, then starts the recipe at the project's root, as `kabane run` would, with the job as
    its target;
-4. on a `keep` job, types the run's prompt into the newest `idle` run's terminal, as `kabane
+5. on a `keep` job, types the run's prompt into the newest `idle` run's terminal, as `kabane
    runs send` would, and stops and starts nothing. The harness answers it in the same
    conversation, so it remembers the earlier fires and keeps its prompt cache. When no terminal
    is left (its run `ended`, or hc no longer has it), it starts one as a `fresh` job does.
@@ -375,6 +380,30 @@ job` command run inside a project records it, and so does `job add --project`. A
 skipped with a line that says to run `kabane job list` inside it. Jobs sync with your other
 items; the folders do not, so each machine that ticks needs one `kabane job` command in each
 project.
+
+### Fire only when there is something to do
+
+A job with a check spends no session when it has nothing to do. The check is a shell command
+that a due fire runs with `sh -c` in the job's folder, after the job's own run in flight has had
+its say (a job skipped for a run still going does not run its check), with `KABANE_JOB` (the
+job's id) and `KABANE_JOB_TITLE` in its environment.
+
+- It exits 0: the fire goes on, and the run starts or the kept session wakes.
+- Any other exit: nothing starts, and `tick` prints `<id>: check exited <code>, skipped`, followed
+  by the last line the check wrote to stderr when it wrote one, so a `kabane job tick` you run by
+  hand says why.
+
+A failed check still counts as that slot's fire: the job next fires at its schedule's following
+time, so a check that fails runs once per scheduled time, not on every tick. A skip is not
+recorded anywhere else; `job show` reports it as the last fire. `kabane job run` fires the job
+without running its check, because you asked for the run. Kabane puts no timeout on the check:
+keep it quick, since `tick` waits for it before it fires the next job.
+
+```bash
+kabane job add --title "Triage the inbox" --schedule "0 9 * * 1-5" \
+  --request "Triage inbox.md into the tracker" --check 'test -s inbox.md'   # only when it has lines
+kabane job edit JCAB-600 --check none     # every due fire starts its run again
+```
 
 ### Ask any harness to make a job
 

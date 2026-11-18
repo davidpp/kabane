@@ -39,6 +39,11 @@ the extensions already listed by `kabane config get extensions`), and stop.
    out; the recipe's harness, then `recipes.harness`, then `claude` applies.
 6. **The session.** `--session keep` when the human wants one conversation that remembers earlier
    fires; otherwise leave it out, and each fire starts a fresh session.
+7. **The check.** Only when the human says to run "only when …", "only if there is …", or "skip
+   it when …": `--check "<shell>"`, a command that exits 0 when the job has something to do, run
+   with `sh -c` in the project's folder before each scheduled fire. A nonzero exit skips that
+   fire. Write it as the condition, `test -s inbox.md`, and check it by running it in that folder
+   before you add the job. `kabane job run` ignores it.
 
 Then run it, from any folder:
 
@@ -57,7 +62,7 @@ and run it again, and ask the human only when the fix needs their choice.
 
 Ask the human only for what the prompt leaves open and has no default: the time of day, which
 project when the folder is in none, a required recipe input. Never ask for the harness, the
-session or the title.
+session, the check or the title.
 
 ## Change a job
 
@@ -66,7 +71,8 @@ run, title and harness, for every project. When more than one job could be the o
 means, ask which, with their ids and titles.
 
 - `kabane job edit <id>` with only the flags to change: `--title`, `--request`, `--schedule`,
-  `--harness` (`--harness none` drops the job's own command), `--session fresh|keep`, and with a
+  `--harness` (`--harness none` drops the job's own command), `--session fresh|keep`, `--check
+  "<shell>"` (`--check none` drops it), and with a
   recipe, `--input name=value` (sets one) or `--inputs '{"name": value}'` (replaces them all). It
   prints what changed and the next fire. A job's project does not change: to move one, close it
   with `kabane done <id>` and add it again in the new folder.

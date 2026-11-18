@@ -4,6 +4,7 @@
 // the real hc path is the sandbox check.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	realpathSync,
@@ -45,6 +46,7 @@ import {
 import { z } from "zod";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
+import { jobCommand } from "./job-command";
 import { RecipeJobs } from "./job-source";
 import { Jobs } from "./jobs";
 import { Kabane } from "./result";
@@ -582,7 +584,7 @@ describe("kabane runs send", () => {
 
 describe("RecipeJobs", () => {
 	// A job in another folder than the board's project, as JSEC-1 lives in the vault.
-	const vaultJob = async (session: Jobs.Session = "fresh") => {
+	const vaultJob = async (session: Jobs.Session = "fresh", check?: string) => {
 		const vault = join(folder, "vault");
 		mkdirSync(join(vault, ".kabane/recipes"), { recursive: true });
 		writeFileSync(
@@ -610,6 +612,7 @@ describe("RecipeJobs", () => {
 					inputs: { depth: "quick" },
 					harness: ["sh", "-c", "true"],
 					session,
+					...(check === undefined ? {} : { check }),
 					createdAt: "2026-11-16T08:00:00.000Z",
 				},
 				"tester",
@@ -713,5 +716,114 @@ describe("RecipeJobs", () => {
 		expect(value(await fire())).toContain("started run");
 		expect(hc.started).toHaveLength(2);
 		expect(value(await Runs.list(host, scopeUri))).toHaveLength(2);
+	});
+
+	describe("a job's check", () => {
+		/** `kabane job <argv>` as the CLI runs it, from the board's project. */
+		const job = async (runtime: Runtime, ...argv: string[]) =>
+			jobCommand(host, settingsSchema(z), runtime).run(parseArgs(argv), {
+				home,
+				store: home,
+				cwd: project.root,
+				actor: "tester",
+				harnessMode: "auto",
+				settings: Settings.port(async () => ok([])),
+			});
+		const firedAt = async (id: string) =>
+			value(await Jobs.all(host)).find((j) => j.taskId === id)?.lastFiredAt;
+
+		it("starts the due run when the check exits 0, in the job's folder with its env", async () => {
+			const { vault, scopeUri } = await vaultJob(
+				"fresh",
+				'test "$KABANE_JOB_TITLE" = "Keep the wiki tidy" && test -e go',
+			);
+			writeFileSync(join(vault, "go"), "");
+			const hc = scripted();
+			const tick = await job(hc.runtime, "tick");
+			const [stored] = value(await Runs.list(host, scopeUri));
+			expect(tick.text).toContain(`started run ${stored?.id} (tidy)`);
+			expect(hc.started).toHaveLength(1);
+		});
+
+		it("skips the slot when the check fails: no run, one line, the fire spent", async () => {
+			const { task, scopeUri } = await vaultJob("fresh", "false");
+			const hc = scripted();
+			const tick = await job(hc.runtime, "tick");
+			expect(tick.text).toBe(`${task.shortId}: check exited 1, skipped`);
+			expect(hc.started).toEqual([]);
+			expect(value(await Runs.list(host, scopeUri))).toEqual([]);
+			expect(await firedAt(task.id)).toBeDefined();
+			// Spent: the next tick before the next slot neither runs the check nor says anything.
+			expect((await job(hc.runtime, "tick")).text).toBe("");
+		});
+
+		it("says the check's last stderr line, so a tick by hand shows why", async () => {
+			const { task } = await vaultJob(
+				"fresh",
+				"echo checking >&2; echo nothing to do >&2; exit 3",
+			);
+			const tick = await job(scripted().runtime, "tick");
+			expect(tick.text).toBe(
+				`${task.shortId}: check exited 3, skipped: nothing to do`,
+			);
+		});
+
+		it("is not run while the job's last run is still going", async () => {
+			const { task, vault, scopeUri } = await vaultJob("fresh", "touch ran");
+			const hc = scripted();
+			await job(hc.runtime, "run", task.id);
+			const [first] = value(await Runs.list(host, scopeUri));
+			value(
+				await Jobs.setFired(host, task.id, "2026-11-16T08:00:00.000Z", "t"),
+			);
+			const tick = await job(hc.runtime, "tick");
+			expect(tick.text).toBe(
+				`${task.shortId}: skipped, run ${first?.id} is still running`,
+			);
+			expect(existsSync(join(vault, "ran"))).toBe(false);
+		});
+
+		it("is ignored by job run: the human asked for the run", async () => {
+			const { task, scopeUri } = await vaultJob("fresh", "false");
+			const hc = scripted();
+			const ran = await job(hc.runtime, "run", task.id);
+			expect(ran.text).toContain("started run");
+			expect(value(await Runs.list(host, scopeUri))).toHaveLength(1);
+		});
+
+		it("is set by job add and job edit, cleared by --check none, and shown by job show", async () => {
+			const hc = scripted();
+			const added = await job(
+				hc.runtime,
+				"add",
+				"--title",
+				"t",
+				"--schedule",
+				"* * * * *",
+				"--request",
+				"x",
+				"--check",
+				"test -e go",
+			);
+			expect(added.text).toContain("only when `test -e go` exits 0");
+			const [stored] = value(await Jobs.all(host));
+			if (!stored) throw new Error("job add stored no row");
+			expect(stored.check).toBe("test -e go");
+			expect((await job(hc.runtime, "show", stored.taskId)).text).toContain(
+				"check     test -e go  (a due fire runs only when it exits 0)",
+			);
+			const edited = await job(
+				hc.runtime,
+				"edit",
+				stored.taskId,
+				"--check",
+				"none",
+			);
+			expect(edited.text).toContain("no check");
+			expect(value(await Jobs.all(host))[0]?.check).toBeUndefined();
+			expect((await job(hc.runtime, "show", stored.taskId)).text).toContain(
+				"check     none",
+			);
+		});
 	});
 });

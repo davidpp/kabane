@@ -32,9 +32,9 @@ import { pad } from "./runs-command";
 import type { Runtime } from "./runtime";
 
 const USAGE = [
-	'kabane job add <recipe> --title <text> --schedule "<cron>" [--project <folder>] [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c] [--session fresh|keep]',
-	'kabane job add --title <text> --schedule "<cron>" --request <text> [--project <folder>] [--harness a,b,c] [--session fresh|keep]',
-	'kabane job edit <id> [--title <text>] [--schedule "<cron>"] [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c|none] [--session fresh|keep]',
+	'kabane job add <recipe> --title <text> --schedule "<cron>" [--project <folder>] [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c] [--session fresh|keep] [--check "<shell>"]',
+	'kabane job add --title <text> --schedule "<cron>" --request <text> [--project <folder>] [--harness a,b,c] [--session fresh|keep] [--check "<shell>"]',
+	'kabane job edit <id> [--title <text>] [--schedule "<cron>"] [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c|none] [--session fresh|keep] [--check "<shell>"|none]',
 	"kabane job list [--all]",
 	"kabane job show|pause|resume|run <id>",
 	"kabane job tick",
@@ -160,13 +160,48 @@ const sourceOf = (
 	});
 };
 
-/** One fire of a job in `root`: the line that says what it did. */
+/** How a shell command failed: its exit code and its stderr's last line, when it wrote one. */
+type Failure = { code: number; said?: string };
+
+const sayingOf = ({ said }: Failure) => (said ? `: ${said}` : "");
+
+/** Runs `command` with `sh -c` in `cwd`, with `env` over this process's: how it failed, if it did. */
+const shell = async (
+	command: string,
+	cwd: string,
+	env: Record<string, string>,
+): Promise<Failure | undefined> => {
+	const child = Bun.spawn(["sh", "-c", command], {
+		cwd,
+		env: { ...process.env, ...env },
+		stdin: "ignore",
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+	const [code, stderr] = await Promise.all([
+		child.exited,
+		new Response(child.stderr).text(),
+	]);
+	if (code === 0) return undefined;
+	const said = stderr.trim().split("\n").at(-1);
+	return said ? { code, said } : { code };
+};
+
+/** What the job's own commands, its check and the attention hook, are told of it. */
+const jobEnv = ({ task }: Entry) => ({
+	KABANE_JOB: shortOf(task),
+	KABANE_JOB_TITLE: task.title,
+});
+
+/**
+ * One fire of a job in `root`: the line that says what it did. With `checked`, a tick's due fire,
+ * the job's check runs first, and a nonzero exit skips this slot's run.
+ */
 const fire = async (
 	d: Deps,
 	ctx: Pick<Extension.Ctx, "actor" | "settings">,
 	found: Entry,
-	root: string,
-	now: Date,
+	{ root, now, checked }: { root: string; now: Date; checked: boolean },
 ): Promise<Result<string>> => {
 	const { job, task } = found;
 	const short = shortOf(task);
@@ -181,6 +216,20 @@ const fire = async (
 		return ok(
 			`${short}: skipped, run ${decision.run.id} is still ${decision.run.state}`,
 		);
+	const fired = () =>
+		Jobs.setFired(d.host, job.taskId, now.toISOString(), ctx.actor);
+	if (checked && job.check !== undefined) {
+		const failed = await shell(job.check, root, jobEnv(found));
+		if (failed !== undefined) {
+			// The slot is spent: a failing check runs once per scheduled time, not on every tick.
+			const spent = await fired();
+			return spent.ok
+				? ok(
+						`${short}: check exited ${failed.code}, skipped${sayingOf(failed)}`,
+					)
+				: spent;
+		}
+	}
 	const target = {
 		kind: "job",
 		id: task.id,
@@ -230,13 +279,8 @@ const fire = async (
 			...warnings,
 		].join("\n");
 	}
-	const fired = await Jobs.setFired(
-		d.host,
-		job.taskId,
-		now.toISOString(),
-		ctx.actor,
-	);
-	return fired.ok ? ok(line) : fired;
+	const spent = await fired();
+	return spent.ok ? ok(line) : spent;
 };
 
 /**
@@ -355,6 +399,19 @@ const sessionOf = (
 		: { ok: true, value: session };
 };
 
+/** The harness and check `job add` gives the job's row, each only when its flag is given. */
+const ownOf = (
+	d: Deps,
+	args: ParsedArgs,
+): Pick<Jobs.Job, "harness" | "check"> => {
+	const harness = d.host.args.flagCsv(args, "harness");
+	const check = d.host.args.flagString(args, "check");
+	return {
+		...(harness === undefined ? {} : { harness }),
+		...(check === undefined ? {} : { check }),
+	};
+};
+
 const add = async (
 	d: Deps,
 	args: ParsedArgs,
@@ -398,7 +455,7 @@ const add = async (
 		return d.host.outcome.failure(
 			`kabane_add returned no task: ${task.error.message}`,
 		);
-	const harness = d.host.args.flagCsv(args, "harness");
+	const own = ownOf(d, args);
 	const stored = await Jobs.insert(
 		d.host,
 		{
@@ -406,7 +463,7 @@ const add = async (
 			schedule,
 			...(recipe === undefined ? {} : { recipe: recipe.name }),
 			inputs,
-			...(harness === undefined ? {} : { harness }),
+			...own,
 			session,
 			createdAt: now.toISOString(),
 		},
@@ -416,7 +473,14 @@ const add = async (
 	const short = task.data.shortId ?? task.data.id;
 	return d.host.outcome.success(
 		{ job: task.data.id, shortId: short, next: valid.value.toISOString() },
-		`Added job ${short} (${recipe?.name ?? "no recipe"}, "${schedule}", ${session} session); it fires next at ${when(valid.value)}.`,
+		`Added job ${short} (${[
+			recipe?.name ?? "no recipe",
+			`"${schedule}"`,
+			`${session} session`,
+			...(own.check === undefined
+				? []
+				: [`only when \`${own.check}\` exits 0`]),
+		].join(", ")}); it fires next at ${when(valid.value)}.`,
 	);
 };
 
@@ -526,6 +590,7 @@ const show = async (
 			: [`recipe    ${job.recipe}`, `inputs    ${JSON.stringify(job.inputs)}`]),
 		`harness   ${harness.ok ? Harness.describe(harness.value) : harness.error.message}`,
 		`session   ${job.session === "keep" ? "keep: a fire types into the idle terminal" : "fresh: each fire starts a terminal"}`,
+		`check     ${job.check === undefined ? "none" : `${job.check}  (a due fire runs only when it exits 0)`}`,
 		`last fire ${job.lastFiredAt ? when(new Date(job.lastFiredAt)) : "never"}`,
 		"",
 		task.description?.trim() || "(no request)",
@@ -602,6 +667,7 @@ const editFlagsOf = (
 		if (!valid.ok) return fail(valid.error.message);
 	}
 	const harness = a.flagCsv(args, "harness");
+	const check = a.flagString(args, "check");
 	const change: EditFlags["change"] = {
 		...(schedule === undefined ? {} : { schedule }),
 		// `none` hands the choice back to the recipe and recipes.harness.
@@ -609,6 +675,7 @@ const editFlagsOf = (
 			? {}
 			: { harness: harness.join(",") === "none" ? null : harness }),
 		...(mode.value === undefined ? {} : { session: mode.value }),
+		...(check === undefined ? {} : { check: check === "none" ? null : check }),
 	};
 	const flags: EditFlags = {
 		title: a.flagString(args, "title"),
@@ -626,7 +693,7 @@ const editFlagsOf = (
 	return given
 		? { ok: true, value: flags }
 		: fail(
-				"job edit needs a field to change: --title, --schedule, --request, --input, --inputs, --harness or --session",
+				"job edit needs a field to change: --title, --schedule, --request, --input, --inputs, --harness, --session or --check",
 			);
 };
 
@@ -681,6 +748,9 @@ const editedOf = (
 						: `harness ${change.harness.join(" ")}`,
 				]),
 		...(change.session === undefined ? [] : [`${change.session} session`]),
+		...(change.check === undefined
+			? []
+			: [change.check === null ? "no check" : `check \`${change.check}\``]),
 	].join(", ");
 
 /** `job edit`: changes only the fields given, on the item (title, request) and on the row. */
@@ -745,7 +815,12 @@ export const runJob = async (
 	if (!roots.ok) return roots;
 	const root = roots.value.get(found.value.task.scopeUri ?? "");
 	if (root === undefined) return err(new Error(noFolder(found.value)));
-	return fire(d, ctx, found.value, root, new Date());
+	// The human asked for this run: the check is for the schedule's fires.
+	return fire(d, ctx, found.value, {
+		root,
+		now: new Date(),
+		checked: false,
+	});
 };
 
 const runNow = async (
@@ -762,33 +837,19 @@ const runNow = async (
 /** Runs `command` with the facts of what `run` of the job asks of the human: why it failed, or undefined. */
 const runHook = async (
 	command: string,
-	{ task }: Entry,
+	one: Entry,
 	run: Runs.Run,
 	attention: Jobs.Attention,
 ): Promise<string | undefined> => {
-	const hook = Bun.spawn(["sh", "-c", command], {
-		cwd: run.cwd,
-		env: {
-			...process.env,
-			KABANE_JOB: shortOf(task),
-			KABANE_JOB_TITLE: task.title,
-			KABANE_RUN: run.id,
-			KABANE_RUN_STATE: run.state,
-			KABANE_ATTENTION: attention,
-			KABANE_FOLDER: run.cwd,
-			KABANE_ATTACH: `kabane runs attach ${run.id}`,
-		},
-		stdin: "ignore",
-		stdout: "ignore",
-		stderr: "pipe",
+	const failed = await shell(command, run.cwd, {
+		...jobEnv(one),
+		KABANE_RUN: run.id,
+		KABANE_RUN_STATE: run.state,
+		KABANE_ATTENTION: attention,
+		KABANE_FOLDER: run.cwd,
+		KABANE_ATTACH: `kabane runs attach ${run.id}`,
 	});
-	const [code, stderr] = await Promise.all([
-		hook.exited,
-		new Response(hook.stderr).text(),
-	]);
-	if (code === 0) return undefined;
-	const said = stderr.trim().split("\n").at(-1);
-	return `exited ${code}${said ? `: ${said}` : ""}`;
+	return failed && `exited ${failed.code}${sayingOf(failed)}`;
 };
 
 /**
@@ -861,7 +922,7 @@ const tick = async (d: Deps, ctx: Extension.Ctx): Promise<Outcome> => {
 			lines.push(noFolder(one));
 			continue;
 		}
-		const line = await fire(d, ctx, one, root, now);
+		const line = await fire(d, ctx, one, { root, now, checked: true });
 		lines.push(line.ok ? line.value : `${short}: ${line.error.message}`);
 	}
 	return d.host.outcome.success({ lines }, lines.join("\n"));
