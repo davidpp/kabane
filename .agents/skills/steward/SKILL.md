@@ -90,7 +90,7 @@ Ask first: any behaviour a user would notice that the outcome does not settle; a
 The notifier on this machine, after a question is filed:
 
 ```bash
-herdr notification show "kabane: <goal id> needs a decision" --body "<the question, in one line>" --sound request
+/opt/homebrew/bin/terminal-notifier -title "kabane: <goal id> needs a decision" -message "<the question, in one line>" -sound default -group "kabane-<goal id>" >/dev/null 2>&1 &
 ```
 
 Another machine binds its own command here. When the command is missing or fails, carry on: the question is on the record, and that is what counts.
