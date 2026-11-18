@@ -11,7 +11,7 @@ why some internal names still use it.
 
 ## Prerequisites
 
-- **Bun 1.4.1 or later.** The repo pins `1.4.4` in `.bun-version`. `bun --version` to check.
+- **Bun 1.4.4 or later**, the version the repo pins in `.bun-version`. `bun --version` to check.
 - **git**, for detecting project scopes. You do not need to clone Kabane for local use.
 - **Optional: a coding harness.** Claude Code, Codex or Gemini CLI on your PATH, logged in.
   Setup wires any it finds, and the board's copilot runs one.
@@ -434,6 +434,21 @@ by hand. Restart running board/MCP sessions afterwards.
 When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
 `~/.local/share/mise`), `kabane update` reports the candidate and leaves the file to mise: run
 `mise up kabane`. No tracker DB is opened and no harness entry is rewired.
+
+### Upgrading: kabane needs Bun 1.4.4
+
+Releases before this one declared `engines.bun` `>=1.4.0`. This one declares `engines.bun` `>=1.4.4`, and each
+release now asks for the Bun the repo pins in `.bun-version`. On an older Bun, `kabane update`
+installs nothing: `--check` answers `manual_only` with the Bun it needs, and `--json` gives it
+as `requiredBun`:
+
+```text
+Latest stable <version> needs Bun 1.4.4 or later; this Bun is 1.4.1. Run bun upgrade, then kabane update again. Eligibility is policy-unverified.
+```
+
+Upgrade Bun first, then update kabane. If a version manager such as mise installed that Bun,
+upgrade it there, and see [subsequent updates](#subsequent-updates) for harness entries that
+still point at the old Bun. The standalone binary carries its own Bun and is not affected.
 
 ### Upgrading from 1.0.0-beta.0: settings layers and scope pins
 
