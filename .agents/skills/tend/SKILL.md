@@ -11,7 +11,7 @@ You change the tracker only where the evidence is in front of you. Everything el
 
 ## Read
 
-1. `kabane_context` on the job, for its request and what the last review reported.
+1. `kabane_context` on the job, for its request, what the last review reported and the decisions page's link among its context refs. Then apply what the human answered on that page since the last review (see "The decisions page") before you judge any issue.
 2. Every open issue in the scope: `kabane list --kind issue --limit 500 --json`, and `kabane_context` on the ones you need to judge. Include `someday`.
 3. The goals: `kabane list --tag goal --json`, with each goal's outcome and non-goals. An issue is read against them.
 4. What is in flight, so you do not disturb it: `kabane runs --json`, `kabane loop status`, `git worktree list`, `gh pr list --state open`.
@@ -32,18 +32,32 @@ Take the first that applies.
 
 When you cannot tell, leave the issue as it is and name it in the report. A wrong close costs more than an open issue.
 
-## The drop list
+## Calls that are the human's
 
-Do not cancel anything yourself. Collect the duplicates and the overtaken into one question, on the open issue tagged `tracker-review` (create it once, titled "Tracker review", when there is none): `kabane_ask` with `multiSelect`, one choice per issue as "<id> <title>: <reason in a few words>", your recommendation the ones you are sure of, and "none of these" as the last choice. When an earlier review's question is still open, replace it with the current list instead of adding a second one. When it was answered, cancel the issues the human picked, each with a comment that cites the answer, then ask about the new ones.
+When the human can settle something you cannot, ask it: `kabane_ask` on the issue it is about, with the choices, your recommendation when you have one, why, the evidence in a sentence, and `allowFreeform: true`. "Done or not is your call", "needs your read" and "possibly overtaken" are questions, never lines in the report. One question per issue per decision; when that issue already has an open question from an earlier review on the same decision, pass `replaces` instead of adding a second one.
+
+The drop list is these questions too: on each duplicate or overtaken issue, "Cancel <id>? <reason in a few words>", choices "Cancel" and "Keep", recommended "Cancel" only when you are sure. Do not cancel anything yourself. When the human answered "Cancel", cancel that issue with a comment that cites the answer.
+
+## The decisions page
+
+The human answers on one standing claude.ai page, so a decision comes with its evidence and reaches them away from the board. The tracker stays the record: the page shows and collects, and every answer goes back through `kabane_answer`.
+
+Load the `artifact-design` and `artifact-capabilities` skills before you write the page. It declares the `db` capability, and each answer is one document keyed by the question's id (the `id:<ULID>` from `kabane_questions`): the choices picked, the Other text and a comment.
+
+- **Find it.** The job's context refs hold one `doc` ref titled "Decisions page" with the artifact's URL. When there is none, publish the page and attach its URL with `kabane_contextAdd` on the job.
+- **Apply first.** Read the page's answers with `ArtifactData`. For each one whose question is still open, `kabane_answer` by `id:<ULID>` with `relayed: true` and, as the answer, the choices picked (a comma list) or the Other text. A comment the human wrote goes on that issue as a `kabane_comment` that quotes them. Then act on the answer under the rules above. An answer to a question that is already closed was overtaken on the board: drop it and say so in the report.
+- **Republish last.** Every open question in the scope, from any agent, not only yours (`kabane_questions` with the scope and `status: "open"`). The ones that block a release or a goal first. Each shows the issue's id and title, the question, why it is asked, what you saw (commit, file and line, command and output), the choices with your recommendation marked, an Other box and a comment box. Say on the page that answers are applied at the next review and that anything urgent is answered on the board. Delete the answer documents you applied.
+
+This page is a trial of what kabane should do itself (JCAB-440). When something about it was awkward or missing during this review, a `kabane_comment` on JCAB-440 says what and where, once per finding.
 
 ## Report
 
 One `kabane_comment` on the job, read on the board in under a minute:
 
-1. **Needs you.** Open questions and manual checks, oldest first, each with its id and one line.
+1. **Needs you.** The decisions page's link, the question handles you filed or replaced this time, and the manual checks, oldest first, each with its id and one line.
 2. **Start next.** At most five issues, in order, each with one line on why now. Prefer what unblocks a goal, then what is `ready`.
 3. **What I changed.** Closed with evidence, set back to `next`, tagged, linked: ids and a few words each.
-4. **Could not tell.** The issues you left alone and what would settle each.
+4. **Could not tell.** The issues you left alone that no answer from the human would settle, and what would.
 
 Ids and reasons, no totals and no percentages. When nothing changed since the last review and nothing needs the human, write nothing.
 
@@ -51,5 +65,5 @@ Ids and reasons, no totals and no percentages. When nothing changed since the la
 
 - Close an issue without citing the evidence, or cancel one the human did not pick.
 - Touch an issue that has a run, a branch with unmerged work or an open pull request, beyond reporting it.
-- Change a goal, a job, or an issue's description.
+- Change a goal, a job (beyond attaching the decisions page's link), or an issue's description.
 - Start a run, edit code, or land anything.
