@@ -189,10 +189,11 @@ it("gives a job with no recipe the job preamble, then its request as written", (
 	expect(prompt).toBe(
 		[
 			"[kabane run 01RUN, the job's request]",
-			"You were started in the background. Nobody is watching this terminal.",
+			"You were started in the background. The human is not watching this terminal, but is notified when the run waits for them.",
 			'This is a scheduled background run of job JREP-1 ("Morning check").',
 			"Read the job with kabane_context on JREP-1: its description is the standing request, and its comments are what earlier runs reported.",
-			"When a decision belongs to the human, file it with kabane_ask on JREP-1 (the choices, your recommendation and why), then stop.",
+			"When a decision belongs to the human, ask it here in this session (the choices, your recommendation and why) and wait for the answer: the human is notified and answers in this terminal.",
+			"When the decision is about a specific issue and can wait, file it with kabane_ask on that issue instead.",
 			"Write your result as one comment on JREP-1 with kabane_comment.",
 			"",
 			// Not a template: a placeholder in a request stays as written.

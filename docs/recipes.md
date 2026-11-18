@@ -138,7 +138,7 @@ The preamble says the run's id, that nobody is watching the terminal, that a dec
 is filed with `kabane_ask` on the target issue before the agent stops, and that the result goes
 on the issue as a comment. With `target: none` there is no issue to file on, so the preamble
 asks the agent to write its question or its result as its last message, which `kabane runs
-read` shows. The sentence uses no `/` or `$`, which differ between harnesses: Claude Code and
+read` shows. A job's run gets its own preamble; see [Jobs](#jobs). The sentence uses no `/` or `$`, which differ between harnesses: Claude Code and
 Codex each start the skill it names. A recipe with its own prompt gets the same preamble, then
 its body with the placeholders filled in, in place of the sentence. `kabane run` records the
 run, starts the harness in a new terminal in the current folder, logs a `run:<id>` reference
@@ -363,7 +363,11 @@ runs stop` ends it and the next fire starts a new one.
 
 The run's preamble tells the agent it is a scheduled background run of the job, to read the job
 with `kabane_context` for the request and what earlier runs reported, to write its result as one
-comment on the job and to file a decision for you with `kabane_ask` on the job. `tick` prints one
+comment on the job. It also says you are not watching but are notified when the run waits for
+you: a decision for you is asked in the run's own session, with the choices and a recommendation,
+and the agent waits there for your answer. `recipes.onAttention` tells you ([Hear when a run needs you](#hear-when-a-run-needs-you)), and you answer with
+`kabane runs attach` or `kabane runs send`. Kabane does not store that question. A decision about
+a specific issue that can wait goes on that issue with `kabane_ask` instead. `tick` prints one
 line for each job it fired or skipped and exits 0 unless kabane itself failed.
 
 `tick` runs with no project, so it needs each project's folder on this machine: every `kabane
