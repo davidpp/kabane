@@ -7,12 +7,13 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 
 | Where | What it holds |
 |---|---|
-| `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), both commands, the `hc-missing` doctor finding, the board ports |
+| `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), its commands, the `hc-missing` doctor finding and the job skill's, the board ports |
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`: the frontmatter (`skill` and `harness` among it), then either the skill's `SKILL.md` found in `.agents/skills/` or `.claude/skills/` (`Skilled`) or the body and its `{{...}}` placeholders (`Written`), and the errors that name the file, a skill and a body together among them; `render`, which fills a body's placeholders |
 | `src/harness.ts` | `Harness.choose`, the precedence (launch, job, recipe, `recipes.harness`, `claude`) and its source; `line` and `split`, the command line a human reads and types |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `recipes.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets (the preamble, then "Use the <skill> skill.", the target and one line per input, or the rendered body), which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing (this project's, or every project's with `--all`; ended runs with `--ended`), `attach`, `read`, `send`, `stop` on a run found by id in this project first, then in every scope |
+| `src/job-skill.ts` | `JobSkill.check`: the user-level `job` skill (`templates/job/SKILL.md`) at `~/.agents/skills/job` with a `~/.claude/skills/job` link, the `job-skill-missing` and `job-skill-behind` findings and their fix; `scripts/build.ts` ships `templates/` beside `index.js` |
 | `src/job-command.ts` | `kabane job`: `add` (in the cwd's project or `--project`'s), `edit`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
 | `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
