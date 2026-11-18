@@ -290,6 +290,13 @@ test("metadata current/manual policies/malformed/offline never mutate installati
 				checked.value.code === 0 ? checked.value.stdout : checked.value.stderr,
 			);
 			expect(printed).toMatchObject({ status, eligibility: "unknown" });
+			if (engine === ">=999.0.0") {
+				expect(printed).toMatchObject({ requiredBun: "999.0.0" });
+				const text = await fixture.run(["update", "--check"]);
+				expect(text.value.stdout + text.value.stderr).toContain(
+					`needs Bun 999.0.0 or later; this Bun is ${Bun.version}. Run bun upgrade`,
+				);
+			}
 			expect(updateSnapshot(fixture.install)).toEqual(before);
 			expect(updateSnapshot(fixture.tracker)).toEqual(tracker);
 			expect(updateSnapshot(fixture.home)).toEqual(home);

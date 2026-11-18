@@ -141,14 +141,14 @@ type Install =
 	| { kind: "bun"; metadata: Metadata }
 	| { kind: "binary" | "mise" };
 
-/** The version policy (`withinVersionPolicy`), and a Bun the candidate's engine range admits. */
-const withinUpdatePolicy = (
-	target: string,
-	runningVersion: string,
-	engine: string,
-): boolean =>
-	withinVersionPolicy(target, runningVersion) &&
-	compareVersions(versionCore(Bun.version), engine.slice(2)) >= 0;
+/** The Bun a Bun-installed candidate needs, when the running Bun is older; its engine range is ">=x.y.z". */
+const bunBelowEngine = (install: Install): string | undefined => {
+	if (install.kind !== "bun") return undefined;
+	const required = install.metadata.engines.bun.slice(2);
+	return compareVersions(versionCore(Bun.version), required) < 0
+		? required
+		: undefined;
+};
 
 /**
  * The reply a candidate ends the command with before anything is installed: the channel and the
@@ -195,20 +195,21 @@ const verdict = (
 			0,
 			details,
 		);
-	if (
-		install.kind === "bun"
-			? !withinUpdatePolicy(
-					target,
-					runningVersion,
-					install.metadata.engines.bun,
-				)
-			: !withinVersionPolicy(target, runningVersion)
-	)
+	const candidate = `${prerelease ? `Registry ${tag}` : "Latest stable"} ${target}`;
+	if (!withinVersionPolicy(target, runningVersion))
 		return reply(
 			"manual_only",
-			`${prerelease ? `Registry ${tag}` : "Latest stable"} ${target} is outside the supported update policy${install.kind === "bun" ? " or Bun engine" : ""}. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
+			`${candidate} is outside the supported update policy. Read compatibility notes and choose a manual installation; no downgrade/channel override is performed. Eligibility is policy-unverified.`,
 			manualExit,
 			details,
+		);
+	const requiredBun = bunBelowEngine(install);
+	if (requiredBun)
+		return reply(
+			"manual_only",
+			`${candidate} needs Bun ${requiredBun} or later; this Bun is ${Bun.version}. Run bun upgrade, then kabane update again. Eligibility is policy-unverified.`,
+			manualExit,
+			{ ...details, requiredBun },
 		);
 	if (target === runningVersion)
 		return reply(
