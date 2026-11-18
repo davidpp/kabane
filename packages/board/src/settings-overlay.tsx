@@ -255,6 +255,8 @@ export type SettingsOverlayProps = {
 };
 
 // What the view says in place of rows: still reading, nothing to read from, or the failure.
+// A save the rows failed to read back after was still written: what it said comes first, and
+// the failure after it unless the save's warning already names it.
 const Message = ({
 	view,
 	inner,
@@ -264,7 +266,7 @@ const Message = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const bg = overlayBg(theme);
-	const { rows } = view;
+	const { rows, said } = view;
 	const [text, fg] =
 		rows.type === "loading"
 			? ["reading settings…", theme.muted]
@@ -273,14 +275,24 @@ const Message = ({
 				: rows.type === "failed"
 					? [rows.error, theme.failed]
 					: ["no settings", theme.muted];
+	const before = rows.type === "failed" && said ? said : undefined;
+	const blocks: [readonly string[], string][] = before
+		? [[[before.key, ...before.lines], before.warn ? theme.accent : theme.done]]
+		: [];
+	if (!before?.lines.some((line) => line.endsWith(text)))
+		blocks.push([[text], fg]);
 	return (
 		<>
-			{wrap(text, inner).map((line, at) => (
-				// Index keys: wrapped lines can repeat.
-				<text key={at} bg={bg} fg={fg}>
-					{line.padEnd(inner)}
-				</text>
-			))}
+			{blocks.flatMap(([lines, color], block) =>
+				lines
+					.flatMap((line) => wrap(line, inner))
+					.map((line, at) => (
+						// Index keys: wrapped lines can repeat.
+						<text key={`${block}:${at}`} bg={bg} fg={color}>
+							{line.padEnd(inner)}
+						</text>
+					)),
+			)}
 		</>
 	);
 };

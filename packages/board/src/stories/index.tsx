@@ -793,6 +793,34 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "settings-saved-unresolved",
+		about:
+			"6 saved to global, but a broken shared file keeps the settings from resolving",
+		width: 80,
+		height: 12,
+		render: () => {
+			const error =
+				"/Users/ada/acme/widget/.kabane/loop.json: JSON Parse error: Expected '}'";
+			return (
+				<SettingsOverlay
+					view={{
+						rows: { type: "failed", error },
+						selected: 0,
+						detail: false,
+						said: SettingsView.outcome("loop.stallAfter", {
+							key: "loop.stallAfter",
+							layer: "global",
+							from: "/Users/ada/.kabane/config.json",
+							value: 6,
+							unresolved: error,
+							restart: "resolve",
+						}),
+					}}
+				/>
+			);
+		},
+	},
+	{
 		name: "copilot-collapsed",
 		about: "the copilot's one row, idle",
 		width: 80,
