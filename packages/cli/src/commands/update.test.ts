@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import {
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -333,6 +334,7 @@ test("real manager leaves a dangling global bin: nonzero partial result, never r
 			status: "partial_failure",
 			possiblePartialChange: true,
 		});
+		expect(lstatSync(fixture.bin).isSymbolicLink()).toBe(true);
 		expect(existsSync(fixture.bin)).toBe(false);
 		expect(updateSnapshot(fixture.tracker)).toEqual(tracker);
 	} finally {
