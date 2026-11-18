@@ -474,3 +474,124 @@ test.skipIf(Bun.which("hc") === null)(
 		expect(all.find((r) => r.id.endsWith("DDD"))?.state).toBe("running");
 	},
 );
+
+const WIKI = `---
+description: Tend the wiki
+inputs:
+  focus:
+    required: true
+  depth:
+    options: [quick, thorough]
+    default: quick
+---
+Tend the wiki, starting with {{inputs.focus}}.
+`;
+
+test("job add --project makes the job in that folder's project from anywhere, and job edit changes it from anywhere", () => {
+	const { kabane, home, root } = setup();
+	writeFileSync(join(root, ".kabane/recipes/wiki.md"), WIKI);
+	const outside = { cwd: home };
+	expect(
+		kabane(
+			[
+				"job",
+				"add",
+				"--title",
+				"Nowhere",
+				"--schedule",
+				"0 9 * * *",
+				"--request",
+				"x",
+				"--project",
+				home,
+			],
+			outside,
+		),
+	).toMatchObject({
+		code: 1,
+		stderr: `Error: --project ${home} is in no kabane project`,
+	});
+	const added = kabane(
+		[
+			"job",
+			"add",
+			"wiki",
+			"--title",
+			"Wiki",
+			"--schedule",
+			"*/5 * * * *",
+			"--input",
+			"focus=overviews",
+			"--project",
+			"../project",
+			"--json",
+		],
+		outside,
+	);
+	expect(added.code).toBe(0);
+	const { shortId } = JSON.parse(added.stdout);
+	// tick's folder for the project is the one --project named, not the cwd.
+	const show = () =>
+		JSON.parse(kabane(["job", "show", shortId, "--json"], outside).stdout).job;
+	expect(show()).toMatchObject({
+		schedule: "*/5 * * * *",
+		recipe: "wiki",
+		inputs: { focus: "overviews", depth: "quick" },
+		starts: { argv: ["claude"] },
+	});
+	expect(kabane(["job", "edit", shortId], outside)).toMatchObject({ code: 2 });
+	expect(
+		kabane(["job", "edit", shortId, "--schedule", "nope"], outside).code,
+	).toBe(2);
+	expect(
+		kabane(["job", "edit", shortId, "--input", "depth=deep"], outside).code,
+	).toBe(2);
+	const edited = kabane(
+		[
+			"job",
+			"edit",
+			shortId,
+			"--schedule",
+			"0 9 * * *",
+			"--harness",
+			"codex",
+			"--input",
+			"depth=thorough",
+			"--title",
+			"Wiki daily",
+			"--session",
+			"keep",
+		],
+		outside,
+	);
+	expect(edited.code).toBe(0);
+	expect(edited.stdout).toMatch(
+		/^Edited job \S+ \(title "Wiki daily", schedule "0 9 \* \* \*", inputs \{"focus":"overviews","depth":"thorough"\}, harness codex, keep session\); it fires next at \d{4}-\d\d-\d\d 09:00\.$/,
+	);
+	expect(show()).toMatchObject({
+		title: "Wiki daily",
+		schedule: "0 9 * * *",
+		inputs: { focus: "overviews", depth: "thorough" },
+		harness: ["codex"],
+		session: "keep",
+	});
+	// --inputs replaces the set; --harness none hands the choice back to recipes.harness.
+	expect(
+		kabane(
+			[
+				"job",
+				"edit",
+				shortId,
+				"--inputs",
+				'{"focus":"index"}',
+				"--harness",
+				"none",
+			],
+			outside,
+		).code,
+	).toBe(0);
+	const after = show();
+	expect(after.inputs).toEqual({ focus: "index", depth: "quick" });
+	expect(after.harness).toBeUndefined();
+	expect(after.starts).toMatchObject({ argv: ["claude"] });
+});

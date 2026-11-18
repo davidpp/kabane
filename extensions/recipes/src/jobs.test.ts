@@ -270,3 +270,54 @@ it("stores a job with no recipe and reads it back with none", async () => {
 		rmSync(home, { recursive: true, force: true });
 	}
 });
+
+it("an edit moves only the fields it names, and clears the job's harness on null", () => {
+	const own = job({ harness: ["codex"], inputs: { focus: "a" } });
+	expect(Jobs.edit(own, {})).toEqual(own);
+	expect(Jobs.edit(own, { schedule: "*/5 * * * *" })).toEqual({
+		...own,
+		schedule: "*/5 * * * *",
+	});
+	expect(Jobs.edit(own, { inputs: { focus: "b" }, session: "keep" })).toEqual({
+		...own,
+		inputs: { focus: "b" },
+		session: "keep",
+	});
+	expect(Jobs.edit(own, { harness: ["claude", "-p"] }).harness).toEqual([
+		"claude",
+		"-p",
+	]);
+	const cleared = Jobs.edit(own, { harness: null });
+	expect("harness" in cleared).toBe(false);
+});
+
+it("updates a job's row in place and reads the edit back", async () => {
+	const home = mkdtempSync(join(tmpdir(), "recipes-jobs-"));
+	try {
+		configureTestRuntime({ modules: [Jobs.module()] });
+		value(await Planner.init(home));
+		const task = value(
+			await Planner.addTask(home, { title: "Edited job", kind: "job" }),
+		);
+		const host = {
+			store: createHostStore(
+				() => home,
+				() => ["recipes_jobs"],
+				"jobs test",
+			),
+			z,
+		};
+		const before = job({ taskId: task.id, harness: ["codex"] });
+		value(await Jobs.insert(host, before, "test"));
+		const edited = Jobs.edit(before, {
+			schedule: "*/5 * * * *",
+			harness: null,
+			session: "keep",
+		});
+		value(await Jobs.update(host, edited, "test"));
+		expect(value(await Jobs.all(host))).toEqual([edited]);
+	} finally {
+		configureTestRuntime();
+		rmSync(home, { recursive: true, force: true });
+	}
+});

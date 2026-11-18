@@ -299,6 +299,9 @@ kabane job add wiki-maintenance --title "Keep the wiki current" --schedule "0 7 
   --request "Fold this week's notes into the wiki pages they belong to"
 kabane job add --title "Check the nightly build" --schedule "0 8 * * *" \
   --request "Check last night's build and comment what broke"   # no recipe
+kabane job add --title "Tidy the inbox" --schedule "0 9 * * 1" \
+  --request "Triage the inbox" --project ~/Projects/notes   # from any folder
+kabane job edit JCAB-600 --schedule "0 9 * * *" --harness codex
 kabane job list                 # this project's jobs; --all for every project's
 kabane job show JCAB-600        # the request, the inputs and the last runs
 kabane job pause JCAB-600       # resume JCAB-600 starts it again
@@ -306,14 +309,25 @@ kabane job run JCAB-600         # fire it now
 kabane job tick                 # fire every job that is due; what launchd or cron calls
 ```
 
-`job add` runs in the project. The recipe must say `target: job` or take no target. Its inputs
+`job add` makes the job in the project of the folder it runs in, or of the folder `--project`
+names, from wherever you are (`~` and relative paths work as in a shell); a folder in no project
+is an error. The recipe is read from that project's `.kabane/recipes/`, and the folder is
+recorded as the one `tick` starts the job's runs in. The recipe must say `target: job` or take no target. Its inputs
 come from `--input name=value` and `--inputs '{…}'` as with `kabane run`, are checked now, and
 are never asked for: a required input that is missing is an error. `--schedule` is a cron
 expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
 machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
 the recipe's `harness` and `recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
-default, `--session fresh`, starts a new one on each fire. To change it, close the job and add
-it again.
+default, `--session fresh`, starts a new one on each fire.
+
+`job edit <id>` changes a job from any folder, only in the fields you give, and says what it
+changed and when the job fires next: `--title` and `--request` (the item's title and
+description, as `kabane edit` would change them), `--schedule`, `--harness`, `--session`, and the
+inputs, checked against the recipe as `job add` checks them: `--inputs '{…}'` replaces them,
+each `--input name=value` sets one. `--harness none` drops the job's own command, so the
+recipe's `harness` or `recipes.harness` applies again. A new schedule counts from the job's last
+fire, or from when it was added, as a tick does. A job's project does not change: to move one,
+close it and add it again.
 
 With no recipe name, `--request` is required and is the prompt: each fire gives the agent the
 job preamble (below), then the request as the job's description reads at that moment, so an
@@ -353,7 +367,7 @@ comment on the job and to file a decision for you with `kabane_ask` on the job. 
 line for each job it fired or skipped and exits 0 unless kabane itself failed.
 
 `tick` runs with no project, so it needs each project's folder on this machine: every `kabane
-job` command run inside a project records it. A job whose project has no folder recorded is
+job` command run inside a project records it, and so does `job add --project`. A job whose project has no folder recorded is
 skipped with a line that says to run `kabane job list` inside it. Jobs sync with your other
 items; the folders do not, so each machine that ticks needs one `kabane job` command in each
 project.

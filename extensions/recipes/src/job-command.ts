@@ -3,12 +3,14 @@
 // `Jobs`. `tick`, which launchd or cron calls, fires every active job that is due; it has no
 // project, so every `kabane job` run inside one records that project's folder for it.
 import { createHash } from "node:crypto";
-import { hostname } from "node:os";
+import { homedir, hostname } from "node:os";
+import { join, resolve } from "node:path";
 import type {
 	Extension,
 	Host,
 	Outcome,
 	ParsedArgs,
+	ProjectScope,
 	Result,
 	Task,
 } from "@cabane/extension";
@@ -30,8 +32,9 @@ import { pad } from "./runs-command";
 import type { Runtime } from "./runtime";
 
 const USAGE = [
-	'kabane job add <recipe> --title <text> --schedule "<cron>" [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c] [--session fresh|keep]',
-	'kabane job add --title <text> --schedule "<cron>" --request <text> [--harness a,b,c] [--session fresh|keep]',
+	'kabane job add <recipe> --title <text> --schedule "<cron>" [--project <folder>] [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c] [--session fresh|keep]',
+	'kabane job add --title <text> --schedule "<cron>" --request <text> [--project <folder>] [--harness a,b,c] [--session fresh|keep]',
+	'kabane job edit <id> [--title <text>] [--schedule "<cron>"] [--request <text>] [--input name=value]... [--inputs \'{"name": value}\'] [--harness a,b,c|none] [--session fresh|keep]',
 	"kabane job list [--all]",
 	"kabane job show|pause|resume|run <id>",
 	"kabane job tick",
@@ -294,13 +297,71 @@ const recipeFor = (
 		: fail(d.host.outcome.usage(inputs.error.message, USAGE));
 };
 
+/** `folder` as a shell user means it: `~` is the home folder, a relative path is from `cwd`. */
+const folderOf = (cwd: string, folder: string): string =>
+	folder === "~"
+		? homedir()
+		: folder.startsWith("~/")
+			? join(homedir(), folder.slice(2))
+			: resolve(cwd, folder);
+
+/** The project `job add` makes its job in: `--project`'s, recorded as `tick`'s folder for it, or the cwd's. */
+const projectFor = async (
+	d: Deps,
+	args: ParsedArgs,
+	cwd: string,
+): Promise<
+	{ ok: true; value: ProjectScope } | { ok: false; outcome: Outcome }
+> => {
+	const given = d.host.args.flagString(args, "project");
+	if (given === undefined) return projectOf(d.host, cwd, "job add");
+	const folder = folderOf(cwd, given);
+	const fail = (outcome: Outcome) => ({ ok: false as const, outcome });
+	const found = await d.host.scope.detect(folder);
+	if (!found.ok) return fail(d.host.outcome.failure(found.error));
+	if (found.value === null)
+		return fail(
+			d.host.outcome.failure(`--project ${folder} is in no kabane project`),
+		);
+	const saved = await Jobs.setRoot(
+		d.host,
+		found.value.scopeUri,
+		found.value.root,
+	);
+	return saved.ok
+		? { ok: true, value: found.value }
+		: fail(d.host.outcome.failure(saved.error));
+};
+
+/** `--session`'s mode, `fallback` when not given, or the usage error that names what it takes. */
+const sessionOf = (
+	d: Deps,
+	args: ParsedArgs,
+	fallback: Jobs.Session | undefined,
+):
+	| { ok: true; value: Jobs.Session | undefined }
+	| { ok: false; outcome: Outcome } => {
+	const mode = d.host.args.flagString(args, "session");
+	if (mode === undefined) return { ok: true, value: fallback };
+	const session = Jobs.SESSIONS.find((one) => one === mode);
+	return session === undefined
+		? {
+				ok: false,
+				outcome: d.host.outcome.usage(
+					`--session is fresh or keep, not "${mode}"`,
+					USAGE,
+				),
+			}
+		: { ok: true, value: session };
+};
+
 const add = async (
 	d: Deps,
 	args: ParsedArgs,
 	ctx: Extension.Ctx,
 	name: string | undefined,
 ): Promise<Outcome> => {
-	const project = await projectOf(d.host, ctx.cwd, "job add");
+	const project = await projectFor(d, args, ctx.cwd);
 	if (!project.ok) return project.outcome;
 	const title = d.host.args.flagString(args, "title");
 	const schedule = d.host.args.flagString(args, "schedule");
@@ -318,13 +379,9 @@ const add = async (
 	const chosen = recipeFor(d, args, project.value.root, name);
 	if (!chosen.ok) return chosen.outcome;
 	const { recipe, inputs } = chosen.value;
-	const mode = d.host.args.flagString(args, "session") ?? "fresh";
-	const session = Jobs.SESSIONS.find((one) => one === mode);
-	if (session === undefined)
-		return d.host.outcome.usage(
-			`--session is fresh or keep, not "${mode}"`,
-			USAGE,
-		);
+	const mode = sessionOf(d, args, "fresh");
+	if (!mode.ok) return mode.outcome;
+	const session = mode.value ?? "fresh";
 	const created = await d.host.record.call("kabane_add", {
 		title,
 		kind: "job",
@@ -516,6 +573,166 @@ const setState = async (
 	);
 };
 
+type Failed = { ok: false; outcome: Outcome };
+
+/** What `job edit` was given: the item's fields, the row's change bar its inputs, the inputs as typed. */
+type EditFlags = {
+	title?: string;
+	request?: string;
+	change: Omit<Jobs.Change, "inputs">;
+	json?: string;
+	pairs: string[];
+};
+
+/** `job edit`'s flags, the schedule and session checked; a usage error when none names a field. */
+const editFlagsOf = (
+	d: Deps,
+	args: ParsedArgs,
+): { ok: true; value: EditFlags } | Failed => {
+	const { args: a, outcome } = d.host;
+	const fail = (message: string): Failed => ({
+		ok: false,
+		outcome: outcome.usage(message, USAGE),
+	});
+	const mode = sessionOf(d, args, undefined);
+	if (!mode.ok) return mode;
+	const schedule = a.flagString(args, "schedule");
+	if (schedule !== undefined) {
+		const valid = Jobs.nextAfter(schedule, new Date());
+		if (!valid.ok) return fail(valid.error.message);
+	}
+	const harness = a.flagCsv(args, "harness");
+	const change: EditFlags["change"] = {
+		...(schedule === undefined ? {} : { schedule }),
+		// `none` hands the choice back to the recipe and recipes.harness.
+		...(harness === undefined
+			? {}
+			: { harness: harness.join(",") === "none" ? null : harness }),
+		...(mode.value === undefined ? {} : { session: mode.value }),
+	};
+	const flags: EditFlags = {
+		title: a.flagString(args, "title"),
+		request: a.flagString(args, "request"),
+		change,
+		json: a.flagString(args, "inputs"),
+		pairs: a.flagList(args, "input"),
+	};
+	const given =
+		flags.title !== undefined ||
+		flags.request !== undefined ||
+		flags.json !== undefined ||
+		flags.pairs.length > 0 ||
+		Object.keys(change).length > 0;
+	return given
+		? { ok: true, value: flags }
+		: fail(
+				"job edit needs a field to change: --title, --schedule, --request, --input, --inputs, --harness or --session",
+			);
+};
+
+/** The job's inputs after `--inputs` and `--input`, checked against its recipe; none when neither is given. */
+const editedInputs = async (
+	d: Deps,
+	found: Entry,
+	{ json, pairs }: EditFlags,
+): Promise<
+	{ ok: true; value: Record<string, Recipe.Value> | undefined } | Failed
+> => {
+	if (json === undefined && pairs.length === 0)
+		return { ok: true, value: undefined };
+	const { job, task } = found;
+	const { outcome } = d.host;
+	const fail = (failed: Outcome): Failed => ({ ok: false, outcome: failed });
+	if (job.recipe === undefined)
+		return fail(
+			outcome.usage(`${shortOf(task)} has no recipe, so no inputs`, USAGE),
+		);
+	const roots = await Jobs.roots(d.host);
+	if (!roots.ok) return fail(outcome.failure(roots.error));
+	const root = roots.value.get(task.scopeUri ?? "");
+	if (root === undefined) return fail(outcome.failure(noFolder(found)));
+	const recipe = Recipe.load(d.host.z, root, job.recipe);
+	if (!recipe.ok) return fail(outcome.failure(recipe.error));
+	// --inputs replaces the set; each --input sets one over it, or over the job's own.
+	const resolved = Inputs.resolve(d.host.z, recipe.value, {
+		pairs,
+		json: json ?? JSON.stringify(job.inputs),
+	});
+	return resolved.ok
+		? { ok: true, value: resolved.value }
+		: fail(outcome.usage(resolved.error.message, USAGE));
+};
+
+/** What `job edit` says it changed. */
+const editedOf = (
+	{ title, request, change }: EditFlags,
+	inputs?: object,
+): string =>
+	[
+		...(title === undefined ? [] : [`title "${title}"`]),
+		...(request === undefined ? [] : ["request"]),
+		...(change.schedule === undefined ? [] : [`schedule "${change.schedule}"`]),
+		...(inputs === undefined ? [] : [`inputs ${JSON.stringify(inputs)}`]),
+		...(change.harness === undefined
+			? []
+			: [
+					change.harness === null
+						? "harness from recipes.harness"
+						: `harness ${change.harness.join(" ")}`,
+				]),
+		...(change.session === undefined ? [] : [`${change.session} session`]),
+	].join(", ");
+
+/** `job edit`: changes only the fields given, on the item (title, request) and on the row. */
+const editJob = async (
+	d: Deps,
+	args: ParsedArgs,
+	ctx: Extension.Ctx,
+	key: string,
+): Promise<Outcome> => {
+	const { outcome } = d.host;
+	const flags = editFlagsOf(d, args);
+	if (!flags.ok) return flags.outcome;
+	const { title, request } = flags.value;
+	const found = await entry(d, key);
+	if (!found.ok) return outcome.failure(found.error);
+	const { job, task } = found.value;
+	const short = shortOf(task);
+	if (job.recipe === undefined && request?.trim() === "")
+		return outcome.usage(
+			`${short} has no recipe: its request is the prompt and cannot be empty`,
+			USAGE,
+		);
+	const inputs = await editedInputs(d, found.value, flags.value);
+	if (!inputs.ok) return inputs.outcome;
+	if (title !== undefined || request !== undefined) {
+		const edited = await d.host.record.edit({
+			id: task.id,
+			...(title === undefined ? {} : { title }),
+			...(request === undefined ? {} : { description: request }),
+		});
+		if (!edited.ok) return outcome.failure(edited.error);
+	}
+	const change: Jobs.Change = {
+		...flags.value.change,
+		...(inputs.value === undefined ? {} : { inputs: inputs.value }),
+	};
+	const updated =
+		Object.keys(change).length === 0
+			? ok(job)
+			: await Jobs.update(d.host, Jobs.edit(job, change), ctx.actor);
+	if (!updated.ok) return outcome.failure(updated.error);
+	const next = Jobs.next(updated.value);
+	return outcome.success(
+		{
+			job: task.id,
+			shortId: short,
+			...(next.ok ? { next: next.value.toISOString() } : {}),
+		},
+		`Edited job ${short} (${editedOf(flags.value, inputs.value)}); it fires next at ${nextOf(updated.value)}.`,
+	);
+};
+
 /** Fire the job `key` names now, in its scope's folder on this machine: the line that says what it did. */
 export const runJob = async (
 	d: Deps,
@@ -659,7 +876,7 @@ export const jobCommand = (
 	return {
 		name: "job",
 		summary:
-			"Run a project recipe on a schedule; list, pause, resume or fire jobs",
+			"Run a project recipe on a schedule; add, edit, list, pause, resume or fire jobs",
 		usage: USAGE,
 		run: async (args, ctx) => {
 			// Every job command inside a project records its folder, which `tick` starts runs in.
@@ -683,7 +900,7 @@ export const jobCommand = (
 			if (verb === "list")
 				return list(d, ctx, d.host.args.flagBool(args, "all"));
 			if (verb === "tick") return tick(d, ctx);
-			if (!["show", "pause", "resume", "run"].includes(verb ?? ""))
+			if (!["show", "edit", "pause", "resume", "run"].includes(verb ?? ""))
 				return d.host.outcome.usage(
 					verb === undefined
 						? "kabane job needs a subcommand"
@@ -693,6 +910,7 @@ export const jobCommand = (
 			if (key === undefined)
 				return d.host.outcome.usage(`job ${verb} needs a job id`, USAGE);
 			if (verb === "show") return show(d, ctx, key);
+			if (verb === "edit") return editJob(d, args, ctx, key);
 			if (verb === "run") return runNow(d, ctx, key);
 			return setState(d, key, verb === "pause" ? "someday" : "next");
 		},

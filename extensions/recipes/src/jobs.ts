@@ -177,6 +177,51 @@ export namespace Jobs {
 			return captured.ok ? ok(job) : captured;
 		});
 
+	/** What `job edit` changes on the row; `harness: null` clears the job's own harness. */
+	export type Change = {
+		schedule?: string;
+		inputs?: Record<string, unknown>;
+		harness?: string[] | null;
+		session?: Session;
+	};
+
+	/** The job with `change` applied: only the fields it names move. */
+	export const edit = (job: Job, change: Change): Job => {
+		const { harness: _old, ...kept } = job;
+		const harness = change.harness === undefined ? job.harness : change.harness;
+		return {
+			...kept,
+			schedule: change.schedule ?? job.schedule,
+			inputs: change.inputs ?? job.inputs,
+			session: change.session ?? job.session,
+			...(harness === null || harness === undefined ? {} : { harness }),
+		};
+	};
+
+	/** Writes the row's schedule, inputs, harness and session as `job` has them. */
+	export const update = (
+		host: Store,
+		job: Job,
+		actor: string,
+	): Promise<Result<Job>> =>
+		host.store.write((tx) => {
+			tx.db.run(
+				`UPDATE ${TABLE} SET schedule = ?, inputs = ?, harness = ?, session = ?,
+				   updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
+				[
+					job.schedule,
+					JSON.stringify(job.inputs),
+					job.harness === undefined ? null : JSON.stringify(job.harness),
+					job.session,
+					new Date().toISOString(),
+					actor,
+					job.taskId,
+				],
+			);
+			const captured = tx.afterWrite(TABLE, "update", job.taskId);
+			return captured.ok ? ok(job) : captured;
+		});
+
 	export const setFired = (
 		host: Store,
 		taskId: string,
