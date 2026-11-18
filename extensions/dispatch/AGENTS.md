@@ -9,7 +9,7 @@ project's copy is behind. `README.md` is what a user reads.
 |---|---|
 | `src/extension.ts` | the `(host) => Extension` factory: the `dispatch` command (`stamp`) and the doctor checks |
 | `src/templates.ts` | `Templates.hashDir` and `Templates.stamp`, read from this directory's `templates/` |
-| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `dispatch-template-unavailable`, `grill-skill-behind` |
+| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `-unlinked`, `dispatch-template-unavailable`, `grill-skill-behind`, `-unlinked` |
 | `copilot/procedures/*.md`, `copilot/shortcuts/*.md` | the copilot's text, `{{extension}}` filled by the host |
 | `templates/dispatch/**`, `templates/grill/SKILL.md` | what a procedure tells the copilot to copy into a project |
 
