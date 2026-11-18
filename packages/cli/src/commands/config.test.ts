@@ -588,6 +588,9 @@ describe.concurrent("config through the real CLI", () => {
 			const root = realpathSync(repo);
 			const nested = join(repo, "src", "deep");
 			mkdirSync(nested, { recursive: true });
+			// A child, not a parent: its name only starts with two dots.
+			const dotted = join(repo, "..nested");
+			mkdirSync(dotted);
 			const lenses = join(
 				repo,
 				".claude",
@@ -619,7 +622,7 @@ describe.concurrent("config through the real CLI", () => {
 				layer: "shared",
 				from: join(root, ".kabane", "loop.json"),
 			});
-			for (const cwd of [repo, nested]) {
+			for (const cwd of [repo, nested, dotted]) {
 				const got = await json(
 					cwd,
 					"config",
@@ -637,6 +640,7 @@ describe.concurrent("config through the real CLI", () => {
 				).toContain("team");
 			}
 			expect(existsSync(join(nested, ".kabane"))).toBe(false);
+			expect(existsSync(join(dotted, ".kabane"))).toBe(false);
 		}),
 		30_000,
 	);

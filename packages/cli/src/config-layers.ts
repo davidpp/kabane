@@ -26,10 +26,11 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 import { err, ok, type Result, toError, trySync } from "@cabane/core";
 import type { Settings } from "@cabane/extension";
 import { configPath, isPlainObject } from "./config";
+import { Paths } from "./paths";
 import { MARKER_DIR, ProjectDirs } from "./scope/detect";
 
 export namespace ConfigLayers {
@@ -53,8 +54,9 @@ export namespace ConfigLayers {
 	 */
 	export const sharedRoot = (root: string, dir: string): string | undefined => {
 		const real = trySync(() => realpathSync(dir));
-		const inside = relative(root, real.ok ? real.value : dir);
-		return inside.startsWith("..") || isAbsolute(inside) ? undefined : root;
+		return Paths.inside(root, real.ok ? real.value : dir) === undefined
+			? undefined
+			: root;
 	};
 
 	export const sharedFile = (projectDir: string, namespace: string): string =>

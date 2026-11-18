@@ -460,7 +460,8 @@ it("reads and writes the project's shared layer over stdio from a nested directo
 	const root = mkdtempSync(join(tmpdir(), "kabane-config-mcp-nested-"));
 	const home = join(root, "home");
 	const repo = join(root, "repo");
-	const nested = join(repo, "src");
+	// A child, not a parent: its name only starts with two dots.
+	const nested = join(repo, "..nested");
 	mkdirSync(home);
 	mkdirSync(nested, { recursive: true });
 	GitFixture.run(repo, ["init", "-q"]);
