@@ -24,6 +24,8 @@ export namespace Jobs {
 		/** The command this job starts instead of `recipes.harness`. */
 		harness?: string[];
 		session: Session;
+		/** A shell command a due fire runs first: the run starts only when it exits 0. */
+		check?: string;
 		lastFiredAt?: string;
 		createdAt: string;
 	};
@@ -89,6 +91,10 @@ export namespace Jobs {
 						 )`,
 					),
 			},
+			{
+				name: "add-recipes-jobs-check",
+				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN "check" TEXT`),
+			},
 		],
 		syncTables: [
 			{
@@ -110,6 +116,7 @@ export namespace Jobs {
 				inputs: z.string(),
 				harness: z.string().nullable(),
 				session: z.enum(SESSIONS),
+				check: z.string().nullable(),
 				last_fired_at: z.string().nullable(),
 				created_at: z.string(),
 			})
@@ -142,6 +149,7 @@ export namespace Jobs {
 			inputs: parsedInputs.data,
 			...(parsedHarness.data === null ? {} : { harness: parsedHarness.data }),
 			session: data.session,
+			...(data.check === null ? {} : { check: data.check }),
 			...(data.last_fired_at === null
 				? {}
 				: { lastFiredAt: data.last_fired_at }),
@@ -157,8 +165,8 @@ export namespace Jobs {
 		host.store.write((tx) => {
 			tx.db.run(
 				`INSERT INTO ${TABLE} (id, task_id, schedule, recipe, inputs, harness, session,
-				   last_fired_at, created_at, updated_at, updated_by)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				   "check", last_fired_at, created_at, updated_at, updated_by)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					job.taskId,
 					job.taskId,
@@ -167,6 +175,7 @@ export namespace Jobs {
 					JSON.stringify(job.inputs),
 					job.harness === undefined ? null : JSON.stringify(job.harness),
 					job.session,
+					job.check ?? null,
 					job.lastFiredAt ?? null,
 					job.createdAt,
 					new Date().toISOString(),
@@ -177,28 +186,31 @@ export namespace Jobs {
 			return captured.ok ? ok(job) : captured;
 		});
 
-	/** What `job edit` changes on the row; `harness: null` clears the job's own harness. */
+	/** What `job edit` changes on the row; `null` clears the job's own harness or its check. */
 	export type Change = {
 		schedule?: string;
 		inputs?: Record<string, unknown>;
 		harness?: string[] | null;
 		session?: Session;
+		check?: string | null;
 	};
 
 	/** The job with `change` applied: only the fields it names move. */
 	export const edit = (job: Job, change: Change): Job => {
-		const { harness: _old, ...kept } = job;
+		const { harness: _harness, check: _check, ...kept } = job;
 		const harness = change.harness === undefined ? job.harness : change.harness;
+		const check = change.check === undefined ? job.check : change.check;
 		return {
 			...kept,
 			schedule: change.schedule ?? job.schedule,
 			inputs: change.inputs ?? job.inputs,
 			session: change.session ?? job.session,
 			...(harness === null || harness === undefined ? {} : { harness }),
+			...(check === null || check === undefined ? {} : { check }),
 		};
 	};
 
-	/** Writes the row's schedule, inputs, harness and session as `job` has them. */
+	/** Writes the row's schedule, inputs, harness, session and check as `job` has them. */
 	export const update = (
 		host: Store,
 		job: Job,
@@ -207,12 +219,13 @@ export namespace Jobs {
 		host.store.write((tx) => {
 			tx.db.run(
 				`UPDATE ${TABLE} SET schedule = ?, inputs = ?, harness = ?, session = ?,
-				   updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
+				   "check" = ?, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
 				[
 					job.schedule,
 					JSON.stringify(job.inputs),
 					job.harness === undefined ? null : JSON.stringify(job.harness),
 					job.session,
+					job.check ?? null,
 					new Date().toISOString(),
 					actor,
 					job.taskId,

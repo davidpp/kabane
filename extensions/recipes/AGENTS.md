@@ -67,13 +67,16 @@ A job is an item of kind `job` (title, description as the standing request, scop
 the item's description as it reads at the fire, never rendered; the run row records recipe
 `request` and the request's hash), inputs, harness, `session`
 (`fresh` or `keep`; an appended migration added it, so a row from before reads `fresh`),
-`last_fired_at`.
+`check` (a shell command or null; also appended), `last_fired_at`.
 Due is the schedule's first time after `last_fired_at`, or after the row's creation, so missed
 fires fold into one. A fire skips while one of the job's runs on this machine is `live`,
 `running` or `waiting`. A `fresh` job then stops the `idle` ones and calls `startRun` at the root
 with a `job` target. A `keep` job sends `promptOf` (the text `startRun` passes, with the woken
 run's own id in the preamble) to its newest `idle` run through `Runtime.send`, and starts one
-only when none is idle (`Jobs.decide`). A wake writes no run row: one row per terminal, so
+only when none is idle (`Jobs.decide`). Between the overlap skip and either, a tick's fire runs
+the job's `check` with `sh -c` in the root with `KABANE_JOB` and `KABANE_JOB_TITLE`; a nonzero
+exit starts nothing, prints one line with the check's last stderr line, and still sets
+`last_fired_at`, so the slot is spent. `job run` and the board's `job:run` skip the check. A wake writes no run row: one row per terminal, so
 `kabane runs` lists the session once, and `last_fired_at` records the fire. `tick` has no cwd:
 it reads the root from `recipes_roots`, which every `kabane job` command run inside a project
 writes and which is left out of `syncTables`, since a path belongs to one machine.
