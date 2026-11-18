@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-/** Build the directory extension: its main entry and its modules entry, beside a built manifest. */
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+/** Build the directory extension: its main entry and its modules entry, beside a built manifest and its templates. */
+import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -14,6 +14,21 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 		root: ROOT,
 		outdir: into,
 		target: "bun",
+		plugins: [
+			{
+				name: "relocate-templates",
+				setup(builder) {
+					// Flattening src/ into index.js moves the module one directory up.
+					builder.onLoad({ filter: /\/src\/job-skill\.ts$/ }, ({ path }) => ({
+						contents: readFileSync(path, "utf8").replace(
+							'new URL("../templates/", import.meta.url)',
+							'new URL("./templates/", import.meta.url)',
+						),
+						loader: "ts",
+					}));
+				},
+			},
+		],
 	});
 	if (!result.success) return result;
 	const manifest = {
@@ -28,6 +43,7 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 		join(into, "package.json"),
 		`${JSON.stringify(manifest, null, "\t")}\n`,
 	);
+	cpSync(join(ROOT, "templates"), join(into, "templates"), { recursive: true });
 	return result;
 };
 

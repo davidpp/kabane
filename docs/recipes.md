@@ -376,6 +376,29 @@ skipped with a line that says to run `kabane job list` inside it. Jobs sync with
 items; the folders do not, so each machine that ticks needs one `kabane job` command in each
 project.
 
+### Ask any harness to make a job
+
+The recipes extension ships a `job` skill that teaches a harness the commands above, so you can
+say "make a job in ~/Projects/notes that tidies the inbox every Monday at 9" or "pause that job"
+from any harness, in any folder. It turns the prompt into one `kabane job add` or `kabane job
+edit` (the folder checked with `kabane scope`, the schedule as cron, a recipe and its inputs when
+one fits, a harness only when you named one), then reads the job back with `kabane job show` and
+tells you when it fires next, in which folder, with which harness. It asks only for what the prompt
+leaves open, such as the time of day.
+
+The skill is installed for your user, not for one project: `kabane doctor` reports
+`recipes/job-skill-missing` while `~/.agents/skills/job/SKILL.md` is absent, and
+
+```bash
+kabane doctor --fix recipes/job-skill-missing
+```
+
+writes it there, where Codex, Gemini and other harnesses read it, and links
+`~/.claude/skills/job` to it for Claude Code. An existing `~/.claude/skills/job` that is not a link
+is left as it is, and the fix says so. When a later kabane ships a different skill, `doctor` reports
+`recipes/job-skill-behind`, and `--fix recipes/job-skill-behind` copies the new one over yours,
+replacing any edits.
+
 ### Hear when a run needs you
 
 `recipes.onAttention` is a shell command that `job tick` runs when a job's run needs you: once

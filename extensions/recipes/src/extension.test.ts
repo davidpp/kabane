@@ -7,6 +7,7 @@ import { afterEach, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
 	symlinkSync,
@@ -65,7 +66,7 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 	skill(root, "research");
 	const kabane = (
 		args: string[],
-		options: { cwd?: string; path?: string } = {},
+		options: { cwd?: string; path?: string; home?: string } = {},
 	) => {
 		const result = Bun.spawnSync([process.execPath, CLI, ...args], {
 			cwd: options.cwd ?? root,
@@ -74,6 +75,7 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 				KABANE_HOME: home,
 				KABANE_HARNESSES: "",
 				...(options.path === undefined ? {} : { PATH: options.path }),
+				...(options.home === undefined ? {} : { HOME: options.home }),
 			},
 			stdin: "ignore",
 		});
@@ -594,4 +596,33 @@ test("job add --project makes the job in that folder's project from anywhere, an
 	expect(after.inputs).toEqual({ focus: "index", depth: "quick" });
 	expect(after.harness).toBeUndefined();
 	expect(after.starts).toMatchObject({ argv: ["claude"] });
+});
+
+test("doctor offers the user-level job skill, and --fix installs it for every harness", () => {
+	const { kabane, home } = setup();
+	const user = join(home, "user");
+	mkdirSync(user);
+	const findings = () =>
+		JSON.parse(kabane(["doctor", "--json"], { home: user }).stdout).findings;
+	expect(findings()).toContainEqual(
+		expect.objectContaining({
+			source: "recipes",
+			id: "job-skill-missing",
+			severity: "suggest",
+			fixable: true,
+		}),
+	);
+	const fixed = kabane(["doctor", "--fix", "recipes/job-skill-missing"], {
+		home: user,
+	});
+	expect(fixed.code).toBe(0);
+	expect(fixed.stdout).toContain(
+		"Wrote ~/.agents/skills/job/SKILL.md and linked ~/.claude/skills/job to it",
+	);
+	expect(readFileSync(join(user, ".claude/skills/job/SKILL.md"), "utf8")).toBe(
+		readFileSync(join(EXTENSION, "templates/job/SKILL.md"), "utf8"),
+	);
+	expect(
+		findings().filter((f: { id: string }) => f.id.startsWith("job-skill")),
+	).toEqual([]);
 });
