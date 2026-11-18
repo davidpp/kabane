@@ -30,20 +30,20 @@ type FixtureOptions = {
 	age?: number;
 	young?: boolean;
 	failScript?: boolean;
-	removeBin?: boolean;
+	removeBinTarget?: boolean;
 	configured?: boolean;
 	/** The version `archive` carries, installed first; the target is what the registry offers. */
 	source?: string;
 	target?: string;
 };
-/** A target install script that fails, or that removes the global bin it installed. */
+/** A target install script that fails, or that deletes the file its global bin points to. */
 const targetScripts = (options: FixtureOptions) =>
 	options.failScript
 		? { scripts: { postinstall: "bun -e 'process.exit(7)'" } }
-		: options.removeBin
+		: options.removeBinTarget
 			? {
 					scripts: {
-						postinstall: `bun -e 'require("node:fs").rmSync(process.env.BUN_INSTALL + "/bin/kabane", {force:true})'`,
+						postinstall: `bun -e 'require("node:fs").rmSync("bin/kabane.js")'`,
 					},
 				}
 			: {};
