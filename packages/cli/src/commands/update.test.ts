@@ -315,8 +315,8 @@ test("metadata current/manual policies/malformed/offline never mutate installati
 	}
 }, 30_000);
 
-test("real manager removes global bin: nonzero partial result, never repair or success", async () => {
-	const fixture = await createUpdateFixture(archive, { removeBin: true });
+test("real manager leaves a dangling global bin: nonzero partial result, never repair or success", async () => {
+	const fixture = await createUpdateFixture(archive, { removeBinTarget: true });
 	if (!fixture.ok) return expect(fixture.error).toBe("");
 	try {
 		writeFileSync(
