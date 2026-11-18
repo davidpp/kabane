@@ -96,13 +96,16 @@ const preamble = (
 ): string => {
 	const lines = [
 		`[kabane run ${runId}, ${source}]`,
-		"You were started in the background. Nobody is watching this terminal.",
+		target?.kind === "job"
+			? "You were started in the background. The human is not watching this terminal, but is notified when the run waits for them."
+			: "You were started in the background. Nobody is watching this terminal.",
 	];
 	if (target?.kind === "job")
 		lines.push(
 			`This is a scheduled background run of job ${target.shortId} ("${target.title}").`,
 			`Read the job with kabane_context on ${target.shortId}: its description is the standing request, and its comments are what earlier runs reported.`,
-			`When a decision belongs to the human, file it with kabane_ask on ${target.shortId} (the choices, your recommendation and why), then stop.`,
+			"When a decision belongs to the human, ask it here in this session (the choices, your recommendation and why) and wait for the answer: the human is notified and answers in this terminal.",
+			"When the decision is about a specific issue and can wait, file it with kabane_ask on that issue instead.",
 			`Write your result as one comment on ${target.shortId} with kabane_comment.`,
 		);
 	else if (target === undefined)
