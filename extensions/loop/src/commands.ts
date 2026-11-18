@@ -12,7 +12,7 @@ import {
 	readFileSync,
 	realpathSync,
 } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { Harnesses } from "@cabane/acp/harnesses";
 import type { Result, Task } from "@cabane/core";
 import type { Host, Settings } from "@cabane/extension";
@@ -26,6 +26,7 @@ import { Landed } from "./landed";
 import { Lenses } from "./lenses";
 import { Lint } from "./lint";
 import { Parent } from "./parent";
+import { Paths } from "./paths";
 import { Permission } from "./permission";
 import { LoopPlan } from "./plan";
 import { Prune } from "./prune";
@@ -302,8 +303,7 @@ export namespace Loop {
 		if (root === undefined) return ok(projectDir);
 		const real = trySync(() => realpathSync(projectDir));
 		const from = real.ok ? real.value : projectDir;
-		const inside = relative(root, from);
-		if (inside.startsWith("..") || isAbsolute(inside)) return ok(projectDir);
+		if (Paths.inside(root, from) === undefined) return ok(projectDir);
 		// Spelled from `projectDir`, not canonical: a run's paths read the way it was started.
 		return ok(resolve(projectDir, relative(from, root)));
 	};
@@ -529,8 +529,8 @@ export namespace Loop {
 		const top = await git(projectDir, ["rev-parse", "--show-toplevel"]);
 		if (!top.ok) return false;
 		const real = trySync(() => realpathSync(path));
-		const inside = relative(top.value.trim(), real.ok ? real.value : path);
-		if (inside.startsWith("..") || isAbsolute(inside)) return false;
+		const inside = Paths.inside(top.value.trim(), real.ok ? real.value : path);
+		if (inside === undefined) return false;
 		const committed = await git(projectDir, [
 			"cat-file",
 			"-e",

@@ -8,11 +8,11 @@
 // loop made, under KABANE_HOME/loops, is ever removed, and never one a live run works in or a
 // landing by hand holds (`Worktree.lock`).
 import { existsSync } from "node:fs";
-import { relative } from "node:path";
 import { type Result } from "@cabane/core";
 import type { Host } from "@cabane/extension";
 import { Land } from "./land";
 import { Parent } from "./parent";
+import { Paths } from "./paths";
 import { err, ok } from "./result";
 import { RunStore } from "./store";
 import { Worktree } from "./worktree";
@@ -87,8 +87,8 @@ export namespace Prune {
 	};
 
 	const loopMade = (home: string, dir: string): boolean => {
-		const inside = relative(RunStore.loopsDir(home), dir);
-		return inside !== "" && !inside.startsWith("..");
+		const inside = Paths.inside(RunStore.loopsDir(home), dir);
+		return inside !== undefined && inside !== "";
 	};
 
 	/**

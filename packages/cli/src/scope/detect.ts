@@ -5,9 +5,10 @@
 
 import { execFile } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { promisify } from "node:util";
 import { ScopeUri, type ProjectScope } from "@cabane/core";
+import { Paths } from "../paths";
 import { DetectedScopes } from "./detected";
 import { ProjectDirs } from "./projects";
 
@@ -119,10 +120,8 @@ const findGitRoot = async (
 export const mainCheckoutRoot = async (root: string): Promise<string> => {
 	const checkout = await checkoutOf(root);
 	if (!checkout || checkout.main === checkout.toplevel) return root;
-	const inside = relative(await canonical(checkout.toplevel), root);
-	return inside.startsWith("..") || isAbsolute(inside)
-		? root
-		: join(checkout.main, inside);
+	const inside = Paths.inside(await canonical(checkout.toplevel), root);
+	return inside === undefined ? root : join(checkout.main, inside);
 };
 
 /**
