@@ -271,8 +271,9 @@ export namespace LoopConfig {
 			/**
 			 * How much review a run gets (`Review`): with `triage`, a run with two lenses or more first runs
 			 * one read-only session that groups the lenses its diff needs, at a tier each, and skips the
-			 * rest, with `always` carried as prompt guidance; `all` runs every lens in a session of its own. `tier` is the
-			 * tier that session runs at, so it can have a model of its own (`loop.tiers.<harness>.<tier>`).
+			 * rest, with `always` carried as prompt guidance; `all` runs every lens in a session of its own.
+			 * `tier` is the tier that session runs at, so it can have a model of its own
+			 * (`loop.tiers.<harness>.<tier>`).
 			 */
 			review: makeReviewSchema(z)
 				.default({})

@@ -309,12 +309,13 @@ always: false
 
 `applies` is one line of prose, written for a model deciding from a diff stat and the
 brief. `always: true` tells triage never to skip the lens; the shipped `functional`
-lens is one. The triage prompt carries this guidance; code does not enforce it. Both keys are optional: a file without frontmatter is a lens with no
-`applies` that is not `always`. Any other key, or frontmatter that is not YAML, is an
-error that names the file, and `kabane loop start` refuses a run that would use that lens.
-The session gets the prompt without its frontmatter. The dispatch skill's close review
-skips a lens whose `applies` the diff does not touch. A loop run's triage reads both keys
-to decide which lenses run; with `loop.review.mode all`, every lens in `loop.lenses` runs.
+lens is one. The triage prompt carries this guidance; code does not enforce it. Both keys
+are optional: a file without frontmatter is a lens with no `applies` that is not `always`.
+Any other key, or frontmatter that is not YAML, is an error that names the file, and
+`kabane loop start` refuses a run that would use that lens. The session gets the prompt
+without its frontmatter. The dispatch skill's close review skips a lens whose `applies`
+the diff does not touch. A loop run's triage reads both keys to decide which lenses run;
+with `loop.review.mode all`, every lens in `loop.lenses` runs.
 
 To read the same advice from the CLI, including how the subtask tags would route:
 
