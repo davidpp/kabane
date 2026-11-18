@@ -72,17 +72,18 @@ const splitArgs = (argv: string[]): { own: Set<OwnFlag>; rest: string[] } => {
 };
 
 // A CLAUDE.md and a gate give the dispatch extension's `/setup-dispatch` something real to read.
+// The seed has no tests, so the gate passes on none: a harness would otherwise chase a red gate.
 const seedRepo = (): void => {
 	if (existsSync(REPO)) return;
 	mkdirSync(REPO, { recursive: true });
 	GitFixture.run(REPO, ["init", "-q"]);
 	writeFileSync(
 		join(REPO, "CLAUDE.md"),
-		"# Sandbox project\n\nGate: `bun test`. Commits: `<issue id> <area>: <what>`.\n",
+		"# Sandbox project\n\nGate: `bun test --pass-with-no-tests`. Commits: `<issue id> <area>: <what>`.\n",
 	);
 	writeFileSync(
 		join(REPO, "package.json"),
-		`${JSON.stringify({ name: "sandbox", private: true, scripts: { test: "bun test" } }, null, 2)}\n`,
+		`${JSON.stringify({ name: "sandbox", private: true, scripts: { test: "bun test --pass-with-no-tests" } }, null, 2)}\n`,
 	);
 };
 
