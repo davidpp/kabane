@@ -211,7 +211,13 @@ export const blockOnSurface =
 			case "code":
 				return codePanel(defaultRender(), theme.surface.raised);
 			case "quote":
-				return unlined(defaultRender(), theme.surface.raised);
+				return unlinedWithin(
+					unlined(defaultRender(), theme.surface.raised),
+					theme,
+					true,
+				);
+			case "list":
+				return unlinedWithin(defaultRender(), theme, false);
 			case "rule":
 				return unlined(defaultRender());
 			default:
@@ -256,6 +262,36 @@ const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 	}
 	return block;
 };
+
+// A quote or a rule inside a quote or a list never reaches the renderer: OpenTUI builds it into the
+// outer block's box after the renderer returns, and draws it with its line again. The outer box
+// takes it off before each frame's layout, and puts a quote that no quote holds on the panel.
+const unlinedWithin = (
+	block: Renderable | null,
+	theme: Theme.Tokens,
+	inQuote: boolean,
+): Renderable | null => {
+	if (block instanceof BoxRenderable)
+		block.onLifecyclePass = () =>
+			unlineNested(block, theme.surface.raised, inQuote);
+	return block;
+};
+
+const unlineNested = (box: Renderable, bg: string, inQuote: boolean): void => {
+	for (const child of box.getChildren()) {
+		if (!(child instanceof BoxRenderable)) continue;
+		const sides = child.border;
+		if (sides === true || (Array.isArray(sides) && sides.length > 0)) {
+			const quote = sides === true || sides.includes("left");
+			unlined(child, quote && !inQuote ? bg : undefined);
+			if (quote) nestedQuotes.add(child);
+		}
+		unlineNested(child, bg, inQuote || nestedQuotes.has(child));
+	}
+};
+
+// The quotes already unlined, so a quote inside one is not painted a second panel on a later frame.
+const nestedQuotes = new WeakSet<Renderable>();
 
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
 // the raw text instead of tearing down the tree. Prose keeps a column clear of the scrollbar and

@@ -494,6 +494,34 @@ test("Detail sets a quote and a code block on panels, with no line drawn beside 
 	}
 });
 
+test("Detail draws no line for a quote or a rule nested in a quote, nor a quote in a list item", async () => {
+	const task = await seed({
+		description:
+			"> outer\n>\n> > inner\n>\n> ---\n>\n> after the inner rule\n\n- item\n\n  > listed quote\n\nthe end",
+	});
+	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+		task,
+		{ tab: "description" },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("the end"),
+		);
+		expect(frame).not.toMatch(/[│─]/);
+		const spans = captureSpans().lines.flatMap((line) => line.spans);
+		for (const text of ["inner", "after the inner rule", "listed quote"])
+			expect({
+				text,
+				bg: spans
+					.find((span) => span.text.includes(text))
+					?.bg.toInts()
+					.slice(0, 3),
+			}).toEqual({ text, bg: [0x1c, 0x1c, 0x1c] });
+	} finally {
+		destroy();
+	}
+});
+
 test("Detail's tab bar reads whole at forty columns and paints the active tab", async () => {
 	const task = await seed();
 	const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(

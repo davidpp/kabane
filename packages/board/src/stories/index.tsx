@@ -372,6 +372,30 @@ const MARKDOWN = task({
 	].join("\n"),
 });
 const MARKDOWN_RECORDS = Fixtures.records(MARKDOWN);
+// The blocks OpenTUI builds inside another and never hands the renderer: a quote and a rule inside
+// a quote, and a quote inside a list item.
+const NESTED = task({
+	id: "m2",
+	shortId: "JREP-10",
+	title: "Nested quotes and rules keep no line",
+	state: "next",
+	description: [
+		"> The outer quote, on raised.",
+		">",
+		"> > A quote inside it, with no bar.",
+		">",
+		"> ---",
+		">",
+		"> After a rule inside the quote.",
+		"",
+		"- A list item",
+		"",
+		"  > and a quote inside it, on raised.",
+		"",
+		"After the list.",
+	].join("\n"),
+});
+const NESTED_RECORDS = Fixtures.records(NESTED);
 const WAVE_RECORDS = Fixtures.records(WAVE, {
 	kinds: [...Fixtures.KINDS],
 	entries: [
@@ -1242,6 +1266,22 @@ export const STORIES: readonly Story[] = [
 				task={MARKDOWN}
 				tab="description"
 				records={ok(MARKDOWN_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-markdown-nested",
+		about:
+			"a quote and a rule inside a quote, and a quote inside a list item: no bar, no line, one panel",
+		width: 40,
+		height: 24,
+		render: () => (
+			<Detail
+				taskId={NESTED.id}
+				task={NESTED}
+				tab="description"
+				records={ok(NESTED_RECORDS)}
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),
