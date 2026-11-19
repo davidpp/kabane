@@ -6,6 +6,19 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    # Match the 5-day minimumReleaseAge in the maintainer's bun config, so a PR never names a
+    # version `bun install` refuses locally.
+    cooldown:
+      default-days: 5
+    ignore:
+      # @cloudflare/vitest-pool-workers peers on vitest ^4; JCAB-572 moves the worker to
+      # @cloudflare/vitest-plugin, which takes vitest 5. Drop this then.
+      - dependency-name: vitest
+        update-types: ["version-update:semver-major"]
+      # `typescript` is the JS-API compiler that scripts/layers.ts and dts-bundle-generator
+      # load, and TS 7 has none. The native compiler is tracked under the `tsgo` alias.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -15,6 +28,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 5
     groups:
       actions:
         patterns: ["*"]
