@@ -15,11 +15,11 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "0.23.0",
-		"@cloudflare/workers-types": "5.20261114.1",
+		"@cloudflare/workers-types": "5.20261116.1",
 		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2",
 		"vitest": "4.1.11",
-		"wrangler": "4.162.0"
+		"wrangler": "4.163.0"
 	},
 	"dependencies": {
 		"@cabane/checklist": "workspace:*",
