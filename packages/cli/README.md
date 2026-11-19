@@ -400,8 +400,11 @@ kabane mcp install --print  # .mcp.json, config.toml, settings.json, and a gener
 Each harness gets `kabane` at user scope, spawning `<absolute bun> <this
 clone>/index.ts mcp --as cabane://actor/agent/<harness>`: absolute because a
 harness spawns servers with its own PATH, which often lacks `~/.bun/bin`, and
-the bin's `#!/usr/bin/env bun` needs bun on it. An existing entry is reported
-and left alone unless `--force`. The table behind both the install and the
+the bin's `#!/usr/bin/env bun` needs bun on it. A bun installed by mise is
+written as mise's shim (`~/.local/share/mise/shims/bun`), which starts the
+pinned bun each time, so a Bun bump leaves the entry working. `kabane doctor`
+ignores an entry that differs only in its bun until that bun is gone. An
+existing entry is reported and left alone unless `--force`. The table behind both the install and the
 snippets is `src/mcp-clients.ts`; `McpInstall.run(harnesses, opts)` in
 `src/commands/mcp-install.ts` is the same install for callers other than the
 command.
