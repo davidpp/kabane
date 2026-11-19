@@ -124,10 +124,13 @@ export namespace Settings {
 	const numberOf = (schema: z.ZodNumber): SettingKind => {
 		const kind: Extract<SettingKind, { kind: "number" }> = {
 			kind: "number",
-			integer: false,
+			integer: schema.isInt,
 		};
 		const bounds = z.toJSONSchema(schema);
-		kind.integer = schema.isInt;
+		if (kind.integer) {
+			if (bounds.minimum === Number.MIN_SAFE_INTEGER) delete bounds.minimum;
+			if (bounds.maximum === Number.MAX_SAFE_INTEGER) delete bounds.maximum;
+		}
 		for (const key of [
 			"minimum",
 			"maximum",

@@ -216,7 +216,7 @@ Parameters:
 	},
 });
 
-// MCP pagination accepts integer-valued JSON numbers beyond the safe integer range.
+// Using .int() would add safe-integer bounds to the published MCP input schema.
 const integerInput = (bound: z.ZodNumber) =>
 	bound.refine(Number.isInteger, "Expected integer").meta({ type: "integer" });
 const positiveLimit = integerInput(z.number().positive()).optional();

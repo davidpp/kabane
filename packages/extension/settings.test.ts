@@ -208,6 +208,15 @@ describe("Settings.resolve", () => {
 });
 
 describe("Settings.fields", () => {
+	it("shows only the configured side of a one-sided integer range", () => {
+		const lower = Settings.field(z.number().int().min(1));
+		expect(lower).toHaveProperty("minimum", 1);
+		expect(lower).not.toHaveProperty("maximum");
+		const upper = Settings.field(z.number().int().max(8));
+		expect(upper).toHaveProperty("maximum", 8);
+		expect(upper).not.toHaveProperty("minimum");
+	});
+
 	it("describes every setting of a schema, groups first, from its checks and wrappers", () => {
 		const fields = Settings.fields(
 			z.preprocess(

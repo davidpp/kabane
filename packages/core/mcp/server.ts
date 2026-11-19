@@ -63,7 +63,7 @@ const toSdkTool = (
 		{
 			target: "draft-7",
 			io: "input",
-			unrepresentable: "any",
+			unrepresentable: "throw",
 			override: ({ zodSchema, jsonSchema }) => {
 				// Stripping objects accept extra input, but MCP only advertises their declared keys.
 				if (zodSchema instanceof z.ZodObject && !zodSchema.def.catchall)
