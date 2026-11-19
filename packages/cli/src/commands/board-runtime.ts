@@ -188,12 +188,14 @@ const extensionPorts = async (
  * What the footer says of refusals. The board cuts it at the terminal's width, so what a reader
  * needs comes first. A single refused extension is spelled out, its paths made relative to its
  * directory; a single refused file leads with `kabane doctor`, which lists it with its full path.
- * More than one refusal, of any kind, is counted, after the pointer to doctor.
+ * More than one refusal, of any kind, is counted, after the pointer to doctor. `brief` is for a
+ * line the update notice shares: no reason, only the name or the count and the pointer to doctor.
  */
 const refused = (
 	home: string,
 	extensions: readonly Extensions.Refusal[],
 	files: readonly CopilotFiles.Refusal[],
+	brief: boolean,
 ): string | undefined => {
 	const names = [...new Set(extensions.map(({ name }) => name))];
 	const count = (n: number, one: string): string =>
@@ -201,7 +203,9 @@ const refused = (
 	const first = extensions[0];
 	const file = files[0];
 	let text: string | undefined;
-	if (names.length + files.length > 1)
+	if (brief && first && names.length === 1 && files.length === 0)
+		text = `Extension ${first.name} refused (kabane doctor)`;
+	else if (brief || names.length + files.length > 1)
 		text = `kabane doctor: refused ${[
 			...(names.length > 0 ? [count(names.length, "extension")] : []),
 			...(files.length > 0 ? [count(files.length, "file")] : []),
@@ -299,17 +303,15 @@ export const boardDeps = async (
 									? ok(null)
 									: await UpdateNotice.announcer(ctx.home).announce();
 							if (!update.ok) return update;
-							const notices: string[] = [];
-							const summary = refused(ctx.home, refusals, files);
-							const available =
-								100 - (update.value ? update.value.length + 2 : 0);
-							if (summary)
-								notices.push(
-									summary.length > available
-										? `${summary.slice(0, Math.max(0, available - 1))}…`
-										: summary,
-								);
-							if (update.value) notices.push(update.value);
+							const summary = refused(
+								ctx.home,
+								refusals,
+								files,
+								update.value !== null,
+							);
+							const notices = [summary, update.value].filter(
+								(notice) => notice !== undefined && notice !== null,
+							);
 							return ok(notices.length ? notices.join("; ") : null);
 						},
 					},
