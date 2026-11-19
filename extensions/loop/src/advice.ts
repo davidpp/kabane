@@ -5,10 +5,13 @@ import { RiskAnalyzer, type Risk } from "./lint";
 import { LoopPlan } from "./plan";
 
 export namespace LoopAdvice {
-	export const TAG_VOCABULARY = `A subtask's tags route its claim: tier:<name> asks for a tier's model (loop.tiers) over --model,
-tier:<harness>/<name> also runs it on that harness, and agent:<name> runs it as the harness's named
-agent (Claude's .claude/agents; an agent that pins a model keeps it). A tag the run cannot honour is
-noted on the trace and the claim runs on the run's settings.`;
+	export const TAG_VOCABULARY = `A tier names the capability work needs: frontier, balanced and fast are built in, and any key
+loop.tiers adds is a tier too. loop.tiers maps each tier to a model per harness
+(loop.tiers.<harness>.<tier>); \`kabane config get loop.tiers\` shows the mapping. A subtask's tags
+route its claim: tier:<name> asks for a tier's model over --model, tier:<harness>/<name> also runs
+it on that harness, and agent:<name> runs it as the harness's named agent (Claude's .claude/agents;
+an agent that pins a model keeps it). A tag the run cannot honour is noted on the trace and the
+claim runs on the run's settings.`;
 
 	export const INSTRUCTIONS = `Use kabane_loop_advise before starting a run; start applies no advice automatically. For run controls, see \`kabane loop --help\`. ${TAG_VOCABULARY.replaceAll("\n", " ")}`;
 
