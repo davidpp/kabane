@@ -172,14 +172,41 @@ test("a real directory board factory rejection reaches the announcer with load r
 	}
 });
 
-test("the real board announcer includes cached updates alongside refusals", async () => {
-	const home = join(HOME, "update-and-refusal");
-	mkdirSync(home, { recursive: true });
-	writeFileSync(
-		configPath(home),
-		JSON.stringify({ actor: "test", deviceId: "test" }),
-	);
-	const script = `
+test.each([
+	[
+		"one refusal",
+		[
+			{
+				name: "broken",
+				reason: "not installed; put it in its extension directory",
+			},
+		],
+		"Extension broken refused (kabane doctor); ",
+	],
+	[
+		"several refusals",
+		[
+			{
+				name: "broken",
+				reason: "not installed; put it in its extension directory",
+			},
+			{
+				name: "other",
+				reason: "not installed; put it in its extension directory",
+			},
+		],
+		"kabane doctor: refused 2 extensions; ",
+	],
+])(
+	"the real board announcer shortens %s beside a cached update",
+	async (label, refusals, lead) => {
+		const home = join(HOME, `update-and-${label.replaceAll(" ", "-")}`);
+		mkdirSync(home, { recursive: true });
+		writeFileSync(
+			configPath(home),
+			JSON.stringify({ actor: "test", deviceId: "test" }),
+		);
+		const script = `
   const {version} = await import(${JSON.stringify(join(import.meta.dir, "../../package.json"))});
   const next = version.replace(/^(\\d+\\.\\d+\\.)\\d+.*$/, "$199999");
   await Bun.write(${JSON.stringify(join(home, "update-check.json"))}, JSON.stringify({latest:next, checkedAt:new Date().toISOString()}));
@@ -189,23 +216,24 @@ test("the real board announcer includes cached updates alongside refusals", asyn
   const args = parseArgs([]);
   const ctx = await openContext(${JSON.stringify(home)}, ${JSON.stringify(home)}, args);
   if (!ctx.ok) throw ctx.error;
-  const wired = await boardDeps(args, ctx.value, "claude", {refusals:[{name:"broken",reason:"not installed; put it in its extension directory"}]});
+  const wired = await boardDeps(args, ctx.value, "claude", {refusals:${JSON.stringify(refusals)}});
   try { console.log(JSON.stringify(await wired.announcer.announce())); } finally { wired.copilot.close(); }
  `;
-	const proc = Bun.spawn([process.execPath, "-e", script], {
-		cwd: join(import.meta.dir, "../.."),
-		env: { ...process.env, KABANE_BUNDLED: "1" },
-		stdout: "pipe",
-		stderr: "pipe",
-	});
-	const [out, err, code] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-	expect({ code, err }).toEqual({ code: 0, err: "" });
-	expect(out).toContain("Extension broken refused: not install");
-	expect(out).toContain("is out ·");
-	const notice = JSON.parse(out);
-	expect(notice.value.length).toBeLessThanOrEqual(100);
-});
+		const proc = Bun.spawn([process.execPath, "-e", script], {
+			cwd: join(import.meta.dir, "../.."),
+			env: { ...process.env, KABANE_BUNDLED: "1" },
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [out, err, code] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+		expect({ code, err }).toEqual({ code: 0, err: "" });
+		const notice = JSON.parse(out);
+		expect(notice.value).toStartWith(lead);
+		expect(notice.value).toContain("is out ·");
+		expect(notice.value).not.toContain("…");
+	},
+);

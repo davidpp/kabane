@@ -258,6 +258,20 @@ test("real extension handler failures name their owner", async () => {
 	);
 });
 
+test("an extension's MCP tool keeps the fields the validator does not list", async () => {
+	configure(["extra"]);
+	installMcp(
+		"extra",
+		'return {tools: [{name: "kabane_extra_read", description: "Read", kind: "read", input: {}, annotations: {destructiveHint: false, idempotentHint: true}, futureField: {kept: true}, handler: async () => ({ok:true, value:null})}]};',
+	);
+	const contribution = await extensionMcp(ctx, []);
+	if (!contribution.ok) throw contribution.error;
+	expect(contribution.value.tools[0]).toMatchObject({
+		annotations: { destructiveHint: false, idempotentHint: true },
+		futureField: { kept: true },
+	});
+});
+
 test("an extension cannot replace the core kabane_upstream_link tool", async () => {
 	configure(["upstream"]);
 	installMcp(

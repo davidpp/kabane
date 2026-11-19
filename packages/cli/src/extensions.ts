@@ -67,11 +67,7 @@ const zodType = z.custom<z.ZodType>(
 		value instanceof z.ZodType && hostZodExports.has(value._zod.constr),
 	{
 		error: ({ input: value }) =>
-			typeof value === "object" &&
-			value !== null &&
-			"_def" in value &&
-			"safeParse" in value &&
-			typeof value.safeParse === "function"
+			value instanceof z.ZodType
 				? "must be built with host.z"
 				: "must be a Zod schema",
 	},

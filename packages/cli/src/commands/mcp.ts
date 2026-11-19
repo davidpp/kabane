@@ -75,7 +75,8 @@ export const extensionMcp = async (
 			]);
 			continue;
 		}
-		const pending = parsed.data.tools ?? [];
+		// The validated originals: the parsed copies lose any field the schema does not list.
+		const pending = contributed.value.tools ?? [];
 		const seen = new Set(names);
 		let reason: string | undefined;
 		for (const tool of pending) {
