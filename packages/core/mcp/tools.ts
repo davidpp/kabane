@@ -623,12 +623,12 @@ Parameters:
 const contextAdd = define({
 	name: CORE_TOOL_NAMES.contextAdd,
 	kind: "write",
-	description: `Add a curated input-context ref to a task: the PRD, ADR, research note or transcript an implementer should read. The input side of an issue, distinct from the work log.
+	description: `Add a curated context ref to a task: either what it reads (the PRD, ADR, research note or transcript an implementer should read) or, with kind artifact, what it keeps up to date (a doc, a note, a page), on any task kind, a job included. A one-off output (a PR, a commit, a research note) is not an artifact: log it with kabane_log (pr:, commit:, file:).
 
 Parameters:
 - id: ${ID_HINT}
 - uri: e.g. "obsidian:prds/foo.md", "file:docs/auth.md", "url:https://..."
-- kind: PRD, ADR, research, exemplar, transcript, design, spec, doc, or any string
+- kind: PRD, ADR, research, exemplar, transcript, design, spec, doc, artifact, or any string
 - label: Optional human label
 - note: Optional note`,
 	input: {
