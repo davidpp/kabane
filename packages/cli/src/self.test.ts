@@ -78,6 +78,32 @@ describe("Self.executable", () => {
 	});
 });
 
+describe("Self.current", () => {
+	const onPath = () => "/home/me/.local/bin/kabane";
+
+	it("is the path this process started from while it is still there", () => {
+		expect(Self.current(SCRIPT, () => true, onPath)).toBe(
+			"/home/me/.bun/bin/kabane",
+		);
+	});
+
+	it("is kabane on PATH once that path is gone", () => {
+		expect(Self.current(SCRIPT, () => false, onPath)).toBe(
+			"/home/me/.local/bin/kabane",
+		);
+	});
+
+	it("is null when neither is left", () => {
+		expect(
+			Self.current(
+				SCRIPT,
+				() => false,
+				() => null,
+			),
+		).toBeNull();
+	});
+});
+
 describe("Self.lasting", () => {
 	const MISE: Self.Host = {
 		...SCRIPT,

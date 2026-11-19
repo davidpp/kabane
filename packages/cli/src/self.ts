@@ -86,4 +86,20 @@ export namespace Self {
 		const shim = data === undefined ? undefined : join(data, "shims/bun");
 		return shim !== undefined && exists(shim) ? { ...now, command: shim } : now;
 	};
+
+	/**
+	 * `executable` for a process that outlives an update, asked again each time it spawns kabane:
+	 * the path this process started from while it is still there, else `kabane` on PATH, else null.
+	 * Replacing the install deletes or moves the first and leaves the second, the newer kabane.
+	 */
+	export const current = (
+		host: Host = HOST,
+		exists: (path: string) => boolean = isFile,
+		which: (name: string) => string | null = (name) => Bun.which(name),
+	): string | null => {
+		const recorded = executable(host);
+		return recorded !== "kabane" && exists(recorded)
+			? recorded
+			: which("kabane");
+	};
 }

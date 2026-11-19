@@ -261,7 +261,7 @@ const copilotOver = (
 		harness: "claude",
 		scopeDir: "/repos/cabane",
 		scopeUri: "kabane://scope/cabane",
-		kabaneBin: BIN,
+		kabaneBin: () => BIN,
 		home: "/home/me/.kabane",
 		setup: SETUP,
 		connect: (handlers) => AcpClient.connect("claude", agent, handlers),
@@ -339,12 +339,50 @@ describe("BoardCopilot", () => {
 	it("uses the host-supplied bin for both the shell and MCP server, quoting the shell path", async () => {
 		const seen = fresh();
 		const bin = "/Users/me/My Code/kabane/packages/cli/index.ts";
-		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: bin });
+		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: () => bin });
 		await collect(copilot.run("go", context()));
 		const server = (seen.newSession[0] as { mcpServers: { command: string }[] })
 			.mcpServers[0];
 		expect(server?.command).toBe(bin);
 		expect(textOf(seen.prompts[0], 0)).toContain(`\`'${bin}' --help\``);
+		copilot.close();
+	});
+
+	it("asks the host for kabane again at each new session", async () => {
+		const seen = fresh();
+		let bin = "/old/kabane";
+		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: () => bin });
+		await collect(copilot.run("go", context()));
+		copilot.close();
+		bin = "/new/kabane";
+		await collect(copilot.run("go", context()));
+		const commands = seen.newSession.map(
+			(s) =>
+				(s as { mcpServers: { command: string }[] }).mcpServers[0]?.command,
+		);
+		expect(commands).toEqual(["/old/kabane", "/new/kabane"]);
+		copilot.close();
+	});
+
+	it("says to restart the board, opening no session, when no kabane is left", async () => {
+		const seen = fresh();
+		let connects = 0;
+		const copilot = copilotOver(scriptedAgent(seen), {
+			kabaneBin: () => null,
+			connect: (handlers) => {
+				connects += 1;
+				return AcpClient.connect("claude", scriptedAgent(seen), handlers);
+			},
+		});
+		const updates = await collectAll(copilot.run("go", context()));
+		expect(updates).toEqual([
+			expect.objectContaining({
+				type: "error",
+				summary:
+					"kabane was updated or moved since this board started: restart the board",
+			}),
+		]);
+		expect(connects).toBe(0);
 		copilot.close();
 	});
 

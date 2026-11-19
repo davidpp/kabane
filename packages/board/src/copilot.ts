@@ -28,8 +28,9 @@ export namespace BoardCopilot {
 		// writes take the scope of `scopeDir` the way any CLI command there would.
 		scopeUri?: string;
 		// The `kabane` executable the MCP server runs as, and the one the instructions tell the
-		// copilot's shell to run, supplied by the host.
-		kabaneBin: string;
+		// copilot's shell to run, supplied by the host. Asked again for every new session, because
+		// the board outlives the install it started from: null when no kabane is left to run.
+		kabaneBin: () => string | null;
 		// The board's KABANE_HOME, set on the MCP server explicitly: Codex starts a stdio server
 		// with only a short allow list of the environment, so an inherited one never arrives.
 		home: string;
@@ -101,10 +102,11 @@ export namespace BoardCopilot {
 	// session's actor.
 	const mcpServer = (
 		options: Options,
+		bin: string,
 		actor: string,
 	): AcpClient.StdioServer => ({
 		name: HarnessInstructions.SERVER_NAME,
-		command: options.kabaneBin,
+		command: bin,
 		args: [
 			"mcp",
 			...(options.scopeUri ? ["--scope", options.scopeUri] : []),
@@ -113,6 +115,10 @@ export namespace BoardCopilot {
 		],
 		env: { KABANE_HOME: options.home },
 	});
+
+	// What a run says when the host has no kabane left to give a new session.
+	const RESTART =
+		"kabane was updated or moved since this board started: restart the board";
 
 	const at = (): string => new Date().toISOString();
 
@@ -391,6 +397,7 @@ export namespace BoardCopilot {
 	// only tool server. A session that fails to open takes its connection down with it.
 	const openSession = async (
 		options: Options,
+		bin: string,
 		actor: string,
 		instructions: string,
 		handlers: Handlers,
@@ -408,7 +415,7 @@ export namespace BoardCopilot {
 		if (!opened.ok) return opened;
 		const started = await AcpClient.newSession(opened.value, {
 			cwd: options.scopeDir,
-			mcpServers: [mcpServer(options, actor)],
+			mcpServers: [mcpServer(options, bin, actor)],
 			// Honoured by the Claude adapter only. Every harness gets the same text as the first
 			// prompt of the session, because an adapter that ignores `_meta` would otherwise run
 			// with no instructions at all.
@@ -433,19 +440,19 @@ export namespace BoardCopilot {
 		let commands: readonly AcpClient.Command[] = [];
 		const questions = createQuestions(options.harness);
 
-		// Built once, on the first prompt: the setup it is built from is fixed for the session.
-		let built: string | null = null;
-		const instructions = (): string =>
-			(built ??= CopilotInstructions.systemPrompt(
-				options.setup,
-				options.kabaneBin,
-			));
+		// Built as a session opens, from the setup and the kabane that session runs.
+		let built = "";
 
 		// Lazy on purpose: no harness process exists until the human actually asks for something,
-		// so opening the board costs nothing.
-		const start = async (): Promise<Result<AcpClient.Session>> => {
+		// so opening the board costs nothing. Null when no kabane is left to give the session as
+		// its tool server: a harness spawning a path that is gone opens the session anyway, with
+		// no tracker tools and an error that names something else.
+		const start = async (): Promise<Result<AcpClient.Session> | null> => {
 			if (session) return ok(session);
-			const opened = await openSession(options, actor, instructions(), {
+			const bin = options.kabaneBin();
+			if (bin === null) return null;
+			built = CopilotInstructions.systemPrompt(options.setup, bin);
+			const opened = await openSession(options, bin, actor, built, {
 				onPermission: questions.onPermission,
 				onElicitation: questions.onElicitation,
 				onElicitationRefused: questions.onElicitationRefused,
@@ -473,7 +480,7 @@ export namespace BoardCopilot {
 			return instructed
 				? { blocks: [shown, asked], instructing: false }
 				: {
-						blocks: [{ type: "text", text: instructions() }, shown, asked],
+						blocks: [{ type: "text", text: built }, shown, asked],
 						instructing: true,
 					};
 		};
@@ -483,6 +490,10 @@ export namespace BoardCopilot {
 			context: BoardContext.Context,
 		): AsyncIterable<CopilotUpdate> {
 			const started = await start();
+			if (started === null) {
+				yield update("error", RESTART);
+				return;
+			}
 			if (!started.ok) {
 				// The copilot cannot fix its own harness, so the way out is spelled here.
 				yield update(

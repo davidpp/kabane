@@ -731,7 +731,7 @@ const copilot = BoardCopilot.create({
   harness: "claude",
   scopeDir: "/repos/myapp",         // the session cwd, so the harness reads the project's own rules
   scopeUri: "kabane://scope/myapp", // omit on an all-scopes board
-  kabaneBin: "/usr/local/bin/kabane", // required, supplied by the host
+  kabaneBin: () => "/usr/local/bin/kabane", // required; asked at each new session, null says restart
   home: "/home/me/.kabane",
   setup: { configPath: "/home/me/.kabane/config.json", extensions: [] },
 });
@@ -740,6 +740,9 @@ const copilot = BoardCopilot.create({
 Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
 `kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
 the same tools and database the board reads and arrives stamped as an agent's.
+`kabaneBin` is asked again each time a session opens, because a board outlives the kabane it
+was started from: the CLI answers with that path while it exists, else `kabane` on PATH. When it
+answers null, the run yields one `error` saying to restart the board, and no session opens.
 
 What the harness is told:
 
