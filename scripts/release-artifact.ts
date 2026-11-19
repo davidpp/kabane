@@ -167,10 +167,6 @@ const inspectExtractedPackage = (
 					"types/extension.d.ts",
 				].includes(name) &&
 				!/^bin\/chunk-[a-z0-9]{8}\.js$/.test(name) &&
-				// The board's markdown_inline query and the grammar it runs on, which OpenTUI's
-				// tree-sitter worker reads from a path (packages/board/src/theme.ts).
-				!/^bin\/markdown-inline-highlights-[a-z0-9]{8}\.scm$/.test(name) &&
-				!/^bin\/tree-sitter-markdown_inline-[a-z0-9]{8}\.wasm$/.test(name) &&
 				!name.startsWith("templates/"),
 		)
 	)

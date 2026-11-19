@@ -201,28 +201,31 @@ export type DetailProps = {
 
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
 // down its left and a rule as a line, both refused by the No-Line Rule, and a code block with no
-// surface at all, so it read as prose.
-export const blockOnSurface = (theme: Theme.Tokens): RenderNode => {
-	const render: RenderNode = (token, { defaultRender }) => {
-		switch (token.type) {
+// surface at all, so it read as prose. OpenTUI hands this every top-level block and each code block
+// at any depth; the rest come back undefined and keep OpenTUI's own rendering. No `codeBlockOnly`:
+// since 0.9 that flag keeps quotes and rules from coming through.
+export const blockOnSurface =
+	(theme: Theme.Tokens): RenderBlock =>
+	(block, { defaultRender }) => {
+		switch (block.kind) {
 			case "code":
 				return codePanel(defaultRender(), theme.surface.raised);
-			case "blockquote":
-				return unlined(defaultRender(), theme.surface.raised);
-			case "hr":
+			case "quote":
+				return unlinedWithin(
+					unlined(defaultRender(), theme.surface.raised),
+					theme,
+					true,
+				);
+			case "list":
+				return unlinedWithin(defaultRender(), theme, false);
+			case "rule":
 				return unlined(defaultRender());
 			default:
 				return undefined;
 		}
 	};
-	// OpenTUI's own flag (createMarkdownCodeBlockRenderer sets it). Without it any renderNode switches
-	// the markdown to one block per token, which drops the blank line above a heading and a task
-	// item's checkbox; with it, prose stays coalesced and only the blocks OpenTUI draws apart (code,
-	// quote, rule, table) come through here.
-	return Object.assign(render, { codeBlockOnly: true });
-};
 
-type RenderNode = NonNullable<MarkdownOptions["renderNode"]>;
+type RenderBlock = NonNullable<MarkdownOptions["renderBlock"]>;
 
 // A fresh painted box around the block, not a restyle of it: a code block's own `bg` paints only
 // under its glyphs, and OpenTUI resets it when the content changes in place, while a block it did
@@ -247,9 +250,11 @@ const codePanel = (block: Renderable | null, bg: string): Renderable | null => {
 	return panel;
 };
 
+// No sides rather than `border: false`: OpenTUI restyles a quote's and a rule's box by writing its
+// `borderColor`, and that setter draws all four sides of a box whose border is `false`.
 const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 	if (block instanceof BoxRenderable) {
-		block.border = false;
+		block.border = [];
 		if (bg) {
 			block.backgroundColor = bg;
 			block.paddingRight = 1;
@@ -258,14 +263,44 @@ const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 	return block;
 };
 
+// A quote or a rule inside a quote or a list never reaches the renderer: OpenTUI builds it into the
+// outer block's box after the renderer returns, and draws it with its line again. The outer box
+// takes it off before each frame's layout, and puts a quote that no quote holds on the panel.
+const unlinedWithin = (
+	block: Renderable | null,
+	theme: Theme.Tokens,
+	inQuote: boolean,
+): Renderable | null => {
+	if (block instanceof BoxRenderable)
+		block.onLifecyclePass = () =>
+			unlineNested(block, theme.surface.raised, inQuote);
+	return block;
+};
+
+const unlineNested = (box: Renderable, bg: string, inQuote: boolean): void => {
+	for (const child of box.getChildren()) {
+		if (!(child instanceof BoxRenderable)) continue;
+		const sides = child.border;
+		if (sides === true || (Array.isArray(sides) && sides.length > 0)) {
+			const quote = sides === true || sides.includes("left");
+			unlined(child, quote && !inQuote ? bg : undefined);
+			if (quote) nestedQuotes.add(child);
+		}
+		unlineNested(child, bg, inQuote || nestedQuotes.has(child));
+	}
+};
+
+// The quotes already unlined, so a quote inside one is not painted a second panel on a later frame.
+const nestedQuotes = new WeakSet<Renderable>();
+
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
 // the raw text instead of tearing down the tree. Prose keeps a column clear of the scrollbar and
 // stops at the measure.
 export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
 	const markdownStyle = useMarkdownStyle();
-	// Stable per theme: a new renderNode has OpenTUI rebuild every block.
-	const renderNode = useMemo(() => blockOnSurface(theme), [theme]);
+	// Stable per theme: a new renderBlock has OpenTUI rebuild every block.
+	const renderBlock = useMemo(() => blockOnSurface(theme), [theme]);
 	return (
 		<box style={{ paddingRight: CONTENT_INSET }}>
 			<ErrorBoundary
@@ -279,7 +314,7 @@ export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 					content={content}
 					syntaxStyle={markdownStyle}
 					fg={theme.defaultFg}
-					renderNode={renderNode}
+					renderBlock={renderBlock}
 					tableOptions={TABLE}
 					style={{ maxWidth: PROSE_MEASURE }}
 				/>

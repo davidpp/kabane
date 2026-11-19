@@ -51,6 +51,12 @@ export const buildBinary = async (
 				'process.env.KABANE_BUNDLED="1"',
 				"--define",
 				'process.env.NODE_ENV="production"',
+				// OpenTUI loads its musl build only when OPENTUI_LIBC=musl, and bun installs it only
+				// on a musl host; the binaries target glibc, so leave it unresolved.
+				"--external",
+				"@opentui/core-linux-x64-musl",
+				"--external",
+				"@opentui/core-linux-arm64-musl",
 				...(stamp === undefined
 					? []
 					: [
