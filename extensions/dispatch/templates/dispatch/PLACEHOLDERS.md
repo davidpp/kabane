@@ -83,7 +83,7 @@ correctly with no overlay at all.
 ## Questions
 
 Settle each question from the project's files when they answer it, and record which file did.
-Ask the human only the ones the files leave open, in one go, each with its recommended answer
+Ask the human only the ones the files leave open, together and in as few prompts as the harness allows, each with its recommended answer
 first. On a refresh, an answer already recorded in the skill's `## This project` section is
 kept, not asked again.
 

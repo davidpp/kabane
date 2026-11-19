@@ -23,7 +23,18 @@ const SKILL_FILES = [
 	"references/issue-template.md",
 	"references/agent-prompt.md",
 	"references/specialists.md",
+	"references/tags.md",
 ];
+
+// The section of PLACEHOLDERS.md under a `## ` heading, up to the next one.
+const placeholdersSection = (heading: string): string =>
+	template("PLACEHOLDERS.md")
+		.split(`\n## ${heading}\n`)[1]
+		?.split("\n## ")[0] ?? "";
+// The overlays PLACEHOLDERS.md names: copied only when a setup answer selects them.
+const OVERLAYS = [
+	...placeholdersSection("Overlays").matchAll(/`(references\/[^`]+\.md)`/g),
+].map(([, path]) => path ?? "");
 
 describe("the copilot files", () => {
 	it("are the two procedures and the one shortcut, titled as the copilot reads them", () => {
@@ -45,10 +56,16 @@ describe("the copilot files", () => {
 	it("name only paths this directory ships, through {{extension}}", () => {
 		expect(SETUP).toContain("{{extension}}/templates/dispatch:");
 		expect(GRILLING).toContain("{{extension}}/templates/grill/SKILL.md:");
+		expect(SETUP).toContain("{{extension}}/templates/examples/");
 		for (const path of [...SKILL_FILES, "PLACEHOLDERS.md"])
 			expect(existsSync(join(EXTENSION, "templates/dispatch", path))).toBe(
 				true,
 			);
+		expect(readdirSync(join(EXTENSION, "templates/examples")).sort()).toEqual([
+			"goals-and-steward.md",
+			"solo-on-main.md",
+			"team-with-prs.md",
+		]);
 		expect(existsSync(join(EXTENSION, "templates/grill/SKILL.md"))).toBe(true);
 	});
 
@@ -60,6 +77,7 @@ describe("the copilot files", () => {
 		const line = shortcut.split("\n---\n")[1]?.trim() ?? "";
 		expect(line).not.toContain("\n");
 		expect(line).toContain("write .agents/skills/dispatch/");
+		expect(line).toContain("ask me what they leave open, then write");
 		expect(SETUP).toContain(
 			"write the files without asking, then show the content of each one",
 		);
@@ -111,13 +129,86 @@ describe("setting up a dispatch skill", () => {
 		);
 	});
 
-	it("every placeholder in the skill is one PLACEHOLDERS.md says how to fill", () => {
+	it("every placeholder in the skill and its overlays is one PLACEHOLDERS.md says how to fill", () => {
 		const documented = template("PLACEHOLDERS.md");
-		const used = SKILL_FILES.flatMap((path) => [
-			...template(path).matchAll(/\{\{[A-Z_]+\}\}/g),
-		]).map(([placeholder]) => placeholder);
+		const used = [...SKILL_FILES, ...OVERLAYS]
+			.flatMap((path) => [...template(path).matchAll(/\{\{[A-Z_]+\}\}/g)])
+			.map(([placeholder]) => placeholder);
 		expect(used.length).toBeGreaterThan(0);
 		for (const placeholder of used) expect(documented).toContain(placeholder);
+	});
+
+	it("every overlay PLACEHOLDERS.md names ships, and is not one of the files copied always", () => {
+		expect(OVERLAYS).toEqual([
+			"references/goals.md",
+			"references/research.md",
+			"references/cross-harness.md",
+			"references/upstream.md",
+		]);
+		for (const overlay of OVERLAYS) {
+			expect(existsSync(join(EXTENSION, "templates/dispatch", overlay))).toBe(
+				true,
+			);
+			expect(SKILL_FILES).not.toContain(overlay);
+		}
+	});
+
+	it("copies an overlay only when an answer selects it, and removes one a refresh no longer selects", () => {
+		expect(SETUP).toContain(
+			"except the overlays PLACEHOLDERS.md lists under ## Overlays, which are copied only when an answer selects them",
+		);
+		expect(SETUP).toContain("copy an overlay only when an answer selects it");
+		expect(SETUP).toContain(
+			"an overlay the answers no longer select is removed, which the diff shows",
+		);
+	});
+
+	it("settles PLACEHOLDERS.md's questions from the files and asks the rest before writing, through the choice prompt", () => {
+		expect(placeholdersSection("Questions")).not.toBe("");
+		expect(SETUP).toContain(
+			"settle the questions under ## Questions in PLACEHOLDERS.md",
+		);
+		expect(SETUP).toContain(
+			"Answer each one from the project's files where they settle it",
+		);
+		expect(SETUP).toContain("Write nothing until they are answered");
+		// grilling.md's wording, so the copilot asks the same way in both procedures.
+		const prompt =
+			"through your harness's own choice prompt whenever it has one, each question's choices as its options and the recommended one first, and in plain text, ending your turn on it, only where it has none";
+		expect(SETUP).toContain(prompt);
+		expect(GRILLING).toContain(
+			prompt.replace("each question's choices", "the choices"),
+		);
+		// The questions come after reading the project and before filling.
+		const order = [
+			"Read what it says about itself",
+			"## Questions",
+			"Fill every placeholder",
+		].map((step) => SETUP.indexOf(step));
+		expect(order).toEqual([...order].sort((a, b) => a - b));
+		expect(order[0]).toBeGreaterThanOrEqual(0);
+	});
+
+	it("records the answers in the skill's ## This project section and reads them back on a refresh", () => {
+		expect(template("SKILL.md")).toContain(
+			"## This project\n\n{{SETUP_ANSWERS}}",
+		);
+		expect(template("PLACEHOLDERS.md")).toContain("`{{SETUP_ANSWERS}}`");
+		expect(SETUP).toContain(
+			"The answers fill {{SETUP_ANSWERS}}, each with its source",
+		);
+		expect(SETUP).toContain(
+			"read its ## This project section first and keep every answer it records",
+		);
+		expect(SETUP).toContain(
+			"each answer and whether the project's files or the human gave it",
+		);
+	});
+
+	it("the questions are not the go-ahead: the permission rule still decides", () => {
+		expect(SETUP).toContain(
+			"The answers are about the project, not permission to write",
+		);
 	});
 
 	it("the template tracks work through kabane and nothing else", () => {
