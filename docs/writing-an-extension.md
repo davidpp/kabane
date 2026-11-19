@@ -245,8 +245,10 @@ export default (host: Host): Extension => ({
 });
 ```
 
-Build settings and tool inputs with `host.z`, kabane's own zod, even when the extension installs
-zod itself. Every key needs a default or has to be optional, because each layer sets only some.
+Build settings and tool inputs with `host.z`, kabane's Zod 4 instance, even when the extension
+installs Zod itself. Every key needs a default or has to be optional, because each layer sets
+only some. Give a nested settings group `.prefault({})` to parse the empty object and apply its
+inner defaults. With `.default({})`, an omitted group returns the empty object immediately.
 Once the extension is enabled, its keys are in `kabane config` like kabane's:
 
 ```text

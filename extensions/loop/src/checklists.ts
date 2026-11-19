@@ -1,31 +1,32 @@
 import type { Result, Task } from "@cabane/core";
 import type { Host } from "@cabane/extension";
-import type { z } from "zod";
+import { z } from "zod";
 import { ok, err } from "./result";
 import { actorUri } from "./session-identity";
 
-const itemSchema = (z: Host["z"]) =>
-	z.object({
-		id: z.string(),
-		taskId: z.string(),
-		text: z.string(),
-		done: z.boolean(),
-		doneAt: z.string().optional(),
-		doneBy: z.string().optional(),
-		removedAt: z.string().optional(),
-		rank: z.string(),
-		createdAt: z.string(),
-		updatedAt: z.string(),
-		updatedBy: z.string(),
-		version: z.number(),
-		visibility: z.string(),
-		handle: z.string(),
-		ordinal: z.number(),
-		shortId: z.string().optional(),
-	});
+const ItemSchema = z.object({
+	id: z.string(),
+	taskId: z.string(),
+	text: z.string(),
+	done: z.boolean(),
+	doneAt: z.string().optional(),
+	doneBy: z.string().optional(),
+	removedAt: z.string().optional(),
+	rank: z.string(),
+	createdAt: z.string(),
+	updatedAt: z.string(),
+	updatedBy: z.string(),
+	version: z.number(),
+	visibility: z.string(),
+	handle: z.string(),
+	ordinal: z.number(),
+	shortId: z.string().optional(),
+});
+
+const ItemsSchema = z.array(ItemSchema);
 
 export namespace Checklists {
-	export type Item = z.output<ReturnType<typeof itemSchema>>;
+	export type Item = z.output<typeof ItemSchema>;
 
 	/** Read through the registered checklist tool; a host without that module has no items. */
 	export const of = async (
@@ -37,7 +38,7 @@ export namespace Checklists {
 			return result.error.message === "Unknown tool: kabane_checklist"
 				? ok([])
 				: result;
-		const parsed = host.z.array(itemSchema(host.z)).safeParse(result.value);
+		const parsed = ItemsSchema.safeParse(result.value);
 		return parsed.success ? ok(parsed.data) : err(parsed.error);
 	};
 

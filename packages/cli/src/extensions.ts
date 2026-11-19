@@ -60,10 +60,13 @@ const ModuleShape = z.object({
 const ModuleList = z.array(
 	z.custom<KabaneModule>((value) => ModuleShape.safeParse(value).success),
 );
+// Zod 4 shares its instanceof branding across installed copies.
+const hostZodExports = new Set<unknown>(Object.values(z));
 const zodType = z.custom<z.ZodType>(
-	(value) => value instanceof z.ZodType,
-	(value) => ({
-		message:
+	(value) =>
+		value instanceof z.ZodType && hostZodExports.has(value._zod.constr),
+	{
+		error: ({ input: value }) =>
 			typeof value === "object" &&
 			value !== null &&
 			"_def" in value &&
@@ -71,7 +74,7 @@ const zodType = z.custom<z.ZodType>(
 			typeof value.safeParse === "function"
 				? "must be built with host.z"
 				: "must be a Zod schema",
-	}),
+	},
 );
 const ExtensionShape = z.object({
 	name: z.string(),
@@ -89,6 +92,7 @@ const ExtensionShape = z.object({
 	settings: zodType.optional(),
 	looks: z
 		.record(
+			z.string(),
 			z.object({
 				label: z.string(),
 				group: z.string(),
@@ -148,8 +152,8 @@ export namespace Extensions {
 			issue.path.reduce<string>(
 				(text, part) =>
 					typeof part === "number"
-						? `${text}[${part}]`
-						: `${text}${text ? "." : ""}${part}`,
+						? `${text}[${String(part)}]`
+						: `${text}${text ? "." : ""}${String(part)}`,
 				"",
 			) || "value";
 		if (issue.code === "invalid_type") {
@@ -157,9 +161,22 @@ export namespace Extensions {
 			return `${path} must be ${article} ${issue.expected}`;
 		}
 		if (issue.code === "invalid_union")
-			return [...new Set(issue.unionErrors.map(invalid))].join(" or ");
-		if (issue.code === "invalid_enum_value")
-			return `${path} must be ${issue.options.map(String).join(" or ")}`;
+			return [
+				...new Set(
+					issue.errors.map((issues) =>
+						invalid(
+							new z.ZodError(
+								issues.map((child) => ({
+									...child,
+									path: [...issue.path, ...child.path],
+								})),
+							),
+						),
+					),
+				),
+			].join(" or ");
+		if (issue.code === "invalid_value")
+			return `${path} must be ${issue.values.map(String).join(" or ")}`;
 		return `${path} ${issue.message}`;
 	};
 	export type Refusal = { name: string; reason: string };

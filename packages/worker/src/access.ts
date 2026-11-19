@@ -59,7 +59,7 @@ const HUMAN_ACTOR_PREFIX = "cabane://actor/human/";
  * answer as the human.
  */
 const ServiceActorsSchema = z
-	.record(z.string().min(1))
+	.record(z.string(), z.string().min(1))
 	.superRefine((services, ctx) => {
 		for (const [id, actor] of Object.entries(services))
 			if (actor.startsWith(HUMAN_ACTOR_PREFIX))

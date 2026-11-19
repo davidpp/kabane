@@ -175,6 +175,17 @@ describe("Deadline.fromInput", () => {
 		});
 	});
 
+	it.each([
+		["2026-03-01T09:00Z", "2026-03-01T09:00:00.000Z"],
+		["2026-03-01T09:00+02:00", "2026-03-01T07:00:00.000Z"],
+	])("accepts the minute-precision instant %s", (input, utc) => {
+		expect(DeadlineSchema.safeParse(input).success).toBe(true);
+		expect(Deadline.fromInput(input, MONTREAL)).toEqual({
+			ok: true,
+			value: utc,
+		});
+	});
+
 	it("an ISO datetime without an offset is a local time in the owner's zone", () => {
 		expect(Deadline.fromInput("2026-02-06T17:00", MONTREAL)).toEqual({
 			ok: true,

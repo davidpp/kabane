@@ -97,7 +97,7 @@ export namespace Recipe {
 					)
 					.optional(),
 				target: z.enum(["issue", "job", "none"]).default("none"),
-				inputs: z.record(input).default({}),
+				inputs: z.record(z.string(), input).default({}),
 				harness: harness.optional(),
 			})
 			.strict();
@@ -184,7 +184,15 @@ export namespace Recipe {
 			);
 		const parts = split(text);
 		if (!parts.ok) return fail(parts.error.message);
-		const parsed = schema(z).safeParse(parts.value.front);
+		const parsed = schema(z).safeParse(parts.value.front, {
+			error: (issue) => {
+				if (issue.code === "unrecognized_keys")
+					return `Unrecognized key(s) in object: ${issue.keys.map((key) => `'${key}'`).join(", ")}`;
+				if (issue.code === "invalid_value" && issue.path?.[0] === "target")
+					return `Invalid enum value. Expected ${issue.values.map((value) => `'${String(value)}'`).join(" | ")}, received '${String(issue.input)}'`;
+				return undefined;
+			},
+		});
 		if (!parsed.success) {
 			const issue = parsed.error.issues[0];
 			const where = issue?.path.join(".") || "the frontmatter";

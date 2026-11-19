@@ -6,15 +6,15 @@ import { z } from "zod";
 const Step = z.object({
 	uses: z.string().optional(),
 	run: z.string().optional(),
-	with: z.record(z.unknown()).optional(),
-	env: z.record(z.string()).optional(),
+	with: z.record(z.string(), z.unknown()).optional(),
+	env: z.record(z.string(), z.string()).optional(),
 });
 const Job = z
 	.object({
 		steps: z.array(Step),
 		if: z.string().optional(),
 		environment: z.string().optional(),
-		permissions: z.record(z.string()).optional(),
+		permissions: z.record(z.string(), z.string()).optional(),
 		concurrency: z
 			.object({ group: z.string(), "cancel-in-progress": z.boolean() })
 			.optional(),

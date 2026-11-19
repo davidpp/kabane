@@ -147,7 +147,7 @@ export namespace LoopConfig {
 			 * lists. Its keys, with `TIERS`, are the tier names.
 			 */
 			tiers: z
-				.record(
+				.partialRecord(
 					z.enum(Harnesses.IDS),
 					z.record(makeTierNameSchema(z), z.string().min(1)),
 				)
@@ -157,11 +157,11 @@ export namespace LoopConfig {
 				),
 			/** Each harness's launch override, read by every session the run opens on it. */
 			harnesses: z
-				.record(z.enum(Harnesses.IDS), makeLaunchSchema(z))
+				.partialRecord(z.enum(Harnesses.IDS), makeLaunchSchema(z))
 				.default({})
 				.describe(HARNESSES_DESCRIPTION),
 			budget: makeBudgetSchema(z)
-				.default({})
+				.prefault({})
 				.describe("A run's limits; edit dotted keys."),
 			/** Automatic attempts in a row without progress; parked/handoff session ends do not count. */
 			stallAfter: z
@@ -276,7 +276,7 @@ export namespace LoopConfig {
 			 * (`loop.tiers.<harness>.<tier>`).
 			 */
 			review: makeReviewSchema(z)
-				.default({})
+				.prefault({})
 				.describe(
 					"How much review a run gets; edit dotted keys (loop.review.mode, loop.review.tier).",
 				),
@@ -404,10 +404,12 @@ export namespace LoopConfig {
 		};
 	};
 
+	const ConfigRecordSchema = ownZ.record(ownZ.string(), ownZ.unknown());
+
 	// Existing files may still hold the retired timer; it is not a runtime setting, so it is dropped
 	// before the strict schema sees it, and no listing of the settings shows it.
-	const withoutTimer = (z: Host["z"], budget: unknown): unknown => {
-		const parsed = z.record(z.unknown()).safeParse(budget);
+	const withoutTimer = (budget: unknown): unknown => {
+		const parsed = ConfigRecordSchema.safeParse(budget);
 		if (!parsed.success) return budget;
 		const { wallMinutes: _wallMinutes, ...rest } = parsed.data;
 		return rest;
@@ -420,19 +422,16 @@ export namespace LoopConfig {
 			.extend({
 				// A misspelt `comand` dropped would launch the real adapter the human meant to replace.
 				harnesses: z
-					.record(z.enum(Harnesses.IDS), makeLaunchSchema(z).strict())
+					.partialRecord(z.enum(Harnesses.IDS), makeLaunchSchema(z).strict())
 					.default({})
 					.describe(HARNESSES_DESCRIPTION),
 				budget: z
-					.preprocess(
-						(budget) => withoutTimer(z, budget),
-						makeBudgetSchema(z).strict(),
-					)
-					.default({})
+					.preprocess(withoutTimer, makeBudgetSchema(z).strict())
+					.prefault({})
 					.describe("A run's limits; edit dotted keys."),
 				review: makeReviewSchema(z)
 					.strict()
-					.default({})
+					.prefault({})
 					.describe(
 						"How much review a run gets; edit dotted keys (loop.review.mode, loop.review.tier).",
 					),
@@ -445,8 +444,8 @@ export namespace LoopConfig {
 	// A run written before `isolation` existed worked every claim in its one tree, and one written
 	// before `review` ran every lens: resumed, it goes on that way rather than taking the defaults a
 	// new run gets.
-	const sharedWhenUnset = (z: Host["z"], config: unknown): unknown => {
-		const parsed = z.record(z.unknown()).safeParse(config);
+	const sharedWhenUnset = (config: unknown): unknown => {
+		const parsed = ConfigRecordSchema.safeParse(config);
 		if (!parsed.success) return config;
 		return {
 			...parsed.data,
@@ -457,7 +456,7 @@ export namespace LoopConfig {
 
 	/** A run's config as run.json holds it. */
 	const makeRunSchema = (z: Host["z"]) =>
-		z.preprocess((config) => sharedWhenUnset(z, config), makeSchema(z));
+		z.preprocess(sharedWhenUnset, makeSchema(z));
 
 	/**
 	 * What a caller layers over the stored settings (flags, the board's trigger form), shaped like

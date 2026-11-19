@@ -32,7 +32,7 @@ export const SyncConfigSchema = z.object({
 	// How a device passes the edge in front of the hub (CF-Access-Client-Id / -Secret), kept
 	// apart from the log's own bearer `token`.
 	headers: z
-		.record(z.string())
+		.record(z.string(), z.string())
 		.optional()
 		.describe(
 			"Extra push/pull headers, including Cloudflare Access service-token credentials.",

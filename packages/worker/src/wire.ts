@@ -18,17 +18,15 @@ export const MAX_PULL_LIMIT = 1000;
 /**
  * One op as the server sees it.
  *
- * `.passthrough()` is load-bearing. Zod strips unknown keys by default, and here
+ * Preserve unknown keys. Zod strips them by default, and here
  * the unknown keys ARE the payload — stripping them would silently drop every
  * planner column this build has never heard of, which inside a sync path is
  * silent data loss.
  */
-const WireOpSchema = z
-	.object({
-		opId: z.string().min(1),
-		deviceId: z.string().min(1),
-	})
-	.passthrough();
+const WireOpSchema = z.looseObject({
+	opId: z.string().min(1),
+	deviceId: z.string().min(1),
+});
 export type WireOp = z.infer<typeof WireOpSchema>;
 
 /**

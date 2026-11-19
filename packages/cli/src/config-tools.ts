@@ -1,4 +1,4 @@
-import { err, ok, type ToolDef } from "@cabane/core";
+import { defineTool, err, ok, type ToolDef } from "@cabane/core";
 import { z } from "zod";
 import { ConfigSettings } from "./config-settings";
 import { Extensions } from "./extensions";
@@ -11,7 +11,7 @@ export const configTools = (
 	home: string,
 	where: ConfigSettings.Where,
 ): ToolDef[] => [
-	{
+	defineTool({
 		name: "kabane_configGet",
 		description:
 			"Read this device's config and settings, as they resolve for this server's project: default, then global (config.json, every project), shared (the repo's checked-in .kabane/<namespace>.json), then local (the human's settings for this project on this device, outside the repo; a legacy scopes.<id> block in config.json reads as local too). Omit key to list all keys, values, the layer each comes from (layer, from), defaults, descriptions, readOnly and protected flags, and each key's field (kind, bounds, enum values), the layers it can be written to, whether it is secret, and restart (start: applies after a restart; resolve: at its next read). With a key, its effective value; add layers:true for {key, value, leaves}, every leaf under the key with its value, layer, and hides: what the lower layers set there, lowest first. Secrets (sync.token, sync.headers) read as <set> when set. Local only; settings are not synced to the hub.",
@@ -31,8 +31,8 @@ export const configTools = (
 			if (!result.ok || layers === true) return result;
 			return ok(result.value.value);
 		},
-	},
-	{
+	}),
+	defineTool({
 		name: "kabane_configSet",
 		description:
 			"Set a config key in one layer, or remove it from that layer with unset:true. layer: local (this project only, for this human on this device, kept outside the repo; the default inside a project), global (config.json, every project; the default outside a project), or shared (the repo's checked-in .kabane/<namespace>.json). Device keys (sync, db, identities, copilot, harness, timezone, extensions) are global only, and go there by default. Uses kabane config parsing: strings as text, booleans/numbers as JSON text, arrays comma-separated, headers and other records as a JSON object; one record entry is its own key, <namespace>.<record>.<entry>. Identity keys are read-only. When a higher layer still sets the key the write changes nothing yet, and the result carries shadowedBy {layer, from, value}; an unset that leaves a lower layer deciding carries fallsBackTo. A device key applies once running board/MCP processes restart (restartRequired: true); an extension's own key applies the next time that extension reads its settings.",
@@ -85,5 +85,5 @@ export const configTools = (
 				note: `Saved to ${result.value.layer === "shared" ? "the project's checked-in file" : "this device"} (${result.value.from}).${unresolved ? ` But these settings no longer resolve, so every read of them fails until it is fixed: ${unresolved}. Tell the human which file to fix.` : ""}${shadowedBy ? ` It changes nothing here yet: the ${shadowedBy.layer} layer (${shadowedBy.from}) still decides, ${JSON.stringify(shadowedBy.value)}; tell the human, and that a write to that layer, or its unset, is what changes it.` : ""}${fallsBackTo ? ` The ${fallsBackTo.layer} layer (${fallsBackTo.from}) now decides: ${JSON.stringify(fallsBackTo.value)}.` : ""} ${applies}${ignored ? ` ${ignored.map((name) => Extensions.line(Extensions.missing(name, home))).join(" ")}` : ""}`,
 			});
 		},
-	},
+	}),
 ];

@@ -10,7 +10,7 @@ import { Planner, Runtime, err, ok, type Result } from "../index";
 export const corpusSchema = z.array(
 	z.object({
 		number: z.number().int(),
-		url: z.string().url(),
+		url: z.url(),
 		actor: z.string(),
 		sourceTextSha256: z.string(),
 		contentSha256: z.string(),

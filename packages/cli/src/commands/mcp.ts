@@ -23,7 +23,7 @@ const McpContribution = z.object({
 			z.object({
 				name: z.string(),
 				description: z.string(),
-				input: z.record(Extensions.zodSchema),
+				input: z.record(z.string(), Extensions.zodSchema),
 				kind: z.enum(["read", "write"]),
 				annotations: z
 					.object({

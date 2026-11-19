@@ -73,7 +73,7 @@ it("manages device config through the real stdio MCP server", async () => {
 			.object({
 				key: z.literal(key),
 				value: z.unknown(),
-				leaves: z.record(z.unknown()),
+				leaves: z.record(z.string(), z.unknown()),
 			})
 			.passthrough()
 			.parse(JSON.parse(await call("kabane_configGet", { key, layers: true })));
@@ -121,7 +121,9 @@ it("manages device config through the real stdio MCP server", async () => {
 			await call("kabane_configGet", {}),
 		);
 		expect(rows).toEqual(
-			z.array(z.record(z.unknown())).parse(await cli("config", "list")),
+			z
+				.array(z.record(z.string(), z.unknown()))
+				.parse(await cli("config", "list")),
 		);
 		// The copilot is told to leave alone any key these flags mark; they must be what the tool reports.
 		const flags = (flag: string) =>

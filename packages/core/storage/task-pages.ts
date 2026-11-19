@@ -28,6 +28,13 @@ import {
 	type TaskSelection,
 } from "./task-selection";
 
+const PageQuerySchema = TaskQuerySchema.omit({ limit: true, offset: true });
+const PageSearchSchema = z.object({
+	query: z.string(),
+	state: TaskStateSchema.optional(),
+	scopeUri: z.string().optional(),
+});
+
 export const PageOptionsSchema = z.object({
 	limit: z.number().int().min(1).max(100).default(20),
 	cursor: z.string().min(1).max(700).optional(),
@@ -39,7 +46,7 @@ const CursorSchema = z
 		binding: z.string().regex(/^[a-f0-9]{64}$/),
 		fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
 		offset: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-		asOf: z.string().datetime(),
+		asOf: z.iso.datetime(),
 	})
 	.strict();
 type Cursor = z.infer<typeof CursorSchema>;
@@ -193,10 +200,7 @@ export namespace Planner {
 		query: Partial<TaskQuery> = {},
 		options: PageOptions = {},
 	): Promise<Result<TaskPage>> => {
-		const parsed = TaskQuerySchema.omit({
-			limit: true,
-			offset: true,
-		}).safeParse(query);
+		const parsed = PageQuerySchema.safeParse(query);
 		if (!parsed.success)
 			return err(
 				new Error(
@@ -217,13 +221,11 @@ export namespace Planner {
 		opts: SearchOptions = {},
 		options: PageOptions = {},
 	): Promise<Result<TaskPage>> => {
-		const parsed = z
-			.object({
-				query: z.string(),
-				state: TaskStateSchema.optional(),
-				scopeUri: z.string().optional(),
-			})
-			.safeParse({ query, state: opts.state, scopeUri: opts.scopeUri });
+		const parsed = PageSearchSchema.safeParse({
+			query,
+			state: opts.state,
+			scopeUri: opts.scopeUri,
+		});
 		if (!parsed.success)
 			return Promise.resolve(
 				err(

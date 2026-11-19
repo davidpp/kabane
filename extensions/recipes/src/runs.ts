@@ -124,7 +124,7 @@ export namespace Runs {
 			);
 		const json = trySync((): unknown => JSON.parse(data.inputs));
 		const inputs = json.ok
-			? z.record(z.unknown()).safeParse(json.value)
+			? z.record(z.string(), z.unknown()).safeParse(json.value)
 			: undefined;
 		if (!inputs?.success)
 			return err(

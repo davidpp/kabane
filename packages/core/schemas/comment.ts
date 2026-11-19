@@ -35,10 +35,10 @@ export const TaskCommentSchema = z.object({
 	content: z.string().min(1),
 
 	/** Creation timestamp */
-	createdAt: z.string().datetime(),
+	createdAt: z.iso.datetime(),
 
 	/** Last update timestamp (if edited) */
-	updatedAt: z.string().datetime().optional(),
+	updatedAt: z.iso.datetime().optional(),
 });
 export type TaskComment = z.infer<typeof TaskCommentSchema>;
 

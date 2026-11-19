@@ -717,7 +717,7 @@ describe("concise receipt atomicity and cursor invalidation", () => {
 			if (!page.data.nextCursor) return;
 			const local = page.data.items[0];
 			const row = z
-				.record(z.unknown())
+				.record(z.string(), z.unknown())
 				.safeParse(db.query("SELECT * FROM tasks WHERE id = ?").get(local.id));
 			expect(row.success).toBe(true);
 			if (!row.success) return;
@@ -757,7 +757,7 @@ describe("concise receipt atomicity and cursor invalidation", () => {
 			expect(applied).toMatchObject({ ok: true });
 			if (applied.ok) expect(applied.value.renamed).toBe(1);
 			const after = z
-				.record(z.unknown())
+				.record(z.string(), z.unknown())
 				.safeParse(db.query("SELECT * FROM tasks WHERE id = ?").get(local.id));
 			expect(after.success).toBe(true);
 			if (!after.success) return;

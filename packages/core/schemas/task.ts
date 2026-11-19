@@ -44,7 +44,7 @@ export const VerificationSchema = z.object({
 	method: VerificationMethodSchema.optional(),
 
 	/** When verified */
-	verifiedAt: z.string().datetime().optional(),
+	verifiedAt: z.iso.datetime().optional(),
 
 	/** Who/what verified */
 	verifiedBy: z.string().optional(),
@@ -129,10 +129,10 @@ export const ProvenanceSchema = z.object({
 	sourceId: z.string().optional(),
 
 	/** URL to source (e.g., GitHub issue URL) */
-	sourceUrl: z.string().url().optional(),
+	sourceUrl: z.url().optional(),
 
 	/** When the task was discovered/created */
-	discoveredAt: z.string().datetime(),
+	discoveredAt: z.iso.datetime(),
 
 	/** Which workflow/agent discovered this task */
 	discoveredBy: z.string().optional(),
@@ -191,10 +191,10 @@ export const TaskSchema = z.object({
 	deadline: DeadlineSchema.optional(),
 
 	/** Defer until date (hide until this date) */
-	deferUntil: z.string().datetime().optional(),
+	deferUntil: z.iso.datetime().optional(),
 
 	/** Completion timestamp */
-	completedAt: z.string().datetime().optional(),
+	completedAt: z.iso.datetime().optional(),
 
 	// --- Provenance ---
 
@@ -225,7 +225,7 @@ export const TaskSchema = z.object({
 	needsReview: z.boolean().default(false),
 
 	/** When the task was reviewed */
-	reviewedAt: z.string().datetime().optional(),
+	reviewedAt: z.iso.datetime().optional(),
 
 	/** Who reviewed the task */
 	reviewedBy: z.string().optional(),
@@ -261,10 +261,10 @@ export const TaskSchema = z.object({
 	// --- Metadata ---
 
 	/** Creation timestamp */
-	createdAt: z.string().datetime(),
+	createdAt: z.iso.datetime(),
 
 	/** Last update timestamp */
-	updatedAt: z.string().datetime(),
+	updatedAt: z.iso.datetime(),
 });
 export type Task = z.infer<typeof TaskSchema>;
 
@@ -289,7 +289,13 @@ export type TaskDraft = z.input<typeof TaskDraftSchema>;
 /**
  * Partial update for existing task
  */
-export const TaskUpdateSchema = TaskDraftSchema.partial();
+export const TaskUpdateSchema = TaskDraftSchema.extend({
+	kind: TaskDraftSchema.shape.kind.unwrap(),
+	state: TaskDraftSchema.shape.state.unwrap(),
+	priority: TaskDraftSchema.shape.priority.unwrap(),
+	needsReview: TaskDraftSchema.shape.needsReview.unwrap(),
+	tags: TaskDraftSchema.shape.tags.unwrap(),
+}).partial();
 export type TaskUpdate = z.infer<typeof TaskUpdateSchema>;
 
 /**

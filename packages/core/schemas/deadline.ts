@@ -24,8 +24,11 @@ const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_DATETIME =
 	/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
 
-const CalendarDateSchema = z.string().date();
-const InstantSchema = z.string().datetime({ offset: true });
+const CalendarDateSchema = z.iso.date();
+const InstantSchema = z.union([
+	z.iso.datetime({ offset: true }),
+	z.iso.datetime({ offset: true, precision: -1 }),
+]);
 
 /** A deadline as stored: a calendar date or an instant. */
 export const DeadlineSchema = z.union([InstantSchema, CalendarDateSchema]);

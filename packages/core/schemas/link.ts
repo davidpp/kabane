@@ -41,7 +41,7 @@ export const TaskLinkSchema = z.object({
 	note: z.string().optional(),
 
 	/** Creation timestamp */
-	createdAt: z.string().datetime(),
+	createdAt: z.iso.datetime(),
 });
 export type TaskLink = z.infer<typeof TaskLinkSchema>;
 

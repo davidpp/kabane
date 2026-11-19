@@ -137,8 +137,8 @@ export const layers: Readonly<Record<string, Rule>> = {
 
 const Manifest = z.object({
 	name: z.string().min(1),
-	dependencies: z.record(z.string()).default({}),
-	devDependencies: z.record(z.string()).default({}),
+	dependencies: z.record(z.string(), z.string()).default({}),
+	devDependencies: z.record(z.string(), z.string()).default({}),
 });
 type Workspace = z.infer<typeof Manifest> & { directory: string };
 

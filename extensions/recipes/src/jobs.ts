@@ -131,7 +131,7 @@ export namespace Jobs {
 			data.harness === null ? null : JSON.parse(data.harness),
 		);
 		const parsedInputs = inputs.ok
-			? z.record(z.unknown()).safeParse(inputs.value)
+			? z.record(z.string(), z.unknown()).safeParse(inputs.value)
 			: undefined;
 		const parsedHarness = harness.ok
 			? z.array(z.string()).nullable().safeParse(harness.value)
