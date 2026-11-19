@@ -22,7 +22,7 @@
 	},
 	"devDependencies": {
 		"@types/bun": "1.4.0",
-		"typescript": "5.9.3",
+		"tsgo": "npm:typescript@7.0.2",
 		"@cabane/sqlite": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.30.0"
 	}
