@@ -15,7 +15,7 @@
         "oxlint-tsgolint": "7.0.2002",
         "tsgo": "npm:typescript@7.0.2",
         "typescript": "6.0.3",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
     },
     "extensions/dispatch": {
@@ -33,7 +33,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/acp": "workspace:*",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@cabane/checklist": "workspace:*",
@@ -59,7 +59,7 @@
       "dependencies": {
         "@agentclientprotocol/sdk": "2.4.0",
         "@cabane/core": "workspace:*",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@types/bun": "1.4.0",
@@ -95,7 +95,7 @@
       "dependencies": {
         "@cabane/core": "workspace:*",
         "ulid": "3.0.2",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@cabane/sqlite": "workspace:*",
@@ -121,7 +121,7 @@
         "@cabane/questions": "workspace:*",
         "@cabane/sqlite": "workspace:*",
         "@modelcontextprotocol/sdk": "1.30.0",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@opentui/react": "0.8.2",
@@ -137,7 +137,7 @@
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.30.0",
         "ulid": "3.0.2",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
         "zod-to-json-schema": "3.25.1",
       },
       "devDependencies": {
@@ -151,7 +151,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/core": "workspace:*",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@types/bun": "1.4.0",
@@ -163,7 +163,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@cabane/core": "workspace:*",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@modelcontextprotocol/sdk": "1.30.0",
@@ -188,7 +188,7 @@
       "dependencies": {
         "@cabane/core": "workspace:*",
         "ulid": "3.0.2",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@cabane/sqlite": "workspace:*",
@@ -219,7 +219,7 @@
         "@cabane/questions": "workspace:*",
         "@modelcontextprotocol/sdk": "1.30.0",
         "jose": "6.2.10",
-        "zod": "3.25.76",
+        "zod": "4.6.7",
       },
       "devDependencies": {
         "@cloudflare/vitest-pool-workers": "0.22.0",
@@ -1112,7 +1112,7 @@
 
     "youch-core": ["youch-core@0.3.3", "", { "dependencies": { "@poppinss/exception": "^1.2.2", "error-stack-parser-es": "^1.0.5" } }, "sha512-ho7XuGjLaJ2hWHoK8yFnsUGy2Y5uDpqSTq1FkHLK4/oqKtyUU1AFbOOxY4IpC9f0fTLjwYbslUz0Po5BpD1wrA=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
     "zod-to-json-schema": ["zod-to-json-schema@3.25.1", "", { "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA=="],
 
