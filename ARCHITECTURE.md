@@ -727,9 +727,8 @@ This follows the 2026-11-04 research note except in three places:
 
 ## The code breaks these rules in named places
 
-| Rule | Where the code breaks it | Removed by |
-|---|---|---|
-| A package imports another by its package name | `packages/cli/src/update-process.ts` imports `../../core/result` by relative path; `scripts/layers.ts` lists it under `relativeImports` and fails once the import is gone | JCAB-334 |
+None today. A break that lands gets a row here: the rule, where the code breaks it, and the
+issue that removes it.
 
 Each rule in this file and what holds it. "Review" means nothing fails a build; a reviewer has to
 notice. The architecture lens is `.agents/skills/dispatch/references/lenses/architecture.md`.
