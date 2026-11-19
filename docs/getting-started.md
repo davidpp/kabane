@@ -671,7 +671,7 @@ routes it:
 
 ```text
 route:
-  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from dispatch@85c01ce9f19b, keeping the project's own edits, and shows the diff before writing. → /setup-dispatch
+  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from dispatch@aee0f7efee11, keeping the project's own edits, and shows the diff before writing. → /setup-dispatch
 ```
 
 Type `/setup-dispatch` in the copilot when you want the current template.

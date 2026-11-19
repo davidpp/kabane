@@ -46,7 +46,7 @@ your harness's choice prompt with the recommended answer first:
 |---|---|---|
 | Team record: none, GitHub Issues or Linear | none | copies `references/upstream.md`: the team's tracker holds the requests, kabane the breakdown below them |
 | Goals: is work carried as goals, by a steward? | no | copies `references/goals.md` |
-| Integration: local merge, or pull request with auto-merge | what the git log shows, else a local merge | |
+| Integration: local merge, pull request with auto-merge, or pull request a person merges | what the files show, else a local merge | |
 | Harnesses: one, or several reviewing each other | one | copies `references/cross-harness.md` |
 | Research: kept with the decisions, or run apart and kept elsewhere | with the decisions | copies `references/research.md` |
 | Tags: the descriptive tags issues carry | `bug`, `research`, `design` | |

@@ -9,7 +9,7 @@ The `## This project` section `/setup-dispatch` writes for it:
 ```markdown
 - Team record: GitHub Issues, through `gh`; a pull request closes one with `Fixes #<n>` (.github/ISSUE_TEMPLATE/)
 - Goals: no (asked)
-- Integration: a pull request with auto-merge, `gh pr create --fill` then `gh pr merge --auto --squash` (.github/workflows/ci.yml gates pull requests)
+- Integration: a pull request with auto-merge, `gh pr create --fill` then `gh pr merge --auto --squash` (pull requests: .github/workflows/ci.yml; auto-merge: asked)
 - Harnesses: one, Codex (asked)
 - Research: kept with the decisions in `docs/decisions/` (AGENTS.md, "Decisions")
 - Tags: `bug`, `research`, `design`, `chore` (asked)
