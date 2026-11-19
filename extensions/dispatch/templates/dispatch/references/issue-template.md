@@ -42,7 +42,8 @@ prompt for an agent started by hand, the run for a kabane loop. An order between
 
 When filing, set `priority` too: `high` for the wave's spine, `normal` otherwise, `low` for
 parked or out-of-scope findings. Set `tags` from `references/tags.md` only, and `parentTaskId` to the
-goal the issue serves when there is one. A `someday` issue needs only its title and two lines saying what
+issue directly above this one: the wave's parent for a wave's issue, the goal for a lone issue
+or a wave's parent that serves one. A `someday` issue needs only its title and two lines saying what
 it is and why it is parked.
 
 Once the issue is filed, put its internal steps in its checklist with `kabane_checklistAdd`, not

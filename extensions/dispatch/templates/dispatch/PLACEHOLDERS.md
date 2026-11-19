@@ -33,8 +33,10 @@ edited. Copy a value only when the project leaves it unstated and the fallback b
   merged`.
 - `{{INTEGRATION}}`: how finished work reaches main. When the project's package scripts,
   Makefile or instructions define a land command, that command with the branch, as the project
-  runs it (for example `bun run land <branch>`). Otherwise the local merge, `git merge
-  --no-edit <branch>` on main.
+  runs it (for example `bun run land <branch>`), when it does what the integration answer says.
+  The answer to question 3 decides: a pull request with no land command is opening it (`gh pr
+  create`) and the merge policy the answer names, and the issue counts as merged only once the
+  pull request has. Otherwise the local merge, `git merge --no-edit <branch>` on main.
 - `{{GATE}}`: a pointer to the instructions' gate section when it has one. Otherwise, the
   commands the package scripts provide (lint, typecheck, test), as a list. Never list a command
   the project does not have.
@@ -70,8 +72,11 @@ edited. Copy a value only when the project leaves it unstated and the fallback b
 - `{{HARNESSES}}` (cross-harness overlay): the harnesses the project uses, how each one is started
   for an issue (a loop run's tag, a CLI, a subagent), and which one reviews which.
 - `{{TEAM_RECORD}}` (upstream overlay): the team's tracker, the tool agents reach it with (`gh`,
-  an MCP server), and the form a commit or pull request cites a request in (`Fixes #123`,
-  `ENG-123`).
+  an MCP server), the plain form a commit or pull request cites a request in (`#123`,
+  `ENG-123`), and the closing form only the last pull request uses (`Fixes #123`, `Fixes ENG-123`).
+- `{{QUEUE_EXCLUSIONS}}` (in `references/tags.md`): what the project's own instructions or skills
+  keep out of its queue of small work, as one sentence (`Never a change to packages/core or
+  sync.`). Otherwise leave it out, with nothing in its place.
 
 ## Overlays
 
@@ -95,17 +100,21 @@ kept, not asked again.
    Files that settle it: issues tagged `goal` in this scope, a steward skill or job. Recommended:
    no. Yes selects the goals overlay and fills `{{STEWARD}}`.
 3. **Integration.** How does finished work reach main: a local merge, or a pull request with
-   auto-merge? Files that settle it: a land script, a CI workflow that gates pull requests,
-   merge commits from pull requests in the git log. Recommended: what the git log shows, else a
-   local merge. Fills `{{INTEGRATION}}`.
+   auto-merge, or a pull request a person merges? Files that settle it: a land script that
+   shows the whole path, or instructions that state it. Merge commits from pull requests in the
+   git log, or a CI workflow on pull requests, settle only that pull requests are used: ask the
+   merge policy. Recommended: what the files show, else a local merge. Fills `{{INTEGRATION}}`,
+   and the recorded answer wins over any fallback.
 4. **Harnesses.** One coding harness, or several, with each one's work reviewed by another?
-   Files that settle it: instructions that name more than one harness's workflow, `loop.tiers`
-   mappings for more than one harness. Recommended: one harness. Several selects the
-   cross-harness overlay and fills `{{HARNESSES}}`.
+   Files that settle it: instructions that say each harness's work is reviewed by another.
+   `loop.tiers` mappings or instructions for more than one harness settle only which harnesses
+   exist: record them and ask about the review. Recommended: one harness. Several with
+   cross-review selects the cross-harness overlay and fills `{{HARNESSES}}`.
 5. **Research.** Is research kept with the decisions (`{{DECISIONS}}`) and done in the dispatching
-   session, or run apart and kept somewhere else? Files that settle it: instructions that name a
-   research directory or an outside store. Recommended: kept with the decisions. Run apart
-   selects the research overlay and fills `{{RESEARCH_HOME}}`.
+   session, or run apart and kept somewhere else? Files that settle it: instructions that say
+   research runs apart. A research directory or an outside store settles only where notes go:
+   record it and ask how research runs. Recommended: kept with the decisions. Run apart selects
+   the research overlay and fills `{{RESEARCH_HOME}}`.
 6. **Tags.** Which descriptive tags should issues carry? Files that settle it: the tags already
    on this scope's issues (`kabane_list`), when a few recur. Recommended: `bug`, `research`,
    `design`. Fills `{{TAGS}}`.

@@ -114,7 +114,7 @@ test("a stamped dispatch skill is mentioned without the dispatch extension, and 
 	const path = join(cwd, ".agents/skills/dispatch/SKILL.md");
 	mkdirSync(join(cwd, ".agents/skills/dispatch"), { recursive: true });
 	const skill =
-		"---\nname: dispatch\nmetadata:\n  kabane-template: dispatch@85c01ce9f19b\n---\n";
+		"---\nname: dispatch\nmetadata:\n  kabane-template: dispatch@d93baa46897b\n---\n";
 	writeFileSync(path, skill);
 	const without = JSON.parse(await cli("--json")).findings;
 	expect(without).toEqual([
@@ -149,17 +149,17 @@ test("a skill's stamp is read from its parsed frontmatter, in any YAML style", a
 	};
 	expect(
 		await unchecked(
-			"name: dispatch\nmetadata: {kabane-template: dispatch@85c01ce9f19b}",
+			"name: dispatch\nmetadata: {kabane-template: dispatch@d93baa46897b}",
 		),
 	).toEqual(["project/skill-unchecked"]);
 	expect(
 		await unchecked(
-			"name: dispatch\ndescription: |\n  Our own skill.\n  kabane-template: dispatch@85c01ce9f19b",
+			"name: dispatch\ndescription: |\n  Our own skill.\n  kabane-template: dispatch@d93baa46897b",
 		),
 	).toEqual([]);
 	expect(
 		await unchecked(
-			"name: [unclosed\nmetadata:\n  kabane-template: dispatch@85c01ce9f19b",
+			"name: [unclosed\nmetadata:\n  kabane-template: dispatch@d93baa46897b",
 		),
 	).toEqual([]);
 });

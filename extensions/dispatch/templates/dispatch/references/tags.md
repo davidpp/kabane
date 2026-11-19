@@ -13,8 +13,8 @@ the next agent invents a different one for the same thing.
   closes it. Dispatch files work that serves a goal under it with `parentTaskId`.
 - **`ready`**: small work that waits for no goal, whose brief stands as written: one concern,
   one territory, no open decision, nothing a goal's non-goals rule out, and no change to stored
-  data or to a contract other code relies on. Whoever works the queue starts it without filing
-  anything more. Set it when you file an issue that meets all of that.
+  data or to a contract other code relies on. {{QUEUE_EXCLUSIONS}} Whoever works the queue starts
+  it without filing anything more. Set it when you file an issue that meets all of that.
 - **`needs-brief`**: worth doing, but its brief is too thin to run. Whoever rewrites the brief
   takes this tag off, and adds `ready` when the rewrite meets the bar above.
 - **`tier:<name>`**, **`tier:<harness>/<name>`** and **`agent:<name>`**: route a subtask's claim

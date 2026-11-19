@@ -45,7 +45,7 @@ Every ask takes one of these paths. Name its path in a line before doing anythin
 | Small work that waits for no goal | an issue tagged `ready` when its brief stands, `needs-brief` when it does not | quick, by you |
 | Research | a note where research is kept, attached to each issue that relies on it | the depth the ask names, medium otherwise |
 | A design decision | a decision record and `kabane_ask` on its issue; no code | medium; thorough when it touches stored data or a contract |
-| Something to do on a schedule | a `job` (kind `job`), whose request runs on that schedule | none |
+| Something to do on a schedule | a job, `kabane job add` with its `--schedule` and `--request`; it runs only where a scheduler calls `kabane job tick` | none |
 
 Depth is how far you read before writing anything. Quick: the ask and the files it names.
 Medium: also the code around each call site, the docs that constrain it, and prior issues on
@@ -55,8 +55,11 @@ in the parent's description, as its Finding, so each slice's brief can cite it.
 
 Before filing anything, look for an open goal the ask serves (`kabane_list` with `tag: "goal"`). Work that
 serves a goal is filed under it with `parentTaskId`, because work outside a goal is invisible to
-whoever carries the goal. `references/tags.md` lists the tags this project uses and what reads
-each one; tag every issue you file from that list and from nowhere else.
+whoever carries the goal. Only the top of the work goes under the goal: one issue, or a wave's
+parent. A wave's issues go under the wave's parent, so the goal sees one slice and the parent
+rolls up its own issues. `references/tags.md` lists the tags this project uses and what reads
+each one. Tag an issue from that list when a tag fits, never from anywhere else, and leave it
+untagged when none does.
 
 ## Size the ask
 
@@ -100,7 +103,8 @@ Each issue is the entire brief its agent gets, so an agent that reads nothing el
 the work. Follow `references/issue-template.md`. It names the files, a "Finding." paragraph with
 the evidence, the design, what is out of scope, the verify steps under the project's
 constraints, and the conventions. File each one with `kabane_add` (kind `issue`, state `next`,
-under the goal it serves or else {{PARENT}}, tagged from `references/tags.md`). A wave holds one issue per concern that can be merged on its own, and five to
+under the wave's parent; a wave's parent or a lone issue goes under the goal it serves, or else
+{{PARENT}}; tags from `references/tags.md`). A wave holds one issue per concern that can be merged on its own, and five to
 seven at most, because past that the merges and seams outgrow one orchestrator's attention.
 Real ideas that are not for now become `someday` issues with two lines of description, which
 keeps them visible without widening the wave.

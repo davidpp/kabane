@@ -29,15 +29,17 @@ or stays in kabane only.
   under the parent, or a `someday` issue.
 - **Decisions.** A product or scope decision goes on the upstream issue or the pull request,
   where the team sees it. An implementation choice stays in kabane, with `kabane_ask`.
-- **Commits and pull requests** cite the upstream id in the form the tracker reads, never a
-  kabane id. A kabane id goes in the issue's work log, as `kabane_log` with a `commit:`
-  reference.
+- **Commits and pull requests** cite the upstream id, never a kabane id, and only as a plain
+  reference while the request is still in progress. A kabane id goes in the issue's work log,
+  as `kabane_log` with a `commit:` reference.
 
 ## Closing
 
-The pull request closes the upstream request, through the tracker's own link to it. Its
-description carries the parent's handoff, condensed: what landed, the evidence, and what is
-left to check. Close the kabane parent with `kabane_done` once the pull request has merged.
-Its children close in kabane and leave no trace upstream.
+A wave lands as several pull requests, and only the last one closes the request: it alone uses
+the tracker's closing form, so that an earlier merge does not close a request that is half
+done. Its description carries the parent's handoff, condensed: what landed, the evidence, and
+what is left to check. Close the kabane parent with `kabane_done` once that pull request has
+merged; when the parent is a `goal`, leave the closing to the human. Its children close in
+kabane and leave no trace upstream.
 
 Kabane never writes to the team's tracker. The agent does, with the tracker's own tools.
