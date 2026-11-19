@@ -35,9 +35,9 @@ or stays in kabane only.
 
 ## Closing
 
-A wave lands as several pull requests, and only the last one closes the request: it alone uses
-the tracker's closing form, so that an earlier merge does not close a request that is half
-done. Its description carries the parent's handoff, condensed: what landed, the evidence, and
+A request may land as several pull requests, across one wave or several, and only the one that
+completes it closes the request: it alone uses the tracker's closing form, so that an earlier
+merge does not close a request that is half done. Its description carries the parent's handoff, condensed: what landed, the evidence, and
 what is left to check. Close the kabane parent with `kabane_done` once that pull request has
 merged; when the parent is a `goal`, leave the closing to the human. Its children close in
 kabane and leave no trace upstream.

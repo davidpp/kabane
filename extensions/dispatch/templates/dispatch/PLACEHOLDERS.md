@@ -34,9 +34,10 @@ edited. Copy a value only when the project leaves it unstated and the fallback b
 - `{{INTEGRATION}}`: how finished work reaches main. When the project's package scripts,
   Makefile or instructions define a land command, that command with the branch, as the project
   runs it (for example `bun run land <branch>`), when it does what the integration answer says.
-  The answer to question 3 decides: a pull request with no land command is opening it (`gh pr
-  create`) and the merge policy the answer names, and the issue counts as merged only once the
-  pull request has. Otherwise the local merge, `git merge --no-edit <branch>` on main.
+  The answer to question 3 decides: when it is a pull request and no land command does that, it
+  is opening one (`gh pr create`) and the merge policy the answer names, and the issue counts as merged only once the
+  pull request has. When it is a local merge and no land command does that, `git merge --no-edit
+  <branch>` on main.
 - `{{GATE}}`: a pointer to the instructions' gate section when it has one. Otherwise, the
   commands the package scripts provide (lint, typecheck, test), as a list. Never list a command
   the project does not have.

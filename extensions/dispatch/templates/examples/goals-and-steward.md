@@ -12,7 +12,7 @@ The `## This project` section `/setup-dispatch` writes for it:
 - Goals: yes; a steward job carries them (.kabane/recipes/steward.md)
 - Integration: a pull request with auto-merge, `bun run land <branch>` (package.json, "land")
 - Harnesses: Claude Code and Codex; each one's branches are reviewed by the other (asked)
-- Research: run apart, notes in `wiki/` (AGENTS.md: "Internal notes … go in `wiki/`")
+- Research: run apart (asked), notes in `wiki/` (AGENTS.md: "Internal notes … go in `wiki/`")
 - Tags: `bug`, `research`, `design` (asked)
 - Overlays: references/goals.md, references/research.md, references/cross-harness.md
 ```

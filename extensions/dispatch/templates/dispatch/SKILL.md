@@ -45,7 +45,7 @@ Every ask takes one of these paths. Name its path in a line before doing anythin
 | Small work that waits for no goal | an issue tagged `ready` when its brief stands, `needs-brief` when it does not | quick, by you |
 | Research | a note where research is kept, attached to each issue that relies on it | the depth the ask names, medium otherwise |
 | A design decision | a decision record and `kabane_ask` on its issue; no code | medium; thorough when it touches stored data or a contract |
-| Something to do on a schedule | a job, `kabane job add` with its `--schedule` and `--request`; it runs only where a scheduler calls `kabane job tick` | none |
+| Something to do on a schedule | a job, `kabane job add` with its `--title`, `--schedule` and `--request`; it runs only where a scheduler calls `kabane job tick` | none |
 
 Depth is how far you read before writing anything. Quick: the ask and the files it names.
 Medium: also the code around each call site, the docs that constrain it, and prior issues on

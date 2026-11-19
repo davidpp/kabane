@@ -45,7 +45,7 @@ const skill = (stamp?: string) =>
 
 // What `Templates.stamp("dispatch")` gave on main (e6b8506), as /setup-dispatch wrote it into projects
 // before the template left base kabane.
-const STAMPED = "dispatch@d93baa46897b";
+const STAMPED = "dispatch@aee0f7efee11";
 
 /** A git project with a stamped dispatch skill, symlinked for Claude Code, and the Tracker block. */
 const setup = () => {
