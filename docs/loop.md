@@ -64,7 +64,10 @@ and it does not finish while one is open: set it back to `next` for the run to t
 close it. `kabane loop skip` only keeps the run from claiming a subtask; a skipped subtask
 that stays open still holds the run.
 
-By default, `loop.land` is `none`: the finished branch stays in its worktree. The other
+By default, `loop.land` is `none`: the finished branch stays in its worktree, and the
+completed run flags the issue it ran on `Needs review`, because its work is not merged yet.
+The issue keeps its state: a single issue its session closed stays done, and a parent
+stays in progress. A `merge` landing clears the flag. The other
 settings land it on completion, after rebasing it onto the latest of its base and running
 the gates again when the rebase moved it:
 
