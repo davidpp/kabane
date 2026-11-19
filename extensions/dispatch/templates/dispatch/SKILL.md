@@ -23,9 +23,45 @@ are the spec, and together with their comments and work logs they are the audit 
 tools are missing from this session, tell the user and stop, because a plan that lives only in
 this conversation is gone when the conversation ends.
 
+## This project
+
+{{SETUP_ANSWERS}}
+
+These are the answers the human gave when this skill was set up, or that the project's files
+gave. The overlays they list are files in `references/` that extend this skill: read each one
+when the work reaches what it covers.
+
+## Intake
+
+Every ask takes one of these paths. Name its path in a line before doing anything else.
+
+| The ask | It ends in | Depth |
+|---|---|---|
+| A question or a trade-off | an answer with evidence; work that follows is filed, and its open decision asked with `kabane_ask` | what the answer needs |
+| An inline change | a commit | none |
+| One issue | a brief, one agent, a merge, a handoff | quick, by you |
+| A wave | a parent with its decisions, five to seven briefs, a merge each, a handoff on the parent | medium on the parent before slicing; thorough when it touches stored data or a contract |
+| A goal | an issue tagged `goal`, its slices filed under it as issues or waves | thorough on the goal, medium per slice |
+| Small work that waits for no goal | an issue tagged `ready` when its brief stands, `needs-brief` when it does not | quick, by you |
+| Research | a note where research is kept, attached to each issue that relies on it | the depth the ask names, medium otherwise |
+| A design decision | a decision record and `kabane_ask` on its issue; no code | medium; thorough when it touches stored data or a contract |
+| Something to do on a schedule | a `job` (kind `job`), whose request runs on that schedule | none |
+
+Depth is how far you read before writing anything. Quick: the ask and the files it names.
+Medium: also the code around each call site, the docs that constrain it, and prior issues on
+the same ground (`kabane_search`). Thorough: also what those prior issues decided, and every
+consumer of a contract or stored shape the change touches. Research for a wave or a goal lands
+in the parent's description, as its Finding, so each slice's brief can cite it.
+
+Before filing anything, look for an open goal the ask serves (`kabane_list` with `tag: "goal"`). Work that
+serves a goal is filed under it with `parentTaskId`, because work outside a goal is invisible to
+whoever carries the goal. `references/tags.md` lists the tags this project uses and what reads
+each one; tag every issue you file from that list and from nowhere else.
+
 ## Size the ask
 
-Pick one of these three before doing anything else, and say which one in a line:
+For an inline change, one issue or a wave, pick one of these three before doing anything else,
+and say which one in a line:
 
 - **Inline.** One obvious change with nothing to coordinate: make it, run the gate, report. No
   issue, because the commit is record enough.
@@ -64,7 +100,7 @@ Each issue is the entire brief its agent gets, so an agent that reads nothing el
 the work. Follow `references/issue-template.md`. It names the files, a "Finding." paragraph with
 the evidence, the design, what is out of scope, the verify steps under the project's
 constraints, and the conventions. File each one with `kabane_add` (kind `issue`, state `next`,
-under {{PARENT}}). A wave holds one issue per concern that can be merged on its own, and five to
+under the goal it serves or else {{PARENT}}, tagged from `references/tags.md`). A wave holds one issue per concern that can be merged on its own, and five to
 seven at most, because past that the merges and seams outgrow one orchestrator's attention.
 Real ideas that are not for now become `someday` issues with two lines of description, which
 keeps them visible without widening the wave.
@@ -80,6 +116,12 @@ brief. For everything that lands elsewhere, attach it to each issue that relies 
 in the implementer's brief. A `file:` reference is inlined into the brief. Any other URI shows up
 as a pointer for the agent to follow. A record that no issue links to is a record the agent
 never reads.
+
+Research and design asks end there too, and ship no code. Research ends in a note in that place,
+attached to every issue that relies on it, with what it did not check. A design ask ends in a
+decision record and its open decisions asked on its issue with `kabane_ask`; the build is filed
+as its own issue once they are answered, so that the decision is reviewed before any code
+exists.
 
 ## Plan the wave
 
