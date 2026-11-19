@@ -103,7 +103,8 @@ They know things about priority and risk that are not in the code.
 Set each unblocked issue to `in_progress` with `kabane_edit`, then start one agent per issue,
 all in a single message so they run in parallel. Each is a general-purpose agent; its prompt
 opens with the few-liner of the specialist whose territory holds the issue, from
-`references/specialists.md`. Model: the session's model; name another one only when the user asks for it.
+`references/specialists.md`. Model: the session's model; name another one only when the user asks for it. A model named for an agent is a tier (frontier, balanced or fast), resolved to the
+harness's model with `kabane config get loop.tiers.<harness>.<tier>`; never guess a model id.
 
 Each agent works in its own copy of the repo so that parallel edits cannot collide:
 `git worktree add ../<repo>-<branch> -b <branch>`, then `bun install`; `git worktree remove`

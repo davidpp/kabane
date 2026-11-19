@@ -80,7 +80,7 @@ it("builds a relocatable extension that kabane loads from a home, with its templ
 		// The stamp main computed for these bytes, from the built copy's own templates/.
 		expect(kabane("dispatch", "stamp")).toEqual({
 			code: 0,
-			stdout: "dispatch@c42632db66c9",
+			stdout: "dispatch@8a3edc91ba6b",
 			stderr: "",
 		});
 		rmSync(join(installed, "templates/dispatch"), { recursive: true });

@@ -21,7 +21,7 @@ const CLI = resolve(EXTENSION, "../../packages/cli/index.ts");
 // What `Templates.stamp("dispatch")` returned on main (e6b8506) for these same template bytes, before
 // the templates moved here. A change to the template changes it: then a filled skill is behind,
 // and this line moves with the template on purpose.
-const STAMP_ON_MAIN = "dispatch@c42632db66c9";
+const STAMP_ON_MAIN = "dispatch@8a3edc91ba6b";
 
 const folders: string[] = [];
 afterEach(() => {
