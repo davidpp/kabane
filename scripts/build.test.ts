@@ -10,10 +10,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
-import { build, DIST } from "./build";
+import { DIST } from "./build";
 
 it("publishes self-contained extension types that compile with only the built package installed", async () => {
-	await build();
+	// In its own process, so a bundler failure fails only this test.
+	const built = Bun.spawnSync([
+		process.execPath,
+		join(import.meta.dir, "build.ts"),
+	]);
+	expect(built.stderr.toString()).toBe(`build: ${DIST}\n`);
+	expect(built.exitCode).toBe(0);
 	const metafile = JSON.parse(
 		readFileSync(join(DIST, "metafile.json"), "utf8"),
 	);
