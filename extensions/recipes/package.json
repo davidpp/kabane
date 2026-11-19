@@ -21,7 +21,7 @@
 		"@cabane/core": "workspace:*",
 		"@cabane/extension": "workspace:*",
 		"@types/bun": "1.4.0",
-		"typescript": "5.9.3"
+		"typescript": "7.0.2"
 	},
 	"kabane": {
 		"extension": "./index.ts",
