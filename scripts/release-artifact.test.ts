@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { z } from "zod";
-import { build, DIST } from "./build";
+import { DIST } from "./build";
 import {
 	inspectArchive,
 	integrity,
@@ -181,14 +181,20 @@ const packBuild = async (packageDir: string) => {
 test("the real build packs into an archive the check admits, and a stray type file is refused", async () => {
 	// build() writes only packages/cli/dist; copy it at once so a build running elsewhere
 	// cannot change what is packed, and the stray file never lands in the repository.
-	await build();
-	const built = join(WORK, "built");
-	cpSync(DIST, built, { recursive: true });
-	const checked = await packBuild(built);
+	// In its own process, so a bundler failure fails only this test.
+	const built = Bun.spawnSync([
+		process.execPath,
+		join(import.meta.dir, "build.ts"),
+	]);
+	expect(built.stderr.toString()).toBe(`build: ${DIST}\n`);
+	expect(built.exitCode).toBe(0);
+	const copy = join(WORK, "built");
+	cpSync(DIST, copy, { recursive: true });
+	const checked = await packBuild(copy);
 	if (!checked.ok) throw checked.error;
 	expect(checked.value.name).toBe("kabane");
-	writeFileSync(join(built, "types/other.d.ts"), "export {};\n");
-	const stray = await packBuild(built);
+	writeFileSync(join(copy, "types/other.d.ts"), "export {};\n");
+	const stray = await packBuild(copy);
 	expect(stray.ok).toBe(false);
 	if (!stray.ok) expect(stray.error.message).toBe(UNEXPECTED_SHAPE);
 }, 120_000);

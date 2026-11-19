@@ -68,11 +68,13 @@ export const build = async (
 	return result;
 };
 
+// `bun scripts/build.ts [into] [root]`: the tests build through here, in a process of their own.
 if (import.meta.main) {
-	const result = await build();
-	if (!result.success) {
-		for (const log of result.logs) console.error(log);
-		process.exit(1);
-	}
-	console.error(`build: ${DIST}`);
+	const [into = DIST, root = ROOT] = process.argv
+		.slice(2)
+		.map((path) => resolve(path));
+	const result = await build(into, root);
+	for (const log of result.logs) console.error(log);
+	if (!result.success) process.exit(1);
+	console.error(`build: ${into}`);
 }
