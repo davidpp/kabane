@@ -596,8 +596,9 @@ yourself. Updating kabane does not install them.
 
 With `loop` still in `extensions` and nothing installed, the record commands (`kabane list`,
 `kabane add` and the others) work as before and say nothing about it. `kabane --help`,
-`kabane config`, `kabane doctor` and any command kabane does not know start with this line on
-stderr, with your kabane home's path in it:
+`kabane config`, `kabane doctor`, `kabane mcp` and any command kabane does not know start with
+this line on stderr, with your kabane home's path in it. A harness that starts `kabane mcp` shows
+it in its MCP server logs:
 
 ```text
 Extension loop: not installed; put it in /…/.kabane/extensions/loop/; or remove it from extensions with `kabane config set extensions <names> --layer global`.
@@ -618,8 +619,10 @@ exits with status 1:
 Error: Unknown config key: loop.model. Run `kabane config list` or call kabane_configGet without a key for known keys.
 ```
 
-`kabane doctor` reports the missing directory as `loop/extension-refused` under `mention`. On the
-board, `a` starts no run, and the copilot no longer offers `/setup-dispatch`.
+`kabane doctor` reports the missing directory as `loop/extension-refused` under `mention`. The
+board writes nothing on stderr; it shows `Extension loop refused: not installed` over its footer
+until you press `esc`. On the board, `a` starts no run, and the copilot no longer offers
+`/setup-dispatch`.
 
 Kabane deletes nothing of the loop's. Its settings stay where you wrote them, `.kabane/loop.json`
 in a project included, and are read again once the loop is installed and enabled. Its runs stay
