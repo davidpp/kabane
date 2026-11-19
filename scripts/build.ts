@@ -136,9 +136,8 @@ const buildExtensionTypes = (into: string): void => {
 			extends: join(ROOT, "packages/extension/tsconfig.json"),
 			compilerOptions: {
 				typeRoots: [join(ROOT, "node_modules/@types")],
-				baseUrl: ROOT,
 				paths: {
-					"@cabane/core": ["packages/core/index.ts"],
+					"@cabane/core": [join(ROOT, "packages/core/index.ts")],
 				},
 			},
 		}),
