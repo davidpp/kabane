@@ -375,10 +375,10 @@ test("no board source file outside theme.ts carries a hex color literal", () => 
 	expect(offenders).toEqual([]);
 });
 
-describe("markdown_inline query", () => {
-	// OpenTUI's query conceals both brackets of every shortcut link, so `[x]` and a JSON array lost
-	// them; the board registers a copy without that block. Highlighting is async, so the frame is
-	// pumped until the concealed markers have gone, not read once.
+describe("markdown brackets", () => {
+	// OpenTUI 0.8's tree-sitter query concealed both brackets of every shortcut link, so `[x]` and a
+	// JSON array lost them (JCAB-83). 0.9 parses natively and keeps them; this holds it there. The
+	// frame is pumped until the concealed markers have gone, not read once.
 	test("keeps a shortcut link's brackets, still conceals a link's, bold's and code's syntax", async () => {
 		const Probe = (): ReactNode => (
 			<markdown

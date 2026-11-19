@@ -1,7 +1,6 @@
 {
 	"extends": "../../tsconfig.base.json",
-	/* The board's declarations of its asset imports (`.scm`, `.wasm`) reach tsc only by name. */
-	"include": ["**/*.ts", "**/*.tsx", "../board/src/assets.d.ts"],
+	"include": ["**/*.ts", "**/*.tsx"],
 	"exclude": ["node_modules"],
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM"],
