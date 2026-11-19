@@ -374,3 +374,35 @@ test("no board source file outside theme.ts carries a hex color literal", () => 
 		.map(({ name, line }) => `${name}:${line}`);
 	expect(offenders).toEqual([]);
 });
+
+describe("markdown_inline query", () => {
+	// OpenTUI's query conceals both brackets of every shortcut link, so `[x]` and a JSON array lost
+	// them; the board registers a copy without that block. Highlighting is async, so the frame is
+	// pumped until the concealed markers have gone, not read once.
+	test("keeps a shortcut link's brackets, still conceals a link's, bold's and code's syntax", async () => {
+		const Probe = (): ReactNode => (
+			<markdown
+				content={
+					'Array: ["a","b"]\n\nCheckbox: [x]\n\nLink: [docs](https://example.com)\n\n**bold** and `code`'
+				}
+				syntaxStyle={useMarkdownStyle()}
+			/>
+		);
+		const setup = await renderTest(<Probe />, { width: 60, height: 10 });
+		try {
+			const frame = await pumpUntil(
+				setup.renderOnce,
+				setup.captureCharFrame,
+				(f) => f.includes("bold and code") && !f.includes("](https"),
+			);
+			expect(frame).toContain('Array: ["a","b"]');
+			expect(frame).toContain("Checkbox: [x]");
+			expect(frame).toContain("Link: docs");
+			expect(frame).not.toContain("[docs]");
+			expect(frame).not.toContain("**");
+			expect(frame).not.toContain("`");
+		} finally {
+			setup.destroy();
+		}
+	});
+});

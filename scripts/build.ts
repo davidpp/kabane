@@ -5,6 +5,7 @@
  *
  *   bin/kabane.js         the CLI bundled for Bun, its `@cabane/*` workspace dependencies inlined
  *   bin/chunk-<hash>.js  lazy command modules and shared code
+ *   bin/*.scm, bin/*.wasm the board's markdown_inline query and grammar, read from a path at runtime
  *   types/extension.d.ts the extension contract's types, published as `kabane/extension`
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own

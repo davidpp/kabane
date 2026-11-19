@@ -4,7 +4,10 @@
 // terminal reports them, so the board sits on herdr's pane, or on any theme, with no tint of its
 // own. When the terminal says nothing, DESIGN.md's fixed dark or light ramp stands in. The open
 // screen follows the terminal: a light/dark switch or a new palette re-derives the tokens live.
+import { isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+	addDefaultParsers,
 	type CliRenderer,
 	CliRenderEvents,
 	RGBA,
@@ -22,6 +25,26 @@ import {
 	useEffect,
 	useState,
 } from "react";
+// OpenTUI's package exports no asset path, so its grammar is reached through the board's own
+// node_modules; a file import keeps it in the bundle and the compiled binary.
+import markdownInlineWasm from "../node_modules/@opentui/core/assets/markdown_inline/tree-sitter-markdown_inline.wasm" with { type: "file" };
+import markdownInlineHighlights from "./markdown-inline-highlights.scm" with { type: "file" };
+
+// A file import is an absolute path from source and in the compiled binary, but relative to the
+// chunk in the npm bundle, where OpenTUI would resolve it against the working directory.
+const bundled = (path: string): string =>
+	isAbsolute(path) ? path : fileURLToPath(new URL(path, import.meta.url));
+
+// Inline markdown highlights from the board's copy of OpenTUI's query, which keeps the brackets of
+// `[x]` and `["a","b"]` (`markdown-inline-highlights.scm` says why). Registered at import, before
+// the first markdown render starts the tree-sitter client, which reads its default parsers once.
+addDefaultParsers([
+	{
+		filetype: "markdown_inline",
+		queries: { highlights: [bundled(markdownInlineHighlights)] },
+		wasm: bundled(markdownInlineWasm),
+	},
+]);
 
 export namespace Theme {
 	export type Tokens = {
