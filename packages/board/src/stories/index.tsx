@@ -340,6 +340,38 @@ const WAVE = task({
 	description:
 		"Parent of the wave. Its measure is dogfooding: the dispatch skill uses it now.\n\n**The model.** Research and context are an issue's inputs. The issue is the ask. Comments, decisions and handoffs are **entries** on the issue's **timeline**, each with a **kind**.",
 });
+// Every block the brief renders apart from prose: the code, quote and rule blockOnSurface paints,
+// and a table as columns, beside the inline ink.
+const MARKDOWN = task({
+	id: "m1",
+	shortId: "JREP-9",
+	title: "The board's markdown keeps its panels on OpenTUI 0.9",
+	state: "next",
+	description: [
+		"## Finding",
+		"",
+		"`renderNode` is gone from `MarkdownOptions`; see the [0.9 notes](https://github.com/anomalyco/opentui/releases).",
+		"",
+		"- [x] bump the group",
+		"- [ ] port the block renderer",
+		"",
+		"> A quote sits on raised, with no bar beside it.",
+		"",
+		"```sh",
+		"bun run gallery --print detail-markdown",
+		"```",
+		"",
+		"---",
+		"",
+		"| check | width |",
+		"| --- | --- |",
+		"| gallery | 40 |",
+		"| tmux | 100 |",
+		"",
+		"After the rule and the table.",
+	].join("\n"),
+});
+const MARKDOWN_RECORDS = Fixtures.records(MARKDOWN);
 const WAVE_RECORDS = Fixtures.records(WAVE, {
 	kinds: [...Fixtures.KINDS],
 	entries: [
@@ -1194,6 +1226,22 @@ export const STORIES: readonly Story[] = [
 				task={WAVE}
 				tab="description"
 				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-markdown",
+		about:
+			"a description with every markdown block: a code block and a quote on raised, a rule as a blank line, a table as columns",
+		width: 40,
+		height: 40,
+		render: () => (
+			<Detail
+				taskId={MARKDOWN.id}
+				task={MARKDOWN}
+				tab="description"
+				records={ok(MARKDOWN_RECORDS)}
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),

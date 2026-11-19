@@ -799,7 +799,7 @@ const EventRow = ({
 const AgentText = ({ text }: { text: string }): ReactNode => {
 	const theme = useTheme();
 	const syntaxStyle = useMarkdownStyle();
-	const renderNode = useMemo(() => blockOnSurface(theme), [theme]);
+	const renderBlock = useMemo(() => blockOnSurface(theme), [theme]);
 	const fallback = (
 		<text fg={theme.defaultFg} style={{ flexGrow: 1, flexShrink: 1 }}>
 			{text}
@@ -812,7 +812,7 @@ const AgentText = ({ text }: { text: string }): ReactNode => {
 					content={text.trim()}
 					syntaxStyle={syntaxStyle}
 					fg={theme.defaultFg}
-					renderNode={renderNode}
+					renderBlock={renderBlock}
 					style={{ maxWidth: PROSE_MEASURE }}
 				/>
 			</ErrorBoundary>

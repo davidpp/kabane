@@ -201,28 +201,25 @@ export type DetailProps = {
 
 // Code, quotes and rules are set apart by a surface, never a line. OpenTUI draws a quote with a bar
 // down its left and a rule as a line, both refused by the No-Line Rule, and a code block with no
-// surface at all, so it read as prose.
-export const blockOnSurface = (theme: Theme.Tokens): RenderNode => {
-	const render: RenderNode = (token, { defaultRender }) => {
-		switch (token.type) {
+// surface at all, so it read as prose. OpenTUI hands this every top-level block and each code block
+// at any depth; the rest come back undefined and keep OpenTUI's own rendering. No `codeBlockOnly`:
+// since 0.9 that flag keeps quotes and rules from coming through.
+export const blockOnSurface =
+	(theme: Theme.Tokens): RenderBlock =>
+	(block, { defaultRender }) => {
+		switch (block.kind) {
 			case "code":
 				return codePanel(defaultRender(), theme.surface.raised);
-			case "blockquote":
+			case "quote":
 				return unlined(defaultRender(), theme.surface.raised);
-			case "hr":
+			case "rule":
 				return unlined(defaultRender());
 			default:
 				return undefined;
 		}
 	};
-	// OpenTUI's own flag (createMarkdownCodeBlockRenderer sets it). Without it any renderNode switches
-	// the markdown to one block per token, which drops the blank line above a heading and a task
-	// item's checkbox; with it, prose stays coalesced and only the blocks OpenTUI draws apart (code,
-	// quote, rule, table) come through here.
-	return Object.assign(render, { codeBlockOnly: true });
-};
 
-type RenderNode = NonNullable<MarkdownOptions["renderNode"]>;
+type RenderBlock = NonNullable<MarkdownOptions["renderBlock"]>;
 
 // A fresh painted box around the block, not a restyle of it: a code block's own `bg` paints only
 // under its glyphs, and OpenTUI resets it when the content changes in place, while a block it did
@@ -247,9 +244,11 @@ const codePanel = (block: Renderable | null, bg: string): Renderable | null => {
 	return panel;
 };
 
+// No sides rather than `border: false`: OpenTUI restyles a quote's and a rule's box by writing its
+// `borderColor`, and that setter draws all four sides of a box whose border is `false`.
 const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 	if (block instanceof BoxRenderable) {
-		block.border = false;
+		block.border = [];
 		if (bg) {
 			block.backgroundColor = bg;
 			block.paddingRight = 1;
@@ -264,8 +263,8 @@ const unlined = (block: Renderable | null, bg?: string): Renderable | null => {
 export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
 	const markdownStyle = useMarkdownStyle();
-	// Stable per theme: a new renderNode has OpenTUI rebuild every block.
-	const renderNode = useMemo(() => blockOnSurface(theme), [theme]);
+	// Stable per theme: a new renderBlock has OpenTUI rebuild every block.
+	const renderBlock = useMemo(() => blockOnSurface(theme), [theme]);
 	return (
 		<box style={{ paddingRight: CONTENT_INSET }}>
 			<ErrorBoundary
@@ -279,7 +278,7 @@ export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 					content={content}
 					syntaxStyle={markdownStyle}
 					fg={theme.defaultFg}
-					renderNode={renderNode}
+					renderBlock={renderBlock}
 					tableOptions={TABLE}
 					style={{ maxWidth: PROSE_MEASURE }}
 				/>
