@@ -35,3 +35,5 @@ reference), which puts the ADR in the implementer's brief.
   schedule and commands live in the recipes extension. Accepted.
 - [0002](0002-what-kabane-owns-for-long-running-agents.md): For long-running agents, kabane
   owns the record and the schedule, and points to other tools for the rest. Accepted.
+- [0003](0003-an-artifact-is-a-context-ref-of-kind-artifact.md): An output artifact is a
+  context ref of kind `artifact`. Accepted.
