@@ -159,10 +159,7 @@ export namespace Brief {
 	const PARKED =
 		"That parks it as waiting until the human answers. Comment only what the questions do not carry, such as evidence or a link.";
 
-	const implementingChecks = (
-		gates: readonly string[],
-		noun: string,
-	): string =>
+	const implementingChecks = (gates: readonly string[], noun: string): string =>
 		gates.length > 0
 			? `When you call kabane_done, the runner runs the gates (${gates.map((g) => `\`${g}\``).join(", ")}) in that order on the tree outside your session; a failing gate reopens the ${noun} with its output. Run the checks your change needs; if a check fails only because the environment forbids something (a denied process or a blocked network call), explain it with kabane_comment and leave it to the gates without parking the ${noun}.`
 			: "No gates are configured for this run, so nothing runs the project's checks on your result after your session: run the project's checks yourself before you call kabane_done.";

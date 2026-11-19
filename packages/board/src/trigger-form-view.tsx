@@ -251,11 +251,7 @@ type Layout = {
 	hints: boolean;
 };
 
-const bodyHeight = (
-	side: boolean,
-	preview: number,
-	settings: number,
-): number =>
+const bodyHeight = (side: boolean, preview: number, settings: number): number =>
 	side
 		? Math.max(preview, settings)
 		: preview + (preview > 0 ? 1 : 0) + settings;

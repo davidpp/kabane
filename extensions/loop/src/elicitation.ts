@@ -49,10 +49,7 @@ export namespace Elicitation {
 	// they skip reads as a choice they made. Only the key ties them; a field that merely follows a
 	// choice is its own question. A required choice keeps its box apart: a typed answer would
 	// leave the choice empty.
-	const otherBox = (
-		field: Field,
-		fields: readonly Field[],
-	): Text | undefined =>
+	const otherBox = (field: Field, fields: readonly Field[]): Text | undefined =>
 		(field.type === "choice" || field.type === "choices") && !field.required
 			? fields.find(
 					(f): f is Text =>
