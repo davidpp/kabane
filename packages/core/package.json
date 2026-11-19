@@ -24,13 +24,13 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "1.30.0",
+		"@modelcontextprotocol/sdk": "1.32.2",
 		"ulid": "3.0.2",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
 		"@cabane/sqlite": "workspace:*",
-		"@types/bun": "1.4.0",
+		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2"
 	}
 }
