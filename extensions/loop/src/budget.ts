@@ -18,7 +18,7 @@ export namespace Budget {
 	export type Usage = z.infer<typeof UsageSchema>;
 
 	/** Latest usage per core session id. */
-	export const MeterSchema = z.record(UsageSchema);
+	export const MeterSchema = z.record(z.string(), UsageSchema);
 	export type Meter = z.infer<typeof MeterSchema>;
 
 	/**

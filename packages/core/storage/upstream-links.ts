@@ -24,6 +24,8 @@ import {
 import { generateId, rowToUpstreamLink, TABLES } from "./helpers";
 import { Oplog } from "./oplog";
 
+const RowSchema = z.record(z.string(), z.unknown());
+
 const convertRows = (rows: readonly unknown[]): Result<UpstreamLink[]> => {
 	const links: UpstreamLink[] = [];
 	for (const row of rows) {
@@ -40,7 +42,7 @@ const convertSummaryRows = (
 ): Result<UpstreamSummary[]> => {
 	const summaries: UpstreamSummary[] = [];
 	for (const row of rows) {
-		const recordResult = z.record(z.unknown()).safeParse(row);
+		const recordResult = RowSchema.safeParse(row);
 		if (!recordResult.success) {
 			return err(
 				new Error(

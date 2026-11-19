@@ -44,13 +44,13 @@ export namespace Settings {
 	 * A settings namespace a host knows: its name, the schema of what a human writes in it, and how
 	 * its settings read.
 	 */
-	export type Namespace = { name: string; schema: z.ZodTypeAny; looks?: Looks };
+	export type Namespace = { name: string; schema: z.ZodType; looks?: Looks };
 
 	/**
 	 * What an extension resolves its settings through (`Extension.Ctx.settings`): `namespace` in
 	 * the project checked out at `projectDir`, with `overrides` as the caller's layer.
 	 */
-	export type Port = <S extends z.ZodTypeAny>(
+	export type Port = <S extends z.ZodType>(
 		namespace: string,
 		schema: S,
 		at: { projectDir: string; overrides?: Readonly<Record<string, unknown>> },
@@ -75,6 +75,15 @@ export namespace Settings {
 				)
 			: value;
 
+	const issueMessage = (issue: z.ZodIssue): string =>
+		issue.code === "invalid_type"
+			? issue.message.replace(
+					/^Invalid input: expected (record|\w+)/,
+					(_, expected: string) =>
+						`Expected ${expected === "record" ? "object" : expected}`,
+				)
+			: issue.message;
+
 	/** One line per issue, `path: message`; an unknown key is its own line. */
 	const issues = (namespace: string, error: z.ZodError): string =>
 		error.issues
@@ -84,44 +93,49 @@ export namespace Settings {
 							(key) =>
 								`${[...issue.path, key].join(".")}: not a ${namespace} setting`,
 						)
-					: [`${issue.path.join(".") || "(settings)"}: ${issue.message}`],
+					: [`${issue.path.join(".") || "(settings)"}: ${issueMessage(issue)}`],
 			)
 			.map((line) => `\n  ${line}`)
 			.join("");
 
-	type Peeled = { inner: z.ZodTypeAny; optional: boolean; default?: unknown };
+	type Peeled = { inner: z.ZodType; optional: boolean; default?: unknown };
 
 	// The outermost default is the one a parse fills in.
-	const peel = (schema: z.ZodTypeAny): Peeled => {
+	const peel = (schema: z.ZodType): Peeled => {
 		if (schema instanceof z.ZodOptional)
-			return { ...peel(schema.unwrap()), optional: true };
-		if (schema instanceof z.ZodDefault)
+			return { ...peel(schema.unwrap() as z.ZodType), optional: true };
+		if (schema instanceof z.ZodDefault || schema instanceof z.ZodPrefault)
 			return {
-				...peel(schema.removeDefault()),
-				default: schema._def.defaultValue(),
+				...peel(schema.unwrap() as z.ZodType),
+				default: schema.def.defaultValue,
 			};
-		if (schema instanceof z.ZodEffects) return peel(schema.innerType());
+		if (schema instanceof z.ZodPipe)
+			return peel(
+				(schema instanceof z.ZodPreprocess
+					? schema.out
+					: schema.in) as z.ZodType,
+			);
 		return { inner: schema, optional: false };
 	};
 
 	/** The schema under its optional, default and effect wrappers: what a value of it holds. */
-	export const unwrap = (schema: z.ZodTypeAny): z.ZodTypeAny =>
-		peel(schema).inner;
+	export const unwrap = (schema: z.ZodType): z.ZodType => peel(schema).inner;
 
 	const numberOf = (schema: z.ZodNumber): SettingKind => {
 		const kind: Extract<SettingKind, { kind: "number" }> = {
 			kind: "number",
 			integer: false,
 		};
-		for (const check of schema._def.checks) {
-			if (check.kind === "int") kind.integer = true;
-			else if (check.kind === "min") {
-				if (check.inclusive) kind.minimum = check.value;
-				else kind.exclusiveMinimum = check.value;
-			} else if (check.kind === "max") {
-				if (check.inclusive) kind.maximum = check.value;
-				else kind.exclusiveMaximum = check.value;
-			}
+		const bounds = z.toJSONSchema(schema);
+		kind.integer = schema.isInt;
+		for (const key of [
+			"minimum",
+			"maximum",
+			"exclusiveMinimum",
+			"exclusiveMaximum",
+		] as const) {
+			const bound = bounds[key];
+			if (typeof bound === "number") kind[key] = bound;
 		}
 		return kind;
 	};
@@ -130,37 +144,39 @@ export namespace Settings {
 		schema: z.ZodString,
 	): Extract<SettingKind, { kind: "string" }> => {
 		const kind: Extract<SettingKind, { kind: "string" }> = { kind: "string" };
-		for (const check of schema._def.checks) {
-			if (check.kind === "min") kind.minLength = check.value;
-			else if (check.kind === "max") kind.maxLength = check.value;
-			else if (check.kind === "regex") kind.pattern = check.regex.source;
-		}
+		const { minLength, maxLength, pattern } = z.toJSONSchema(schema);
+		if (minLength !== undefined) kind.minLength = minLength;
+		if (maxLength !== undefined) kind.maxLength = maxLength;
+		if (pattern !== undefined) kind.pattern = pattern;
 		return kind;
 	};
 
-	const kindOf = (schema: z.ZodTypeAny): SettingKind => {
+	const kindOf = (schema: z.ZodType): SettingKind => {
 		if (schema instanceof z.ZodEnum)
-			return { kind: "enum", values: schema.options };
+			return {
+				kind: "enum",
+				values: schema.options.filter((value) => typeof value === "string"),
+			};
 		if (schema instanceof z.ZodNumber) return numberOf(schema);
 		if (schema instanceof z.ZodBoolean) return { kind: "boolean" };
 		if (schema instanceof z.ZodString) return stringOf(schema);
 		if (schema instanceof z.ZodArray)
-			return { kind: "list", item: valueOf(schema.element) };
+			return { kind: "list", item: valueOf(schema.element as z.ZodType) };
 		if (schema instanceof z.ZodRecord) {
-			const key = unwrap(schema.keySchema);
+			const key = unwrap(schema.keyType as z.ZodType);
 			const pattern =
 				key instanceof z.ZodString ? stringOf(key).pattern : undefined;
 			return {
 				kind: "record",
 				...(pattern === undefined ? {} : { keyPattern: pattern }),
-				value: valueOf(schema.valueSchema),
+				value: valueOf(schema.valueType as z.ZodType),
 			};
 		}
 		if (schema instanceof z.ZodObject) return { kind: "group" };
 		return { kind: "other" };
 	};
 
-	const valueOf = (schema: z.ZodTypeAny): SettingValue => {
+	const valueOf = (schema: z.ZodType): SettingValue => {
 		const { inner, optional, default: fallback } = peel(schema);
 		return {
 			optional,
@@ -174,7 +190,7 @@ export namespace Settings {
 
 	/** What `schema` declares of a setting at `path`: its kind, bounds, default and description. */
 	export const field = (
-		schema: z.ZodTypeAny,
+		schema: z.ZodType,
 		path: readonly string[] = [],
 	): SettingField => ({ ...valueOf(schema), path });
 
@@ -260,19 +276,19 @@ export namespace Settings {
 	};
 
 	/** A setting and the schema it was read from, for a host that also parses values with it. */
-	export type Entry = { field: SettingField; schema: z.ZodTypeAny };
+	export type Entry = { field: SettingField; schema: z.ZodType };
 
 	/**
 	 * Every setting of a namespace's schema, in its order: a group (an object) and then the
 	 * settings in it. A record's entries are not walked: its field describes them.
 	 */
 	export const entries = (
-		schema: z.ZodTypeAny,
+		schema: z.ZodType,
 		path: readonly string[] = [],
 	): Entry[] => {
 		const inner = unwrap(schema);
 		if (!(inner instanceof z.ZodObject)) return [];
-		const shape: z.ZodRawShape = inner.shape;
+		const shape: Record<string, z.ZodType> = inner.shape;
 		return Object.entries(shape).flatMap(([name, child]) => {
 			const at = [...path, name];
 			return [
@@ -283,11 +299,8 @@ export namespace Settings {
 	};
 
 	/** The fields of every setting `schema` declares, as `entries` walks them. */
-	export const fields = (schema: z.ZodTypeAny): SettingField[] =>
+	export const fields = (schema: z.ZodType): SettingField[] =>
 		entries(schema).map((entry) => entry.field);
-
-	// Its issues are the value check's to report; here only the value it leaves matters.
-	const QUIET: z.RefinementCtx = { addIssue: () => undefined, path: [] };
 
 	/**
 	 * `schema` under its wrappers, and `value` as its preprocessing leaves it: a preprocess is how a
@@ -295,44 +308,50 @@ export namespace Settings {
 	 * key is checked after it, as a value of it is.
 	 */
 	const unwrapWith = (
-		schema: z.ZodTypeAny,
+		schema: z.ZodType,
 		value: unknown,
-	): { inner: z.ZodTypeAny; value: unknown } => {
-		if (schema instanceof z.ZodOptional || schema instanceof z.ZodDefault)
-			return unwrapWith(schema._def.innerType, value);
-		if (schema instanceof z.ZodEffects) {
-			const { effect } = schema._def;
+	): { inner: z.ZodType; value: unknown } => {
+		if (
+			schema instanceof z.ZodOptional ||
+			schema instanceof z.ZodDefault ||
+			schema instanceof z.ZodPrefault
+		)
+			return unwrapWith(schema.unwrap() as z.ZodType, value);
+		if (schema instanceof z.ZodPreprocess) {
+			const parsed = z.safeParse(schema.in, value);
 			return unwrapWith(
-				schema.innerType(),
-				effect.type === "preprocess" ? effect.transform(value, QUIET) : value,
+				schema.out as z.ZodType,
+				parsed.success ? parsed.data : value,
 			);
 		}
+		if (schema instanceof z.ZodPipe)
+			return unwrapWith(schema.in as z.ZodType, value);
 		return { inner: schema, value };
 	};
 
 	type Node = {
-		inner: z.ZodTypeAny;
+		inner: z.ZodType;
 		given: unknown;
 		value: unknown;
 		path: readonly string[];
 	};
 
 	const childSchema = (
-		inner: z.ZodTypeAny,
+		inner: z.ZodType,
 		key: string,
-	): z.ZodTypeAny | undefined => {
+	): z.ZodType | undefined => {
 		if (inner instanceof z.ZodRecord)
-			return inner.keySchema.safeParse(key).success
-				? inner.valueSchema
+			return z.safeParse(inner.keyType, key).success
+				? (inner.valueType as z.ZodType)
 				: undefined;
 		if (!(inner instanceof z.ZodObject)) return undefined;
-		const shape: z.ZodRawShape = inner.shape;
+		const shape: Record<string, z.ZodType> = inner.shape;
 		return Object.hasOwn(shape, key) ? shape[key] : undefined;
 	};
 
 	// Both drift and unset validation follow preprocessing through the same schema walk.
 	const walkWith = <T>(
-		schema: z.ZodTypeAny,
+		schema: z.ZodType,
 		given: unknown,
 		visit: (node: Node) => T[],
 		path: readonly string[] = [],
@@ -359,7 +378,7 @@ export namespace Settings {
 
 	const unsetIssues = (
 		namespace: string,
-		schema: z.ZodTypeAny,
+		schema: z.ZodType,
 		given: unknown,
 	): string[] =>
 		walkWith(schema, given, ({ inner, value, path }) => {
@@ -368,15 +387,15 @@ export namespace Settings {
 				if (!unsets(child)) return [];
 				const at = [...path, key].join(".");
 				if (inner instanceof z.ZodRecord) {
-					const named = inner.keySchema.safeParse(key);
+					const named = z.safeParse(inner.keyType, key);
 					return named.success
 						? []
 						: named.error.issues.map(
-								(issue: z.ZodIssue) => `${at}: ${issue.message}`,
+								(issue: z.ZodIssue) => `${at}: ${issueMessage(issue)}`,
 							);
 				}
 				return inner instanceof z.ZodObject &&
-					inner._def.unknownKeys === "strict" &&
+					inner.def.catchall instanceof z.ZodNever &&
 					!childSchema(inner, key)
 					? [`${at}: not a ${namespace} setting`]
 					: [];
@@ -394,7 +413,7 @@ export namespace Settings {
 	 * A removed key is inferred to be a rename when a new, declared sibling has the same
 	 * JSON value. This is a heuristic, not migration metadata supplied by zod.
 	 */
-	export const drift = (schema: z.ZodTypeAny, raw: unknown): Drift[] =>
+	export const drift = (schema: z.ZodType, raw: unknown): Drift[] =>
 		walkWith(
 			schema,
 			structuredClone(raw),
@@ -435,7 +454,7 @@ export namespace Settings {
 	/** One layer on its own, so an error names the layer it is in. */
 	export const validate = (
 		namespace: string,
-		schema: z.ZodTypeAny,
+		schema: z.ZodType,
 		source: Source,
 	): Result<void> => {
 		const invalid = `Invalid ${namespace} settings in ${source.label}:`;
@@ -522,7 +541,7 @@ export namespace Settings {
 	 * `sources`, lowest first, over the schema's defaults as the lowest layer. Each is validated on its own first, so an
 	 * error names it; then the merge, whose error names every layer in it.
 	 */
-	export const resolve = <S extends z.ZodTypeAny>(
+	export const resolve = <S extends z.ZodType>(
 		namespace: string,
 		schema: S,
 		sources: readonly Source[],

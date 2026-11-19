@@ -367,12 +367,12 @@ const recordChild = (entry: Key, rest: string): Key | undefined => {
 		return at < 0 ? child : recordChild(child, rest.slice(at + 1));
 	}
 	if (!(record instanceof z.ZodRecord)) return undefined;
-	const value = unwrap(record.valueSchema);
+	const value = unwrap(record.valueType as z.ZodType);
 	const nested = value instanceof z.ZodRecord || value instanceof z.ZodObject;
 	const at = nested ? rest.indexOf(".") : -1;
 	const name = at < 0 ? rest : rest.slice(0, at);
-	if (!record.keySchema.safeParse(name).success) return undefined;
-	const child = childOf(entry, name, record.valueSchema);
+	if (!z.safeParse(record.keyType, name).success) return undefined;
+	const child = childOf(entry, name, record.valueType as z.ZodType);
 	return at < 0 ? child : recordChild(child, rest.slice(at + 1));
 };
 

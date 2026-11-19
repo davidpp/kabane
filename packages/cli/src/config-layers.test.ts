@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitFixture } from "@cabane/core/git-fixture";
-import { configPath } from "./config";
+import { configPath, isPlainObject } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { projectAt, settingsPort } from "./context";
 import { Extensions } from "./extensions";
@@ -51,10 +51,14 @@ const loopAt = async (
 	if (!namespaces.ok) throw namespaces.error;
 	const loop = namespaces.value.find((namespace) => namespace.name === "loop");
 	if (!loop) throw new Error("the real loop settings schema was not loaded");
-	return settingsPort(home)("loop", loop.schema, {
+	const result = await settingsPort(home)("loop", loop.schema, {
 		projectDir,
 		...(overrides ? { overrides } : {}),
 	});
+	if (!result.ok) return result;
+	if (!isPlainObject(result.value))
+		throw new Error("Expected loop settings to resolve to an object");
+	return { ok: true as const, value: result.value };
 };
 
 it("layers global, shared, the legacy scopes block, the local file and the caller", async () => {

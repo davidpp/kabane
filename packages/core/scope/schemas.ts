@@ -13,13 +13,13 @@ export const ParsedScopeUriSchema = z.object({
 	scheme: z.literal("kabane"),
 	namespace: z.literal("scope"),
 	scopeId: z.string().min(1),
-	extensions: z.record(z.string()).optional(),
+	extensions: z.record(z.string(), z.string()).optional(),
 });
 export type ParsedScopeUri = z.infer<typeof ParsedScopeUriSchema>;
 
 export const ScopeUriPartsSchema = z.object({
 	scopeId: z.string().min(1),
-	extensions: z.record(z.string()).optional(),
+	extensions: z.record(z.string(), z.string()).optional(),
 });
 export type ScopeUriParts = z.infer<typeof ScopeUriPartsSchema>;
 
@@ -34,7 +34,7 @@ export type ScopeRef = z.infer<typeof ScopeRefSchema>;
 
 export const ScopeQuerySchema = z.object({
 	scopeId: z.string().optional(),
-	extensions: z.record(z.string()).optional(),
+	extensions: z.record(z.string(), z.string()).optional(),
 });
 export type ScopeQuery = z.infer<typeof ScopeQuerySchema>;
 

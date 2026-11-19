@@ -54,10 +54,10 @@ export const ProjectSchema = z.object({
 	scopeUri: z.string().optional(),
 
 	/** Creation timestamp */
-	createdAt: z.string().datetime(),
+	createdAt: z.iso.datetime(),
 
 	/** Last update timestamp */
-	updatedAt: z.string().datetime(),
+	updatedAt: z.iso.datetime(),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
@@ -76,7 +76,9 @@ export type ProjectDraft = z.input<typeof ProjectDraftSchema>;
 /**
  * Partial update for existing project
  */
-export const ProjectUpdateSchema = ProjectDraftSchema.partial();
+export const ProjectUpdateSchema = ProjectDraftSchema.extend({
+	state: ProjectDraftSchema.shape.state.unwrap(),
+}).partial();
 export type ProjectUpdate = z.infer<typeof ProjectUpdateSchema>;
 
 /**

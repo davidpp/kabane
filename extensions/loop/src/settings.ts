@@ -46,7 +46,8 @@ export namespace LoopSettings {
 	const lookOf = (host: Host, field: SettingField): Look =>
 		host.settings.lookOf(looks, field.path);
 
-	const objectSchema = (host: Host) => host.z.record(host.z.unknown());
+	const objectSchema = (host: Host) =>
+		host.z.record(host.z.string(), host.z.unknown());
 
 	const valueAt = (
 		host: Host,

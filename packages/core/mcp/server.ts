@@ -21,7 +21,6 @@ import {
 	type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { CONTEXT_SECTIONS, registeredContextSections } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
@@ -44,11 +43,11 @@ export type AfterWrite = (tool: ToolDef) => void;
 
 const toSdkTool = (
 	tool: ToolDef,
-	sections: z.ZodEnum<[string, ...string[]]>,
+	sections: z.ZodEnum<Record<string, string>>,
 ): Tool => ({
 	name: tool.name,
 	description: tool.description,
-	inputSchema: zodToJsonSchema(
+	inputSchema: z.toJSONSchema(
 		z.object(
 			tool.name === "kabane_context"
 				? {
@@ -62,7 +61,14 @@ const toSdkTool = (
 				: tool.input,
 		),
 		{
-			$refStrategy: "none",
+			target: "draft-7",
+			io: "input",
+			unrepresentable: "any",
+			override: ({ zodSchema, jsonSchema }) => {
+				// Stripping objects accept extra input, but MCP only advertises their declared keys.
+				if (zodSchema instanceof z.ZodObject && !zodSchema.def.catchall)
+					jsonSchema.additionalProperties = false;
+			},
 		},
 	) as Tool["inputSchema"],
 	annotations: {
@@ -100,13 +106,20 @@ const toCallResult = (
 	return { content: [{ type: "text", text }] };
 };
 
+const inputSchemas = new WeakMap<ToolDef, z.ZodObject<z.ZodRawShape>>();
+
 export const callTool = async (
 	tool: ToolDef,
 	rawArgs: unknown,
 	ctx: ToolContext,
 	afterWrite?: AfterWrite,
 ): Promise<Result<unknown>> => {
-	const parsed = z.object(tool.input).safeParse(rawArgs ?? {});
+	let schema = inputSchemas.get(tool);
+	if (!schema) {
+		schema = z.object(tool.input);
+		inputSchemas.set(tool, schema);
+	}
+	const parsed = schema.safeParse(rawArgs ?? {});
 	if (!parsed.success) {
 		return err(
 			new Error(

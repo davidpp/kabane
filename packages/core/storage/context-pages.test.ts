@@ -346,7 +346,7 @@ describe("bounded selected context", () => {
 			if (!result.ok) expect(result.error.message).toContain("cursor");
 		}
 		const decoded = z
-			.record(z.unknown())
+			.record(z.string(), z.unknown())
 			.safeParse(JSON.parse(first.value.nextCursor));
 		if (!decoded.success) return;
 		for (const offset of [

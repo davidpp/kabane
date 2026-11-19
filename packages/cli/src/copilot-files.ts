@@ -94,7 +94,21 @@ export namespace CopilotFiles {
 			);
 		const yaml = trySync(() => Bun.YAML.parse(rest.slice(0, end).join("\n")));
 		if (!yaml.ok) return err(new Error(`${file}: its frontmatter is not YAML`));
-		const parsed = fields.safeParse(yaml.value);
+		const parsed = fields.safeParse(yaml.value, {
+			error: (issue) => {
+				if (issue.code === "unrecognized_keys")
+					return `Unrecognized key(s) in object: ${issue.keys.map((key) => `'${key}'`).join(", ")}`;
+				if (issue.code !== "invalid_type") return undefined;
+				if (issue.input === undefined) return "Required";
+				const received =
+					issue.input === null
+						? "null"
+						: Array.isArray(issue.input)
+							? "array"
+							: typeof issue.input;
+				return `Expected ${issue.expected}, received ${received}`;
+			},
+		});
 		if (!parsed.success) {
 			const issue = parsed.error.issues[0];
 			const where = issue?.path.length ? `${issue.path.join(".")}: ` : "";

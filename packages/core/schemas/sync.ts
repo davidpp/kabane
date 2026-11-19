@@ -62,7 +62,7 @@ export const SyncOpSchema = z.object({
 	rowUpdatedAt: z.string().optional(),
 
 	/** Full row snapshot keyed by DB column name. Absent for deletes. */
-	payload: z.record(z.unknown()).optional(),
+	payload: z.record(z.string(), z.unknown()).optional(),
 
 	/**
 	 * Actor URI of the writer (`payload.updated_by`), lifted onto the envelope
@@ -180,7 +180,7 @@ export const SyncStatusSchema = z.object({
 	 * for a newer version of it, by module name. Empty when nothing waits. They
 	 * apply on the first sync pass after the module registers or migrates.
 	 */
-	parkedOps: z.record(z.number()),
+	parkedOps: z.record(z.string(), z.number()),
 
 	/** Parked ops whose replay failed, counted in `parkedOps` too. Normally 0. */
 	parkedFailures: z.number(),

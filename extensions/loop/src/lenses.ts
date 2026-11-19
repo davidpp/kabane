@@ -73,12 +73,18 @@ export namespace Lenses {
 	 * and the brief, and whether the prompt tells triage never to skip it (not enforced by code). A
 	 * file without frontmatter has no `applies` and is not `always`.
 	 */
-	const FrontmatterSchema = z
-		.object({
+	const FrontmatterSchema = z.strictObject(
+		{
 			applies: z.string().min(1).optional(),
 			always: z.boolean().default(false),
-		})
-		.strict();
+		},
+		{
+			error: (issue) =>
+				issue.code === "invalid_type"
+					? "Expected object for lens frontmatter"
+					: undefined,
+		},
+	);
 	type Frontmatter = z.infer<typeof FrontmatterSchema>;
 
 	// The YAML between a lens file's opening `---` and the next, read the way an agent definition's

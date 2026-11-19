@@ -56,10 +56,12 @@ export namespace RunStore {
 		"interrupted",
 	] as const;
 
+	const ClaimRecordSchema = z.record(z.string(), z.unknown());
+
 	// A claim written before a review session could cover several lenses held its one lens as
 	// `lens`: resumed, it reads as a group of that one.
 	const groupedLens = (claim: unknown): unknown => {
-		const parsed = z.record(z.unknown()).safeParse(claim);
+		const parsed = ClaimRecordSchema.safeParse(claim);
 		if (!parsed.success || typeof parsed.data.lens !== "string") return claim;
 		const { lens, ...rest } = parsed.data;
 		return rest.lenses === undefined ? { ...rest, lenses: [lens] } : rest;
@@ -217,7 +219,7 @@ export namespace RunStore {
 		/** Inbox lines already handled. */
 		inboxRead: z.number().int().min(0).default(0),
 		/** What the human said about claiming: paused, skipped, next. */
-		steering: Steering.StateSchema.default({}),
+		steering: Steering.StateSchema.prefault({}),
 		/** Every pass over the gates, oldest first; the last says whether they are green. */
 		gateRuns: z.array(Gates.RunSchema).default([]),
 		/**
@@ -365,7 +367,7 @@ export namespace RunStore {
 		session: z.string().optional(),
 		task: z.string().optional(),
 		/** Machine-readable fields behind the summary, for an event that has some. */
-		data: z.record(z.union([z.string(), z.number()])).optional(),
+		data: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
 		/** The harness's tool call id: a call and its end share it. */
 		callId: z.string().optional(),
 		/** The tool call as known when the event was written, capped (`ToolCalls.detail`). */

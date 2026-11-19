@@ -330,7 +330,7 @@ const checkLoopExtension = async (version: string): Promise<void> => {
 		fail("base kabane did not reject unknown loop command", off);
 	const path = join(KABANE_HOME, "config.json");
 	const config = z
-		.record(z.unknown())
+		.record(z.string(), z.unknown())
 		.safeParse(JSON.parse(readFileSync(path, "utf8")));
 	if (!config.success) return fail(`${path} is not a JSON object`);
 	writeFileSync(path, JSON.stringify({ ...config.data, extensions: ["loop"] }));

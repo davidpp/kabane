@@ -9,8 +9,8 @@ const Schema = z
 		limits: z
 			.object({ count: z.number().default(1), cap: z.number().optional() })
 			.strict()
-			.default({}),
-		named: z.record(z.string()).default({}),
+			.prefault({}),
+		named: z.record(z.string(), z.string()).default({}),
 		gates: z
 			.record(
 				z.string().regex(/^[a-z]+$/, "a gate name is one word"),

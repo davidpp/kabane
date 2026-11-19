@@ -216,6 +216,11 @@ Parameters:
 	},
 });
 
+// MCP pagination accepts integer-valued JSON numbers beyond the safe integer range.
+const integerInput = (bound: z.ZodNumber) =>
+	bound.refine(Number.isInteger, "Expected integer").meta({ type: "integer" });
+const positiveLimit = integerInput(z.number().positive()).optional();
+
 const listInput = {
 	state: TaskStateSchema.optional(),
 	kind: ItemKindSchema.optional(),
@@ -226,8 +231,8 @@ const listInput = {
 	parentTaskId: z.string().min(1).optional(),
 	includeDeferred: z.boolean().optional(),
 	includeClosed: z.boolean().optional(),
-	limit: z.number().int().positive().optional(),
-	offset: z.number().int().nonnegative().optional(),
+	limit: positiveLimit,
+	offset: integerInput(z.number().nonnegative()).optional(),
 	responseFormat: ResponseFormatSchema.optional(),
 	cursor: z.string().max(700).optional(),
 };
@@ -307,7 +312,7 @@ Parameters:
 		query: z.string().min(1),
 		state: TaskStateSchema.optional(),
 		scopeUri: z.string().optional(),
-		limit: z.number().int().positive().optional(),
+		limit: positiveLimit,
 		responseFormat: ResponseFormatSchema.optional(),
 		cursor: z.string().max(700).optional(),
 	},
@@ -346,7 +351,7 @@ Parameters:
 		kind: ItemKindSchema.optional(),
 		includeDone: z.boolean().optional(),
 		responseFormat: ResponseFormatSchema.optional(),
-		limit: z.number().int().positive().optional(),
+		limit: positiveLimit,
 		cursors: z
 			.object({
 				overdue: z.string().max(700).optional(),
@@ -684,7 +689,7 @@ Parameters:
 
 const logListInput = {
 	id: z.string().min(1),
-	limit: z.number().int().min(1).optional(),
+	limit: integerInput(z.number().min(1)).optional(),
 };
 
 const logList = define({
@@ -741,7 +746,7 @@ const contextInput = {
 	deref: z.boolean().optional(),
 	includeSubtasks: z.boolean().optional(),
 	responseFormat: ResponseFormatSchema.optional(),
-	sections: ContextPageOptionsSchema.shape.sections.optional(),
+	sections: ContextPageOptionsSchema.shape.sections.unwrap().optional(),
 	cursor: ContextPageOptionsSchema.shape.cursor,
 };
 
@@ -783,7 +788,7 @@ const upstreamLinkInput = {
 	provider: z.string().trim().min(1),
 	externalId: z.string().trim().min(1),
 	identifier: z.string().trim().min(1).optional(),
-	url: z.string().url(),
+	url: z.url(),
 	title: z.string().trim().min(1),
 };
 

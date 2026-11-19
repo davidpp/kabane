@@ -24,6 +24,8 @@ import type {
 import { UpstreamLinkSchema } from "../schemas";
 import { ScopeUri } from "../scope/uri";
 
+const RowSchema = z.record(z.string(), z.unknown());
+
 export { TABLES };
 
 // ============================================================
@@ -382,7 +384,7 @@ export const rowToContextRef = (
  * output. This is the persistence boundary for the private snapshot.
  */
 export const rowToUpstreamLink = (row: unknown): Result<UpstreamLink> => {
-	const recordResult = z.record(z.unknown()).safeParse(row);
+	const recordResult = RowSchema.safeParse(row);
 	if (!recordResult.success) {
 		return err(
 			new Error(`Invalid upstream-link row: ${recordResult.error.message}`),

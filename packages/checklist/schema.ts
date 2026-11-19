@@ -3,7 +3,11 @@ import { z } from "zod";
 const ItemTextSchema = z.string().trim().min(1).max(1000);
 /** A handle (`JCAB-12.3`), a ULID, or the `id:<ULID>` an item's line ends with. */
 const ItemRefSchema = z.string().trim().min(1);
-const PositionSchema = z.number().int().min(1);
+const PositionSchema = z
+	.number()
+	.min(1)
+	.refine(Number.isInteger, "Expected integer")
+	.meta({ type: "integer" });
 
 export const AddSchema = z.object({
 	id: z.string().min(1),

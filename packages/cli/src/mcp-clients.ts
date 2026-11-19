@@ -66,7 +66,7 @@ export namespace McpClients {
 		scope?: "user" | "local";
 	};
 
-	const ConfigSchema = z.record(z.unknown());
+	const ConfigSchema = z.record(z.string(), z.unknown());
 
 	// JSONC, because Gemini's settings.json may carry comments; a plain JSON file parses the same.
 	const readConfig = (

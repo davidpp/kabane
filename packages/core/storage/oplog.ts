@@ -45,6 +45,8 @@ import {
 	SyncOpSchema,
 } from "../schemas";
 
+const RowSchema = z.record(z.string(), z.unknown());
+
 // ============================================================
 // Constants
 // ============================================================
@@ -157,7 +159,7 @@ const parsePayload = (
 	const decoded = trySync(() => JSON.parse(raw) as unknown);
 	if (!decoded.ok) return decoded;
 
-	const record = z.record(z.unknown()).safeParse(decoded.value);
+	const record = RowSchema.safeParse(decoded.value);
 	if (!record.success) {
 		return err(
 			new Error(`Oplog payload is not a JSON object: ${record.error.message}`),

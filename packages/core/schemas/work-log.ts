@@ -26,7 +26,7 @@ export const WorkRefSchema = z.object({
 	label: z.string().optional(),
 
 	/** When this reference was added */
-	addedAt: z.string().datetime(),
+	addedAt: z.iso.datetime(),
 
 	/** Who added this reference */
 	addedBy: z.string().optional(),
@@ -55,7 +55,7 @@ export const TaskWorkLogSchema = z.object({
 	note: z.string().optional(),
 
 	/** Creation timestamp */
-	createdAt: z.string().datetime(),
+	createdAt: z.iso.datetime(),
 });
 export type TaskWorkLog = z.infer<typeof TaskWorkLogSchema>;
 

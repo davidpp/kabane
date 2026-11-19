@@ -17,12 +17,14 @@ const ManifestSchema = z.object({
 	private: z.literal(false).optional(),
 	bin: z.object({ kabane: z.literal("bin/kabane.js") }),
 });
-const RegistrationSchema = z.object({ dependencies: z.record(z.string()) });
+const RegistrationSchema = z.object({
+	dependencies: z.record(z.string(), z.string()),
+});
 const LockSchema = z.object({
 	lockfileVersion: z.literal(2),
 	configVersion: z.literal(1),
 	workspaces: z.object({ "": RegistrationSchema }),
-	packages: z.record(z.unknown()),
+	packages: z.record(z.string(), z.unknown()),
 });
 const ResolutionSchema = z.tuple([
 	z.string(),

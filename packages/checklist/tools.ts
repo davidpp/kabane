@@ -44,7 +44,7 @@ export const checklistTools: readonly ToolDef[] = [
 		name: "kabane_checklistEdit",
 		kind: "write",
 		description: `Change one checklist item by handle (JCAB-12.3) or ULID: new text, a new 1-based position, or both; or remove: true alone. Handles count every item ever added to the issue, so moving or removing one renumbers none. Returns one line: the issue, its progress (done/total), and what changed. ${SHIFT}`,
-		input: EditSchema.innerType().shape,
+		input: EditSchema.shape,
 		handler: async (args, ctx) => {
 			const change = await Checklist.edit(ctx.basePath, args);
 			return change.ok ? ok(editReceipt(change.value, args)) : change;

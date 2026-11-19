@@ -31,7 +31,7 @@ const MetadataSchema = z.object({
 	bin: z.object({ kabane: z.literal("bin/kabane.js") }),
 	engines: z.object({ bun: z.string().regex(/^>=\d+\.\d+\.\d+$/) }),
 	dist: z.object({
-		tarball: z.string().url(),
+		tarball: z.url(),
 		integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
 	}),
 });
@@ -53,7 +53,7 @@ const reply = (
 /** `bun info <spec> --json`, parsed; a failure is the reply to give. */
 const readRegistry = async <T>(
 	spec: string[],
-	schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+	schema: z.ZodType<T>,
 	globalDir: string,
 	host: UpdateHost,
 ): Promise<Result<T, Outcome>> => {

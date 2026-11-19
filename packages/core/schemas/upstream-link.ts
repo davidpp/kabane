@@ -31,14 +31,11 @@ export const UpstreamLinkSchema = z
 		provider: z.string().trim().min(1),
 		externalId: z.string().trim().min(1),
 		identifier: z.string().trim().min(1).optional(),
-		url: z
-			.string()
-			.url()
-			.refine(isWebUrl, "Upstream URL must use HTTP or HTTPS"),
+		url: z.url().refine(isWebUrl, "Upstream URL must use HTTP or HTTPS"),
 		/** Written once when the link is made. Never re-read from the provider. */
 		title: z.string().trim().min(1),
-		createdAt: z.string().datetime(),
-		updatedAt: z.string().datetime(),
+		createdAt: z.iso.datetime(),
+		updatedAt: z.iso.datetime(),
 	})
 	.strict();
 export type UpstreamLink = z.infer<typeof UpstreamLinkSchema>;

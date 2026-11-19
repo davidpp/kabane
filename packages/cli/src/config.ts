@@ -88,7 +88,7 @@ export const ConfigSchema = z.object({
 		.string()
 		.min(1)
 		.describe("Initial sync device identity (read-only, write-once)."),
-	sync: SyncConfigSchema.default({}).describe(
+	sync: SyncConfigSchema.prefault({}).describe(
 		"Multi-device replication settings; edit dotted keys.",
 	),
 	copilot: CopilotConfigSchema.optional().describe(

@@ -40,7 +40,7 @@ export namespace UpdateNotice {
 	const TIMEOUT_MS = 5000;
 
 	const CacheSchema = DistTagsSchema.extend({
-		checkedAt: z.string().datetime(),
+		checkedAt: z.iso.datetime(),
 	});
 	type Cache = z.infer<typeof CacheSchema>;
 
@@ -185,7 +185,7 @@ export namespace UpdateNotice {
 			}),
 			z.object({ kind: z.literal("gone"), head: z.string() }),
 		]),
-		checkedAt: z.string().datetime(),
+		checkedAt: z.iso.datetime(),
 	});
 
 	/**

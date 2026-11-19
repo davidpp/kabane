@@ -598,7 +598,7 @@ export namespace Loop {
 	};
 
 	const PackageSchema = z.object({
-		scripts: z.record(z.string()).catch({}).default({}),
+		scripts: z.record(z.string(), z.string()).catch({}).default({}),
 	});
 
 	const scriptsOf = (root: string): Record<string, string> => {
