@@ -81,12 +81,6 @@ export const layers: Readonly<Record<string, Rule>> = {
 	kabane: {
 		layer: "host",
 		testSupport: ["packages/cli/issue-corpus-harness.ts"],
-		relativeImports: {
-			"packages/cli/src/update-process.ts": {
-				"../../core/result":
-					"JCAB-334: let the release fixtures resolve core, or make update-process dependency-free",
-			},
-		},
 		dependencies: [
 			"@cabane/acp",
 			"@cabane/board",
