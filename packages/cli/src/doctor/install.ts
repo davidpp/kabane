@@ -5,7 +5,7 @@
 // `kabane mcp install --force`, so the harness writes its own file.
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute } from "node:path";
+import { basename, isAbsolute } from "node:path";
 import { err, ok, type Result } from "@cabane/core";
 import type { Doctor, Extension } from "@cabane/extension";
 import { McpInstall } from "../commands/mcp-install";
@@ -42,6 +42,18 @@ const launches = (
 	return command && leading.filter(isAbsolute).every(isFile);
 };
 
+const isBun = (command: string): boolean =>
+	basename(command) === "bun" || basename(command) === "bun.exe";
+
+/**
+ * Two launches of the same kabane on different buns: the bun the entry names is the harness's
+ * runtime for kabane, not another kabane, so a Bun bump alone is no finding while it still starts.
+ */
+const bunOnly = (a: McpClients.Launch, b: McpClients.Launch): boolean =>
+	isBun(a.command) &&
+	isBun(b.command) &&
+	McpClients.sameLaunch({ ...a, command: b.command }, b);
+
 export const install = async (
 	ctx: Extension.Ctx,
 	deps: InstallDeps = {},
@@ -72,7 +84,9 @@ export const install = async (
 		}
 		const expected = McpClients.launchFor(launcher, harness);
 		const other = found.value.filter(
-			(r) => !McpClients.sameLaunch(r.launch, expected),
+			(r) =>
+				!McpClients.sameLaunch(r.launch, expected) &&
+				!(bunOnly(r.launch, expected) && launches(r.launch, which)),
 		);
 		if (other.length === 0) continue;
 		const id = `mcp-entry-stale-${harness}`;

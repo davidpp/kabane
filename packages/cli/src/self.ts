@@ -3,7 +3,8 @@
 // `/$bunfs/root/<name>` in `process.argv[1]` and `Bun.main`, a virtual path nothing outside the
 // process can run, and resolves `import.meta.url` inside that same virtual root.
 // This belongs to the CLI host: it reads the Bun process.
-import { resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { trySync } from "@cabane/core/result";
 
 export namespace Self {
@@ -62,4 +63,27 @@ export namespace Self {
 		compiled(host)
 			? { command: host.execPath, args: [] }
 			: { command: host.execPath, args: [host.main] };
+
+	// A bun mise installed: `<mise data>/installs/bun/<version>/bin/bun`, and its version-free shim
+	// `<mise data>/shims/bun`. The data directory is captured, not assumed, so MISE_DATA_DIR holds.
+	const MISE_BUN = /^(.*)\/installs\/bun\/[^/]+\/bin\/bun$/;
+
+	const isFile = (path: string): boolean =>
+		existsSync(path) && statSync(path).isFile();
+
+	/**
+	 * `launch` for a config that outlives this process, the harness MCP entry: a mise-installed bun
+	 * becomes mise's shim, which picks the pinned bun at each start, so a Bun bump leaves the entry
+	 * working. Any other bun, and a binary, stay as `launch` has them.
+	 */
+	export const lasting = (
+		host: Host = HOST,
+		exists: (path: string) => boolean = isFile,
+	): Launch => {
+		const now = launch(host);
+		if (compiled(host)) return now;
+		const data = MISE_BUN.exec(now.command)?.[1];
+		const shim = data === undefined ? undefined : join(data, "shims/bun");
+		return shim !== undefined && exists(shim) ? { ...now, command: shim } : now;
+	};
 }

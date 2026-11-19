@@ -13,6 +13,7 @@ import { Doctor, type Extension } from "@cabane/extension";
 import type { McpInstall } from "../commands/mcp-install";
 import { settingsPort } from "../context";
 import { McpClients } from "../mcp-clients";
+import { Self } from "../self";
 import { type InstallDeps, install } from "./install";
 
 const folders: string[] = [];
@@ -194,6 +195,27 @@ test("an entry that runs a source checkout is a suggestion: it may be deliberate
 	expect(await s.ids()).toEqual(["mcp-entry-stale-codex:mention"]);
 });
 
+test("a Bun-only difference is no finding while that bun is there, and a mention once it is gone", async () => {
+	const s = setup();
+	const bun = (version: string) =>
+		join(s.home, `.local/share/mise/installs/bun/${version}/bin/bun`);
+	const script = join(s.home, "src/kabane/packages/cli/index.ts");
+	const shim = join(s.home, ".local/share/mise/shims/bun");
+	for (const path of [bun("1.4.2"), script, shim]) write(path, "");
+	const launcher = { command: shim, args: [script] };
+	s.claude({ kabane: s.entry("claude", bun("1.4.2"), [script]) });
+	expect(await s.ids({ launcher })).toEqual([]);
+	// mise pruned 1.4.2: the entry starts nothing.
+	rmSync(dirname(dirname(bun("1.4.2"))), { recursive: true });
+	expect(await s.ids({ launcher })).toEqual(["mcp-entry-stale-claude:mention"]);
+	// Another script on a bun is another kabane, whatever the bun.
+	write(bun("1.4.2"), "");
+	const other = join(s.home, "elsewhere/index.ts");
+	write(other, "");
+	s.claude({ kabane: s.entry("claude", bun("1.4.2"), [other]) });
+	expect(await s.ids({ launcher })).toEqual(["mcp-entry-stale-claude:suggest"]);
+});
+
 test("CODEX_HOME moves Codex's config; KABANE_HARNESSES narrows, and empty reads nothing", async () => {
 	const s = setup();
 	s.codex(s.entry("codex", s.binary("1.0.0")));
@@ -254,7 +276,7 @@ for (const customConfig of [false, true])
 			const s = setup();
 			const cli = join(import.meta.dir, "../../index.ts");
 			const expected = McpClients.launchFor(
-				{ command: process.execPath, args: [cli] },
+				{ command: Self.lasting().command, args: [cli] },
 				"claude",
 			);
 			s.claude(

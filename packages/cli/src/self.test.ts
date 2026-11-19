@@ -77,3 +77,46 @@ describe("Self.executable", () => {
 		expect(Self.executable({ ...SCRIPT, entry: undefined })).toBe("kabane");
 	});
 });
+
+describe("Self.lasting", () => {
+	const MISE: Self.Host = {
+		...SCRIPT,
+		execPath: "/home/me/.local/share/mise/installs/bun/1.4.4/bin/bun",
+	};
+	const SHIM = "/home/me/.local/share/mise/shims/bun";
+
+	it("names mise's shim for a mise-installed bun, when the shim is there", () => {
+		expect(Self.lasting(MISE, (path) => path === SHIM)).toEqual({
+			command: SHIM,
+			args: [SCRIPT.main],
+		});
+	});
+
+	it("keeps the versioned bun when there is no shim to point at", () => {
+		expect(Self.lasting(MISE, () => false)).toEqual(Self.launch(MISE));
+	});
+
+	it("follows a moved mise data directory", () => {
+		const host = {
+			...SCRIPT,
+			execPath: "/data/mise/installs/bun/latest/bin/bun",
+		};
+		expect(Self.lasting(host, () => true).command).toBe("/data/mise/shims/bun");
+	});
+
+	it("leaves any other bun, and a binary, as launch has them", () => {
+		expect(Self.lasting(SCRIPT, () => true)).toEqual(Self.launch(SCRIPT));
+		expect(
+			Self.lasting(
+				{
+					...BINARY,
+					execPath: "/home/me/.local/share/mise/installs/bun/1/bin/bun",
+				},
+				() => true,
+			),
+		).toEqual({
+			command: "/home/me/.local/share/mise/installs/bun/1/bin/bun",
+			args: [],
+		});
+	});
+});
