@@ -19,27 +19,35 @@ import { Settings } from "@cabane/extension";
 import type * as LoopPackage from "../index";
 import { TestHarnesses } from "../src/test-harnesses";
 import { testHost } from "../src/test-host";
-import { build } from "./build";
 
 const CLI = resolve(import.meta.dir, "../../../packages/cli/index.ts");
+
+/** Runs the build in its own process, so a bundler failure fails only these tests. */
+const build = (into: string, root?: string) => {
+	const run = Bun.spawnSync([
+		process.execPath,
+		join(import.meta.dir, "build.ts"),
+		into,
+		...(root === undefined ? [] : [root]),
+	]);
+	return { code: run.exitCode, stderr: run.stderr.toString() };
+};
 
 it("builds a relocatable loop with its client, procedures and working shipped lenses", async () => {
 	const work = mkdtempSync(join(tmpdir(), "loop-build-"));
 	try {
 		const output = join(work, "output");
-		const result = await build(output);
-		expect(result.success).toBe(true);
-		expect(result.logs).toEqual([]);
-		expect(JSON.parse(readFileSync(`${output}.metafile.json`, "utf8"))).toEqual(
-			result.metafile,
+		expect(build(output)).toEqual({ code: 0, stderr: `build: ${output}\n` });
+		const metafile: Bun.BuildMetafile = JSON.parse(
+			readFileSync(`${output}.metafile.json`, "utf8"),
 		);
 		expect(existsSync(join(output, "metafile.json"))).toBe(false);
 		expect(
-			Object.keys(result.metafile?.inputs ?? {}).some((file) =>
+			Object.keys(metafile.inputs).some((file) =>
 				file.includes("packages/acp/src/client.ts"),
 			),
 		).toBe(true);
-		const emitted = Object.values(result.metafile?.outputs ?? {})
+		const emitted = Object.values(metafile.outputs)
 			.flatMap((output) => Object.entries(output.inputs))
 			.filter(([, input]) => input.bytesInOutput > 0)
 			.map(([file]) => file);
@@ -138,9 +146,10 @@ it("carries a modules entry into the built manifest, at the built path kabane im
 			mkdirSync(join(source, directory));
 		const home = join(work, "home");
 		const installed = join(home, "extensions/sample");
-		const result = await build(installed, source);
-		expect(result.logs).toEqual([]);
-		expect(result.success).toBe(true);
+		expect(build(installed, source)).toEqual({
+			code: 0,
+			stderr: `build: ${installed}\n`,
+		});
 		expect(
 			JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).kabane,
 		).toEqual({ extension: "./index.js", api: 1, modules: "./src/modules.js" });

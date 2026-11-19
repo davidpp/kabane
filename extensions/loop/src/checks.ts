@@ -109,11 +109,19 @@ export namespace Checks {
 			});
 			return made;
 		}
+		// Nothing uncommitted is not nothing done: the session may have committed its work itself,
+		// and the tree's HEAD is then that work.
 		if (made.value === undefined) {
+			const at = await (ctx.deps.git ?? Worktree.git)(dir, [
+				"rev-parse",
+				"--short=12",
+				"HEAD",
+			]);
 			RunState.event(ctx, {
 				...tag,
 				type: "checkpoint",
-				summary: `no checkpoint for ${subject.label}: nothing changed since the last one`,
+				task: subject.label,
+				summary: `no checkpoint for ${subject.label}: nothing left uncommitted${at.ok ? `, its tree stays at ${at.value.trim()}` : ""}`,
 			});
 			return ok({});
 		}

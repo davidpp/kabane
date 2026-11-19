@@ -174,7 +174,8 @@ kabane config set extensions dispatch --layer global
 
 The directory stays and loads nothing. Its settings stay in their files and are read again when
 you enable it. An extension still enabled whose directory you removed stops nothing either: each
-command that loads extensions prints `Extension loop: not installed; put it in
-<home>/extensions/loop/`, then how to take it off the list.
+command that loads extensions, `kabane mcp` included, prints `Extension loop: not installed; put
+it in <home>/extensions/loop/` on stderr, then how to take it off the list. The board shows
+`Extension loop refused: not installed` over its footer instead, until you press `esc`.
 
 To write your own, see [writing an extension](writing-an-extension.md).

@@ -11,10 +11,20 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { build } from "./build";
 
 const EXTENSION = resolve(import.meta.dir, "..");
 const CLI = resolve(EXTENSION, "../../packages/cli/index.ts");
+
+/** Runs the build in its own process, so a bundler failure fails only these tests. */
+const build = (into: string, root?: string) => {
+	const run = Bun.spawnSync([
+		process.execPath,
+		join(import.meta.dir, "build.ts"),
+		into,
+		...(root === undefined ? [] : [root]),
+	]);
+	return { code: run.exitCode, stderr: run.stderr.toString() };
+};
 
 const files = (root: string): string[] =>
 	readdirSync(root, { recursive: true, withFileTypes: true })
@@ -26,9 +36,7 @@ it("builds a relocatable extension that kabane loads from a home, with its templ
 	const work = realpathSync(mkdtempSync(join(tmpdir(), "dispatch-build-")));
 	try {
 		const output = join(work, "output");
-		const result = await build(output);
-		expect(result.success).toBe(true);
-		expect(result.logs).toEqual([]);
+		expect(build(output)).toEqual({ code: 0, stderr: `build: ${output}\n` });
 		const home = join(work, "home");
 		const installed = join(home, "extensions/dispatch");
 		mkdirSync(join(home, "extensions"), { recursive: true });
@@ -112,9 +120,10 @@ it("carries a modules entry into the built manifest, at the built path kabane im
 			mkdirSync(join(source, directory));
 		const home = join(work, "home");
 		const installed = join(home, "extensions/sample");
-		const result = await build(installed, source);
-		expect(result.logs).toEqual([]);
-		expect(result.success).toBe(true);
+		expect(build(installed, source)).toEqual({
+			code: 0,
+			stderr: `build: ${installed}\n`,
+		});
 		expect(
 			JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).kabane,
 		).toEqual({ extension: "./index.js", api: 1, modules: "./src/modules.js" });

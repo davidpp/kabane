@@ -22,6 +22,12 @@ const ROOT = resolve(import.meta.dir, ".."),
 		mkdtempSync(join(tmpdir(), "kabane-local-release-test-")),
 	);
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
+/** Links the checkout's own core where `bun install` puts workspace packages, as in a real installed checkout. */
+const linkCore = (checkout: string): void => {
+	const link = join(checkout, "packages/cli/node_modules/@cabane/core");
+	mkdirSync(dirname(link), { recursive: true });
+	symlinkSync("../../../core", link);
+};
 const State = z.object({
 	immutable: z.boolean(),
 	readbacks: z.number(),
@@ -241,8 +247,18 @@ process.exitCode = result.ok ? 0 : 1;`,
 		join(root, "packages/cli/package.json"),
 		JSON.stringify({ name: "kabane", version: "0.1.0", private: true }),
 	);
+	writeFileSync(
+		join(root, "packages/core/package.json"),
+		JSON.stringify({
+			name: "@cabane/core",
+			private: true,
+			type: "module",
+			exports: { "./result": "./result.ts" },
+		}),
+	);
 	writeFileSync(join(root, ".test-state/events"), "");
 	symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"));
+	linkCore(root);
 	const realNpm = Bun.which("npm");
 	expect(realNpm).toBeTruthy();
 	const bin = join(root, ".test-state/bin");
@@ -565,6 +581,7 @@ test.concurrent("fixed tooling publishes a retained original source checkout wit
 		join(fixture.root, "node_modules"),
 		join(tooling, "node_modules"),
 	);
+	linkCore(tooling);
 	writeFileSync(
 		join(tooling, "tooling-only.md"),
 		"fixed tooling source is intentionally different",

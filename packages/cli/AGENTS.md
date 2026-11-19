@@ -20,8 +20,9 @@ data modules; setup, configuration, updates and the board's runtime are the host
 ## It is the host, so it may depend on everything below it and nothing beside it
 
 Its layer is `host`; its entry in `scripts/layers.ts` (`kabane`) says what it may list. It is
-the only package that depends on `@cabane/sqlite` at runtime. One named exception remains: `src/update-process.ts` importing `../../core/result` by
-relative path, which JCAB-334 removes. Never add an import from `extensions/`.
+the only package that depends on `@cabane/sqlite` at runtime. It imports every other package by
+its package name, `src/update-process.ts` included (`@cabane/core/result`), and its entry lists
+no relative-import exception. Never add an import from `extensions/`.
 
 A first-party data module is registered in `MODULES` and in `packages/worker/src/hub.ts`. What
 core needs from the device reaches it through a port wired in `configureRuntime`, never by core

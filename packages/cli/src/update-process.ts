@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../../core/result";
+import { err, ok, type Result } from "@cabane/core/result";
 
 export type ProcessReply = { code: number; stdout: string };
 
