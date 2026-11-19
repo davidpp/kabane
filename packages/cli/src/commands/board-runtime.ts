@@ -323,7 +323,7 @@ export const boardDeps = async (
 		resolveScope: async () =>
 			scope ? { scopeUri: scope.scopeUri, label: scope.label } : null,
 		copilot: BoardCopilot.create({
-			kabaneBin: Self.executable(),
+			kabaneBin: () => Self.current(),
 			harness,
 			// The harness reads the project's own CLAUDE.md / AGENTS.md from its cwd. A
 			// `--scope` URI names a scope without saying where it is checked out, so the
