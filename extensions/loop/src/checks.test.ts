@@ -171,6 +171,39 @@ describe("Checks", () => {
 		expect(task.ok && task.value?.state).toBe("done");
 	});
 
+	it("a session that committed its own work gets no checkpoint, and the trace names its commit", async () => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			state: "done",
+		});
+		const ctx = ctxFor(await runOn(parent, { ok: "true" }, true));
+		const worktree = ctx.run.worktree ?? "";
+		writeFileSync(join(worktree, "out.txt"), "made by the session\n");
+		GitFixture.run(worktree, ["add", "-A"]);
+		GitFixture.run(worktree, ["commit", "-q", "-m", "the session's own"]);
+		const committed = head(worktree);
+
+		const subject = {
+			taskId: child.id,
+			label: child.shortId ?? "",
+			title: "child",
+		};
+		const pass = await Checks.gate(ctx, subject);
+
+		expect([pass.ok, pass.checkpoint]).toEqual([true, undefined]);
+		expect(head(worktree)).toBe(committed);
+		const events = RunStore.readEvents(home, "run-1");
+		const said = events.ok
+			? events.value
+					.filter((e) => e.type === "checkpoint")
+					.map((e) => e.summary)
+			: [];
+		expect(said).toEqual([
+			`no checkpoint for ${subject.label}: nothing left uncommitted, its tree stays at ${committed.slice(0, 12)}`,
+		]);
+	});
+
 	it("a red pass reopens the subtask, and its next brief quotes the gate's output", async () => {
 		const parent = await add("parent");
 		const child = await add("child", {
