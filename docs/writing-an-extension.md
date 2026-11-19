@@ -211,7 +211,7 @@ The notes live in `kabane.db`, in the `extension_notes` table the migration crea
 checkout (`bun run build` at its root) and add that build as a dev dependency:
 
 ```bash
-bun add -d /path/to/kabane/packages/cli/dist typescript@5.9.3 @types/bun@1.4.0
+bun add -d /path/to/kabane/packages/cli/dist typescript@7.0.2 @types/bun@1.4.0
 ```
 
 The imports are `import type`, so the extension loads with or without them installed. A
