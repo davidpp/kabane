@@ -320,7 +320,8 @@ when `CLAUDE_CONFIG_DIR` is nonempty, otherwise from `~/.claude.json`. This incl
 both user entries and the current project’s local entries.
 
 Updates are latest-stable only within the installed major (`0.x`: same minor). Source links,
-file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse mutation;
+file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse both
+`update` and `update --check` (exit 1, no registry request);
 no automatic link repair, downgrade, git pull, startup networking or MCP rewiring is performed.
 The explicit update preserves Bun registry/proxy/age policy; dry-run may populate external
 package-manager caches, while check only reads metadata and may use runtime/metadata caches.

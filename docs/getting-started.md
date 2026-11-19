@@ -745,7 +745,11 @@ kabane update               # explicit policy preflight, exact install, owned-bi
 
 Supported: positively identified **hoisted Bun global registry installs**, including proven
 explicit global-directory overrides. Source `bun link`, development, local-tarball,
-other-manager and unknown/missing-global-bin layouts refuse mutation with manual guidance.
+other-manager and unknown/missing-global-bin layouts are refused with manual guidance, and
+`--check` is refused with them: it reads registry metadata only for an install `kabane update`
+could replace, so on these layouts both commands print `Unsupported installation; ...` (status
+`unsupported` in `--json`), exit 1 and make no registry request. A tarball installed with
+`bun add -g ./kabane-<version>.tgz`, as the release smoke test does, is one of them.
 No internal-bin/PATH fallback or link repair is performed. This is not a claim that every
 Bun isolated layout is broken; unverified layouts are simply outside this updater's support.
 
