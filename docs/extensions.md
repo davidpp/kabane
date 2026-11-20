@@ -128,7 +128,7 @@ from disk, and the loop's source imports kabane's workspace packages, so it refu
 extension and keeps the others:
 
 ```text
-Extension loop: the entry could not be imported: Cannot find package '@cabane/acp' imported from /…/kabane/extensions/loop/src/commands.ts; repair the entry and its dependencies; or remove it from extensions with `kabane config set extensions <names> --layer global`.
+Extension loop: the entry could not be imported: Cannot find package '@kabane/acp' imported from /…/kabane/extensions/loop/src/commands.ts; repair the entry and its dependencies; or remove it from extensions with `kabane config set extensions <names> --layer global`.
 ```
 
 ## Try them in the sandbox

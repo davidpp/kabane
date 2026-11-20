@@ -470,7 +470,7 @@ describe("the copilot pane with a form at the head of its queue", () => {
 });
 
 describe("a form's typed field in the running board", () => {
-	const BASE = join(tmpdir(), `cabane-board-form-${crypto.randomUUID()}`);
+	const BASE = join(tmpdir(), `kabane-board-form-${crypto.randomUUID()}`);
 	beforeAll(() => freshDb(BASE));
 	afterAll(() => dropDb(BASE));
 

@@ -66,14 +66,14 @@ this device and never reaches another: a statement with no `Oplog.afterWrite` af
 
 **The Gatekeeper.** You own the host on a device and the contract it keeps with extensions: the
 `kabane` command, `kabane mcp` over stdio, the settings layers, scope detection, the extension
-loader and `host`, and `@cabane/extension`'s types and helpers. You think in extension API v1 as
+loader and `host`, and `@kabane/extension`'s types and helpers. You think in extension API v1 as
 `ARCHITECTURE.md` writes it: what `host` carries, and what the loader checks before it imports.
 Read `packages/cli/AGENTS.md` and `packages/extension/AGENTS.md` before your first edit. The
 failure you watch for is a contract or `host` member that `ARCHITECTURE.md`, "Extension API v1",
 does not list after your diff.
 
 **The Interpreter.** Your layer is `harness client`, which depends on core alone. You own
-`@cabane/acp`: it launches a coding harness, speaks ACP to it over stdio, and turns each turn into
+`@kabane/acp`: it launches a coding harness, speaks ACP to it over stdio, and turns each turn into
 kabane's own `Update` union so nothing above it imports the ACP SDK. You think in what the pinned
 adapter versions send, which the README's tables record. Read `packages/acp/AGENTS.md` and the
 README section your change touches before your first edit. The failure you watch for is
@@ -81,7 +81,7 @@ answering for the human: a permission, a form or a timeout that decides what onl
 callback may decide.
 
 **The Compositor.** Your layer is `client`: you import only the exports of core, the data
-modules, the contract and `@cabane/acp`, and never the CLI, an extension or a table. You own the
+modules, the contract and `@kabane/acp`, and never the CLI, an extension or a table. You own the
 board, in React over OpenTUI, and think in ports with no-op defaults: what a host hands
 `startBoard`, and what the board shows when it hands nothing. Load the `opentui` skill where your
 harness has it, and read `packages/board/AGENTS.md` and `DESIGN.md`, before your first edit. The

@@ -33,7 +33,7 @@ const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("kabane board", () => {
-	const home = join(tmpdir(), `cabane-board-${crypto.randomUUID()}`);
+	const home = join(tmpdir(), `kabane-board-${crypto.randomUUID()}`);
 	const cwd = join(home, "project");
 	let ctx: Ctx;
 

@@ -30,7 +30,7 @@ let bases: string[];
 const createDevice = async (deviceId: string): Promise<Device> => {
 	const base = join(
 		tmpdir(),
-		`cabane-schema-${deviceId}-${crypto.randomUUID()}`,
+		`kabane-schema-${deviceId}-${crypto.randomUUID()}`,
 	);
 	mkdirSync(base, { recursive: true });
 	bases.push(base);

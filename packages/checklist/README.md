@@ -1,4 +1,4 @@
-# @cabane/checklist
+# @kabane/checklist
 
 The steps of one issue, ticked as they land. It is a data module: its own table
 (`task_checklist_items`), migrations, MCP tools and a section of the brief, registered with

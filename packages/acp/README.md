@@ -1,4 +1,4 @@
-# @cabane/acp
+# @kabane/acp
 
 Agent Client Protocol client used by the board’s copilot and the loop. It launches one coding harness
 (Claude Code, Codex, or Gemini) as a subprocess, speaks ACP to it over stdio, and turns a
@@ -6,7 +6,7 @@ prompt into a stream of kabane's own updates. The board consumes that stream and
 imports the SDK.
 
 The board's `BoardCopilot` uses this package as a library; its implementation and
-instructions live in `@cabane/board` (see [the board README](../board/README.md#the-acp-copilot)).
+instructions live in `@kabane/board` (see [the board README](../board/README.md#the-acp-copilot)).
 
 ## Pieces
 
@@ -56,7 +56,7 @@ instructions live in `@cabane/board` (see [the board README](../board/README.md#
   Rules); `toElicitationRequest` is the form-to-fields mapping it applies.
 - `CopilotInstructions` — `actorUri` and `SERVER_NAME`.
 - `FormField` and the form types — typed answer validation shared by the board and the loop.
-  `@cabane/acp/form-field` is a light entry point with no ACP SDK on its import path.
+  `@kabane/acp/form-field` is a light entry point with no ACP SDK on its import path.
 
 ## Session modes
 

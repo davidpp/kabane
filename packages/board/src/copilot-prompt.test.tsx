@@ -40,10 +40,10 @@ import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
-const TEST_BASE = join(tmpdir(), `cabane-board-copilot-${crypto.randomUUID()}`);
+const TEST_BASE = join(tmpdir(), `kabane-board-copilot-${crypto.randomUUID()}`);
 const PERMISSION_BASE = join(
 	tmpdir(),
-	`cabane-board-permission-${crypto.randomUUID()}`,
+	`kabane-board-permission-${crypto.randomUUID()}`,
 );
 
 const sleep = (ms: number): Promise<void> =>

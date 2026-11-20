@@ -1,5 +1,5 @@
 ---
-applies: where code lives and what it may reach, such as a new package or workspace dependency, an edit to scripts/layers.ts, code moved between packages, anything under packages/core, the extension contract (packages/extension) or what an extension gets from kabane, a new MCP tool, a new settings namespace, a new table, and an @cabane/* import in extensions/
+applies: where code lives and what it may reach, such as a new package or workspace dependency, an edit to scripts/layers.ts, code moved between packages, anything under packages/core, the extension contract (packages/extension) or what an extension gets from kabane, a new MCP tool, a new settings namespace, a new table, and an @kabane/* import in extensions/
 ---
 
 # Architecture lens
@@ -13,7 +13,7 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
 
 - List what the diff adds or moves across a package boundary: a package, a workspace
   dependency, a file or export in `packages/core`, a migration, an MCP tool, a field of the
-  extension contract, a settings namespace, an `@cabane/*` import under `extensions/`. Take
+  extension contract, a settings namespace, an `@kabane/*` import under `extensions/`. Take
   it from the diff (`git diff --stat`, then the files), not from the briefs.
 - For each, ask the questions below that fit it. Each question checks one rule; a change that
   breaks the rule is a finding.
@@ -73,7 +73,7 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
    (`packages/cli/src/config-tools.ts`) and is served over stdio only; an extension's tool is
    named `kabane_<extension>_<verb>`, comes from its `mcp` field, and the hub never serves it.
 9. **Does code under `extensions/` take only types from kabane, apart from the harness client
-   it bundles?** A new value used from `@cabane/core`, `board`, `checklist` or `extension` is
+   it bundles?** A new value used from `@kabane/core`, `board`, `checklist` or `extension` is
    new dependence on kabane's internals: every value an extension needs from kabane arrives on
    `host`, and `scripts/layers.ts` refuses a production value import from an extension's
    development dependencies. An extension module writes only the tables it declares and

@@ -1,7 +1,7 @@
 {
 	"name": "@kabane/board",
 	"version": "0.1.0",
-	"description": "Cabane terminal kanban (OpenTUI) over ActivitySource and Dispatcher ports",
+	"description": "Kabane terminal kanban (OpenTUI) over ActivitySource and Dispatcher ports",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

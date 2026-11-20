@@ -16,7 +16,7 @@ import { BoardNav } from "./nav";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 
-const BASE = join(tmpdir(), `cabane-board-answer-${crypto.randomUUID()}`);
+const BASE = join(tmpdir(), `kabane-board-answer-${crypto.randomUUID()}`);
 
 const QUESTION_ID = "loop:q-1";
 let child: Task | undefined;

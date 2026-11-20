@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { conformanceCases } from "@kabane/core";
 import { SqliteDb } from "./index";
 
-const base = join(tmpdir(), `cabane-conformance-${crypto.randomUUID()}`);
+const base = join(tmpdir(), `kabane-conformance-${crypto.randomUUID()}`);
 mkdirSync(base, { recursive: true });
 
 // The provider ignores nothing here: every case shares one file so the cases

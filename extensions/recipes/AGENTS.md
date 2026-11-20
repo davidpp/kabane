@@ -1,4 +1,4 @@
-# @cabane/recipes (extensions/recipes)
+# @kabane/recipes (extensions/recipes)
 
 The recipes extension: recipes from a project's `.kabane/recipes/`, each naming a project skill or
 carrying its own prompt, `kabane run` to start
@@ -26,7 +26,7 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 
 ## It takes types from kabane and no value
 
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/recipes"`) allows no runtime
+Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/recipes"`) allows no runtime
 dependency. Scope detection, records, storage, zod, outcomes and the result helpers arrive on
 `host`; the factory binds the result helpers through `src/result.ts`. Core, the contract and zod
 are development dependencies for types and for the tests' own result helpers.

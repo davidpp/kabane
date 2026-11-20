@@ -1,7 +1,7 @@
 {
 	"name": "@kabane/extension",
 	"version": "0.1.0",
-	"description": "Cabane extension contract: the commands and board ports an extension hands the kabane CLI",
+	"description": "Kabane extension contract: the commands and board ports an extension hands the kabane CLI",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

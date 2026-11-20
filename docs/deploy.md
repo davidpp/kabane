@@ -3,7 +3,9 @@
 This is the optional Cloudflare hub, for syncing several machines; one machine on local
 SQLite needs none of it ([`getting-started.md`](getting-started.md)). You host it on your own
 Cloudflare account, on a domain you own, behind your own Cloudflare Access team. Nobody
-else's hub is involved. A hub deployed before 1.0.0 runs as `cabane-worker`; §5.9 moves it.
+else's hub is involved. A hub deployed before 1.0.0 runs as `cabane-worker`; §5.9 moves it,
+and [`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris) covers the
+devices.
 
 **Verified locally:** 2026-09-07 against `wrangler dev` with the dev verifier (see the last
 section). Steps an agent must never perform are marked **MANUAL**: they touch Cloudflare,
@@ -142,10 +144,10 @@ times, duration 1 year:
 
 | Token name | Runtime | Actor the Worker stamps |
 |---|---|---|
-| `kabane-claude-code` | Claude Code | `cabane://actor/agent/claude` |
-| `kabane-hermes` | Hermes | `cabane://actor/agent/hermes` |
-| `kabane-codex` | Codex | `cabane://actor/agent/codex` |
-| `kabane-cron` | scheduled pulls on devices | `cabane://actor/agent/cron` |
+| `kabane-claude-code` | Claude Code | `kabane://actor/agent/claude` |
+| `kabane-hermes` | Hermes | `kabane://actor/agent/hermes` |
+| `kabane-codex` | Codex | `kabane://actor/agent/codex` |
+| `kabane-cron` | scheduled pulls on devices | `kabane://actor/agent/cron` |
 
 Each creation shows the **Client ID** (ends in `.access`) and the **Client Secret** once.
 Store the secret in the runtime machine's keychain or env; it never goes into a repo. The
@@ -157,9 +159,9 @@ tokens to the `runtimes` Service Auth policy.
 Set `ACCESS_AUD` to the tag from 1.3, `HUMAN_EMAIL` to the address in the Allow policy,
 `SERVICE_ACTORS` to a one-line JSON map of client IDs to actor URIs, and
 `KABANE_TIMEZONE` to your IANA timezone, e.g. `America/Toronto`. For example, the map's
-shape is `{"<claude-code client id>.access":"cabane://actor/agent/claude"}`; add the other
+shape is `{"<claude-code client id>.access":"kabane://actor/agent/claude"}`; add the other
 clients from 1.4 the same way. Map each to an agent actor: a map naming a
-`cabane://actor/human/` URI admits no service token at all. Source these values in your environment and run
+`kabane://actor/human/` URI admits no service token at all. Source these values in your environment and run
 `bun run deploy` again from the clone root.
 
 `wrangler.jsonc` keeps empty placeholders for the Access vars. Deploying with raw
@@ -184,7 +186,7 @@ curl -s https://<your-domain>/health \
   -H "CF-Access-Client-Secret: <client secret>"
 ```
 
-Expected: `{"ok":true,"service":"kabane-worker","actor":"cabane://actor/agent/claude"}`
+Expected: `{"ok":true,"service":"kabane-worker","actor":"kabane://actor/agent/claude"}`
 with the actor matching the token you used. And the reject test:
 
 ```bash
@@ -270,7 +272,7 @@ point at the installed file. For working on Kabane from source, see the
 
 ```bash
 kabane init \
-  --actor cabane://actor/human/<your name> \
+  --actor kabane://actor/human/<your name> \
   --device <short machine name> \
   --sync-url https://<your-domain> \
   --sync-token '<SYNC_TOKEN from 1.2>'
@@ -280,7 +282,7 @@ Expected:
 
 ```
 ✓ Initialized /Users/<you>/.kabane
-  actor:  cabane://actor/human/<your name>
+  actor:  kabane://actor/human/<your name>
   device: <short machine name>
   sync:   https://<your-domain>
 ```
@@ -426,7 +428,7 @@ claude mcp list
 ```
 
 Expected: `kabane: https://<your-domain>/mcp (HTTP) - ✔ Connected`. Writes from this
-connection are stamped `cabane://actor/agent/claude`.
+connection are stamped `kabane://actor/agent/claude`.
 
 Local device instead (no network, sessions included):
 
@@ -435,8 +437,8 @@ kabane mcp install --harness claude
 claude mcp list | grep kabane
 ```
 
-Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `kabane: <bun>
-<installed kabane bin> mcp --as cabane://actor/agent/claude - ✔ Connected`. It
+Expected: `✓ claude installed  as kabane://actor/agent/claude`, then `kabane: <bun>
+<installed kabane bin> mcp --as kabane://actor/agent/claude - ✔ Connected`. It
 runs `claude mcp add -s user` for a new entry. Existing entries are left alone: a launch
 matching this installation (or a hub URL) is reported as already installed; a different
 local command is `stale` (`registered with another command` in text). `--force`, or
@@ -487,7 +489,7 @@ kabane mcp install --harness codex
 codex mcp get kabane
 ```
 
-Expected: `args: <installed kabane bin> mcp --as cabane://actor/agent/codex`.
+Expected: `args: <installed kabane bin> mcp --as kabane://actor/agent/codex`.
 `codex mcp add` rewrites the whole `config.toml` in its own formatting (table order,
 `120` as `120.0`); the content is the same, but keep a copy if you diff that file.
 
@@ -499,7 +501,7 @@ kabane mcp install --harness gemini
 gemini mcp list
 ```
 
-Expected: `✓ kabane: ... mcp --as cabane://actor/agent/gemini (stdio) - Connected`.
+Expected: `✓ kabane: ... mcp --as kabane://actor/agent/gemini (stdio) - Connected`.
 
 ### 4.4 MCP inspector, the first browser-style test — MANUAL
 
@@ -511,7 +513,7 @@ npx -y @modelcontextprotocol/inspector https://<your-domain>/mcp
 
 In the UI, transport Streamable HTTP, no headers, Connect. Expected: a browser tab opens on
 the Access login, you authenticate as `HUMAN_EMAIL`, the inspector lists fifteen tools, and
-`kabane_scopeList` returns your scopes. Writes are stamped `cabane://actor/human/<local
+`kabane_scopeList` returns your scopes. Writes are stamped `kabane://actor/human/<local
 part>`.
 
 ### 4.5 Claude.ai — MANUAL
@@ -543,7 +545,7 @@ Test order, and stop at the first failure: inspector (4.4), Claude Code (4.1), C
 The other direction: `A` in the board starts an agent session on this machine and hands it
 what is on screen. Nothing here touches Cloudflare or the hub — the harness runs locally as
 you, and its writes go through `kabane mcp` into this device's database, stamped
-`cabane://actor/agent/<harness>`.
+`kabane://actor/agent/<harness>`.
 
 | `copilot.harness` | Needs | What the board launches |
 |---|---|---|
@@ -578,7 +580,7 @@ What the harness brings and what kabane adds:
   unchanged. `"harness": { "mode": "default" }` in `config.json` turns it off.
 - **Added by kabane**: `KABANE_SESSION=1` in the harness environment, so your own hooks can
   tell a board session from an interactive one; one instruction block naming the job; and
-  one MCP server, `kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`.
+  one MCP server, `kabane mcp --scope <uri> --as kabane://actor/agent/<harness>`.
 
 The first turn cold-starts `npx`, which takes a few seconds; the footer indicator appears
 immediately. If it fails with an npm resolution error, check for a release-age guard:
@@ -704,11 +706,14 @@ another script with its own Durable Objects, so the new hub starts with an empty
 empty cloud device: nothing carries over from the old one.
 
 1. Update every device first and run `kabane doctor --fix` on each
-   ([`getting-started.md`](getting-started.md), "Upgrading from 1.0.0-beta: actor URIs").
+   ([`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris)).
 2. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
    `<your-domain>`. A hostname serves one Worker at a time.
-3. Deploy the new Worker as in 1.1 and 1.5, with the same values in your environment. The
-   script attaches `<your-domain>` to `kabane-worker` and uploads the same `SYNC_TOKEN`.
+3. Set `SERVICE_ACTORS` with `kabane://actor/agent/<name>` values: the Worker refuses any
+   value that is not an agent actor under that prefix, the old `cabane://actor/agent/...`
+   included, and then admits no service token at all. Deploy the new Worker as in 1.1 and
+   1.5, with the rest of the values unchanged. The script attaches `<your-domain>` to
+   `kabane-worker` and uploads the same `SYNC_TOKEN`.
 4. The Access application from 1.3 protects the hostname, not the script, so it covers
    `kabane-worker` as it is: same AUD, same policies, same service tokens. Check it with the
    `/health` requests in 1.5.
@@ -730,15 +735,15 @@ localhost.
 
 | Step | Result |
 |---|---|
-| 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"cabane://actor/human/<local part>"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
+| 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"kabane://actor/human/<local part>"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
 | 2.1 historical `bun link` | `kabane` on PATH at `~/.bun/bin/kabane`, `--help` lists the commands; the current npm install path is covered by `bun run smoke` in CI |
 | 2.2 to 2.4 device A | `init` → `sync status` "not armed" → a task added before arming → `sync backfill` seeded and pushed it (1 op) → a task added after arming was captured and pushed live |
 | 3 device B | `init`, `sync pull` → 2 ops applied, both tasks listed |
-| hub as device | after the alarm the hub's `kabane_list` returned both device tasks with the right `updatedBy`; `kabane_add` at the hub as the Hermes service identity was stamped `cabane://actor/agent/hermes` |
+| hub as device | after the alarm the hub's `kabane_list` returned both device tasks with the right `updatedBy`; `kabane_add` at the hub as the Hermes service identity was stamped `kabane://actor/agent/hermes` |
 | collision repair | hub and device A had both minted `JCAB-1`; device B's next pull applied the hub's task, `renamed 1`, and all three sides agree on `JCAB-3` for it |
 | 3.1 templates | `plutil -lint` OK on the plist, before and after the `__HOME__` substitution |
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
-| 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `cabane://actor/agent/claude`; all three configs restored afterwards |
+| 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `kabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
 
 Not verifiable without the real account, therefore **MANUAL** above: `bun run deploy`,

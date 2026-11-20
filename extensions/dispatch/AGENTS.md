@@ -1,4 +1,4 @@
-# @cabane/dispatch (extensions/dispatch)
+# @kabane/dispatch (extensions/dispatch)
 
 The dispatch extension: the dispatch skill template, the setup-dispatch skill that fills a
 project's dispatch skill from it, the grill skill that walks the human through open questions,
@@ -18,7 +18,7 @@ project's copy is behind. `README.md` is what a user reads.
 
 ## It takes types from kabane and no value
 
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/dispatch"`) allows no
+Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/dispatch"`) allows no
 runtime dependency. Scope detection, zod, outcomes and the result helpers arrive on `host`; the
 factory binds the result helpers through `src/result.ts` before anything else runs. Core and the
 contract are development dependencies for types and for the tests' own result helpers.

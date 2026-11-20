@@ -1,4 +1,4 @@
-# @cabane/extension
+# @kabane/extension
 
 The shared contract for extension commands, board ports, settings and doctor checks. To write
 an extension, start with [writing an extension](../../docs/writing-an-extension.md).
@@ -7,7 +7,7 @@ an extension, start with [writing an extension](../../docs/writing-an-extension.
 
 Import `Extension` and `Host` with `import type` from `kabane/extension`. The published
 package exports types only, including named record, command, settings, board and doctor
-types and the reachable core and zod types; no `@cabane/*` package or additional type dependency is required.
+types and the reachable core and zod types; no `@kabane/*` package or additional type dependency is required.
 
 The factory receives API 1 with `kabane.version`, `kabane.executable`, `record`, `scope`,
 `harnessMode`, `store` (for the extension's own data modules), `z`, `defineTool`, and the
@@ -60,5 +60,5 @@ a heuristic, not a migration guarantee. The storage owner constructs findings an
 chooses severity and any repair; inferred renames alone are informational.
 
 `ports.ts` exports the activity, dispatch, header, panel, settings field and copilot shortcut
-types through `@cabane/extension`. `StopAction` is the literal type `"stop"`; consumers use
+types through `@kabane/extension`. `StopAction` is the literal type `"stop"`; consumers use
 their own constant. The contract has no dependency on the board.

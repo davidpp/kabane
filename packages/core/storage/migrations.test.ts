@@ -32,7 +32,7 @@ const withDb = async <T>(fn: (db: Db) => T, at = base): Promise<T> => {
 const freshBase = (label: string): string => {
 	const dir = join(
 		tmpdir(),
-		`cabane-migrations-${label}-${crypto.randomUUID()}`,
+		`kabane-migrations-${label}-${crypto.randomUUID()}`,
 	);
 	mkdirSync(dir, { recursive: true });
 	return dir;

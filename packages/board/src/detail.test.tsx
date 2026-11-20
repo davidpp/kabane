@@ -664,7 +664,7 @@ test("Detail at 40 columns: the subtasks on now, never counted in the header, an
 		expect(child.parentTaskId).toBe(parent.id);
 	}
 	for (const [uri, kind, label] of [
-		["obsidian:prds/cabane.md", "PRD", "Cabane PRD"],
+		["obsidian:prds/kabane.md", "PRD", "Kabane PRD"],
 		["docs/adr.md", "ADR", undefined],
 	] as const) {
 		const added = await Planner.addContextRef(TEST_BASE, {
@@ -688,7 +688,7 @@ test("Detail at 40 columns: the subtasks on now, never counted in the header, an
 		const working = rows(frame).find((row) => row.includes("Second step"));
 		expect(working?.trimEnd().endsWith("in progress")).toBe(true);
 		// The ask is not on `now`.
-		expect(frame).not.toContain("Cabane PRD");
+		expect(frame).not.toContain("Kabane PRD");
 		expect(frame).not.toContain("The description reads here.");
 		for (const row of rows(frame))
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
@@ -704,7 +704,7 @@ test("Detail at 40 columns: the subtasks on now, never counted in the header, an
 		const frame = await pumpUntil(
 			described.renderOnce,
 			described.captureCharFrame,
-			(f) => f.includes("Cabane PRD") && f.includes("reads here."),
+			(f) => f.includes("Kabane PRD") && f.includes("reads here."),
 		);
 		const lines = rows(frame);
 		const brief = lines.findIndex((row) => row.includes("reads here."));

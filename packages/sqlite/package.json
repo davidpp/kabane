@@ -1,7 +1,7 @@
 {
 	"name": "@kabane/sqlite",
 	"version": "0.1.0",
-	"description": "Cabane Db adapter over bun:sqlite for local devices",
+	"description": "Kabane Db adapter over bun:sqlite for local devices",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

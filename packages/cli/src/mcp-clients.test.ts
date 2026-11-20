@@ -7,7 +7,7 @@ import { McpClients } from "./mcp-clients";
 
 const LAUNCHER = {
 	command: "/opt/bun/bin/bun",
-	args: ["/home/me/cabane/packages/cli/index.ts"],
+	args: ["/home/me/kabane/packages/cli/index.ts"],
 };
 
 describe("McpClients", () => {
@@ -25,7 +25,7 @@ describe("McpClients", () => {
 		expect(McpClients.launchFor(LAUNCHER, "codex")).toEqual({
 			command: "/opt/bun/bin/bun",
 			args: [
-				"/home/me/cabane/packages/cli/index.ts",
+				"/home/me/kabane/packages/cli/index.ts",
 				"mcp",
 				"--as",
 				"kabane://actor/agent/codex",
@@ -104,7 +104,7 @@ describe("McpClients", () => {
 			[
 				"[mcp_servers.kabane]",
 				'command = "/opt/bun/bin/bun"',
-				'args = ["/home/me/cabane/packages/cli/index.ts", "mcp", "--as", "kabane://actor/agent/codex"]',
+				'args = ["/home/me/kabane/packages/cli/index.ts", "mcp", "--as", "kabane://actor/agent/codex"]',
 			].join("\n"),
 		);
 
@@ -119,7 +119,7 @@ describe("McpClients", () => {
 		expect(generic).toEqual({
 			command: "/opt/bun/bin/bun",
 			args: [
-				"/home/me/cabane/packages/cli/index.ts",
+				"/home/me/kabane/packages/cli/index.ts",
 				"mcp",
 				"--as",
 				"kabane://actor/agent/<client>",

@@ -35,7 +35,7 @@ describe("storage over bun:sqlite", () => {
 	let base: string;
 
 	beforeEach(async () => {
-		base = join(tmpdir(), `cabane-smoke-${crypto.randomUUID()}`);
+		base = join(tmpdir(), `kabane-smoke-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		Runtime.configure({ provider: SqliteDb.provider({ dbName: DB_NAME }) });
 		unwrap(await Planner.init(base));
@@ -59,7 +59,7 @@ describe("storage over bun:sqlite", () => {
 	it("adds, links, searches, records an outcome and a session ref, and assembles a brief", async () => {
 		const parent = unwrap(
 			await Planner.addTask(base, {
-				title: "Extract the planner into Cabane",
+				title: "Extract the planner into Kabane",
 				description: "Db port over bun:sqlite and Durable Object SQLite",
 				kind: "issue",
 				scopeUri: "cabane",

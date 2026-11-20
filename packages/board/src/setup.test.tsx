@@ -50,7 +50,7 @@ const FIRST_ISSUE: SetupPlan.FirstIssue = {
 const FORM_TITLE = "kabane · setup";
 // Where `bun run sandbox` puts the config: outside HOME, so no `~` shortens it.
 const SANDBOX_PATH =
-	"/var/folders/0b/x7k2m9q1r3s5t8v0w2y4z6a8b0c2d4/T/cabane-sandbox/cabane/.kabane/config.json";
+	"/var/folders/0b/x7k2m9q1r3s5t8v0w2y4z6a8b0c2d4/T/kabane-sandbox/kabane/.kabane/config.json";
 
 type Seen = {
 	saved: SetupPlan.Plan[];
@@ -285,7 +285,7 @@ describe("elidePath", () => {
 		expect(elidePath("~/.kabane/config.json", 28)).toBe(
 			"~/.kabane/config.json",
 		);
-		expect(elidePath(SANDBOX_PATH, 28)).toBe("…/cabane/.kabane/config.json");
+		expect(elidePath(SANDBOX_PATH, 28)).toBe("…/kabane/.kabane/config.json");
 		expect(elidePath(SANDBOX_PATH, 12)).toBe("…/config.json");
 	});
 });
@@ -296,7 +296,7 @@ describe("SetupScreen form", () => {
 		try {
 			const frame = await toForm();
 			expect(frame).not.toContain("device");
-			expect(frame).not.toContain("cabane://");
+			expect(frame).not.toContain("kabane://");
 			expect(frame).toContain("[x] Claude Code");
 			expect(frame).toContain("[x] Codex");
 			expect(frame).not.toContain("pin");

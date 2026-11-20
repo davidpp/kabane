@@ -15,7 +15,7 @@ import { noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 
-const BASE = join(tmpdir(), `cabane-board-decisions-${crypto.randomUUID()}`);
+const BASE = join(tmpdir(), `kabane-board-decisions-${crypto.randomUUID()}`);
 const AGENT = "kabane://actor/agent/claude";
 
 let issueId = "";

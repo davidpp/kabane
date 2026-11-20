@@ -1,4 +1,4 @@
-# @cabane/board
+# @kabane/board
 
 A client: the terminal kanban, in React over OpenTUI. It reads the record through core and the
 data modules (`src/data.ts`, `BoardData`) and learns everything else from ports a host hands to
@@ -10,17 +10,17 @@ ramps.
 
 ## It reads through exports only, as a second client would have to
 
-Its layer is `client`; its entry in `scripts/layers.ts` (`"@cabane/board"`) says what it may
+Its layer is `client`; its entry in `scripts/layers.ts` (`"@kabane/board"`) says what it may
 list. It never imports the CLI or an extension, never opens a database (the host calls
 `Runtime.configure` before `startBoard`), and never runs SQL against a table: it calls `Planner`
 and the data modules' exports (`ARCHITECTURE.md`, "A client uses only what another client
-could"). `@cabane/sqlite` and `@cabane/handoff` are `devDependencies` for tests and stories.
+could"). `@kabane/sqlite` and `@kabane/handoff` are `devDependencies` for tests and stories.
 
 The CLI imports the board (`startBoard`, `startSetup`, `BoardCopilot`, the `Activity`,
 `Dispatchers` and `Headers` merges, `Launcher`). Nothing below this client imports it.
 
-`@cabane/extension` owns the activity, dispatch, header, panel, settings field and shortcut
-port types; `@cabane/acp/form-field` owns form types and validation. `src/ports.ts` keeps the
+`@kabane/extension` owns the activity, dispatch, header, panel, settings field and shortcut
+port types; `@kabane/acp/form-field` owns form types and validation. `src/ports.ts` keeps the
 board-only ports and no-op defaults. `src/copilot.ts` implements `BoardCopilot` over ACP;
 `src/mailbox.ts` and `src/copilot-instructions.ts` support it. The host supplies `kabaneBin`.
 `ActivitySource.questions` supplies agent questions and `answer` records their answers; the board
@@ -60,4 +60,4 @@ Mouse, the host's pasteboard, OSC 52 over ssh and a real light/dark switch are m
   which follow the terminal's palette and its light/dark switch, and a test fails on a hex
   literal elsewhere (`DESIGN.md`).
 - Adding to `src/ports.ts` a type an extension produces. That type belongs in
-  `@cabane/extension/ports.ts`; the board imports it from the contract.
+  `@kabane/extension/ports.ts`; the board imports it from the contract.

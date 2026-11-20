@@ -12,7 +12,7 @@ import { noActivity, type OpenRequests } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 
-const BASE = join(tmpdir(), `cabane-board-requests-${crypto.randomUUID()}`);
+const BASE = join(tmpdir(), `kabane-board-requests-${crypto.randomUUID()}`);
 const HERE = "jake://scope/here";
 
 let elsewhere: Task;

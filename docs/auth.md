@@ -74,8 +74,8 @@ report either way.
 application covers `<your-domain>`. An `Allow` policy for the owner's identity
 serves browser connectors through Managed OAuth. A `Service Auth` policy with
 one service token per runtime serves Claude Code, Hermes, Codex, and cron. The
-Worker verifies `Cf-Access-Jwt-Assertion` on every request and maps `common_name` to `cabane://actor/agent/<runtime>` and `email` to
-`cabane://actor/human/<local-part>`. *Security consequence:* Access rejects
+Worker verifies `Cf-Access-Jwt-Assertion` on every request and maps `common_name` to `kabane://actor/agent/<runtime>` and `email` to
+`kabane://actor/human/<local-part>`. *Security consequence:* Access rejects
 every unauthenticated request before Worker code runs, requests are logged, and
 no OAuth token or client secret is ever stored by the Worker. The one new trust
 edge is DCR: any client whose redirect URI is on the allow-list can register
@@ -112,8 +112,8 @@ Worker changes, all in `packages/worker`:
 1. `src/access.ts`: the JWT verifier (issuer `https://<team>.cloudflareaccess.com`,
    audience `ACCESS_AUD`, RS256, `type === "app"`). Add the actor mapping:
    `common_name` present → look up in `SERVICE_ACTORS` (a JSON var mapping
-   client id → `cabane://actor/agent/<name>`), unknown id → `401`; otherwise
-   `email` present → `cabane://actor/human/<local-part>`, and the email must
+   client id → `kabane://actor/agent/<name>`), unknown id → `401`; otherwise
+   `email` present → `kabane://actor/human/<local-part>`, and the email must
    equal `HUMAN_EMAIL` or the request is `401` (one human per hub).
 2. `src/hub.ts`: return `401` with no body for a missing or invalid assertion.
    Do **not** emit `WWW-Authenticate`; Managed OAuth owns the `401` shape and

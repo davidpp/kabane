@@ -20,14 +20,14 @@ answered from the board, a finding filed. Mocked transcripts do not count.
 1. **Official extensions live in `extensions/<name>`**, are workspace members, and are bundled into
    the one `kabane` npm package (`scripts/build.ts` already bundles what `packages/cli/index.ts`
    imports). One version, so an extension never runs other migrations against `kabane.db`. It may
-   import `@cabane/core` and `@cabane/acp` directly.
+   import `@kabane/core` and `@kabane/acp` directly.
 2. **Extensions are opt-in.** `config.json` gains `extensions: string[]`. A disabled extension's
    commands print how to enable it, and it contributes nothing to the board. Enabled extensions are
    imported lazily, so a plain `kabane list` loads no extension code. It still loads the board and
    ACP modules, as it already did. To print that hint, the CLI imports the disabled extensions
    too, but only when a command name is not found. Unknown names in `extensions` are ignored, so a
    config written by a newer kabane still opens, with a warning on stderr since one may be a typo.
-3. **The contract is a plain object, in `@cabane/extension`.** `Extension = { name, commands?,
+3. **The contract is a plain object, in `@kabane/extension`.** `Extension = { name, commands?,
    board?(ctx) → { activity?, dispatcher?, headers? } }`.
    - **Where it lives:** `packages/extension`, which also holds the args parser and the `Outcome`
      constructors. An extension cannot import from `packages/cli` without a cycle.
@@ -64,7 +64,7 @@ answered from the board, a finding filed. Mocked transcripts do not count.
      Human tasks remain required work and dependency blockers, but only agent issues are dispatched.
      A human-only plan waits for named tasks rather than completing early.
      Agents may add and link subtasks mid-run, and that is a normal event.
-   - **Dispatch:** `@cabane/acp`, one session per claim. Ready work is claimed continuously up to
+   - **Dispatch:** `@kabane/acp`, one session per claim. Ready work is claimed continuously up to
      a concurrency cap, with no lockstep waves. The harness is the run's implementer for every
      subtask, and a claim sets the subtask's assignee to it: agents assign the issues they file to
      themselves, so an assignee says who wrote the issue, not who the human chose to work it.
@@ -187,13 +187,13 @@ without the loop, and there is one concern per commit.
 ### A. Extension mechanism (CLI)
 Done on branch `worktree-agent-a02640e27e5096832` (`4a190e2..ae7d894`).
 - Add `"extensions/*"` to the root workspaces.
-- Add the `@cabane/extension` contract package, and the official list in
+- Add the `@kabane/extension` contract package, and the official list in
   `packages/cli/src/extensions.ts`.
 - Add `extensions` to the config schema.
 - Command lookup falls through to enabled extensions' commands, and `helpText` lists them.
 - `boardDeps` merges the enabled extensions' ports. The board gains generic `Activity.merge` and
   `Dispatchers.merge` helpers; trigger and card ids get a `<extension>:` prefix so they route back.
-- The build check confirms the bundle carries `extensions/*` and still names no `@cabane/*`
+- The build check confirms the bundle carries `extensions/*` and still names no `@kabane/*`
   dependency.
 - **Evidence:** in a sandbox, an empty `extensions/hello` with one command runs from the built
   tarball, and `kabane board` opens unchanged. Delete `hello` before merging, or keep it as the

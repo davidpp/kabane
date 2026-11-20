@@ -1,7 +1,7 @@
 /**
  * Linked-Issue Schema
  *
- * A relationship between a Cabane task and the team-facing issue it points at
+ * A relationship between a Kabane task and the team-facing issue it points at
  * in an external tracker. IDENTITY ONLY: provider, key, url, title. The
  * external issue's content is deliberately NOT stored here — whatever matters
  * about it belongs in the task's own description, written once when the link

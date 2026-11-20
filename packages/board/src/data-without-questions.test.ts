@@ -13,7 +13,7 @@ import { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 import { dropDb, freshDb } from "./test-db";
 
-const BASE = join(tmpdir(), `cabane-board-no-questions-${crypto.randomUUID()}`);
+const BASE = join(tmpdir(), `kabane-board-no-questions-${crypto.randomUUID()}`);
 
 beforeAll(async () => {
 	Runtime.configure({ provider: SqliteDb.provider() });

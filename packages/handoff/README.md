@@ -1,4 +1,4 @@
-# @cabane/handoff
+# @kabane/handoff
 
 What whoever did the work on an issue leaves for whoever reads next, another agent or the human.
 The work can be of any kind: a code change, a research note, a design. The module is data: it
@@ -63,7 +63,7 @@ newest handoff verbatim under the kind's framing line and counts the earlier one
 of the Discussion:
 
 ```
-## Handoff from cabane://actor/agent/claude · 2026-11-11T14:02:11.418Z
+## Handoff from kabane://actor/agent/claude · 2026-11-11T14:02:11.418Z
 
 The author's own account of its work: check the evidence before relying on it.
 

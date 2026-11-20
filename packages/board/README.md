@@ -1,19 +1,19 @@
-# @cabane/board
+# @kabane/board
 
 Terminal kanban for the Kabane tracker, built on OpenTUI. It reads the tracker through
-`@cabane/core` and learns about the host's running work, its dispatch targets and its copilot
+`@kabane/core` and learns about the host's running work, its dispatch targets and its copilot
 through three ports, so the same board runs standalone or inside another host.
 
 Activity, dispatch, header, panel, settings field and shortcut types come from
-`@cabane/extension`. Form types and `FormField` come from `@cabane/acp/form-field`.
-Board-only ports and their no-op defaults remain in `@cabane/board/ports`.
+`@kabane/extension`. Form types and `FormField` come from `@kabane/acp/form-field`.
+Board-only ports and their no-op defaults remain in `@kabane/board/ports`.
 
 ## Start it
 
 ```ts
-import { Runtime } from "@cabane/core";
-import { SqliteDb } from "@cabane/sqlite";
-import { startBoard } from "@cabane/board";
+import { Runtime } from "@kabane/core";
+import { SqliteDb } from "@kabane/sqlite";
+import { startBoard } from "@kabane/board";
 
 Runtime.configure({ provider: SqliteDb.provider() });
 await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
@@ -160,7 +160,7 @@ A card may list `actions` (`{ id, key, label, input?, lane? }`) the human can pr
 source's `act` runs them and resolves to the footer notice. The footer leads with them, and the `?`
 sheet lists them as `this card`. The board's own keys on a card's tab come first and cannot be taken
 (`h/l`, `j/k`, `g/G`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys), and `x` is reserved for the
-action whose id is `stop` (`StopAction` in `@cabane/extension`), as it stops the copilot's turn on its transcript: `x` runs
+action whose id is `stop` (`StopAction` in `@kabane/extension`), as it stops the copilot's turn on its transcript: `x` runs
 it while the card is in flight, and does nothing on a card that offers none. An action passes the
 lane on screen. One with `lane: true` is aimed at a single lane: the one on screen, else, on the
 all-lanes view, one of the card's `liveLanes` (every lane when the host lists none). With one, it goes
@@ -188,7 +188,7 @@ has several, `esc` drops it, and a click on the board closes it.
 The Jobs tab lists every open job on the device, whatever the board's scope, in one section per
 scope, and is in the bar only while there is one. A host's optional `JobSource` (`deps.jobs`,
 `BoardPorts.jobs` for an extension) gives each job's facts, the `JobFacts` of
-`@cabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
+`@kabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
 with its state and the command that opens it. A row leads with its newest run's state; a
 `waiting` run reads `? waiting` in the accent, and the tab's `?n` counts those jobs. A section is
 named after its jobs' folder when the source gives one, else the scope's id. Without a source a
@@ -421,7 +421,7 @@ stamped with `actor` since the turn opened. The glyphs go the way the finished-t
 does — on the next keypress — so one press acknowledges the whole turn. A copilot that names no
 `actor` never glyphs anything.
 
-The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP harness, and a
+The port is protocol-free on purpose: `@kabane/acp` implements it over an ACP harness, and a
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose
 every turn ends with `no copilot configured`.
 
@@ -560,7 +560,7 @@ and the end.
 
 ## Decisions agents file
 
-An agent that needs a human's call on an issue files it with `kabane_ask` (`@cabane/questions`):
+An agent that needs a human's call on an issue files it with `kabane_ask` (`@kabane/questions`):
 the question, its choices, the one it recommends and why, and the issue goes to `waiting`. The
 board reads these through `Questions.list` when the host registered the questions module (the CLI
 does; a host that did not shows none). They are not the `!` queue, which stays the live sessions'
@@ -598,7 +598,7 @@ key hint does what its key does.
 
 ## Checklists
 
-An agent or a shell breaks one change into steps with a checklist (`@cabane/checklist`:
+An agent or a shell breaks one change into steps with a checklist (`@kabane/checklist`:
 `kabane_checklistAdd`, `kabane checklist add`). The board reads it through `Checklist.progress`
 and `Checklist.list` when the host registered the checklist module (the CLI does; a host that did
 not shows none). It adds no items: agents and the CLI do.
@@ -626,7 +626,7 @@ one poll.
 
 ## Timeline entries
 
-An issue's timeline holds entries of a kind: a plain comment, a handoff (`@cabane/handoff`), or
+An issue's timeline holds entries of a kind: a plain comment, a handoff (`@kabane/handoff`), or
 any kind a writer names (`kabane comment <id> "…" --kind review`). The board reads them all with
 `Planner.getEntries` and writes none.
 
@@ -731,7 +731,7 @@ real light/dark switch.
 ## The ACP copilot
 
 ```ts
-import { BoardCopilot } from "@cabane/board";
+import { BoardCopilot } from "@kabane/board";
 
 const copilot = BoardCopilot.create({
   harness: "claude",
@@ -744,7 +744,7 @@ const copilot = BoardCopilot.create({
 ```
 
 Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
-`kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
+`kabane mcp --scope <uri> --as kabane://actor/agent/<harness>`, so every write goes through
 the same tools and database the board reads and arrives stamped as an agent's.
 `kabaneBin` is asked again each time a session opens, because a board outlives the kabane it
 was started from: the CLI answers with that path while it exists, else `kabane` on PATH. When it

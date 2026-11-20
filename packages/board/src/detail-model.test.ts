@@ -770,9 +770,9 @@ describe("subtasks and curated context", () => {
 					{
 						id: "r1",
 						taskId: "t1",
-						uri: "obsidian:prds/cabane.md",
+						uri: "obsidian:prds/kabane.md",
 						kind: "PRD",
-						label: " Cabane PRD ",
+						label: " Kabane PRD ",
 						addedAt: "2026-09-20T10:00:00.000Z",
 					},
 					{
@@ -790,8 +790,8 @@ describe("subtasks and curated context", () => {
 			{
 				id: "r1",
 				kind: "PRD",
-				label: "Cabane PRD",
-				uri: "obsidian:prds/cabane.md",
+				label: "Kabane PRD",
+				uri: "obsidian:prds/kabane.md",
 			},
 			{
 				id: "r2",

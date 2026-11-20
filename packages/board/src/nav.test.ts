@@ -1453,7 +1453,7 @@ describe("dispatch overlay", () => {
 			id: "custom",
 			label: "custom",
 			satisfiable: false,
-			hint: "run via: cabane dispatch custom -i …",
+			hint: "run via: kabane dispatch custom -i …",
 		}),
 	];
 	const LOADING = { taskId: "a", triggers: [], selected: 0, loading: true };
@@ -1554,7 +1554,7 @@ describe("dispatch overlay", () => {
 		expect(effect).toEqual({
 			type: "notice",
 			notice: {
-				text: "run via: cabane dispatch custom -i …",
+				text: "run via: kabane dispatch custom -i …",
 				tone: "error",
 			},
 		});

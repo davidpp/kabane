@@ -37,7 +37,7 @@ const makeRunner = (home: string, cwd: string) => {
 const json = <T>(run: Run): T => JSON.parse(run.out) as T;
 
 describe("kabane cli", () => {
-	const home = join(tmpdir(), `cabane-cli-${crypto.randomUUID()}`);
+	const home = join(tmpdir(), `kabane-cli-${crypto.randomUUID()}`);
 	const cwd = join(home, "project");
 	const run = makeRunner(home, cwd);
 	let issueId = "";
@@ -303,7 +303,7 @@ describe("kabane cli", () => {
 	});
 
 	it("init writes Access service-token headers and the directory scope", async () => {
-		const other = join(tmpdir(), `cabane-cli-init-${crypto.randomUUID()}`);
+		const other = join(tmpdir(), `kabane-cli-init-${crypto.randomUUID()}`);
 		const otherCwd = join(other, "repo");
 		mkdirSync(otherCwd, { recursive: true });
 		const runOther = makeRunner(other, otherCwd);
@@ -461,7 +461,7 @@ describe("kabane cli", () => {
 
 describe("MCP write inputs over the actual stdio entry point", () => {
 	it("accepts aliases and commit shorthand, keeps stored values, and rejects invalid writes", async () => {
-		const home = join(tmpdir(), `cabane-mcp-inputs-${crypto.randomUUID()}`);
+		const home = join(tmpdir(), `kabane-mcp-inputs-${crypto.randomUUID()}`);
 		const cwd = join(home, "project");
 		mkdirSync(join(cwd, ".kabane"), { recursive: true });
 		writeFileSync(join(cwd, ".kabane", "scope"), "inputs\n");
@@ -603,7 +603,7 @@ describe("MCP write inputs over the actual stdio entry point", () => {
 });
 
 describe("the owner's timezone", () => {
-	const home = join(tmpdir(), `cabane-cli-tz-${crypto.randomUUID()}`);
+	const home = join(tmpdir(), `kabane-cli-tz-${crypto.randomUUID()}`);
 	const cwd = join(home, "project");
 	const run = makeRunner(home, cwd);
 

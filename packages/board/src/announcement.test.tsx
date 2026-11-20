@@ -10,7 +10,7 @@ import { type Announcer, noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 
-const BASE = join(tmpdir(), `cabane-board-announce-${crypto.randomUUID()}`);
+const BASE = join(tmpdir(), `kabane-board-announce-${crypto.randomUUID()}`);
 const LINE = "kabane 9.9.9 is out · run kabane update";
 
 beforeAll(async () => {

@@ -1,4 +1,4 @@
-# @cabane/handoff
+# @kabane/handoff
 
 A data module with no table: it declares the timeline entry kind `handoff`, its template, the
 `kabane_handoff` tool and one MCP instructions paragraph. A handoff is an entry in core's
@@ -8,7 +8,7 @@ the CLI; read it before changing any of them.
 
 ## It depends on core alone and both hosts register it
 
-Its layer is `data module`; its entry in `scripts/layers.ts` (`"@cabane/handoff"`) says what it
+Its layer is `data module`; its entry in `scripts/layers.ts` (`"@kabane/handoff"`) says what it
 may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
 (`packages/worker/src/hub.ts`) register `handoffModule`. The CLI's `kabane handoff` calls
 `handOff`, `findIssue` and `handoffReceipt` (`tools.ts`) and the template (`template.ts`).

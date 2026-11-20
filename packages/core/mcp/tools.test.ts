@@ -49,12 +49,12 @@ const COMMENT_CONFLICTS = [
 	{ body: "a\n", content: "a" },
 ];
 
-describe("cabane tools", () => {
+describe("kabane tools", () => {
 	let base: string;
 	let ctx: ToolContext;
 
 	beforeEach(async () => {
-		base = join(tmpdir(), `cabane-mcp-${crypto.randomUUID()}`);
+		base = join(tmpdir(), `kabane-mcp-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		configureTestRuntime({ actor: () => AGENT });
 		unwrap(await Planner.init(base));
@@ -719,11 +719,11 @@ describe("humanActorOf", () => {
 	});
 });
 
-describe("cabane MCP server over an in-memory transport", () => {
+describe("kabane MCP server over an in-memory transport", () => {
 	let base: string;
 
 	beforeEach(async () => {
-		base = join(tmpdir(), `cabane-mcp-wire-${crypto.randomUUID()}`);
+		base = join(tmpdir(), `kabane-mcp-wire-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		configureTestRuntime();
 		unwrap(await Planner.init(base));

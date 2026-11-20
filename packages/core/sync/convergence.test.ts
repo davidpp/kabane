@@ -252,8 +252,8 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			taskId: b2.id,
 			provider: "github",
 			externalId: "github-b",
-			identifier: "davidpp/cabane#12",
-			url: "https://github.com/davidpp/cabane/issues/12",
+			identifier: "davidpp/kabane#12",
+			url: "https://github.com/davidpp/kabane/issues/12",
 			title: "Team feature B",
 		});
 		if (!upstreamB.ok) throw upstreamB.error;

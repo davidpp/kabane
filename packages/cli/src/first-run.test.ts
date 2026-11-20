@@ -16,7 +16,7 @@ import {
 	tildePath,
 } from "./first-run";
 
-const ROOT = join(tmpdir(), `cabane-first-run-${crypto.randomUUID()}`);
+const ROOT = join(tmpdir(), `kabane-first-run-${crypto.randomUUID()}`);
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
 // Not a project: nothing above the system temp directory is a git repo or carries a `.kabane` pin.

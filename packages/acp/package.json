@@ -1,7 +1,7 @@
 {
 	"name": "@kabane/acp",
 	"version": "0.1.0",
-	"description": "Cabane ACP client: harness registry and a session runner over Bun.spawn",
+	"description": "Kabane ACP client: harness registry and a session runner over Bun.spawn",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

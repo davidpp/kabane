@@ -44,7 +44,7 @@ const must = <T>(r: Result<T>): T => {
 const freshBase = (label: string): string => {
 	const dir = join(
 		tmpdir(),
-		`cabane-session-outcomes-${label}-${crypto.randomUUID()}`,
+		`kabane-session-outcomes-${label}-${crypto.randomUUID()}`,
 	);
 	mkdirSync(dir, { recursive: true });
 	bases.push(dir);

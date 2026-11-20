@@ -7,23 +7,19 @@ serves MCP, so browser-only tools (ChatGPT, Claude.ai) and CLI-capable runtimes
 (Claude Code, Hermes, Codex) share one tool surface. One machine on local SQLite is a
 complete setup; the hub is optional and you host it yourself.
 
-The project was called Cabane until its first public release. Internal names keep the old
-one: the `@cabane/*` workspace packages, the `cabane-worker` Worker and its Durable
-Objects, and the `cabane://actor/...` URIs stored in every row.
-
 | Package | Name | Runtime | Holds |
 |---|---|---|---|
-| `packages/core` | `@cabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions and server composition |
-| `packages/sqlite` | `@cabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
-| `packages/acp` | `@cabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner and form types |
-| `packages/extension` | `@cabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
-| `packages/questions` | `@cabane/questions` | Bun + Workers | data module: the decisions agents ask a human on an issue (`kabane_ask`, `kabane_questions`, `kabane_answer`), replicated like tasks |
-| `packages/checklist` | `@cabane/checklist` | Bun + Workers | data module: the steps of one issue, ticked as they land (`kabane_checklist`, `kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`), replicated like tasks |
-| `packages/outcome` | `@cabane/outcome` | Bun + Workers | data module: decisions, findings, verifications and summaries projected into the issue's Discussion timeline |
-| `packages/handoff` | `@cabane/handoff` | Bun + Workers | data module: what whoever did the work on an issue, code, research or a design, leaves for the next reader, written from a template (summary, evidence, what is not verified, risk) with `kabane_handoff`; an entry on the issue's timeline, and the brief opens with the latest |
+| `packages/core` | `@kabane/core` | Bun + Workers | schemas, storage over the Db port, sync, MCP tool definitions and server composition |
+| `packages/sqlite` | `@kabane/sqlite` | Bun | Db adapter over `bun:sqlite` |
+| `packages/acp` | `@kabane/acp` | Bun | Agent Client Protocol client: harness registry, session runner and form types |
+| `packages/extension` | `@kabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
+| `packages/questions` | `@kabane/questions` | Bun + Workers | data module: the decisions agents ask a human on an issue (`kabane_ask`, `kabane_questions`, `kabane_answer`), replicated like tasks |
+| `packages/checklist` | `@kabane/checklist` | Bun + Workers | data module: the steps of one issue, ticked as they land (`kabane_checklist`, `kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`), replicated like tasks |
+| `packages/outcome` | `@kabane/outcome` | Bun + Workers | data module: decisions, findings, verifications and summaries projected into the issue's Discussion timeline |
+| `packages/handoff` | `@kabane/handoff` | Bun + Workers | data module: what whoever did the work on an issue, code, research or a design, leaves for the next reader, written from a template (summary, evidence, what is not verified, risk) with `kabane_handoff`; an entry on the issue's timeline, and the brief opens with the latest |
 | `packages/cli` | `kabane` | Bun | the device command line and MCP over stdio |
-| `packages/board` | `@cabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
-| `packages/worker` | `cabane-worker` | Workers | sync log DO + cloud device serving MCP over Streamable HTTP |
+| `packages/board` | `@kabane/board` | Bun | OpenTUI kanban over ActivitySource, Dispatcher and Copilot ports |
+| `packages/worker` | `kabane-worker` | Workers | sync log DO + cloud device serving MCP over Streamable HTTP |
 
 Kabane bundles no extension. Three live in `extensions/`, each built and installed on its own:
 the [loop](docs/loop.md) runs issues through coding harnesses on your machine,
@@ -149,7 +145,7 @@ An enabled extension adds its own: the [dispatch extension](extensions/dispatch/
 coding sessions to turn asks into issues here.
 
 Every write the copilot makes goes through `kabane mcp` into this device's database, stamped
-`cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
+`kabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is
 Claude Code on Sonnet unless `~/.kabane/config.json` says otherwise — `copilot.harness`
 picks `codex` or `gemini`, `copilot.model` runs the harness as something else — and
 `kabane board --copilot <harness>` overrides that for one run; it has to be installed and

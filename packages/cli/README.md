@@ -1,7 +1,7 @@
 # kabane
 
 The command line for one device of the tracker. Every command is a thin
-argument parser over `@cabane/core` with the `bun:sqlite` adapter; the database
+argument parser over `@kabane/core` with the `bun:sqlite` adapter; the database
 is authoritative on this machine and `kabane sync` converges it with the others.
 
 ```bash
@@ -11,14 +11,14 @@ kabane              # first run: the setup screen, then the board
 
 Bare `kabane` in a terminal opens the board. On a device with no
 `config.json` it first shows a setup screen: your name (the actor slug,
-`cabane://actor/human/<name>`), the device id, the detected coding harnesses
+`kabane://actor/human/<name>`), the device id, the detected coding harnesses
 to register `kabane mcp` in.
 It writes the same config `kabane init` would, local SQLite and no sync, and
 never replaces one that exists. Piped or run by an agent, bare `kabane` prints
 help as before. The flag form stays for scripts and for sync:
 
 ```bash
-kabane init --actor cabane://actor/human/<you> --device <machine> [--sync-url … --sync-token …]
+kabane init --actor kabane://actor/human/<you> --device <machine> [--sync-url … --sync-token …]
 kabane add "Write the deploy runbook" --kind issue --assignee claude --scope myapp
 kabane list
 ```
@@ -30,7 +30,7 @@ kabane list
 
 ```json
 {
-  "actor": "cabane://actor/human/alex",
+  "actor": "kabane://actor/human/alex",
   "deviceId": "mbp",
   "sync": {
     "enabled": true, "url": "https://hub.example.com", "token": "…", "deviceId": "mbp", "batchBytes": 262144,
@@ -41,10 +41,10 @@ kabane list
 
 - **actor** is stamped on what this device writes: task provenance, comment
   author, work-log author. Override per call with `--as <actor-uri>`. Actors
-  under `cabane://actor/agent/` comment as `ai`, everything else as `human`.
+  under `kabane://actor/agent/` comment as `ai`, everything else as `human`.
 - **deviceId** seeds the sync identity on the first push and is write-once
   after that.
-- **sync** is the block `@cabane/core`'s `SyncDevice.connect` reads. Sync is
+- **sync** is the block `@kabane/core`'s `SyncDevice.connect` reads. Sync is
   enabled when `init` is given both `--sync-url` and `--sync-token`. `headers`
   are sent on every push and pull: the hub sits behind Cloudflare Access, so a
   device carries its Access service-token credentials here, separate from the
@@ -205,7 +205,7 @@ Put an extension directory (or a symlink to one) at `$KABANE_HOME/extensions/<na
 run `kabane config set extensions <name> --layer global` (comma-separated names for several).
 Its `package.json` must contain `"kabane": { "extension": "./index.ts", "api": 1 }`.
 The entry's default export is a factory that receives the host, API 1
-([`@cabane/extension`](../extension/README.md#factory-host)), and returns an extension whose
+([`@kabane/extension`](../extension/README.md#factory-host)), and returns an extension whose
 `name` matches the directory. [Writing an extension](../../docs/writing-an-extension.md) walks
 through one. Its own `node_modules` resolve
 normally when kabane runs through Bun. For the compiled binary, supply a built bundle with
@@ -314,9 +314,9 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `doctor` | `--fix [<source/id>…]` `--json` — report what kabane wrote that has fallen behind this version (settings, the project's Tracker block, harness MCP entries, a project skill stamped from a template no enabled extension checks) plus each enabled extension's checks; each finding is `auto`, `mention`, `suggest` or `route`. `--fix` alone applies the `auto` ones, `--fix <source/id>` the named ones. `--json` gives `{ findings, fixes }`. Findings do not fail the command |
 | `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
-| `board` | `--scope <uri>` — the terminal kanban (`@cabane/board`) on this device, no activity feed or dispatcher; those are host ports |
+| `board` | `--scope <uri>` — the terminal kanban (`@kabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
-| `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `cabane://actor/agent/<harness>`; existing entries are unchanged, with `stale` for a different launch command (`present` for the current one); `--force` or `doctor --fix kabane/mcp-entry-stale-<harness>` re-points it; `--print` prints snippets, also the fallback when none is found |
+| `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `kabane://actor/agent/<harness>`; existing entries are unchanged, with `stale` for a different launch command (`present` for the current one); `--force` or `doctor --fix kabane/mcp-entry-stale-<harness>` re-points it; `--print` prints snippets, also the fallback when none is found |
 
 Doctor and `mcp install` read Claude registrations from `$CLAUDE_CONFIG_DIR/.claude.json`
 when `CLAUDE_CONFIG_DIR` is nonempty, otherwise from `~/.claude.json`. This includes
@@ -349,7 +349,7 @@ one (`sync status` counts `renamed ids`).
 
 ## Checklists
 
-A checklist is the steps of one issue, from the `@cabane/checklist` module. An item has no
+A checklist is the steps of one issue, from the `@kabane/checklist` module. An item has no
 assignee, no state beyond done, and no brief; if it needs any of those, it's a subtask
 (`add --parent`). Each write prints one line, the receipt the MCP tools
 (`kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`) return:
@@ -372,7 +372,7 @@ none. A question's handle (`JCAB-12:3`) is refused with the item form to use ins
 ## Handoffs
 
 A handoff is what whoever did the work on an issue leaves for whoever reads next, another agent
-or the human, from the `@cabane/handoff` module. The work can be a code change, a research note
+or the human, from the `@kabane/handoff` module. The work can be a code change, a research note
 or a design. `kabane handoff --template` prints the headings to write under (Summary, Evidence,
 Not verified, Risk); drop one that does not apply and add one the work needs. Recording one
 changes nothing else on the issue: handing off is not closing. It prints the line
@@ -409,7 +409,7 @@ kabane mcp install --print  # .mcp.json, config.toml, settings.json, and a gener
 ```
 
 Each harness gets `kabane` at user scope, spawning `<absolute bun> <this
-clone>/index.ts mcp --as cabane://actor/agent/<harness>`: absolute because a
+clone>/index.ts mcp --as kabane://actor/agent/<harness>`: absolute because a
 harness spawns servers with its own PATH, which often lacks `~/.bun/bin`, and
 the bin's `#!/usr/bin/env bun` needs bun on it. A bun installed by mise is
 written as mise's shim (`~/.local/share/mise/shims/bun`), which starts the
