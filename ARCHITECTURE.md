@@ -219,7 +219,9 @@ skill belong to the dispatch extension, which reads them from its own directory.
 as is required in `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the
 board never imports `Self`, which lives in the CLI host. The CLI imports
 `@cabane/board/copilot-instructions` in `copilot-files.ts` to refuse a package.json description
-that contains one of base kabane's headings and a shortcut named like one of its shortcuts. The
+that contains one of base kabane's headings and a shortcut named like one of its shortcuts, and
+in `skills.ts` for `shellWord`, so `{{kabane}}` quotes the executable and home as the copilot's
+instructions do. The
 copilot tests use the ACP SDK's in-process agent, so the board declares the SDK as a development
 dependency.
 
@@ -776,6 +778,6 @@ notice. The architecture lens is `.agents/skills/dispatch/references/lenses/arch
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts` and its tests |
 | `host` and its typed record wrappers | `host-record.test.ts`, the CLI host and directory-extension tests, and the isolated declaration typecheck |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` |
-| Skills are served by `kabane_skillList` and `kabane_skillGet` on devices only; `{{extension}}` and `{{kabane}}` are the only placeholders, a file outside the skill is refused, and a computed value comes from a command | the skills reader and the two tools in `packages/cli` with their tests (JCAB-587; until it lands, ADR 0004 and review); `kabane dispatch stamp` (`extensions/dispatch`) |
+| Skills are served by `kabane_skillList` and `kabane_skillGet` on devices only; `{{extension}}` and `{{kabane}}` are the only placeholders, a file outside the skill is refused, and a computed value comes from a command | `packages/cli/src/skills.ts` (the reader and the two tools) with `skills.test.ts`, and `packages/cli/src/commands/mcp.ts`, which serves them; `kabane dispatch stamp` (`extensions/dispatch`) |
 | Shortcuts are files; `{{extension}}` is their only placeholder | `packages/cli/src/copilot-files.ts` and its test |
 | Core reaches files through a port | `RuntimeConfig.fileReader`, defaulting to a pointer; the CLI reader and core assembly tests |
