@@ -14,8 +14,8 @@ import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import { BoardJobs } from "./jobs";
-import { STILL } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
+import { STILL } from "./still";
 import { BoardTabs } from "./tabs";
 import { type Theme, useTheme } from "./theme";
 

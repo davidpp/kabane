@@ -11,7 +11,6 @@ import { ok, type Result, type Task } from "@cabane/core";
 import type {
 	ActivityCard,
 	ActivitySource,
-	ActivityStatus,
 	ActivityToolDetail,
 	CopilotShortcut,
 	Dispatcher,
@@ -19,6 +18,7 @@ import type {
 	SettingField,
 } from "@cabane/extension";
 import type { BoardContext } from "./context";
+import { stillMark } from "./still";
 
 // The one event type the view draws as a rule rather than as a row: what was ASKED, which opens a
 // turn and so separates it from the one before. Shared vocabulary — a host whose cards run more than
@@ -260,19 +260,3 @@ export const isInFlight = (card: ActivityCard): boolean =>
 	card.status === "pending" ||
 	card.status === "running" ||
 	stillMark(card.status) !== undefined;
-
-type StillStatus = Extract<ActivityStatus, "paused" | "unreported">;
-
-// The in-flight statuses the board draws still, without a spinner: each one's glyph and the word
-// after its label.
-export const STILL: Readonly<
-	Record<StillStatus, { glyph: string; word: string }>
-> = {
-	paused: { glyph: "⏸", word: "paused" },
-	unreported: { glyph: "◌", word: "no status reported" },
-};
-
-export const stillMark = (
-	status: ActivityStatus,
-): (typeof STILL)[StillStatus] | undefined =>
-	status === "paused" || status === "unreported" ? STILL[status] : undefined;

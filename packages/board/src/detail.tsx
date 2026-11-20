@@ -36,9 +36,10 @@ import { ErrorBoundary } from "./error-boundary";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import { isInFlight, STILL, stillMark } from "./ports";
+import { isInFlight } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
+import { STILL, stillMark } from "./still";
 import { type Theme, useMarkdownStyle, useTheme } from "./theme";
 
 // Columns the header block's padding takes, and those the scrollbox's bar and a safety margin hold

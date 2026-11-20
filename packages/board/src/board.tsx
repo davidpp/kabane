@@ -27,9 +27,10 @@ import { BoardDecisions } from "./decisions";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
-import { isInFlight, stillMark } from "./ports";
+import { isInFlight } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE, useSpinnerFrame } from "./spinner";
+import { stillMark } from "./still";
 import { type Theme, useTheme } from "./theme";
 
 // OpenTUI needs terminal colors; the display configs carry Tailwind class tokens. Map the priority
