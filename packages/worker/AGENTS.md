@@ -32,7 +32,7 @@ bun run --cwd packages/worker test    # tsc --noEmit, then vitest in the Workers
 bun run --cwd packages/worker dev     # wrangler dev on localhost; needs a .dev.vars
 ```
 
-`bun test` cannot run these tests: they need `@cloudflare/vitest-pool-workers`. Sync
+`bun test` cannot run these tests: they need `@cloudflare/vitest-plugin`. Sync
 convergence between devices is asserted in core against the in-process relay
 (`packages/core/sync/local-relay.ts`). A change to the Db port runs core's conformance cases
 here (`src/hub.test.ts`) and in `packages/sqlite`. Deploys follow the root `AGENTS.md`.
@@ -43,8 +43,8 @@ here (`src/hub.test.ts`) and in `packages/sqlite`. Deploys follow the root `AGEN
   `actorStore.run`, so concurrent requests in one object never see each other's identity, and
   `humanActor` is set only when Access authenticated a human, never for a service token
   (`src/hub.ts:127`).
-- Assuming storage is isolated between tests. Rows persist across tests in pool-workers 0.18
-  and later; give each test its own Durable Object name.
+- Assuming storage is isolated between tests. Rows persist across tests under the Workers vitest
+  plugin; give each test its own Durable Object name.
 - More than 100 bound parameters in one statement, or a `BEGIN` or `SAVEPOINT`: the engine
   refuses both (README, "The Db port over Durable Object SQLite").
 - Putting a secret or an Access identity in `wrangler.jsonc`. Secrets go through
