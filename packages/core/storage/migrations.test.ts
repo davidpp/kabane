@@ -671,6 +671,11 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			await Planner.addTask(base, {
 				title: "t",
 				description: `${CLAUDE} starts this description`,
+				verification: {
+					status: "passed",
+					verifiedBy: CLAUDE,
+					notes: `${CLAUDE} checked it`,
+				},
 			}),
 		);
 		const other = must(await Planner.addTask(base, { title: "o" }));
@@ -734,30 +739,52 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				 VALUES ('gone', 'device-a', ?, 'gone', 'delete', NULL, '2026-11-20T00:00:00.000Z')`,
 				[TABLES.comments],
 			);
+			// An extension's table: `requested_by` is free text, `updated_by` the writer sync carries.
 			db.run(
-				`INSERT INTO ${TABLES.sync_parked} (op_id, server_seq, module, module_schema, tbl, row_id, op, parked_at)
-				 VALUES ('parked', 7, 'checklist', 9, 'task_checklist_items', 'c1', ?, '2026-11-20T00:00:00.000Z')`,
-				[
-					JSON.stringify({
-						opId: "parked",
-						tbl: "task_checklist_items",
-						rowId: "c1",
-						op: "update",
-						payload: {
-							id: "c1",
-							text: `${ADA} wrote this`,
-							done_by: ADA,
-							updated_by: ADA,
-						},
-					}),
-				],
+				`INSERT INTO ${TABLES.sync_oplog} (op_id, device_id, tbl, row_id, op, payload, captured_at)
+				 VALUES ('ext', 'device-a', 'ext_requests', 'r1', 'insert', ?, '2026-11-20T00:00:00.000Z')`,
+				[JSON.stringify({ id: "r1", requested_by: ADA, updated_by: ADA })],
 			);
+			for (const [opId, tbl, payload] of [
+				[
+					"parked",
+					"task_checklist_items",
+					{
+						id: "c1",
+						text: `${ADA} wrote this`,
+						done_by: ADA,
+						updated_by: ADA,
+					},
+				],
+				[
+					"parked-ext",
+					"ext_requests",
+					{ id: "r2", requested_by: ADA, updated_by: ADA },
+				],
+			] as const)
+				db.run(
+					`INSERT INTO ${TABLES.sync_parked} (op_id, server_seq, module, module_schema, tbl, row_id, op, parked_at)
+					 VALUES (?, 7, 'checklist', 9, ?, ?, ?, '2026-11-20T00:00:00.000Z')`,
+					[
+						opId,
+						tbl,
+						payload.id,
+						JSON.stringify({
+							opId,
+							tbl,
+							rowId: payload.id,
+							op: "update",
+							payload,
+							updatedBy: ADA,
+						}),
+					],
+				);
 		});
 		const rows = () =>
 			withDb((db) => ({
 				tasks: db
 					.query<Record<string, unknown>, []>(
-						`SELECT id, description, version, updated_at FROM ${TABLES.tasks} ORDER BY id`,
+						`SELECT id, description, verification, version, updated_at FROM ${TABLES.tasks} ORDER BY id`,
 					)
 					.all(),
 				comments: db
@@ -770,17 +797,21 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 					.all()
 					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
 				ops: db
-					.query<{ payload: string | null }, []>(
-						`SELECT payload FROM ${TABLES.sync_oplog} ORDER BY seq`,
+					.query<{ tbl: string; payload: string | null }, []>(
+						`SELECT tbl, payload FROM ${TABLES.sync_oplog} ORDER BY seq`,
 					)
 					.all()
-					.map((op) =>
-						op.payload === null
-							? null
-							: (JSON.parse(op.payload) as Record<string, unknown>),
-					),
+					.map((op) => ({
+						tbl: op.tbl,
+						row:
+							op.payload === null
+								? null
+								: (JSON.parse(op.payload) as Record<string, unknown>),
+					})),
 				parked: db
-					.query<{ op: string }, []>(`SELECT op FROM ${TABLES.sync_parked}`)
+					.query<{ op: string }, []>(
+						`SELECT op FROM ${TABLES.sync_parked} ORDER BY op_id`,
+					)
 					.all()
 					.map((row) => JSON.parse(row.op) as Record<string, unknown>),
 			}));
@@ -802,8 +833,27 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			"tasks.reviewed_by",
 			["kabane://actor/human/ada", "kabane://actor/human/ada"],
 		]);
-		// Prose, versions and clocks are as they were; only the identity columns moved.
-		expect(after.tasks).toEqual(before.tasks);
+		// Prose, versions and clocks are as they were; only the identity fields moved.
+		const verified = (raw: unknown) =>
+			typeof raw === "string"
+				? raw.replace(
+						`"verifiedBy":"${CLAUDE}"`,
+						`"verifiedBy":"kabane://actor/agent/claude"`,
+					)
+				: raw;
+		expect(after.tasks).toEqual(
+			before.tasks.map((t) => ({
+				...t,
+				verification: verified(t.verification),
+			})),
+		);
+		expect(
+			after.tasks.map((t) => JSON.parse(String(t.verification)) as unknown),
+		).toContainEqual({
+			status: "passed",
+			verifiedBy: "kabane://actor/agent/claude",
+			notes: `${CLAUDE} checked it`,
+		});
 		expect(after.comments).toEqual(
 			before.comments.map((c) => ({ ...c, author: renamed(c.author) })),
 		);
@@ -814,40 +864,67 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			"kabane://actor/agent/codex",
 		]);
 		expect(after.refs[0]?.[0]?.addedBy).toBe("kabane://actor/agent/claude");
-		// The log's snapshots, a delete with none included, renamed the same way and nothing captured.
+		// The log's snapshots, a delete with none included, renamed the same way and nothing
+		// captured: core's identity fields, and only the writer of an extension's table.
 		expect(after.ops).toHaveLength(before.ops.length);
 		expect(after.ops).toEqual(
-			before.ops.map((row) =>
-				row === null
-					? null
-					: Object.fromEntries(
-							Object.entries(row).map(([key, value]) => [
-								key,
-								(key === "author" || key.endsWith("_by")) &&
-								typeof value === "string"
-									? renamed(value)
-									: key === "refs" && typeof value === "string"
-										? value.replaceAll(CLAUDE, "kabane://actor/agent/claude")
-										: value,
-							]),
-						),
-			),
+			before.ops.map(({ tbl, row }) => ({
+				tbl,
+				row:
+					row === null
+						? null
+						: Object.fromEntries(
+								Object.entries(row).map(([key, value]) => [
+									key,
+									typeof value !== "string"
+										? value
+										: key === "updated_by" ||
+											  (tbl !== "ext_requests" &&
+													(key === "author" || key.endsWith("_by")))
+											? renamed(value)
+											: key === "refs"
+												? value.replaceAll(
+														CLAUDE,
+														"kabane://actor/agent/claude",
+													)
+												: key === "verification"
+													? verified(value)
+													: value,
+								]),
+							),
+			})),
 		);
-		expect(JSON.stringify(after.ops)).not.toMatch(/"(\w+_by|author)":"cabane:/);
+		expect(after.ops.find((op) => op.tbl === "ext_requests")?.row).toEqual({
+			id: "r1",
+			requested_by: ADA,
+			updated_by: "kabane://actor/human/ada",
+		});
 		expect(
 			after.ops.some(
-				(row) => row?.description === `${CLAUDE} starts this description`,
+				(op) => op.row?.description === `${CLAUDE} starts this description`,
 			),
 		).toBe(true);
+		// A parked op's writer, in its envelope and its snapshot; a module's other columns are its
+		// own migration's, and an extension's free text stays as written.
 		expect(after.parked).toEqual([
 			{
 				...before.parked[0],
 				payload: {
 					id: "c1",
 					text: `${ADA} wrote this`,
-					done_by: "kabane://actor/human/ada",
+					done_by: ADA,
 					updated_by: "kabane://actor/human/ada",
 				},
+				updatedBy: "kabane://actor/human/ada",
+			},
+			{
+				...before.parked[1],
+				payload: {
+					id: "r2",
+					requested_by: ADA,
+					updated_by: "kabane://actor/human/ada",
+				},
+				updatedBy: "kabane://actor/human/ada",
 			},
 		]);
 

@@ -71,6 +71,48 @@ it("parks item ops on a device without the module and replays them on registrati
 	});
 });
 
+it("renames the old actor scheme in item ops parked before the module registered", async () => {
+	const relay = LocalRelay.create();
+	const alpha = await device("alpha", true);
+	const a = LocalRelay.transportFor(relay, "alpha");
+	// A peer on the build before the rename still writes cabane://actor/.
+	unwrap(
+		Runtime.configure({
+			provider: SqliteDb.provider(),
+			modules: [checklistModule],
+			actor: () => "cabane://actor/human/alpha",
+		}),
+	);
+	const task = unwrap(
+		await Planner.addTask(alpha, { title: "Old peer", kind: "issue" }),
+	);
+	const [item] = unwrap(
+		await Checklist.add(alpha, { id: task.id, items: ["One"] }),
+	).items;
+	unwrap(await Checklist.tick(alpha, { items: [item?.id ?? ""] }));
+	unwrap(await Sync.push(alpha, a));
+	const beta = await device("beta", false);
+	const b = LocalRelay.transportFor(relay, "beta");
+	expect(unwrap(await Sync.pull(beta, b)).parked).toBe(2);
+
+	register(true, "beta");
+	unwrap(await Planner.init(beta));
+	const parked = unwrap(
+		await withDb(beta, (db) =>
+			db
+				.query<{ op: string }, []>("SELECT op FROM sync_parked ORDER BY op_id")
+				.all()
+				.map((row) => row.op),
+		),
+	);
+	expect(parked.join("\n")).not.toContain("cabane://actor/");
+	expect(unwrap(await Sync.pull(beta, b)).replayed).toBe(2);
+	expect(unwrap(await Checklist.list(beta, task.id))[0]).toMatchObject({
+		done: true,
+		doneBy: "kabane://actor/human/alpha",
+	});
+});
+
 it("converges concurrent appends to one order, and an insert between the tied pair lands there", async () => {
 	const relay = LocalRelay.create();
 	const alpha = await device("alpha", true);
