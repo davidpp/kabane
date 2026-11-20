@@ -85,10 +85,12 @@ describe("Access.principal", () => {
 		if (!p.ok) expect(p.error.message).toContain("SERVICE_ACTORS");
 	});
 
-	// A human actor could relay answers as the human; a retired scheme's names nobody kabane reads.
+	// A human actor could relay answers as the human; a retired scheme's names nobody kabane
+	// reads; the bare prefix names no agent.
 	for (const actor of [
 		"kabane://actor/human/david",
 		"cabane://actor/agent/claude",
+		"kabane://actor/agent/",
 	])
 		it(`refuses SERVICE_ACTORS mapping a service to ${actor}`, () => {
 			const p = Access.principal(

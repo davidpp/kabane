@@ -68,7 +68,10 @@ const ServiceActorsSchema = z
 	.record(z.string(), z.string().min(1))
 	.superRefine((services, ctx) => {
 		for (const [id, actor] of Object.entries(services))
-			if (!actor.startsWith(ActorUri.AGENT))
+			if (
+				!actor.startsWith(ActorUri.AGENT) ||
+				actor.length === ActorUri.AGENT.length
+			)
 				ctx.addIssue({
 					code: z.ZodIssueCode.custom,
 					message: `SERVICE_ACTORS maps service "${id}" to ${actor}; map a service token to an agent actor (${ActorUri.AGENT}<name>)`,
