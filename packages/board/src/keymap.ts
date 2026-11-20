@@ -176,6 +176,15 @@ export namespace Keymap {
 		keys: ["j", "k", "down", "up", "g", "G", "ctrl+d", "ctrl+u"],
 	};
 
+	// On a map `j/k` and the arrows move its cursor, so the stream under it scrolls on these alone.
+	const MAP_SCROLL: Binding = {
+		key: "g/G",
+		label: "scroll the stream · ⌃d/⌃u",
+		tier: "help",
+		keys: ["g", "G", "ctrl+d", "ctrl+u"],
+		when: (s) => s.map === true,
+	};
+
 	/** `?` itself: last in every footer where the sheet opens. */
 	const HELP: Binding = {
 		key: "?",
@@ -666,7 +675,8 @@ export namespace Keymap {
 					keys: ["e"],
 					when: (s) => s.header === true && s.map !== true,
 				},
-				SCROLL,
+				{ ...SCROLL, when: (s) => s.map !== true },
+				MAP_SCROLL,
 				{ ...TOOL_DETAILS, tier: "help" },
 				{ key: "esc q", label: "tracker", tier: "help", keys: ["escape", "q"] },
 			],
