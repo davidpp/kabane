@@ -1,4 +1,4 @@
-import type { ActivityStatus } from "@cabane/extension";
+import type { ActivityStatus } from "@kabane/extension";
 
 type StillStatus = Extract<ActivityStatus, "paused" | "unreported">;
 
