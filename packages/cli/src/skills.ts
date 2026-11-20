@@ -255,7 +255,14 @@ export namespace Skills {
 		if (!root.ok || !real.ok) return refuse;
 		const path = relative(root.value, real.value);
 		const stat = trySync(() => statSync(real.value));
-		if (path === "" || outside(path) || !stat.ok || !stat.value.isFile())
+		// A hidden file is not one of the skill's files, as the manifest leaves it out.
+		if (
+			path === "" ||
+			outside(path) ||
+			path.split(sep).some((part) => part.startsWith(".")) ||
+			!stat.ok ||
+			!stat.value.isFile()
+		)
 			return refuse;
 		const text = trySync(() => readFileSync(real.value, "utf8"));
 		if (!text.ok) return err(new Error(`${asked} cannot be read`));

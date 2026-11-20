@@ -337,7 +337,7 @@ named `kabane` is refused:
 - `kabane_skillList` returns each skill's `name`, `description` and the extension that ships it.
 - `kabane_skillGet { name, file? }` returns `SKILL.md`, or the file under the skill's directory
   that `file` names, and `files`, the skill's other files. A path that leads out of the skill's
-  directory, a link included, is refused.
+  directory, a link included, and a hidden file are refused.
 
 ```markdown
 ---

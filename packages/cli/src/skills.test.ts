@@ -46,6 +46,7 @@ const KEEP = {
 	),
 	"skills/keep-notes/references/how.md": "Run {{kabane}} --help.\n",
 	"skills/.hidden/SKILL.md": "not a skill",
+	"skills/keep-notes/.env": "TOKEN=hidden",
 	"secret.md": "outside the skill",
 };
 
@@ -186,6 +187,7 @@ describe("Skills.get", () => {
 			"../../secret.md",
 			"/etc/hosts",
 			"link.md",
+			".env",
 			"references",
 			"nope.md",
 		]) {
