@@ -707,53 +707,89 @@ empty cloud device: nothing carries over from the old one.
 
 1. Update every device first and run `kabane doctor --fix` on each
    ([`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris)).
-2. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
+2. Take a baseline from the old hub while it still serves `<your-domain>`. Stop writing
+   through it: pause Hermes and any other runtime with a service token, and leave the
+   Claude.ai and ChatGPT connectors alone until step 8. The hub pushes each of its writes to
+   its log as it makes it. On every device, stop the board, `kabane mcp` and loop runners,
+   and let a running `kabane sync` finish. Keep them stopped until step 8.
+
+   Define these in a bash or zsh shell on each device. They resolve the device's home once,
+   from `KABANE_HOME` if you set it, so the SQL and the CLI below act on the same database.
+   One `kabane sync push` or `pull` stops after 100 batches, so `level` repeats each until
+   nothing is pending and the last pull ended before its limit:
+
+   ```bash
+   home="${KABANE_HOME:-$HOME/.kabane}"; export KABANE_HOME="$home"; db="$home/kabane.db"
+   level() {
+     while [ "$(kabane sync status --json | jq .pendingOps)" != 0 ]; do
+       kabane sync push >/dev/null || return 1
+     done
+     while :; do
+       out=$(kabane sync pull --json) || return 1
+       [ "$(echo "$out" | jq .batches)" -lt 100 ] && return 0
+     done
+   }
+   # Shared rows of every replicated table: core's, then each module's this device registers.
+   counts() {
+     for t in projects tasks task_links task_comments task_work_log task_context_refs \
+         upstream_links $(sqlite3 "$db" "SELECT tbl FROM module_declarations ORDER BY tbl"); do
+       echo "$t $(sqlite3 "$1" "SELECT count(*) FROM $t WHERE visibility != 'private'")"
+     done
+   }
+   ```
+
+   Run `level` on every device, then once more on each, so every device holds every other
+   device's writes and the old hub's. On the device you will check from, record the baseline:
+   `counts "$db" > "$home/hub-baseline.txt"`.
+3. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
    `<your-domain>`. A hostname serves one Worker at a time.
-3. Set `SERVICE_ACTORS` with `kabane://actor/agent/<name>` values: the Worker refuses any
+4. Set `SERVICE_ACTORS` with `kabane://actor/agent/<name>` values: the Worker refuses any
    value that is not an agent actor under that prefix, the old `cabane://actor/agent/...`
    included, and then admits no service token at all. Deploy the new Worker as in 1.1 and
    1.5, with the rest of the values unchanged. The script attaches `<your-domain>` to
    `kabane-worker` and uploads the same `SYNC_TOKEN`.
-4. The Access application from 1.3 protects the hostname, not the script, so it covers
+5. The Access application from 1.3 protects the hostname, not the script, so it covers
    `kabane-worker` as it is: same AUD, same policies, same service tokens. Check it with the
    `/health` requests in 1.5.
-5. Reseed the new log from every device. §5.6's rewind is not enough here. A device rewinds
+6. Reseed the new log from every device. §5.6's rewind is not enough here. A device rewinds
    only when a push is acknowledged, but a device that already pushed everything has nothing
    pending, and `kabane sync backfill` re-sends only rows that never had a backfill op. A
-   device that only pulls keeps its old position and reads nothing. Before you start, stop
-   each device's board, `kabane mcp` and loop runner, and let a running `kabane sync` finish.
-   Then run this on every device, one after the other:
+   device that only pulls keeps its old position and reads nothing. On every device, one
+   after the other, in the shell from step 2:
 
    ```bash
-   sqlite3 ~/.kabane/kabane.db \
+   sqlite3 "$db" \
      "UPDATE sync_state SET last_pushed_seq = 0, last_applied_seq = 0 WHERE id = 'local'"
-   kabane sync backfill
+   kabane sync backfill && level
    ```
 
    Each device pushes every op it has logged, plus a backfill op for each row it pulled from
    another device. The log stores an op it already holds only once, and two devices backfill a
-   row they share under the same op id. Once every device has done this, run
-   `kabane sync pull` on each one, and start their processes again.
-6. Check the new hub before you delete anything. Make a throwaway device that pulls from it
-   and count what it got:
+   row they share under the same op id. Once every device has done this, run `level` on each
+   one again.
+7. Check the new hub against the baseline before you delete anything. On the device that
+   recorded it, make a throwaway device with the same extensions, bring it level with the new
+   log, and compare:
 
    ```bash
    check=$(mktemp -d)
    KABANE_HOME="$check" kabane init --actor kabane://actor/human/check --device check \
      --sync-url https://<your-domain> --sync-token '<SYNC_TOKEN>' \
      --access-client-id '<cron client id>.access' --access-client-secret '<cron client secret>'
-   KABANE_HOME="$check" kabane sync pull
-   for db in "$check/kabane.db" ~/.kabane/kabane.db; do
-     sqlite3 "$db" "SELECT (SELECT count(*) FROM tasks), (SELECT count(*) FROM task_comments)"
-   done
+   ln -s "$home/extensions" "$check/extensions"
+   jq --slurpfile own "$home/config.json" '.extensions = ($own[0].extensions // [])' \
+     "$check/config.json" > "$check/config.next" && mv "$check/config.next" "$check/config.json"
+   KABANE_HOME="$check" level
+   diff "$home/hub-baseline.txt" <(counts "$check/kabane.db") && echo "the new hub holds the baseline"
    rm -rf "$check"
    ```
 
-   The two lines should match, apart from rows marked `visibility: private`, which never
-   leave their device. A device that only pulls never shows up in the log, so the check
-   device leaves nothing behind.
-7. Once the counts match, delete `cabane-worker` from the dashboard (**Settings →
-   Delete**). Its Durable Objects and their data go with it.
+   `diff` prints nothing above the last line when every table matches. A device that only
+   pulls never shows up in the log, so the check device leaves nothing behind. Rows marked
+   `visibility: private` never leave their device and are not counted.
+8. Once the new hub holds the baseline, start the devices' processes and the hub's writers
+   again. Then delete `cabane-worker` from the dashboard (**Settings → Delete**). Its Durable
+   Objects and their data go with it.
 
 ---
 
@@ -777,7 +813,7 @@ localhost.
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
 | 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `kabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
-| 5.9 reseed (2026-11-20) | two devices synced four tasks through one `wrangler dev` log, then pointed at an empty one. A backfill alone left a fresh device pulling two of the four, and the device that only pulled read nothing. With both positions reset and `kabane sync backfill` run on each device, a fresh device pulled all four, and a fifth task pushed afterwards reached the other device |
+| 5.9 move (2026-11-20) | two devices and a write made through the hub's MCP, against one `wrangler dev` log, then an empty one. The step 2 baseline counted four tasks and a checklist item. After steps 6 and 7, run in bash from this page's own blocks with localhost for the domain and a dev assertion for the service token, the check device matched it table for table and printed `the new hub holds the baseline`. Without step 2, the hub's write was lost, and a tasks-and-comments count still matched, 3 and 3. `counts` and `level` also run under zsh |
 
 Not verifiable without the real account, therefore **MANUAL** above: `bun run deploy`,
 the custom domain, the Access application and policies, service tokens, Managed
