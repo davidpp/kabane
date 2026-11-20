@@ -1,4 +1,4 @@
-# @cabane/acp
+# @kabane/acp
 
 The harness client: it launches a coding harness (Claude Code, Codex, Gemini) as a subprocess,
 speaks the Agent Client Protocol to it over stdio, and turns a turn into kabane's own `Update`
@@ -18,7 +18,7 @@ change touches.
 
 ## It depends on core alone
 
-Its layer is `harness client`; its entry in `scripts/layers.ts` (`"@cabane/acp"`) says what it
+Its layer is `harness client`; its entry in `scripts/layers.ts` (`"@kabane/acp"`) says what it
 may list. The board and loop both use it as a library; it imports neither of them.
 `BoardCopilot`, `Mailbox` and the copilot's prose live in `packages/board/src`. It ships no
 template: the dispatch and grill skills are `extensions/dispatch`'s.

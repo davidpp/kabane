@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { CopilotInstructions, Harnesses } from "@cabane/acp";
+import { CopilotInstructions, Harnesses } from "@kabane/acp";
 import { actorUri, SERVER_NAME } from "./session-identity";
 
 it("keeps the loop's session identity aligned with ACP", () => {

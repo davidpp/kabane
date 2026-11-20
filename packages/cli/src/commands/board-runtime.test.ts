@@ -2,8 +2,8 @@ import { afterAll, describe, expect, it, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
-import { parseArgs } from "@cabane/extension";
+import { Planner } from "@kabane/core";
+import { parseArgs } from "@kabane/extension";
 import { configPath } from "../config";
 import { openContext } from "../context";
 import { Extensions } from "../extensions";
@@ -16,7 +16,7 @@ test("the board gets the release notice unless updates.check is false", async ()
 	mkdirSync(HOME, { recursive: true });
 	writeFileSync(
 		configPath(HOME),
-		JSON.stringify({ actor: "cabane://actor/human/ada", deviceId: "mbp" }),
+		JSON.stringify({ actor: "kabane://actor/human/ada", deviceId: "mbp" }),
 	);
 	const args = parseArgs([]);
 	const ctx = await openContext(HOME, HOME, args);
@@ -61,7 +61,7 @@ describe("kabane board --issue <id> --to <pid>", () => {
 		mkdirSync(HOME, { recursive: true });
 		writeFileSync(
 			configPath(HOME),
-			JSON.stringify({ actor: "cabane://actor/human/ada", deviceId: "mbp" }),
+			JSON.stringify({ actor: "kabane://actor/human/ada", deviceId: "mbp" }),
 		);
 		const ctx = await openContext(HOME, HOME, parseArgs([]));
 		if (!ctx.ok) throw ctx.error;
@@ -210,7 +210,7 @@ test.each([
   const {version} = await import(${JSON.stringify(join(import.meta.dir, "../../package.json"))});
   const next = version.replace(/^(\\d+\\.\\d+\\.)\\d+.*$/, "$199999");
   await Bun.write(${JSON.stringify(join(home, "update-check.json"))}, JSON.stringify({latest:next, checkedAt:new Date().toISOString()}));
-  const {parseArgs} = await import("@cabane/extension");
+  const {parseArgs} = await import("@kabane/extension");
   const {openContext} = await import(${JSON.stringify(join(import.meta.dir, "../context.ts"))});
   const {boardDeps} = await import(${JSON.stringify(join(import.meta.dir, "board-runtime.ts"))});
   const args = parseArgs([]);

@@ -269,7 +269,7 @@ test("manifest identity, private workspace dependency, maps and machine paths fa
 				name: "package/package.json",
 				text: JSON.stringify({
 					...manifest,
-					peerDependencies: { "@cabane/core": "workspace:*" },
+					peerDependencies: { "@kabane/core": "workspace:*" },
 				}),
 			},
 		],

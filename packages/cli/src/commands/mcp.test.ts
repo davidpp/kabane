@@ -1,4 +1,4 @@
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import {
 	cpSync,
@@ -10,8 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createMcpServer, KABANE_TOOLS, ok, type ToolDef } from "@cabane/core";
-import { type Extension, Settings } from "@cabane/extension";
+import { createMcpServer, KABANE_TOOLS, ok, type ToolDef } from "@kabane/core";
+import { type Extension, Settings } from "@kabane/extension";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { MODULES } from "../context";

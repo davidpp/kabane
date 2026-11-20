@@ -8,7 +8,7 @@ import {
 	type TaskEntry,
 	toError,
 	tryCatch,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	failure,
 	flagBool,
@@ -17,14 +17,14 @@ import {
 	type ParsedArgs,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import {
 	findIssue,
 	HANDOFF_KIND,
 	HANDOFF_TEMPLATE,
 	handOff,
 	handoffReceipt,
-} from "@cabane/handoff";
+} from "@kabane/handoff";
 import type { Command, Ctx } from "../context";
 
 const USAGE = [

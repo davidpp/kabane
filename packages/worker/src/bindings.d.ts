@@ -9,8 +9,8 @@
  */
 declare namespace Cloudflare {
 	interface Env {
-		CABANE_LOG: DurableObjectNamespace<import("./log").CabaneLog>;
-		CABANE_HUB: DurableObjectNamespace<import("./hub").CabaneHub>;
+		KABANE_LOG: DurableObjectNamespace<import("./log").KabaneLog>;
+		KABANE_HUB: DurableObjectNamespace<import("./hub").KabaneHub>;
 		/**
 		 * Bearer secret for the sync log routes — `wrangler secret put SYNC_TOKEN`.
 		 * Optional because an environment where nobody set it is a real state, and
@@ -24,7 +24,7 @@ declare namespace Cloudflare {
 		ACCESS_AUD: string;
 		/** The one human allowed in. Anyone else with a valid assertion is refused. */
 		HUMAN_EMAIL: string;
-		/** JSON: service-token client id → actor URI (`cabane://actor/agent/hermes`). */
+		/** JSON: service-token client id → actor URI (`kabane://actor/agent/hermes`). */
 		SERVICE_ACTORS: string;
 		/** Minutes between the hub's scheduled pull/push passes. */
 		SYNC_INTERVAL_MINUTES: string;

@@ -15,14 +15,14 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/extensions.ts` | directory extensions: a main entry is imported when a command, the board or `kabane mcp` needs it, a modules entry by every process that opens the database |
 | `src/copilot-files.ts` | a directory extension's `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
 | `src/skills.ts` | base kabane's `kabane` skill (`skills/kabane/`, imported as text) and a directory extension's `skills/<name>/`, served by `kabane mcp` as `kabane_skillList` and `kabane_skillGet`, `{{extension}}` and `{{kabane}}` filled, unusable skills refused |
-| `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@cabane/board`, passing `Self.executable()`, then calls `startBoard` |
+| `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@kabane/board`, passing `Self.executable()`, then calls `startBoard` |
 | `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
 
 ## It is the host, so it may depend on everything below it and nothing beside it
 
 Its layer is `host`; its entry in `scripts/layers.ts` (`kabane`) says what it may list. It is
-the only package that depends on `@cabane/sqlite` at runtime. It imports every other package by
-its package name, `src/update-process.ts` included (`@cabane/core/result`), and its entry lists
+the only package that depends on `@kabane/sqlite` at runtime. It imports every other package by
+its package name, `src/update-process.ts` included (`@kabane/core/result`), and its entry lists
 no relative-import exception. Never add an import from `extensions/`.
 
 A first-party data module is registered in `MODULES` and in `packages/worker/src/hub.ts`. What

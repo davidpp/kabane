@@ -5,8 +5,8 @@ import {
 	Planner,
 	type Result,
 	Runtime,
-} from "@cabane/core";
-import { failure, success, usage } from "@cabane/extension";
+} from "@kabane/core";
+import { failure, success, usage } from "@kabane/extension";
 import type { Command } from "../context";
 import {
 	formatComments,

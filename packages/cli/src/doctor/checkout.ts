@@ -4,8 +4,8 @@
 // and never fetches, so doctor stays instant and works offline.
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
-import { ok, type Result } from "@cabane/core";
-import type { Doctor } from "@cabane/extension";
+import { ok, type Result } from "@kabane/core";
+import type { Doctor } from "@kabane/extension";
 
 // packages/cli/src/doctor in a checkout; a built binary or an installed package has no
 // repository there.

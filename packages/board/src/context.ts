@@ -3,7 +3,7 @@
 // The copilot (sibling issues) prepends `render(ctx)` to every prompt, so this is the one place that
 // decides what "the selection" means. `project` and `render` are pure; `load` is the wrapper that
 // fetches the briefs.
-import { ok, type Result, TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { ok, type Result, TASK_STATE_DISPLAY, type Task } from "@kabane/core";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
 

@@ -21,8 +21,8 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { type Result } from "@cabane/core";
-import type { ActivityToolDetail } from "@cabane/extension";
+import { type Result } from "@kabane/core";
+import type { ActivityToolDetail } from "@kabane/extension";
 import { z } from "zod";
 import { Budget } from "./budget";
 import { LoopConfig } from "./config";

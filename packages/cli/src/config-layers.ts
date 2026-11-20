@@ -27,8 +27,8 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { err, ok, type Result, toError, trySync } from "@cabane/core";
-import type { Settings } from "@cabane/extension";
+import { err, ok, type Result, toError, trySync } from "@kabane/core";
+import type { Settings } from "@kabane/extension";
 import { configPath, isPlainObject } from "./config";
 import { Paths } from "./paths";
 import { MARKER_DIR, ProjectDirs } from "./scope/detect";

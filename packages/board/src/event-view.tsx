@@ -15,7 +15,7 @@ import {
 	type ActivitySource,
 	type Header,
 	type NoticeSeverity,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import {
 	type ColorInput,
 	RGBA,

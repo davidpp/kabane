@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The real runner resuming a run whose runner died, on a real tracker. The run is paused, so it
 // claims nothing and no harness is reached; a wrong claim would fail at the launch, which points
 // at no harness.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdtempSync,
@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@cabane/core";
+import { Planner, type Task } from "@kabane/core";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";

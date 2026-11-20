@@ -5,12 +5,12 @@
 // opens on its prompt as a raised block, not a rule; glyphs carry the hues; the text keeps a hanging
 // indent at forty columns.
 import { describe, expect, it } from "bun:test";
-import { ok } from "@cabane/core";
+import { ok } from "@kabane/core";
 import type {
 	ActivityCard,
 	ActivityEvent,
 	ActivitySource,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import {
 	type CapturedSpan,
 	RGBA,

@@ -1,7 +1,7 @@
 // Board and CLI copy, through OpenTUI's clipboard. `best-available` writes the host's own pasteboard
 // on a local session, falling back to OSC 52 when the host has none, and on a remote one sends only
 // OSC 52: the copy lands in the human's terminal and never in the remote machine's pasteboard.
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import {
 	type ClipboardService,
 	type ClipboardWriteResult,

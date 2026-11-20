@@ -1,5 +1,5 @@
-import { Backfill, Sync, SyncDevice, type SyncStatus } from "@cabane/core";
-import { failure, success, usage } from "@cabane/extension";
+import { Backfill, Sync, SyncDevice, type SyncStatus } from "@kabane/core";
+import { failure, success, usage } from "@kabane/extension";
 import type { Command } from "../context";
 
 const formatStatus = (s: SyncStatus): string => {

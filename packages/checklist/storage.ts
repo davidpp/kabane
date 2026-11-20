@@ -10,7 +10,7 @@ import {
 	type SqlValue,
 	TABLES,
 	withDb,
-} from "@cabane/core";
+} from "@kabane/core";
 import { monotonicFactory } from "ulid";
 import { ITEMS_TABLE } from "./migrations";
 import { place } from "./rank";

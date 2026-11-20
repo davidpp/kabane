@@ -3,7 +3,7 @@ import {
 	changeReceipt,
 	checklistMarkdown,
 	editReceipt,
-} from "@cabane/checklist";
+} from "@kabane/checklist";
 import {
 	failure,
 	flagBool,
@@ -12,7 +12,7 @@ import {
 	type ParsedArgs,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import type { Command, Ctx } from "../context";
 
 const USAGE = [

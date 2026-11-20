@@ -13,9 +13,9 @@ import {
 	realpathSync,
 } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { Harnesses } from "@cabane/acp/harnesses";
-import type { Result, Task } from "@cabane/core";
-import type { Host, Settings } from "@cabane/extension";
+import { Harnesses } from "@kabane/acp/harnesses";
+import type { Result, Task } from "@kabane/core";
+import type { Host, Settings } from "@kabane/extension";
 import { z } from "zod";
 import { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
@@ -79,7 +79,7 @@ export namespace Loop {
 		config?: LoopConfig.Overrides;
 	};
 
-	const RUNNER_ACTOR = "cabane://actor/agent/loop";
+	const RUNNER_ACTOR = "kabane://actor/agent/loop";
 	const BOOT_MS = 15_000;
 	const STOP_WAIT_MS = 30_000;
 	const POLL_MS = 100;

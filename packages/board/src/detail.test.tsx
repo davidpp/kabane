@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/react */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { Checklist } from "@cabane/checklist";
-import { Planner, type Result, type Task } from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+import { Checklist } from "@kabane/checklist";
+import { Planner, type Result, type Task } from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createRef, type RefObject } from "react";
 import type { BoardActivity } from "./activity";
@@ -401,7 +401,7 @@ test("Detail's comments tab shows every comment whole, newest first", async () =
 	const task = await seed();
 	for (const [author, content] of [
 		["david", "Let's go with option B\nbecause it keeps the scan."],
-		["cabane://actor/agent/claude", "Implemented option B per feedback."],
+		["kabane://actor/agent/claude", "Implemented option B per feedback."],
 	] as const) {
 		const added = await Planner.addComment(TEST_BASE, {
 			taskId: task.id,
@@ -421,7 +421,7 @@ test("Detail's comments tab shows every comment whole, newest first", async () =
 		);
 		expect(frame).toContain("comments 2");
 		expect(frame).toContain("because it keeps the scan.");
-		expect(frame).not.toContain("cabane://actor");
+		expect(frame).not.toContain("kabane://actor");
 		const agent = rows(frame).findIndex((r) => r.includes("claude ·"));
 		const human = rows(frame).findIndex((r) => r.includes("david ·"));
 		expect(agent).toBeGreaterThan(-1);
@@ -435,8 +435,8 @@ test("Detail's comments tab names a typed entry's kind in its band, declared or 
 	const task = await seed();
 	for (const [kind, author] of [
 		["comment", "david"],
-		["handoff", "cabane://actor/agent/claude"],
-		["review", "cabane://actor/agent/codex"],
+		["handoff", "kabane://actor/agent/claude"],
+		["review", "kabane://actor/agent/codex"],
 	] as const) {
 		const added = await Planner.addEntry(TEST_BASE, {
 			taskId: task.id,
@@ -468,7 +468,7 @@ test("Detail heads a comment with a raised author band at forty columns, and set
 	const task = await seed();
 	const added = await Planner.addComment(TEST_BASE, {
 		taskId: task.id,
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "Picked this up, `bun test` next.",
 	});
@@ -697,7 +697,7 @@ test("Detail at 40 columns: the subtasks on now, never counted in the header, an
 		expect(child.parentTaskId).toBe(parent.id);
 	}
 	for (const [uri, kind, label] of [
-		["obsidian:prds/cabane.md", "PRD", "Cabane PRD"],
+		["obsidian:prds/kabane.md", "PRD", "Kabane PRD"],
 		["docs/adr.md", "ADR", undefined],
 	] as const) {
 		const added = await Planner.addContextRef(TEST_BASE, {
@@ -721,7 +721,7 @@ test("Detail at 40 columns: the subtasks on now, never counted in the header, an
 		const working = rows(frame).find((row) => row.includes("Second step"));
 		expect(working?.trimEnd().endsWith("in progress")).toBe(true);
 		// The ask is not on `now`.
-		expect(frame).not.toContain("Cabane PRD");
+		expect(frame).not.toContain("Kabane PRD");
 		expect(frame).not.toContain("The description reads here.");
 		for (const row of rows(frame))
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
@@ -737,7 +737,7 @@ test("Detail at 40 columns: the subtasks on now, never counted in the header, an
 		const frame = await pumpUntil(
 			described.renderOnce,
 			described.captureCharFrame,
-			(f) => f.includes("Cabane PRD") && f.includes("reads here."),
+			(f) => f.includes("Kabane PRD") && f.includes("reads here."),
 		);
 		const lines = rows(frame);
 		const brief = lines.findIndex((row) => row.includes("reads here."));
@@ -808,7 +808,7 @@ test("Detail lifts the latest handoff under the checklist at forty columns, coun
 		const added = await Planner.addEntry(TEST_BASE, {
 			taskId: task.id,
 			kind: "handoff",
-			author: "cabane://actor/agent/claude",
+			author: "kabane://actor/agent/claude",
 			authorType: "ai",
 			content,
 		});
@@ -886,7 +886,7 @@ test("Detail shows a handoff as a digest: its first section open, every further 
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: body,
 	});
@@ -931,7 +931,7 @@ test("Detail cuts a long author's name and holds the age, on now and on the band
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude-sonnet-4-20250514",
+		author: "kabane://actor/agent/claude-sonnet-4-20250514",
 		authorType: "ai",
 		content: "Picked up where the first pass stopped.",
 	});
@@ -966,7 +966,7 @@ test("Detail's lifted block spends no line on a count it does not have", async (
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "The only pass.",
 	});
@@ -996,7 +996,7 @@ test("Detail's band for a plain comment is one row at forty columns, a long name
 	const task = await seed();
 	const added = await Planner.addComment(TEST_BASE, {
 		taskId: task.id,
-		author: "cabane://actor/agent/claude-sonnet-4-5-20250929-preview",
+		author: "kabane://actor/agent/claude-sonnet-4-5-20250929-preview",
 		authorType: "ai",
 		content: "Starting on the read path.",
 	});
@@ -1023,7 +1023,7 @@ test("Detail opens on now when a handoff is all an issue holds, the handoff firs
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "Only a handoff here.",
 	});
@@ -1123,7 +1123,7 @@ test("Detail's digest with nothing cut ends its last fold on the r hint, at fort
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: [
 			"### Summary",

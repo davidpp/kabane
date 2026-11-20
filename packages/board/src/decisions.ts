@@ -13,7 +13,7 @@
 // takes the keys, so opening such an issue does not swallow `h/l`, `j/k` and `q`. Once a decision is
 // under way its typed fields have the keys at once. `esc` clears a decision under way back to its
 // first field, and on one not yet touched goes on to the view's own `esc`.
-import type { QuestionView } from "@cabane/questions";
+import type { QuestionView } from "@kabane/questions";
 import { DecisionForm } from "./decision-form";
 import { ElicitationForm } from "./elicitation-form";
 import type { BoardNav } from "./nav";

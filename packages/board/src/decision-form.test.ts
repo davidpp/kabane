@@ -1,7 +1,7 @@
 // An agent's decision as the copilot's form, and the form's fields back to the one answer
 // `Questions.answer` takes, judged as the MCP tool judges it.
 import { describe, expect, it } from "bun:test";
-import type { DecisionMeta } from "@cabane/questions";
+import type { DecisionMeta } from "@kabane/questions";
 import { DecisionForm } from "./decision-form";
 import { Fixtures } from "./stories/fixtures";
 

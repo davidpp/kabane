@@ -15,8 +15,8 @@
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Announcer } from "@cabane/board";
-import { ok, type Result, tryCatch, trySync } from "@cabane/core";
+import type { Announcer } from "@kabane/board";
+import { ok, type Result, tryCatch, trySync } from "@kabane/core";
 import { z } from "zod";
 import { version } from "../package.json";
 import { Self } from "./self";

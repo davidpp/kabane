@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { parseArgs } from "@cabane/extension";
+import { Planner } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { parseArgs } from "@kabane/extension";
 import { configPath, loadConfig } from "./config";
 import { openContext } from "./context";
 import {
@@ -16,7 +16,7 @@ import {
 	tildePath,
 } from "./first-run";
 
-const ROOT = join(tmpdir(), `cabane-first-run-${crypto.randomUUID()}`);
+const ROOT = join(tmpdir(), `kabane-first-run-${crypto.randomUUID()}`);
 afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
 // Not a project: nothing above the system temp directory is a git repo or carries a `.kabane` pin.
@@ -71,14 +71,14 @@ describe("setupDeps", () => {
 		const home = join(ROOT, "home-save");
 		const deps = await setupDeps(home, NOWHERE, installer);
 		const plan = {
-			actor: "cabane://actor/human/ada",
+			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: [],
 		};
 		const saved = await deps.save(plan);
 		expect(saved).toEqual({ ok: true, value: tildePath(configPath(home)) });
 		const config = loadConfig(home);
-		expect(config.ok && config.value.actor).toBe("cabane://actor/human/ada");
+		expect(config.ok && config.value.actor).toBe("kabane://actor/human/ada");
 		expect(config.ok && config.value.sync.enabled).toBe(false);
 		expect((await deps.save(plan)).ok).toBe(false);
 	});
@@ -100,7 +100,7 @@ describe("setupDeps", () => {
 		const repo = gitRepo("gadget");
 		const deps = await setupDeps(home, repo, installer);
 		await deps.save({
-			actor: "cabane://actor/human/ada",
+			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: ["claude"],
 		});
@@ -121,7 +121,7 @@ describe("setupDeps", () => {
 		const home = join(ROOT, "home-no-project");
 		const deps = await setupDeps(home, NOWHERE, installer);
 		await deps.save({
-			actor: "cabane://actor/human/ada",
+			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: ["claude"],
 		});

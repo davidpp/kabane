@@ -12,7 +12,7 @@ import {
 	methods,
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import { AcpClient } from "./client";
 
 type Seen = { newSession: unknown[]; prompts: unknown[]; cancels: number };
@@ -117,9 +117,9 @@ const openSession = async (
 		cwd: "/tmp/scope",
 		mcpServers: [
 			{
-				name: "cabane",
-				command: "/usr/local/bin/cabane",
-				args: ["mcp", "--as", "cabane://actor/agent/claude"],
+				name: "kabane",
+				command: "/usr/local/bin/kabane",
+				args: ["mcp", "--as", "kabane://actor/agent/claude"],
 				env: { KABANE_SESSION: "1" },
 			},
 		],
@@ -130,7 +130,7 @@ const openSession = async (
 };
 
 describe("AcpClient", () => {
-	it("streams a turn as cabane's own update union and stops", async () => {
+	it("streams a turn as kabane's own update union and stops", async () => {
 		const seen: Seen = { newSession: [], prompts: [], cancels: 0 };
 		const { conn, session } = await openSession(scriptedAgent(seen));
 		const updates = await collect(
@@ -166,9 +166,9 @@ describe("AcpClient", () => {
 			cwd: "/tmp/scope",
 			mcpServers: [
 				{
-					name: "cabane",
-					command: "/usr/local/bin/cabane",
-					args: ["mcp", "--as", "cabane://actor/agent/claude"],
+					name: "kabane",
+					command: "/usr/local/bin/kabane",
+					args: ["mcp", "--as", "kabane://actor/agent/claude"],
 					env: [{ name: "KABANE_SESSION", value: "1" }],
 				},
 			],
@@ -411,7 +411,7 @@ describe("AcpClient", () => {
 	});
 
 	// A dead process launched through npx means npm never put the adapter on disk, so the
-	// reader is looking at npm's words about a command they never typed. Cabane pinned that
+	// reader is looking at npm's words about a command they never typed. Kabane pinned that
 	// version and chose npx, so it says what it was doing before handing over the evidence.
 	// `connect` takes the process bundle directly, which is how this runs without an npx.
 	const deadNpx = (stderr: string) => ({
@@ -431,7 +431,7 @@ describe("AcpClient", () => {
 			() => new Promise<never>(() => {}),
 		);
 
-	it("explains an adapter npx could not install, in cabane's own words, above npm's", async () => {
+	it("explains an adapter npx could not install, in kabane's own words, above npm's", async () => {
 		const conn = await AcpClient.connect(
 			"claude",
 			mute(),
@@ -448,7 +448,7 @@ describe("AcpClient", () => {
 		);
 		// The date-before shape is npm reporting a release-age guard, so the hint is true here.
 		expect(lines[1]).toContain("hides recent publishes");
-		// npm's own diagnosis stays, contiguous, under cabane's sentence.
+		// npm's own diagnosis stays, contiguous, under kabane's sentence.
 		expect(lines[2]).toBe("npm error code ETARGET");
 		expect(lines[3]).toContain("No matching version found");
 		// The SDK's uninformative close message trails everything.

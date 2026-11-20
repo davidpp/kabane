@@ -14,7 +14,7 @@ const load = (extra: Record<string, unknown>) => {
 	writeFileSync(
 		configPath(home),
 		JSON.stringify({
-			actor: "cabane://actor/human/t",
+			actor: "kabane://actor/human/t",
 			deviceId: "d",
 			...extra,
 		}),

@@ -6,7 +6,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import {
 	type Extension,
 	failure,
@@ -14,7 +14,7 @@ import {
 	type Outcome,
 	parseArgs,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { add } from "./commands/add";
 import { answer } from "./commands/answer";
 import { board } from "./commands/board";

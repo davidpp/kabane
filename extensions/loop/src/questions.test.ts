@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { Planner } from "@kabane/core";
 import { Loop } from "./commands";
 import { Elicitation } from "./elicitation";
 import { Permission } from "./permission";
@@ -98,13 +98,13 @@ it("records only human non-permission decisions in the real task timeline, accep
 				kind: "answered",
 				questionId: id,
 				answer,
-				by: "cabane://actor/human/david",
+				by: "kabane://actor/human/david",
 				at: new Date().toISOString(),
 			}).ok,
 		).toBe(true);
 	const waited = await Questions.awaitAnswers(deps(), [id], forever);
 	expect(waited?.get(id)?.body).toBe("SQLite");
-	expect(waited?.get(id)?.by).toBe("cabane://actor/human/david");
+	expect(waited?.get(id)?.by).toBe("kabane://actor/human/david");
 	const permission = await ask(
 		Permission.body("claude", {
 			toolCallId: "call",
@@ -130,7 +130,7 @@ it("records only human non-permission decisions in the real task timeline, accep
 		[
 			[
 				"outcome.decision",
-				"Which store?\n→ SQLite (chosen by cabane://actor/human/david)",
+				"Which store?\n→ SQLite (chosen by kabane://actor/human/david)",
 			],
 		],
 	);
@@ -157,7 +157,7 @@ it("records an optional form field's skip as an answer without a timeline decisi
 			home: base,
 			basePath: base,
 			host: testHost(base),
-			actor: "cabane://actor/human/david",
+			actor: "kabane://actor/human/david",
 		},
 		id,
 		"SKIP",

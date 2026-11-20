@@ -15,7 +15,7 @@ win.
 
 | Topic | Decision |
 |---|---|
-| Packaging | Packages, no layer-rule change yet: the runtime port and ask relay go into `@cabane/acp` until a second adapter exists; data modules for jobs and runs; extensions stay leaves. |
+| Packaging | Packages, no layer-rule change yet: the runtime port and ask relay go into `@kabane/acp` until a second adapter exists; data modules for jobs and runs; extensions stay leaves. |
 | Job | A job kind. Not necessarily shown on the board: a separate app, the way the loop is, that can sit in the TUI as a tab. |
 | Run | A small synced run row (state, runtime, machine, sessions, outcome, cost) plus a local journal file. |
 | Code mode | Later. The Coral-style `kabane_agent_exec` flow is not part of v1. |
@@ -37,11 +37,11 @@ sections below.
 
 | Proposal below | Built |
 |---|---|
-| The first runtime is ACP, behind a port in `@cabane/acp` | The runtime is hc (herdr core), behind one adapter file in the extension. No port in `@cabane/acp`, no relay move. |
+| The first runtime is ACP, behind a port in `@kabane/acp` | The runtime is hc (herdr core), behind one adapter file in the extension. No port in `@kabane/acp`, no relay move. |
 | Asks are relayed to tracker questions | No relay. hc reports the terminal blocked, the run reads `waiting`, and the human attaches or sends text. |
 | A recipe is a prompt or a script: `body` is `{ kind: "prompt"; text }` or `{ kind: "script"; … }` | A recipe is a definition over a project skill (JCAB-537): frontmatter (`description`, `target`, `inputs`, `harness`, and `skill`, which defaults to the file name), and the procedure is the skill, in `.agents/skills/<name>/SKILL.md` with `.claude/skills/<name>` a symlink to it, which the harness loads itself. Kabane sends its preamble, then "Use the <skill> skill.", the target and one line per input. JCAB-539 brought the body back for small recipes: with a body and no `skill`, the body is the prompt, with `{{target.*}}` and `{{inputs.*}}` filled in, and no skill is looked for; both is an error. The skill form stays the preferred one. |
 | Run states `queued`, `claimed`, `succeeded`, a lease | A run's state is what its program reported through OSC 7501: `live`, `running`, `waiting`, `idle`, `ended`. Kabane never claims success. |
-| Run rows in a first-party `@cabane/runs` | `recipes_runs`, in the extension's own module (JCAB-444:1). JCAB-461 decides whether it moves. |
+| Run rows in a first-party `@kabane/runs` | `recipes_runs`, in the extension's own module (JCAB-444:1). JCAB-461 decides whether it moves. |
 | A job is a module table, or a core kind | `job` is a third core item kind, left out of listings that name no kind (JCAB-522). Its schedule row, `kabane job` and `kabane job tick` are in the `recipes` extension, next to `startRun` (JCAB-523). |
 | A job may have no recipe; `schedule` is cron or RRULE; `watch`, `deliver`, `agent` | A job runs a recipe with `target: job` or none, or has no recipe and its prompt is the job preamble then its request, read at each fire (JCAB-527). The schedule is a 5-field cron expression. No watch, delivery or profile field yet. |
 | A job's states `active`, `paused`, `done` | The item's own states: `next` is active, `someday` is paused, and a human marks it done. |
@@ -56,7 +56,7 @@ sections below.
 |---|---|---|
 | Can a recipe exist without a durable workflow? | Yes. A recipe is a file and a run is a row. Neither needs an engine. | "Durable replay is a capability of one runtime" |
 | Is durability a separate primitive, on top, or equal? | On top. It is the `replay` capability a runtime may report, under the same run record. It is not an eighth primitive. | same |
-| Extension chains, packages, or hooks only? | Packages below the extensions, or the record alone with execution outside. Both avoid a chain. The recommended start puts the runtime port and relay in `@cabane/acp`, which needs no layer-rule change; a separate `@cabane/runtime` waits for a second adapter. | "Packaging" |
+| Extension chains, packages, or hooks only? | Packages below the extensions, or the record alone with execution outside. Both avoid a chain. The recommended start puts the runtime port and relay in `@kabane/acp`, which needs no layer-rule change; a separate `@kabane/runtime` waits for a second adapter. | "Packaging" |
 | Personal work or backend jobs? | Personal. Backend replay stays possible through the runtime port. | "The target" |
 | More than one runtime, and free tokens? | A runtime port with push and pull adapters, and a router that filters by needs and then by cost order. The dots path is untested. | "Runtime port", "Routing" |
 | Agent prompts as opposed to skills? | An agent profile is a file with standing instructions and runtime preferences. Skills stay as they are. | "Agent profile" |
@@ -149,7 +149,7 @@ recipes do not have this problem, because the harness resumes its own session.
 | Run | One execution on a task, issue or job, or of a recipe alone: scope, state, runtime, sessions, outcome, cost | A row (summary) plus a local journal file |
 | Session reference | One harness session: runtime, id, machine, cwd, transcript pointer | A row, attached to a run or on its own |
 | Runtime | Something that can execute a run, pushed to or pulling from kabane | A port with adapters, in a harness-layer package |
-| Attention item | Something that should reach the human, with why and a link | Rows for results, failures and digests; open questions read from `@cabane/questions` |
+| Attention item | Something that should reach the human, with why and a link | Rows for results, failures and digests; open questions read from `@kabane/questions` |
 
 Skills stay what they are: instructions any agent can load. OpenMausBot draws the same line. Its
 bot identity ("soul") is always in the assembled prompt, skills are an index the agent reads
@@ -277,7 +277,7 @@ Three limits follow from kabane's own rules:
 ### A job is a standing request in a folder, and only the human closes it
 
 ```ts
-// A row in @cabane/jobs
+// A row in @kabane/jobs
 type Job = {
 	id: string;
 	title: string;
@@ -314,7 +314,7 @@ assumes the module table.
 ### A run is one execution, claimed on one device
 
 ```ts
-// A row in @cabane/runs (synced), small
+// A row in @kabane/runs (synced), small
 type Run = {
 	id: string;
 	of?: { kind: "task" | "issue" | "job"; id: string };   // absent: an ad hoc kabane_exec or recipe run
@@ -468,8 +468,8 @@ type AttentionItem = {
 };
 ```
 
-The feed is a read over two sources. Open questions come from `@cabane/questions` as they are
-and are not copied. `result`, `failure` and `digest` items are rows in `@cabane/runs`, written by
+The feed is a read over two sources. Open questions come from `@kabane/questions` as they are
+and are not copied. `result`, `failure` and `digest` items are rows in `@kabane/runs`, written by
 `emit` and by a run's end, and `seen` is stored on those rows only.
 
 The board's copilot and a small dashboard read the feed now. A notification shell hook and
@@ -484,11 +484,11 @@ alternatives map onto kabane's layers as follows.
 
 | Layer (ARCHITECTURE.md) | Package | Owns |
 |---|---|---|
-| core + data module | `job` value in `ItemKindSchema`; `@cabane/jobs` | The kind, so list, board and search show jobs; the module holds schedule, watch and delivery fields and their tools |
-| data module | `@cabane/runs` | Run rows, session references, attention rows, their tools (`kabane_run_*`) |
-| harness client | `@cabane/acp` (exists) | ACP transport |
-| harness client | `@cabane/acp` (grows), later `@cabane/runtime` | The runtime port, the ACP adapter, routing, the ask relay. Extracted from the loop's `dispatch.ts` and its relay files (`elicitation.ts`, `permission.ts`, `questions.ts`, `question-body.ts`). It starts inside `@cabane/acp` and splits out when a second adapter needs it |
-| harness client | `@cabane/script` (new) | The script runner: a sandbox (candidate: `@earendil-works/pi-codemode`, MIT, QuickJS, one runtime dependency, documented Bun worker support), the run API, the journal |
+| core + data module | `job` value in `ItemKindSchema`; `@kabane/jobs` | The kind, so list, board and search show jobs; the module holds schedule, watch and delivery fields and their tools |
+| data module | `@kabane/runs` | Run rows, session references, attention rows, their tools (`kabane_run_*`) |
+| harness client | `@kabane/acp` (exists) | ACP transport |
+| harness client | `@kabane/acp` (grows), later `@kabane/runtime` | The runtime port, the ACP adapter, routing, the ask relay. Extracted from the loop's `dispatch.ts` and its relay files (`elicitation.ts`, `permission.ts`, `questions.ts`, `question-body.ts`). It starts inside `@kabane/acp` and splits out when a second adapter needs it |
+| harness client | `@kabane/script` (new) | The script runner: a sandbox (candidate: `@earendil-works/pi-codemode`, MIT, QuickJS, one runtime dependency, documented Bun worker support), the run API, the journal |
 | extension | `extensions/loop` | Its opinions: gates, lenses, worktrees, landing. Moves onto the shared runtime port |
 | extension | `extensions/agent` (new) | `kabane run`, `kabane job`, `kabane recipe`, the two code-mode tools, a board dispatcher; bundles runtime and script |
 
@@ -499,22 +499,22 @@ each other.
 Checked against ARCHITECTURE.md and `scripts/layers.ts`, the table fits in three places and
 breaks a rule in three:
 
-- Fits: the hub "depends on core and the data modules alone", so registering `@cabane/jobs` and
-  `@cabane/runs` there is allowed. Both must run in Workers, and the hub needs a manual redeploy.
+- Fits: the hub "depends on core and the data modules alone", so registering `@kabane/jobs` and
+  `@kabane/runs` there is allowed. Both must run in Workers, and the hub needs a manual redeploy.
 - Fits: an extension reaches a first-party module's rows through `host.record.call`, so every
   run and job operation has to be a tool. That is also what lets a dot use them.
 - Fits: a board dispatcher and `TriggerInput` are existing contract ports.
-- Breaks: "never on a package of its own layer". `@cabane/runtime` importing `@cabane/acp` for
+- Breaks: "never on a package of its own layer". `@kabane/runtime` importing `@kabane/acp` for
   its ACP adapter and for `FormField`, which the relay uses at runtime, is a harness-client to
   harness-client edge. Either the layer splits in two (a harness transport below a harness
-  runtime), which is a rule change, or the port and relay go into `@cabane/acp` until a second
-  adapter exists, which needs no rule change and leaves `@cabane/runtime` for later.
+  runtime), which is a rule change, or the port and relay go into `@kabane/acp` until a second
+  adapter exists, which needs no rule change and leaves `@kabane/runtime` for later.
 - Breaks: "the harness client depends on core alone". The relay today takes `Host` from
-  `@cabane/extension`, and a relay that files tracker questions would want `@cabane/questions`.
+  `@kabane/extension`, and a relay that files tracker questions would want `@kabane/questions`.
   In a harness-layer package it has to take a narrow record port from the extension that
   bundles it and import neither.
 - Needs widening: the extension rule allows "a harness client, which it bundles", and
-  `scripts/layers.ts` allows exactly `@cabane/loop -> @cabane/acp`. Two extensions bundling two
+  `scripts/layers.ts` allows exactly `@kabane/loop -> @kabane/acp`. Two extensions bundling two
   or three harness-layer packages needs those edges added and the prose made plural. The layer's
   description ("driving a coding harness over ACP") does not cover a script sandbox either.
 
@@ -554,7 +554,7 @@ beside the 1,091-line `dispatch.ts`.
 - Whether a project script recipe runs without explicit trust. ZACT required trust for a
   project-scope recipe before it ran. Here `sh` is limited to home recipes, and `record.*` writes
   are not.
-- Whether the relay files its questions as `@cabane/questions` rows. Today the loop keeps them
+- Whether the relay files its questions as `@kabane/questions` rows. Today the loop keeps them
   in its run store (`questions.jsonl`), so an ask raised on one machine cannot be answered from
   the other.
 - The port's name. Core already exports a `Runtime` (`Runtime.configure`).

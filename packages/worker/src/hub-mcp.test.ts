@@ -5,14 +5,14 @@
  * with the Access assertion the edge maps to an actor.
  *
  * Sync round trip, both directions, without bun:sqlite (unavailable in the
- * Workers pool): a write at the hub is pushed to `CabaneLog` and shows up on
+ * Workers pool): a write at the hub is pushed to `KabaneLog` and shows up on
  * a device's `/pull`; an op pushed by a device is applied by the hub's alarm
  * and shows up in `kabane_list`. The device-side op is derived from one the
  * hub itself emitted, so the payload shape is exactly what a real device sends.
  */
 
 import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
-import { questionsModule } from "@cabane/questions";
+import { questionsModule } from "@kabane/questions";
 import { describe, expect, it } from "vitest";
 import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER } from "./names";
 import { HERMES, HUMAN, withAccess } from "./test-access";
@@ -34,7 +34,7 @@ const rpc = async (
 	method: string,
 	params: Record<string, unknown> = {},
 ): Promise<{ status: number; body: JsonRpc }> => {
-	const res = await SELF.fetch("https://cabane.test/mcp", {
+	const res = await SELF.fetch("https://kabane.test/mcp", {
 		method: "POST",
 		headers: withAccess(token, {
 			"Content-Type": "application/json",
@@ -76,7 +76,7 @@ const log = (
 	body: unknown,
 	deviceToken: string = HERMES,
 ): Promise<Response> =>
-	SELF.fetch(`https://cabane.test${path}`, {
+	SELF.fetch(`https://kabane.test${path}`, {
 		method: "POST",
 		headers: withAccess(deviceToken, {
 			"Content-Type": "application/json",
@@ -96,13 +96,13 @@ type TaskLike = {
 
 describe("hub MCP over Streamable HTTP", () => {
 	it("refuses without an assertion, and refuses GET", async () => {
-		const noAuth = await SELF.fetch("https://cabane.test/mcp", {
+		const noAuth = await SELF.fetch("https://kabane.test/mcp", {
 			method: "POST",
 			body: "{}",
 		});
 		expect(noAuth.status).toBe(401);
 
-		const get = await SELF.fetch("https://cabane.test/mcp", {
+		const get = await SELF.fetch("https://kabane.test/mcp", {
 			headers: withAccess(HUMAN),
 		});
 		expect(get.status).toBe(405);
@@ -215,7 +215,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		const resumed = await callTool(HUMAN, "kabane_get", { id: issue.id });
 		expect(resumed.value).toMatchObject({
 			state: "next",
-			updatedBy: "cabane://actor/human/david",
+			updatedBy: "kabane://actor/human/david",
 		});
 	});
 
@@ -251,18 +251,18 @@ describe("hub MCP over Streamable HTTP", () => {
 		const service = await relay(HERMES, 1);
 		expect(service.isError).toBe(true);
 		expect(String(service.value)).toContain(
-			"relayed: true needs the human this connection relays for, and cabane://actor/agent/hermes has none configured",
+			"relayed: true needs the human this connection relays for, and kabane://actor/agent/hermes has none configured",
 		);
 
 		// A human-looking actor the edge did not authenticate as a human, as a
 		// service mapped to one would arrive: the hub credits no one.
-		const spoofed = await env.CABANE_HUB.getByName(HUB_NAME).fetch(
-			new Request("https://cabane.test/mcp", {
+		const spoofed = await env.KABANE_HUB.getByName(HUB_NAME).fetch(
+			new Request("https://kabane.test/mcp", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 					Accept: "application/json, text/event-stream",
-					[ACTOR_HEADER]: "cabane://actor/human/david",
+					[ACTOR_HEADER]: "kabane://actor/human/david",
 					[PRINCIPAL_HEADER]: "service",
 				},
 				body: JSON.stringify({
@@ -291,7 +291,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			true,
 		);
 		expect(String(decisions.value)).toContain(
-			"→ yes (cabane://actor/human/david)",
+			"→ yes (kabane://actor/human/david)",
 		);
 	});
 
@@ -304,11 +304,11 @@ describe("hub MCP over Streamable HTTP", () => {
 	it("stamps the Access identity as the actor: human and service", async () => {
 		const human = await callTool(HUMAN, "kabane_add", {
 			title: "Filed by David",
-			scopeUri: "cabane",
+			scopeUri: "kabane",
 		});
 		expect(human.isError).toBe(false);
 		expect((human.value as TaskLike).updatedBy).toBe(
-			"cabane://actor/human/david",
+			"kabane://actor/human/david",
 		);
 
 		const service = await callTool(HERMES, "kabane_add", {
@@ -316,12 +316,12 @@ describe("hub MCP over Streamable HTTP", () => {
 			kind: "issue",
 			state: "next",
 			assignee: "claude",
-			scopeUri: "cabane",
+			scopeUri: "kabane",
 		});
 		expect(service.isError).toBe(false);
 		const issue = service.value as TaskLike;
-		expect(issue.updatedBy).toBe("cabane://actor/agent/hermes");
-		expect(issue.shortId).toMatch(/^JCAB-\d+$/);
+		expect(issue.updatedBy).toBe("kabane://actor/agent/hermes");
+		expect(issue.shortId).toMatch(/^JKAB-\d+$/);
 
 		const comment = await callTool(HERMES, "kabane_comment", {
 			id: issue.id,
@@ -348,7 +348,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			expect(comment.isError).toBe(false);
 			expect(comment.value).toMatchObject({
 				content: body,
-				author: "cabane://actor/agent/hermes",
+				author: "kabane://actor/agent/hermes",
 				authorType: "ai",
 			});
 		}
@@ -362,7 +362,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			const entry = await callTool(HERMES, "kabane_log", { id, ...args });
 			expect(entry.isError).toBe(false);
 		}
-		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		const hub = env.KABANE_HUB.getByName(HUB_NAME);
 		await hub.syncNow();
 		const before = await (
 			await log("/pull", { deviceId: "write-inputs", sinceSeq: 0, limit: 1000 })
@@ -375,7 +375,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		for (const comment of comments)
 			expect(comment.payload).toMatchObject({
 				content: body,
-				author: "cabane://actor/agent/hermes",
+				author: "kabane://actor/agent/hermes",
 				author_type: "ai",
 			});
 		expect(
@@ -556,10 +556,10 @@ describe("hub as sync device cloud", () => {
 				scopeUri: "sync",
 			})
 		).value as TaskLike;
-		expect(created.updatedBy).toBe("cabane://actor/human/david");
+		expect(created.updatedBy).toBe("kabane://actor/human/david");
 
 		// The post-write push runs in waitUntil; a direct pass makes it deterministic.
-		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		const hub = env.KABANE_HUB.getByName(HUB_NAME);
 		const pass = await hub.syncNow();
 		expect(pass.push.ok).toBe(true);
 
@@ -585,7 +585,7 @@ describe("hub as sync device cloud", () => {
 				scopeUri: "sync",
 			})
 		).value as TaskLike;
-		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		const hub = env.KABANE_HUB.getByName(HUB_NAME);
 		await hub.syncNow();
 
 		const page = await (
@@ -604,14 +604,14 @@ describe("hub as sync device cloud", () => {
 			deviceId: "device-a",
 			rowId,
 			rowUpdatedAt: now,
-			updatedBy: "cabane://actor/human/david",
+			updatedBy: "kabane://actor/human/david",
 			capturedAt: now,
 			payload: {
 				...template.payload,
 				id: rowId,
 				short_id: "JSYN-9001",
 				title: "Written on device-a",
-				updated_by: "cabane://actor/human/david",
+				updated_by: "kabane://actor/human/david",
 				created_at: now,
 				updated_at: now,
 			},
@@ -633,6 +633,6 @@ describe("hub as sync device cloud", () => {
 		).value as TaskLike[];
 		expect(listed.map((t) => t.title)).toContain("Written on device-a");
 		const applied = listed.find((t) => t.title === "Written on device-a");
-		expect(applied?.updatedBy).toBe("cabane://actor/human/david");
+		expect(applied?.updatedBy).toBe("kabane://actor/human/david");
 	});
 });

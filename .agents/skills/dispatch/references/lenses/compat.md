@@ -1,5 +1,5 @@
 ---
-applies: anything that outlives a process or crosses a boundary, such as database tables, columns and migrations, what the oplog captures, files under KABANE_HOME or .kabane/, the dispatch skill, sync ops and the schema version, CLI commands, flags, exit codes and --json output, MCP tool names, inputs and results, and the names rows and hubs store (@cabane/*, cabane-worker, cabane://actor/...)
+applies: anything that outlives a process or crosses a boundary, such as database tables, columns and migrations, what the oplog captures, files under KABANE_HOME or .kabane/, the dispatch skill, sync ops and the schema version, CLI commands, flags, exit codes and --json output, MCP tool names, inputs and results, and the names rows and hubs store (kabane://actor/..., kabane://scope/..., the Worker and its Durable Object classes)
 ---
 
 # Compatibility lens
@@ -14,7 +14,8 @@ Existing persisted data is not disposable, and a released interface is a promise
   - the sync wire: op shapes, the schema version, what the hub accepts;
   - the CLI: commands, flags, exit codes, `--json` output;
   - the MCP tools: names, inputs, result shapes;
-  - names that rows and deployed hubs store: `@cabane/*`, `cabane-worker`, `cabane://actor/…`.
+  - names that rows and deployed hubs store: `kabane://actor/…`, `kabane://scope/…`, `kabane-worker`
+    and its Durable Object classes.
 - For each, ask what a device that ran the last release holds, and make that state: write the
   old file or row by hand in `bun run sandbox`, in the shape the last release wrote (`git
   show <last tag>:<path>` shows the code that wrote it, and `git tag` lists the releases).

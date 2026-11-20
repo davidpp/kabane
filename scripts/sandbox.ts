@@ -8,7 +8,7 @@
  *
  * It lives in the system temp directory, one per checkout, and not inside the repo: scope
  * detection walks up from the working directory, and inside this checkout it would find
- * cabane's own `.kabane/scope` pin and file every sandbox task under cabane.
+ * kabane's own `.kabane/scope` pin and file every sandbox task under kabane.
  *
  *   bun run sandbox                 the TUI: setup on the first run, then the board
  *   bun run sandbox list            any kabane command, run inside the sandbox repo

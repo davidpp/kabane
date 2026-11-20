@@ -2,7 +2,7 @@
 // host with more than one contributor merges them here, each under a name. Every id that crosses
 // the port gets `<name>:` in front, so a card refresh, an events poll or a dispatch routes back to
 // the contributor that minted it, and two contributors may reuse the same ids.
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import type {
 	ActivityCard,
 	ActivitySource,
@@ -11,7 +11,7 @@ import type {
 	JobFacts,
 	JobSource,
 	TriggerDescriptor,
-} from "@cabane/extension";
+} from "@kabane/extension";
 
 type Named<T> = Readonly<Record<string, T>>;
 

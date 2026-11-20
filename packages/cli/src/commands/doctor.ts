@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ok, Planner } from "@cabane/core";
-import { Doctor, flagList, success, usage } from "@cabane/extension";
+import { ActorScheme, ok, Planner } from "@kabane/core";
+import { Doctor, flagList, success, usage } from "@kabane/extension";
 import { configPath, DB_NAME, loadConfig } from "../config";
 import {
 	activateContextRecord,
@@ -55,13 +55,12 @@ export const doctor: Command = {
 			const config = loadConfig(ctx.home);
 			// Settings diagnostics report invalid config; it must not prevent the other checks.
 			if (config.ok) {
+				// An actor under the old prefix is the `actor` check's finding, so doctor writes as
+				// the one it repairs it to.
+				const actor = ActorScheme.current(config.value.actor);
 				// The same stages as every process that opens the database. A stop is its own
 				// finding, and the checks that need no store still run.
-				const registered = await registerModules(
-					ctx.home,
-					config.value,
-					config.value.actor,
-				);
+				const registered = await registerModules(ctx.home, config.value, actor);
 				if (!registered.ok)
 					unavailable.push({
 						id: "extension-modules",
@@ -74,8 +73,8 @@ export const doctor: Command = {
 				if (initialized?.ok) {
 					ctx = {
 						...ctx,
-						config: config.value,
-						actor: config.value.actor,
+						config: { ...config.value, actor },
+						actor,
 						harnessMode: hostHarnessMode(ctx.home, config.value),
 					};
 					activateContextRecord(ctx, args);

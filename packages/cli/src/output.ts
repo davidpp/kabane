@@ -1,7 +1,7 @@
 /**
  * Rendering — one place that knows about `--json` and icons.
  *
- * Commands return an `Outcome` (`@cabane/extension`): an exit code, a JSON
+ * Commands return an `Outcome` (`@kabane/extension`): an exit code, a JSON
  * value, and the human text. `main` prints one or the other.
  */
 
@@ -15,8 +15,8 @@ import {
 	type TaskPriority,
 	type TaskState,
 	type TaskWorkLog,
-} from "@cabane/core";
-import type { Outcome } from "@cabane/extension";
+} from "@kabane/core";
+import type { Outcome } from "@kabane/extension";
 
 const STATE_ICONS: Record<TaskState, string> = {
 	inbox: "📥",

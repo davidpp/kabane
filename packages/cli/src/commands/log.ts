@@ -1,11 +1,11 @@
-import { Planner } from "@cabane/core";
+import { Planner } from "@kabane/core";
 import {
 	failure,
 	flagList,
 	flagString,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { authorTypeOf } from "../config";
 import type { Command } from "../context";
 

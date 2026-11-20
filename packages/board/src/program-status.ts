@@ -8,8 +8,8 @@
 // records that changed since the last write, and clears the ones that went. The board clears the
 // root (and with it every child) once its renderer has let go of the terminal (start.tsx).
 import { createHash } from "node:crypto";
-import { trySync } from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+import { trySync } from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import type { ProgramStatus as Report, ProgramStatusKind } from "@opentui/core";
 import { useRenderer } from "@opentui/react";
 import { useEffect, useMemo, useRef } from "react";

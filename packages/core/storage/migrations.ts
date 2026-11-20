@@ -24,6 +24,7 @@ import { applySchema } from "../db/schema";
 import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
+import { ActorScheme } from "./actor-scheme";
 import { columnExists, TABLES } from "./helpers";
 import { ScopeScheme } from "./scope-scheme";
 import { SessionOutcomes } from "./session-outcomes";
@@ -301,6 +302,17 @@ export namespace Migrations {
 				dropTable(db, "agent_activities");
 				dropTable(db, "agent_sessions");
 			},
+		},
+		{
+			// An actor was `cabane://actor/...`, a name kept from before the project
+			// was called kabane; it is `kabane://actor/...` (JCAB-607). Core's identity
+			// columns and the ops still in this device's log are renamed here, each
+			// data module's own table by a migration of its own. A device still on
+			// schema 11 stops its own pull at the first op from this schema, but what it
+			// pushes meanwhile is applied here as it came, old prefix included: every
+			// device updates before the next sync (docs/getting-started.md).
+			name: "actor-scheme",
+			up: ActorScheme.migrate,
 		},
 	];
 

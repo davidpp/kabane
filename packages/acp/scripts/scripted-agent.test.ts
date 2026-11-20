@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { ok } from "@cabane/core";
+import { ok } from "@kabane/core";
 import { AcpClient } from "../src/client";
 
 it("keeps scripted call ids unique across turns and matches their updates", async () => {

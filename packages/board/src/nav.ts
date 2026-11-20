@@ -2,14 +2,14 @@
 // live here as plain functions so they're unit-testable without a renderer (the issue's preferred seam
 // over key-injection frame tests). app.tsx owns the single useKeyboard handler and runs the Effects
 // these return; it never mutates board state directly.
-import type { CopilotElicitationAnswer } from "@cabane/acp/form-field";
+import type { CopilotElicitationAnswer } from "@kabane/acp/form-field";
 import {
 	type ItemKind,
 	TASK_STATE_DISPLAY,
 	type Task,
 	type TaskState,
-} from "@cabane/core";
-import type { CopilotShortcut, TriggerDescriptor } from "@cabane/extension";
+} from "@kabane/core";
+import type { CopilotShortcut, TriggerDescriptor } from "@kabane/extension";
 import { CardTab } from "./card-tab";
 import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";

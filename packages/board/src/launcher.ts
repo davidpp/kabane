@@ -1,10 +1,10 @@
 // Hands a linked issue's URI to the host OS: one native command per platform, spawned, with the
 // runner injectable so tests never shell out. It lives here and not in
-// @cabane/core because core also runs on Cloudflare Workers, where `node:child_process` has no meaning;
+// @kabane/core because core also runs on Cloudflare Workers, where `node:child_process` has no meaning;
 // the CLI already depends on this package, so both callers reach it from one place.
 import { spawn } from "node:child_process";
 import { platform } from "node:os";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import { Clipboard } from "./clipboard";
 
 export namespace Launcher {

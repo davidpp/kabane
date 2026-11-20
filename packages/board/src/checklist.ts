@@ -1,4 +1,4 @@
-// The checklists agents and the CLI keep on issues (`@cabane/checklist`), as plain functions over the
+// The checklists agents and the CLI keep on issues (`@kabane/checklist`), as plain functions over the
 // board's state beside decisions.ts. Two surfaces:
 //
 // - Each card with items says how far they have got, `· 3/5`, from one progress query per poll.
@@ -17,7 +17,7 @@
 // Until then the item shows what the human pressed, whatever a poll's records say: a snapshot taken
 // before the store caught up cannot take a press back. A failed write puts the item back to the
 // state the store last acknowledged and drops what was queued behind it.
-import type { ChecklistItemView, ChecklistProgress } from "@cabane/checklist";
+import type { ChecklistItemView, ChecklistProgress } from "@kabane/checklist";
 import { DetailModel } from "./detail-model";
 import type { BoardNav } from "./nav";
 

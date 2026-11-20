@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import type { Db, DbProvider } from "../db/port";
 import { TABLES } from "../db/tables";
 import type { KabaneModule } from "../module";
@@ -449,7 +449,7 @@ describe("Planner — assembleContext", () => {
 });
 
 describe("Planner — assembleContext over typed timeline entries", () => {
-	const AGENT = "cabane://actor/agent/claude";
+	const AGENT = "kabane://actor/agent/claude";
 
 	const entry = async (taskId: string, kind: string, content: string) => {
 		const added = await Planner.addEntry(TEST_BASE, {
@@ -599,7 +599,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 		const human = await Planner.addEntry(TEST_BASE, {
 			taskId: id,
 			kind: "verdicts",
-			author: "cabane://actor/human/ada",
+			author: "kabane://actor/human/ada",
 			authorType: "human",
 			content: "HUMAN_VERDICT",
 		});
@@ -615,7 +615,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 			id,
 			taskId: "no-such-task",
 			kind: "verdicts",
-			author: authorType === "human" ? "cabane://actor/human/ada" : AGENT,
+			author: authorType === "human" ? "kabane://actor/human/ada" : AGENT,
 			authorType,
 			content: id,
 			createdAt: "2026-11-11T12:00:00.000Z",
@@ -634,7 +634,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 		const human = await Planner.addEntry(TEST_BASE, {
 			taskId: id,
 			kind: "verdicts",
-			author: "cabane://actor/human/ada",
+			author: "kabane://actor/human/ada",
 			authorType: "human",
 			content: "HUMAN_VERDICT",
 		});

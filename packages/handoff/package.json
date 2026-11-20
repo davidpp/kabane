@@ -1,5 +1,5 @@
 {
-	"name": "@cabane/handoff",
+	"name": "@kabane/handoff",
 	"version": "0.1.0",
 	"description": "Kabane data module: the handoff, what whoever did the work on an issue leaves for whoever reads next",
 	"license": "MIT",
@@ -16,7 +16,7 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@cabane/core": "workspace:*",
+		"@kabane/core": "workspace:*",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {

@@ -12,8 +12,8 @@ import {
 	type Task,
 	type TaskLink,
 	type TaskState,
-} from "@cabane/core";
-import type { Host } from "@cabane/extension";
+} from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { err, ok } from "./result";
 
 export namespace LoopPlan {

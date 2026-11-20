@@ -10,13 +10,13 @@
 // get a toggle each over the lenses the project can run. A field the form cannot hold (free text
 // with no options, a record) is left to the settings layers (`kabane config`) and flags: the gates,
 // named shell commands, which the preview lists read-only.
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import type {
 	Host,
 	SettingField,
 	Settings,
 	TriggerInput,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import type { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
 import { looks } from "./extension";

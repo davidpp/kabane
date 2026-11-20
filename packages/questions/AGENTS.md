@@ -1,4 +1,4 @@
-# @cabane/questions
+# @kabane/questions
 
 A data module: the decisions an agent asks a human for, filed on an issue and answered from any
 surface. It owns the `task_questions` table and its migrations, the tools `kabane_ask`,
@@ -8,7 +8,7 @@ issue closes. `README.md` describes the tools and their rules; read it before ch
 
 ## It depends on core alone and both hosts register it
 
-Its layer is `data module`; its entry in `scripts/layers.ts` (`"@cabane/questions"`) says what
+Its layer is `data module`; its entry in `scripts/layers.ts` (`"@kabane/questions"`) says what
 it may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
 (`packages/worker/src/hub.ts`) register `questionsModule`, so a change to what it declares
 reaches both. The board and the CLI's `questions` and `answer` commands call its exports:

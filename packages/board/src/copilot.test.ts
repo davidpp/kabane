@@ -11,8 +11,8 @@ import {
 	type ToolCallContent,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
-import { AcpClient } from "@cabane/acp";
-import { err } from "@cabane/core";
+import { AcpClient } from "@kabane/acp";
+import { err } from "@kabane/core";
 import type { BoardContext } from "./context";
 import { BoardCopilot } from "./copilot";
 import { CopilotInstructions } from "./copilot-instructions";
@@ -258,7 +258,7 @@ const copilotOver = (
 ) =>
 	BoardCopilot.create({
 		harness: "claude",
-		scopeDir: "/repos/cabane",
+		scopeDir: "/repos/kabane",
 		scopeUri: "kabane://scope/cabane",
 		kabaneBin: () => BIN,
 		home: "/home/me/.kabane",
@@ -308,12 +308,12 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("gives session/new the scope dir and cabane mcp as its one tool server", async () => {
+	it("gives session/new the scope dir and kabane mcp as its one tool server", async () => {
 		const seen = fresh();
 		const copilot = copilotOver(scriptedAgent(seen));
 		await collect(copilot.run("go", context()));
 		expect(seen.newSession[0]).toEqual({
-			cwd: "/repos/cabane",
+			cwd: "/repos/kabane",
 			mcpServers: [
 				{
 					name: "kabane-session",
@@ -323,7 +323,7 @@ describe("BoardCopilot", () => {
 						"--scope",
 						"kabane://scope/cabane",
 						"--as",
-						"cabane://actor/agent/claude",
+						"kabane://actor/agent/claude",
 					],
 					env: [{ name: "KABANE_HOME", value: "/home/me/.kabane" }],
 				},
@@ -394,7 +394,7 @@ describe("BoardCopilot", () => {
 		expect(server?.args).toEqual([
 			"mcp",
 			"--as",
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 		]);
 		copilot.close();
 	});
@@ -512,7 +512,7 @@ describe("BoardCopilot", () => {
 		copilot.close();
 	});
 
-	it("every call that completes yields tool_result; only a cabane write is marked a write", async () => {
+	it("every call that completes yields tool_result; only a kabane write is marked a write", async () => {
 		const seen = fresh();
 		const copilot = copilotOver(
 			scriptedAgent(seen, {

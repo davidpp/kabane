@@ -1,6 +1,6 @@
 import "./test-host";
 import { expect, test } from "bun:test";
-import type { Task, TaskState } from "@cabane/core";
+import type { Task, TaskState } from "@kabane/core";
 import { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";
 import type { Risk } from "./lint";

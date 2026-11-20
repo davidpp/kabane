@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import type { DbProvider } from "../db/port";
 import type { Result } from "../result";
 import { Runtime, withDb } from "../runtime";

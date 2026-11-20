@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // `kabane loop` as the CLI calls it: argv parsed by the shared parser, run against a real tracker.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, Planner } from "@cabane/core";
-import { parseArgs, Settings } from "@cabane/extension";
+import { ok, Planner } from "@kabane/core";
+import { parseArgs, Settings } from "@kabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Elicitation } from "./elicitation";
@@ -32,7 +32,7 @@ const kabaneLoop = (...argv: string[]) => {
 		home,
 		store: home,
 		cwd: home,
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		harnessMode: "auto",
 		settings: Settings.port(async () => ok([])),
 	});
@@ -41,7 +41,7 @@ const kabaneLoop = (...argv: string[]) => {
 // The runner `start` spawns: the real `Loop.run` on this test's tracker, as `kabane loop run` runs
 // it, with no harness a lens session could reach.
 const RUNNER = [
-	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
+	`import ${JSON.stringify(Bun.resolveSync("@kabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
@@ -70,7 +70,7 @@ describe("kabane loop start", () => {
 			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			cwd: home,
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			mode: "auto" as const,
 			settings: Settings.port(async () => ok([])),
 			runner: (runId: string) => [process.execPath, "-e", RUNNER, runId],
@@ -183,7 +183,7 @@ describe("kabane loop start", () => {
 			"--land",
 			"pr",
 			"--as",
-			"cabane://actor/human/test",
+			"kabane://actor/human/test",
 		);
 		// Past the flags: the parent is what is missing.
 		expect(started.exitCode).toBe(1);
@@ -474,7 +474,7 @@ describe("kabane loop advise", () => {
 				home,
 				store: home,
 				cwd: home,
-				actor: "cabane://actor/human/test",
+				actor: "kabane://actor/human/test",
 				harnessMode: "auto",
 				settings: Settings.port(async () =>
 					ok([
@@ -561,7 +561,7 @@ describe("kabane loop advise", () => {
 					home,
 					store: home,
 					cwd: home,
-					actor: "cabane://actor/human/test",
+					actor: "kabane://actor/human/test",
 					harnessMode: "auto",
 					settings: Settings.port(async () =>
 						ok(layers.map((l) => ({ ...l, label: l.layer }))),

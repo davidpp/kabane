@@ -1,8 +1,8 @@
 // The runner's in-process state, and the two writes every step goes through: an event on the
 // trace and a run.json save. A save replaces `ctx.run` and writes it before the step goes on,
 // which is what lets a run resume after its runner dies.
-import type { Harnesses } from "@cabane/acp";
-import type { Host } from "@cabane/extension";
+import type { Harnesses } from "@kabane/acp";
+import type { Host } from "@kabane/extension";
 import type { LoopConfig } from "./config";
 import type { Dispatch } from "./dispatch";
 import type { Gates } from "./gates";

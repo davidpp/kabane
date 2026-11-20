@@ -4,7 +4,7 @@
  * extensions depending on a host implementation.
  */
 
-import type { ToolDef } from "@cabane/core";
+import type { ToolDef } from "@kabane/core";
 import type { z } from "zod";
 import type { ParsedArgs } from "./args";
 import type { Doctor } from "./doctor";

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { err, ok, type Result, trySync } from "@cabane/core";
+import { ActorUri, err, ok, type Result, trySync } from "@kabane/core";
 import { z } from "zod";
 
 /**
@@ -17,7 +17,7 @@ import { z } from "zod";
  */
 export namespace McpClients {
 	/**
-	 * The same ids as `Harnesses.IDS` in `@cabane/acp`, kept as a literal
+	 * The same ids as `Harnesses.IDS` in `@kabane/acp`, kept as a literal
 	 * because importing that package loads the ACP SDK on every CLI start. A
 	 * test asserts the two lists match.
 	 */
@@ -63,8 +63,20 @@ export namespace McpClients {
 		path: string;
 		at: string;
 		launch: Launch;
+		/** The entry's keys beyond what a harness's `mcp add` writes with no options; re-registering drops them. */
+		extras: string[];
 		scope?: "user" | "local";
 	};
+
+	// Claude's `mcp add` also writes `"type": "stdio"` and `"env": {}`; Codex's writes the launch alone.
+	const isWritten = (key: string, value: unknown): boolean =>
+		key === "command" ||
+		key === "args" ||
+		(key === "type" && value === "stdio") ||
+		(key === "env" &&
+			typeof value === "object" &&
+			value !== null &&
+			Object.keys(value).length === 0);
 
 	const ConfigSchema = z.record(z.string(), z.unknown());
 
@@ -90,8 +102,14 @@ export namespace McpClients {
 	): Registration[] => {
 		const map = ConfigSchema.safeParse(servers);
 		if (!map.success) return [];
-		const launch = LaunchSchema.safeParse(map.data[SERVER_NAME]);
-		return launch.success ? [{ path, at, launch: launch.data }] : [];
+		const raw = map.data[SERVER_NAME];
+		const launch = LaunchSchema.safeParse(raw);
+		if (!launch.success) return [];
+		const fields = ConfigSchema.safeParse(raw);
+		const extras = Object.entries(fields.success ? fields.data : {})
+			.filter(([key, value]) => !isWritten(key, value))
+			.map(([key]) => key);
+		return [{ path, at, launch: launch.data, extras }];
 	};
 
 	// User scope, then the project's local scope, which Claude keys by the project's path.
@@ -265,8 +283,7 @@ export namespace McpClients {
 	export const entry = (id: Id): Entry => TABLE[id];
 
 	/** Writes through a harness are stamped with the harness's own agent actor. */
-	export const actorFor = (client: string): string =>
-		`cabane://actor/agent/${client}`;
+	export const actorFor = (client: string): string => ActorUri.agent(client);
 
 	export const launchFor = (launcher: Launch, client: string): Launch => ({
 		command: launcher.command,

@@ -46,7 +46,7 @@ test("doctor lists every refused copilot file under its extension, one finding p
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			deviceId: "test",
 			extensions: ["notes", "one", "two"],
 		}),
@@ -147,7 +147,7 @@ test("doctor reports a dropped description of an enabled extension, and says not
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			deviceId: "test",
 			extensions: ["evil"],
 		}),
@@ -208,7 +208,7 @@ test("doctor lists every skill kabane mcp does not serve under its extension", (
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			deviceId: "test",
 			extensions: ["notes", "other"],
 		}),

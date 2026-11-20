@@ -16,9 +16,9 @@
 // answer; an answer that does not fit its field is asked again, with why, judged as the board's
 // form judges it (`FormField`). A claim that stops, or a harness that withdraws the form, closes
 // the questions still open as withdrawn (`questions.ts`).
-import type { AcpClient } from "@cabane/acp";
-import { FormField } from "@cabane/acp/form-field";
-import type { Result } from "@cabane/core";
+import type { AcpClient } from "@kabane/acp";
+import { FormField } from "@kabane/acp/form-field";
+import type { Result } from "@kabane/core";
 import { Permission } from "./permission";
 import { formatQuestionBody } from "./question-body";
 import { Questions } from "./questions";

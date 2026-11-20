@@ -11,9 +11,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Harnesses } from "@cabane/acp";
-import { CopilotInstructions } from "@cabane/board/copilot-instructions";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { Harnesses } from "@kabane/acp";
+import { CopilotInstructions } from "@kabane/board/copilot-instructions";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -89,7 +89,7 @@ it("manages device config through the real stdio MCP server", async () => {
 		await cli(
 			"init",
 			"--actor",
-			"cabane://actor/human/config-test",
+			"kabane://actor/human/config-test",
 			"--device",
 			"config-test",
 		);
@@ -349,7 +349,7 @@ it("writes a project's local layer by default over stdio, and names layers the n
 			bin,
 			"init",
 			"--actor",
-			"cabane://actor/human/config-test",
+			"kabane://actor/human/config-test",
 			"--device",
 			"config-test",
 		],
@@ -481,7 +481,7 @@ it("reads and writes the project's shared layer over stdio from a nested directo
 			bin,
 			"init",
 			"--actor",
-			"cabane://actor/human/config-test",
+			"kabane://actor/human/config-test",
 			"--device",
 			"config-test",
 		],

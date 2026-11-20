@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { err, ok, Planner, type Result } from "@cabane/core";
-import { failure, flagBool, flagString, success } from "@cabane/extension";
+import { err, ok, Planner, type Result } from "@kabane/core";
+import { failure, flagBool, flagString, success } from "@kabane/extension";
 import {
 	type Config,
 	ConfigSchema,

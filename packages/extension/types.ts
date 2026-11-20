@@ -22,8 +22,8 @@ export type {
 	Result,
 	ToolDef,
 	ToolHandler,
-} from "@cabane/core";
-export type { ProjectScope } from "@cabane/core";
+} from "@kabane/core";
+export type { ProjectScope } from "@kabane/core";
 export type {
 	ActivityCard,
 	ActivityDiff,

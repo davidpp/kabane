@@ -1,4 +1,4 @@
-import { defineTool, err, ok, type ToolDef } from "@cabane/core";
+import { defineTool, err, ok, type ToolDef } from "@kabane/core";
 import { z } from "zod";
 import { ConfigSettings } from "./config-settings";
 import { Extensions } from "./extensions";

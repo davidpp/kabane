@@ -6,11 +6,11 @@
 // are typed into a one-line input, the one thing here that takes the keyboard as text. The keys
 // themselves are nav.ts's (elicitation-form.ts); this only draws the draft, and hands a click on
 // an option or a hint to the same reducers.
-import { FormField } from "@cabane/acp/form-field";
+import { FormField } from "@kabane/acp/form-field";
 import type {
 	CopilotFormField,
 	CopilotFormOption,
-} from "@cabane/acp/form-field";
+} from "@kabane/acp/form-field";
 import {
 	type ColorInput,
 	type InputRenderable,

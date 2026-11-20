@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
-import { err, ok, type Result, trySync } from "@cabane/core";
-import { type Doctor, type Extension, Settings } from "@cabane/extension";
+import { err, ok, type Result, trySync } from "@kabane/core";
+import { type Doctor, type Extension, Settings } from "@kabane/extension";
 import { ConfigSchema, configPath, isPlainObject } from "../config";
 import { ConfigLayers } from "../config-layers";
 import { ConfigSettings } from "../config-settings";

@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
-import type { ActivityCard } from "@cabane/extension";
+import type { ActivityCard } from "@kabane/extension";
 import { RGBA } from "@opentui/core";
 import { Fixtures } from "./stories/fixtures";
 import { CardTabQuestion, PinnedQuestion, TabBar } from "./tab-bar";

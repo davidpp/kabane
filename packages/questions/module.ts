@@ -1,4 +1,4 @@
-import type { KabaneModule } from "@cabane/core";
+import type { KabaneModule } from "@kabane/core";
 import { migrations, QUESTIONS_TABLE } from "./migrations";
 import { decisionsSection } from "./section";
 import { Questions } from "./storage";

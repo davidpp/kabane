@@ -1,7 +1,7 @@
 // The trigger form through the board's own routers: the picker opens it on a trigger the board can
 // fill in, its keys and clicks move fields and values, and `enter` fires with what was set.
 import { describe, expect, test } from "bun:test";
-import type { TriggerDescriptor } from "@cabane/extension";
+import type { TriggerDescriptor } from "@kabane/extension";
 import { BoardNav } from "./nav";
 import { TriggerForm } from "./trigger-form";
 

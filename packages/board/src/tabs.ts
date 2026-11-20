@@ -11,7 +11,7 @@
 // walks it: a question owned by a tabbed card lands on that card's tab, pinned under
 // its header, any other on its task's detail view with the question pinned over the brief as a
 // banner. Either way a digit answers it in place, through `ActivitySource.answer`.
-import { type ActivityCard, type CardAction } from "@cabane/extension";
+import { type ActivityCard, type CardAction } from "@kabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
 import { BoardJobs } from "./jobs";

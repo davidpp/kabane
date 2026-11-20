@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, Runtime, TABLES } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { Planner, Runtime, TABLES } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { SqliteDb } from "./index";
 
 const DB_NAME = "smoke.db";
@@ -35,7 +35,7 @@ describe("storage over bun:sqlite", () => {
 	let base: string;
 
 	beforeEach(async () => {
-		base = join(tmpdir(), `cabane-smoke-${crypto.randomUUID()}`);
+		base = join(tmpdir(), `kabane-smoke-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		Runtime.configure({ provider: SqliteDb.provider({ dbName: DB_NAME }) });
 		unwrap(await Planner.init(base));
@@ -59,7 +59,7 @@ describe("storage over bun:sqlite", () => {
 	it("adds, links, searches, records an outcome and a session ref, and assembles a brief", async () => {
 		const parent = unwrap(
 			await Planner.addTask(base, {
-				title: "Extract the planner into Cabane",
+				title: "Extract the planner into Kabane",
 				description: "Db port over bun:sqlite and Durable Object SQLite",
 				kind: "issue",
 				scopeUri: "cabane",

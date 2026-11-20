@@ -1,8 +1,8 @@
-# cabane-worker (packages/worker)
+# kabane-worker (packages/worker)
 
 The hub: a Cloudflare Worker with two SQLite-backed Durable Objects behind Cloudflare Access.
-`CabaneLog` (`src/log.ts`) is the ordered sync log every device pushes to and pulls from.
-`CabaneHub` (`src/hub.ts`) is the cloud device: core's storage on the object's SQLite through
+`KabaneLog` (`src/log.ts`) is the ordered sync log every device pushes to and pulls from.
+`KabaneHub` (`src/hub.ts`) is the cloud device: core's storage on the object's SQLite through
 `DoDb` (`src/db-do.ts`), serving MCP over Streamable HTTP and syncing with the log as device
 `cloud`. `src/index.ts` is the edge: Access verification, then routing. `README.md` holds the
 routes, the Access mapping, the configuration and a list of platform facts under "Notes for
@@ -10,8 +10,8 @@ whoever touches this next"; read that list before changing anything here.
 
 ## It depends on core and the data modules alone, because it runs in Workers
 
-Its layer is `hub`; its entry in `scripts/layers.ts` (`cabane-worker`) says what it may list.
-Workers cannot run `@cabane/sqlite`, `@cabane/acp`, the board or an extension, so the hub never
+Its layer is `hub`; its entry in `scripts/layers.ts` (`kabane-worker`) says what it may list.
+Workers cannot run `@kabane/sqlite`, `@kabane/acp`, the board or an extension, so the hub never
 serves an extension's tools or registers an extension's modules; ops for a module it lacks are
 parked like any device's.
 

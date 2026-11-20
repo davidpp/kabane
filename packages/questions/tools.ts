@@ -1,4 +1,4 @@
-import { defineTool, err, humanActorOf, ok, type ToolDef } from "@cabane/core";
+import { defineTool, err, humanActorOf, ok, type ToolDef } from "@kabane/core";
 import { z } from "zod";
 import { singleLine } from "./markdown";
 import { ListSchema, questionPage } from "./page";

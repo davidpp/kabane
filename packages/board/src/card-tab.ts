@@ -10,7 +10,7 @@
 // Actions are the host's keys. The board's own keys on a card's tab come first and cannot be taken,
 // and `x` is reserved for the host's `stop` action, as it stops the copilot's turn on its transcript.
 // An action with `input` opens the board's prompt (prompt.ts) and sends what was typed.
-import { type CardAction, type StopAction } from "@cabane/extension";
+import { type CardAction, type StopAction } from "@kabane/extension";
 import type { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";

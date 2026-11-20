@@ -9,7 +9,7 @@
 // A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
 // many of the rest as fit in tab order, and counts the others in a `+n` cell; `{` `}` still reach
 // them.
-import type { ActivityCard } from "@cabane/extension";
+import type { ActivityCard } from "@kabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";

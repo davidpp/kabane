@@ -17,7 +17,7 @@ import {
 	type Task,
 	trySync,
 	withDb,
-} from "@cabane/core";
+} from "@kabane/core";
 import type { Host } from "./host";
 
 /** The write that holds the turn: who opened it, since when, and whether it is still open. */
@@ -36,7 +36,7 @@ const waiting: (() => void)[] = [];
 
 export namespace HostWrites {
 	/**
-	 * How long a write waits for its turn: SQLite's busy timeout, which `@cabane/sqlite` sets to
+	 * How long a write waits for its turn: SQLite's busy timeout, which `@kabane/sqlite` sets to
 	 * 5000 ms, so a write that cannot get the lock fails after the same wait whichever way it waits.
 	 */
 	export const WAIT_MS = 5_000;

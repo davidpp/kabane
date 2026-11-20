@@ -1,4 +1,4 @@
-# @cabane/sqlite
+# @kabane/sqlite
 
 The storage adapter: core's `Db` port over `bun:sqlite`, for devices. It is one file,
 `index.ts`, exporting `SqliteDb.provider(options)` (a `DbProvider`) and `adapt(db)`. It opens
@@ -8,7 +8,7 @@ and retries `SQLITE_BUSY` with jittered backoff.
 
 ## Only a host depends on it at runtime
 
-Its layer is `storage adapter`; its entry in `scripts/layers.ts` (`"@cabane/sqlite"`) says what
+Its layer is `storage adapter`; its entry in `scripts/layers.ts` (`"@kabane/sqlite"`) says what
 it may list, and `bun run layers` fails anything else. Other packages take it as a
 `devDependency` for tests; at runtime the CLI picks it (`configureRuntime` in
 `packages/cli/src/context.ts`). The hub runs on Durable Object SQLite instead

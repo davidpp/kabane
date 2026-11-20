@@ -1,5 +1,5 @@
 {
-	"name": "@cabane/loop",
+	"name": "@kabane/loop",
 	"version": "0.1.0",
 	"description": "Drives an issue, or a parent issue's subtasks, to done through coding harnesses, and adds run activity and dispatch to the board, where `a` on an issue opens its run form.",
 	"license": "MIT",
@@ -18,15 +18,15 @@
 		"build": "bun scripts/build.ts"
 	},
 	"dependencies": {
-		"@cabane/acp": "workspace:*",
+		"@kabane/acp": "workspace:*",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
-		"@cabane/checklist": "workspace:*",
+		"@kabane/checklist": "workspace:*",
 		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2",
-		"@cabane/core": "workspace:*",
-		"@cabane/extension": "workspace:*"
+		"@kabane/core": "workspace:*",
+		"@kabane/extension": "workspace:*"
 	},
 	"kabane": {
 		"extension": "./index.ts",

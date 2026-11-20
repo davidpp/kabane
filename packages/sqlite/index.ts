@@ -1,5 +1,5 @@
 /**
- * @cabane/sqlite — the Db port over `bun:sqlite`.
+ * @kabane/sqlite — the Db port over `bun:sqlite`.
  *
  * One file per database under a base directory, opened per unit of work and
  * closed afterwards (the pattern the storage layer was written for: no shared
@@ -25,7 +25,7 @@ import {
 	type SqlValue,
 	toError,
 	trySync,
-} from "@cabane/core";
+} from "@kabane/core";
 
 export type SqliteProviderOptions = {
 	/** File name inside `basePath`. Default `kabane.db`. */

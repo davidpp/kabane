@@ -6,7 +6,7 @@ import {
 	type ToolContext,
 	type ToolDef,
 	type McpServerInfo,
-} from "@cabane/core";
+} from "@kabane/core";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 /**

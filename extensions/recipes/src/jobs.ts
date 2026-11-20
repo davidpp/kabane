@@ -1,7 +1,8 @@
 // Where a job's schedule lives: one row per item of kind `job`, in the extension's own replicated
 // table, and this machine's folder for each scope, which never leaves it. Nothing outside this file
 // knows either table.
-import type { Host, KabaneModule, Result } from "@cabane/extension";
+import type { Host, KabaneModule, Result } from "@kabane/extension";
+import { actorScheme } from "./actor-scheme";
 import { err, ok, trySync } from "./result";
 import type { Runs } from "./runs";
 
@@ -95,6 +96,7 @@ export namespace Jobs {
 				name: "add-recipes-jobs-check",
 				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN "check" TEXT`),
 			},
+			actorScheme(TABLE),
 		],
 		syncTables: [
 			{

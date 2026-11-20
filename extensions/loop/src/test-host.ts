@@ -11,7 +11,7 @@ import {
 	trySync,
 	defineTool,
 	ScopeUri,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	createHostRecord,
 	createHostStore,
@@ -25,7 +25,7 @@ import {
 	failure,
 	usage,
 	Settings,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { z } from "zod";
 import { Kabane } from "./result";
 

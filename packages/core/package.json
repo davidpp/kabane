@@ -1,7 +1,7 @@
 {
-	"name": "@cabane/core",
+	"name": "@kabane/core",
 	"version": "0.1.0",
-	"description": "Cabane core: schemas, storage over the Db port, sync",
+	"description": "Kabane core: schemas, storage over the Db port, sync",
 	"license": "MIT",
 	"private": true,
 	"type": "module",
@@ -9,6 +9,7 @@
 	"types": "index.ts",
 	"exports": {
 		".": "./index.ts",
+		"./actor": "./actor.ts",
 		"./result": "./result.ts",
 		"./schemas": "./schemas/index.ts",
 		"./git-fixture": "./scope/git-fixture.ts",
@@ -29,7 +30,7 @@
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
-		"@cabane/sqlite": "workspace:*",
+		"@kabane/sqlite": "workspace:*",
 		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2"
 	}

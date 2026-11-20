@@ -246,7 +246,7 @@ export const TaskSchema = z.object({
 	// --- Replication ---
 
 	/**
-	 * Actor URI of the last local writer (cabane://actor/...). Storage always
+	 * Actor URI of the last local writer (kabane://actor/...). Storage always
 	 * sets it; absent only on rows written before the column existed.
 	 */
 	updatedBy: z.string().optional(),

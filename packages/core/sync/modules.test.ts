@@ -19,7 +19,7 @@ import {
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import { ulid } from "ulid";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
@@ -169,7 +169,7 @@ const createDevice = async (
 ): Promise<Device> => {
 	const base = join(
 		tmpdir(),
-		`cabane-module-${deviceId}-${crypto.randomUUID()}`,
+		`kabane-module-${deviceId}-${crypto.randomUUID()}`,
 	);
 	mkdirSync(base, { recursive: true });
 	bases.push(base);
@@ -544,7 +544,7 @@ describe("capturing a module table", () => {
 		// History written before sync was armed, which is what backfill is for.
 		const base = join(
 			tmpdir(),
-			`cabane-module-backfill-${crypto.randomUUID()}`,
+			`kabane-module-backfill-${crypto.randomUUID()}`,
 		);
 		mkdirSync(base, { recursive: true });
 		bases.push(base);
@@ -1150,7 +1150,7 @@ describe("a database from before data modules", () => {
 		// Beta as the release before this one left it, built by that release's
 		// migrations: version 7, so no parked-ops table, no module columns on
 		// the oplog and no entry kind.
-		const base = join(tmpdir(), `cabane-module-beta-${crypto.randomUUID()}`);
+		const base = join(tmpdir(), `kabane-module-beta-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		bases.push(base);
 		const beta: Device = {

@@ -2,8 +2,8 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Result } from "@cabane/core";
-import { Questions } from "@cabane/questions";
+import { Planner, type Result } from "@kabane/core";
+import { Questions } from "@kabane/questions";
 import { run } from "../main";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -26,7 +26,7 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 			await kabane([
 				"init",
 				"--actor",
-				"cabane://actor/human/test",
+				"kabane://actor/human/test",
 				"--device",
 				"test",
 			])
@@ -59,11 +59,11 @@ it("answers through the module, refuses an unknown choice, and hands the issue b
 		"--reason",
 		"Offline first",
 		"--as",
-		"cabane://actor/human/other",
+		"kabane://actor/human/other",
 	]);
 	expect(first.exitCode).toBe(0);
 	expect(first.text).toBe(
-		`${id}:1 Which store? (choices only) id:${store?.id}\n→ SQLite (cabane://actor/human/other): Offline first`,
+		`${id}:1 Which store? (choices only) id:${store?.id}\n→ SQLite (kabane://actor/human/other): Offline first`,
 	);
 	expect(first.text).not.toContain("moved to next");
 

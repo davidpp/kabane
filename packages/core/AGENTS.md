@@ -1,4 +1,4 @@
-# @cabane/core
+# @kabane/core
 
 Coordination substrate for agent teams, with humans consuming it to plan and review. Most items are AI-created; the tracker's job is to hold the *structure* agents need — typed timeline entries, work-log refs, curated context, a link DAG — so no consumer reinvents it in prose.
 
@@ -14,8 +14,8 @@ Coordination substrate for agent teams, with humans consuming it to plan and rev
 Storage functions take a `basePath: string`, not a database handle. `Runtime.configure` turns that string into a `Db`:
 
 ```ts
-import { Runtime } from "@cabane/core";
-import { SqliteDb } from "@cabane/sqlite";
+import { Runtime } from "@kabane/core";
+import { SqliteDb } from "@kabane/sqlite";
 
 Runtime.configure({
   provider: SqliteDb.provider({ dbName: "kabane.db" }),
@@ -69,7 +69,7 @@ Off by default. The local database stays authoritative; every storage write on a
 
 **Capture is a storage-layer step, not a trigger.** Triggers were dropped because `CREATE TRIGGER` is undocumented on Durable Object SQLite and because a trigger fires for every writer, which forced a database guard around the applier. `Apply` writes rows directly and never enters the capture path, so there is nothing to guard; `sync_state.apply_guard` is legacy and unread. Consequences for anyone adding a write path: call `Oplog.afterWrite(db, tbl, "insert"|"update", id)` after the statement, snapshot first and `Oplog.afterDelete` after for deletes, and for a task delete use `Oplog.cascadeOf` so the FK cascade is captured children-first.
 
-**Every replicated row carries `updated_by`, `version`, `visibility`.** `updated_by` is the actor URI from the `actor` runtime port (`cabane://actor/human/<name>`, `cabane://actor/agent/<runtime>`; default `cabane://actor/unknown`). `version` starts at 1 and every local update does `version = version + 1`. `visibility` is `shared` by default on every replicated table; **a private row never enters the oplog**, whichever table it lives in — the filter is the column, `SYNC_TABLES` only says which tables the resolver knows a rule for.
+**Every replicated row carries `updated_by`, `version`, `visibility`.** `updated_by` is the actor URI from the `actor` runtime port (`ActorUri` in `actor.ts`: `kabane://actor/human/<name>`, `kabane://actor/agent/<runtime>`; default `kabane://actor/unknown`). Until schema 12 the prefix was `cabane://actor/`: migration 12 (`storage/actor-scheme.ts`) renamed core's identity columns, each work ref's `addedBy` and the snapshots in the device's own log and parked ops, and each data module that stores actors appends a migration of its own (`ActorScheme.renameColumns`). Nothing reads the old prefix afterwards: the CLI refuses it on input and points at `kabane doctor --fix`, and an op pulled from a device on schema 11 is not translated. `version` starts at 1 and every local update does `version = version + 1`. `visibility` is `shared` by default on every replicated table; **a private row never enters the oplog**, whichever table it lives in — the filter is the column, `SYNC_TABLES` only says which tables the resolver knows a rule for.
 
 **Tie-break chain** (`sync/resolve.ts`): clock, then ULID, then `version` (more writes win), then `updated_by` (lower URI wins), then `device_id`. The last two steps are what make three or more devices converge: the device id alone stood in for "who wrote this", which is exact for two machines and wrong once a third machine compares a row it merely received. `Apply` writes `max(local.version, incoming.version)` and, on `tasks`, leaves a `sync_conflict_resolved` activity (old_value = the local version that lost, new_value = the incoming version) when a local lineage with at least as many writes was overwritten.
 
@@ -94,7 +94,7 @@ One primitive builds an issue's full brief as markdown. Sections in order, empty
 
 An issue has a **timeline** of **entries**. An entry has a **kind**, an author, a time and a freeform markdown body. A comment is an entry of kind `comment`, the default. A kind's **template** is markdown shown to whoever writes one; a kind's **projection** is what the brief shows of it, derived when the brief is read and never stored. Kabane never parses or validates a body, so no kind of work is stuck on a field that does not fit it.
 
-- **Storage.** Entries live in `task_comments`, the name kept for the reason `@cabane/*` and `cabane://` keep theirs: rows and synced logs store it. Migration 9 added `kind TEXT NOT NULL DEFAULT 'comment'` and an index on `(task_id, kind, created_at)`; it replicates like any column, and a device on an older schema stops its pull at the first op pushed from schema 9, whatever its table, so it never stores an entry without its kind. `Planner.addEntry(basePath, { taskId, kind, author, authorType, content })`, `Planner.getEntries(basePath, taskId, { kind? })` in time order, `Planner.latestEntry(basePath, taskId, kind)`. `addComment` and `getComments` are the `comment` kind's convenience; `getComments` returns comments only, so a reader of the whole timeline (the board's comments tab, `kabane show`) calls `getEntries`.
+- **Storage.** Entries live in `task_comments`, the name kept because rows and synced logs store it. Migration 9 added `kind TEXT NOT NULL DEFAULT 'comment'` and an index on `(task_id, kind, created_at)`; it replicates like any column, and a device on an older schema stops its pull at the first op pushed from schema 9, whatever its table, so it never stores an entry without its kind. `Planner.addEntry(basePath, { taskId, kind, author, authorType, content })`, `Planner.getEntries(basePath, taskId, { kind? })` in time order, `Planner.latestEntry(basePath, taskId, kind)`. `addComment` and `getComments` are the `comment` kind's convenience; `getComments` returns comments only, so a reader of the whole timeline (the board's comments tab, `kabane show`) calls `getEntries`.
 - **Append-only.** An entry is never edited or deleted on its own; there is no API for either. The table's sync family is `append-only`, which skips an op for a row already present, so an edit would never have replicated. Deleting a task removes its entries through the cascade.
 - **A kind is a soft string**: `name` or `name.key`, lowercase (`ENTRY_KIND_PATTERN`), checked on write with a one-line error, stored as TEXT, never a closed list. Any well-formed kind is stored whether or not a module declares it.
 - **Kinds are declared as data.** `KabaneModule.kinds` holds `EntryKind`s (`EntryKindSchema`): `name` (the module's name or `<module>.<key>`), `title` (one line, how it reads in the brief), `template`, and `projection`, either `"discussion"` or `{ latest: { after: <core section>, framing: <one line> } }`. It carries no code on purpose: an extension or a project's config, which can only supply data, will declare kinds the same way. `Runtime.configure` refuses a kind that fails the schema, one outside its module's namespace, `comment`, a duplicate, and a `latest` kind whose `<kind>.latest` section name is already taken. `Runtime.entryKind(name)` looks a registered kind up.
@@ -105,7 +105,7 @@ An issue has a **timeline** of **entries**. An entry has a **kind**, an author, 
 
 Core keeps none. What a session leaves about the issue is on the record: its outcomes are
 timeline entries (`outcome.decision`, `outcome.finding`, `outcome.verification` and
-`outcome.summary` in `@cabane/outcome`, `handoff` in `@cabane/handoff`), and the session itself is
+`outcome.summary` in `@kabane/outcome`, `handoff` in `@kabane/handoff`), and the session itself is
 a `session:` ref in the issue's work log. Its stream stays with whatever drove it (the loop's own
 store, a harness). The brief keys on that ref: a task whose work log holds one keeps none of its
 plain AI comments.
@@ -151,7 +151,7 @@ the connection relays for: `kabane mcp` passes the device's configured actor bef
 `--as`, and the hub passes its Access identity only when Access authenticated a human,
 never a service token. A tool that credits the human with a reply an agent relays reads
 `humanActorOf(ctx)`, which returns `humanActor` only when it is a
-`cabane://actor/human/` URI and never infers one from `actor`.
+`kabane://actor/human/` URI and never infers one from `actor`.
 
 `kabane_list` accepts `parentTaskId` (short id or ULID) and `includeDeferred`;
 `kabane_edit` accepts `needsReview`. The read tools `kabane_linkList`,

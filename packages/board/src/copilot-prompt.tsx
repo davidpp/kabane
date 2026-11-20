@@ -55,7 +55,7 @@ const fit = (text: string, room: number): string =>
 	text.length > room ? `${text.slice(0, Math.max(0, room - 1))}…` : text;
 
 // The harness the copilot runs as, from the actor its writes are stamped with:
-// `cabane://actor/agent/claude` → `claude`. Null when the host gave no actor.
+// `kabane://actor/agent/claude` → `claude`. Null when the host gave no actor.
 export const harnessOf = (actor: string | null): string | null =>
 	actor?.split("/").at(-1) || null;
 

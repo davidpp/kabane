@@ -2,14 +2,14 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMcpServer, Planner, type Result } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { createMcpServer, Planner, type Result } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { handoffModule } from "./module";
 import { HANDOFF_KIND } from "./template";
 
-const AGENT = "cabane://actor/agent/test";
+const AGENT = "kabane://actor/agent/test";
 const FRAMING =
 	"The author's own account of its work: check the evidence before relying on it.";
 
@@ -190,7 +190,7 @@ it("opens the brief with the latest handoff under the description, framed, count
 	unwrap(
 		await Planner.addComment(base, {
 			taskId: task.id,
-			author: "cabane://actor/human/test",
+			author: "kabane://actor/human/test",
 			authorType: "human",
 			content: "Keep it to one screen.",
 		}),

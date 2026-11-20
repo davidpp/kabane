@@ -4,14 +4,14 @@ import "./test-host";
 // a real git repository and the real kabane MCP server. It recognises an implementer by the
 // brief's opening words, so a change to `Brief.instructions` that it no longer matches fails here
 // rather than stalling a scripted run.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { AcpClient } from "@cabane/acp";
-import { ok, Planner, type Task } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { AcpClient } from "@kabane/acp";
+import { ok, Planner, type Task } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { Brief } from "./brief";
 
 const ROOT = resolve(import.meta.dir, "../../..");
@@ -92,7 +92,7 @@ it("commits once and closes its own issue through kabane MCP, given the loop's i
 				{
 					name: "kabane",
 					command: process.execPath,
-					args: [CLI, "mcp", "--as", "cabane://actor/agent/gemini"],
+					args: [CLI, "mcp", "--as", "kabane://actor/agent/gemini"],
 					env: { KABANE_HOME: home },
 				},
 			],

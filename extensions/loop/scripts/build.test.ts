@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	cpSync,
 	existsSync,
@@ -14,8 +14,8 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ok, Planner } from "@cabane/core";
-import { Settings } from "@cabane/extension";
+import { ok, Planner } from "@kabane/core";
+import { Settings } from "@kabane/extension";
 import type * as LoopPackage from "../index";
 import { TestHarnesses } from "../src/test-harnesses";
 import { testHost } from "../src/test-host";

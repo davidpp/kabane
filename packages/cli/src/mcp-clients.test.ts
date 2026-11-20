@@ -2,12 +2,12 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CopilotInstructions, Harnesses } from "@cabane/acp";
+import { CopilotInstructions, Harnesses } from "@kabane/acp";
 import { McpClients } from "./mcp-clients";
 
 const LAUNCHER = {
 	command: "/opt/bun/bin/bun",
-	args: ["/home/me/cabane/packages/cli/index.ts"],
+	args: ["/home/me/kabane/packages/cli/index.ts"],
 };
 
 describe("McpClients", () => {
@@ -25,10 +25,10 @@ describe("McpClients", () => {
 		expect(McpClients.launchFor(LAUNCHER, "codex")).toEqual({
 			command: "/opt/bun/bin/bun",
 			args: [
-				"/home/me/cabane/packages/cli/index.ts",
+				"/home/me/kabane/packages/cli/index.ts",
 				"mcp",
 				"--as",
-				"cabane://actor/agent/codex",
+				"kabane://actor/agent/codex",
 			],
 		});
 	});
@@ -97,20 +97,20 @@ describe("McpClients", () => {
 		const claude = JSON.parse(McpClients.snippetFor("claude", LAUNCHER).text);
 		expect(claude.mcpServers.kabane.command).toBe("/opt/bun/bin/bun");
 		expect(claude.mcpServers.kabane.args.at(-1)).toBe(
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 		);
 
 		expect(McpClients.snippetFor("codex", LAUNCHER).text).toBe(
 			[
 				"[mcp_servers.kabane]",
 				'command = "/opt/bun/bin/bun"',
-				'args = ["/home/me/cabane/packages/cli/index.ts", "mcp", "--as", "cabane://actor/agent/codex"]',
+				'args = ["/home/me/kabane/packages/cli/index.ts", "mcp", "--as", "kabane://actor/agent/codex"]',
 			].join("\n"),
 		);
 
 		const gemini = JSON.parse(McpClients.snippetFor("gemini", LAUNCHER).text);
 		expect(gemini.mcpServers.kabane.args.at(-1)).toBe(
-			"cabane://actor/agent/gemini",
+			"kabane://actor/agent/gemini",
 		);
 	});
 
@@ -119,10 +119,10 @@ describe("McpClients", () => {
 		expect(generic).toEqual({
 			command: "/opt/bun/bin/bun",
 			args: [
-				"/home/me/cabane/packages/cli/index.ts",
+				"/home/me/kabane/packages/cli/index.ts",
 				"mcp",
 				"--as",
-				"cabane://actor/agent/<client>",
+				"kabane://actor/agent/<client>",
 			],
 		});
 	});

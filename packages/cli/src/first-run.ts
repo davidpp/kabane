@@ -1,6 +1,6 @@
 /**
  * Bare `kabane` in a terminal: the board, after the setup screen when this
- * device has no config yet. The screen lives in `@cabane/board` and cannot see
+ * device has no config yet. The screen lives in `@kabane/board` and cannot see
  * the CLI's config schema or the MCP installer, so this module hands it all of
  * that as deps: the defaults to prefill, the detected harnesses, `save` (which
  * builds the config through `init`'s `buildConfig`), `install`, and
@@ -9,9 +9,9 @@
 
 import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
-import { type SetupDeps, type SetupPlan, startSetup } from "@cabane/board";
-import { err, ok, Planner, type Result } from "@cabane/core";
-import { failure, type Outcome, parseArgs, success } from "@cabane/extension";
+import { type SetupDeps, type SetupPlan, startSetup } from "@kabane/board";
+import { err, ok, Planner, type Result } from "@kabane/core";
+import { failure, type Outcome, parseArgs, success } from "@kabane/extension";
 import { board } from "./commands/board";
 import { buildConfig } from "./commands/init";
 import { McpInstall } from "./commands/mcp-install";

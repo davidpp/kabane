@@ -1,4 +1,4 @@
-import { err, ok, type ParsedQuestion, type Result } from "@cabane/core";
+import { err, ok, type ParsedQuestion, type Result } from "@kabane/core";
 
 /**
  * A choice's label, the text before its first `.`, `:` or `)` when whitespace follows it: `B` of

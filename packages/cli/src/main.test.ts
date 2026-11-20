@@ -48,7 +48,7 @@ describe("run, resolving a command name", () => {
 			join(home, "extensions/loop"),
 		);
 		const init = await run(
-			["init", "--actor", "cabane://actor/human/t", "--device", "t"],
+			["init", "--actor", "kabane://actor/human/t", "--device", "t"],
 			env,
 			cwd,
 		);

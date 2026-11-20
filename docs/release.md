@@ -164,7 +164,7 @@ private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` ge
   grill skills are the dispatch extension's.
 - Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
   board manifest. OpenTUI installs its platform-native optional dependency; React must not
-  be duplicated inside the bundle. No published dependency may name `@cabane/*`.
+  be duplicated inside the bundle. No published dependency may name `@kabane/*`.
 
 The build carries CLI name/version/description/keywords/license/repository/homepage/bugs,
 adds type/bin/files/dependencies, and derives the minimum Bun engine from `.bun-version`.

@@ -1,7 +1,7 @@
 // What a human typed for one field of a harness's form, read the one way both surfaces that answer
 // a form read it: the board's form (elicitation-form.ts) and the loop's tracker questions
 // (extensions/loop's elicitation.ts). One form is then judged alike wherever it is answered.
-import { err, ok, type Result, trySync } from "@cabane/core/result";
+import { err, ok, type Result, trySync } from "@kabane/core/result";
 
 // One option of a choice field: `value` is what the harness is answered with, `label` what the human
 // reads.

@@ -388,7 +388,7 @@ CREATE INDEX IF NOT EXISTS idx_context_refs_task ON task_context_refs(task_id);
 -- ============================================================
 -- UPSTREAM LINKS (the team-facing issue a task points at)
 -- ============================================================
--- Relationship between a Cabane task and an issue in an external tracker.
+-- Relationship between a Kabane task and an issue in an external tracker.
 -- IDENTITY ONLY: enough to name the issue and open it, never a copy of its
 -- content. What matters about the external issue goes in the task's own
 -- description when the link is made; nothing stored here can go stale.

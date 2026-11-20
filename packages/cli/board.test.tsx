@@ -15,9 +15,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { App, noActivity } from "@cabane/board";
-import { Planner, type Result, type Task } from "@cabane/core";
-import { parseArgs } from "@cabane/extension";
+import { App, noActivity } from "@kabane/board";
+import { Planner, type Result, type Task } from "@kabane/core";
+import { parseArgs } from "@kabane/extension";
 import { testRender } from "@opentui/react/test-utils";
 import {
 	type BoardWiring,
@@ -33,7 +33,7 @@ const sleep = (ms: number): Promise<void> =>
 	new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("kabane board", () => {
-	const home = join(tmpdir(), `cabane-board-${crypto.randomUUID()}`);
+	const home = join(tmpdir(), `kabane-board-${crypto.randomUUID()}`);
 	const cwd = join(home, "project");
 	let ctx: Ctx;
 
@@ -41,7 +41,7 @@ describe("kabane board", () => {
 		mkdirSync(join(cwd, ".kabane"), { recursive: true });
 		writeFileSync(join(cwd, ".kabane", "scope"), "demo\n");
 		const saved = saveConfig(home, {
-			actor: "cabane://actor/human/tester",
+			actor: "kabane://actor/human/tester",
 			deviceId: "t1",
 			sync: { enabled: false, batchBytes: 262144 },
 		});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { CopilotFormField } from "@cabane/acp/form-field";
+import type { CopilotFormField } from "@kabane/acp/form-field";
 import { ElicitationForm } from "./elicitation-form";
 import type { CopilotElicitation } from "./ports";
 

@@ -1,4 +1,4 @@
-import { Harnesses } from "@cabane/acp/harnesses";
+import { Harnesses } from "@kabane/acp/harnesses";
 import {
 	err,
 	ok,
@@ -6,9 +6,9 @@ import {
 	ScopeUri,
 	tryCatch,
 	trySync,
-} from "@cabane/core";
-import type { SettingField } from "@cabane/extension";
-import { Settings } from "@cabane/extension";
+} from "@kabane/core";
+import type { SettingField } from "@kabane/extension";
+import { Settings } from "@kabane/extension";
 import { z } from "zod";
 import {
 	ConfigSchema,

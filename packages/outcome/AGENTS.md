@@ -1,4 +1,4 @@
-# @cabane/outcome
+# @kabane/outcome
 
 A data module with no table: it declares the four session outcome kinds and their templates.
 Core stores them as timeline entries and renders all four in Discussion. `README.md` lists

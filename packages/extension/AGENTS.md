@@ -1,4 +1,4 @@
-# @cabane/extension
+# @kabane/extension
 
 The extension contract: the types an extension and the host exchange, and the helpers every
 command, built-in or extension, is written with. It has no runtime of its own.
@@ -20,7 +20,7 @@ command, built-in or extension, is written with. It has no runtime of its own.
 
 ## It depends on core alone
 
-Its layer is `extension contract`; its entry in `scripts/layers.ts` (`"@cabane/extension"`)
+Its layer is `extension contract`; its entry in `scripts/layers.ts` (`"@kabane/extension"`)
 says what it may list. `ports.ts` owns the activity, dispatch, header, panel, settings field
 and copilot shortcut types an extension produces and any client reads. `ActivityQuestion` names
 its owning card and optional lane; `ActivitySource.questions` and `answer` keep questions and

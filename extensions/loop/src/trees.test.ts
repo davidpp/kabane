@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // repository whose run has a real worktree. A scripted ACP subprocess stands in for the model,
 // through the real kabane tools: it writes the files its subtask is given, in the directory its
 // session was started in, and closes the subtask. No model or MCP server is reached.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -16,8 +16,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { Planner, type Task, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";
@@ -138,8 +138,8 @@ const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, readFileSync, readdirSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const [home, script] = process.argv.slice(2);
 const done = KABANE_TOOLS.find((t) => t.name === "kabane_done");
 const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, result }));
@@ -161,7 +161,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  if (text.includes("then reopened") && existsSync(join(script, task + ".cancel"))) {
   rmSync(live, { force: true });
   const edit = KABANE_TOOLS.find((t) => t.name === "kabane_edit");
-  const cancelled = await edit.handler({ id: task, state: "cancelled" }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+  const cancelled = await edit.handler({ id: task, state: "cancelled" }, { basePath: home, actor: "kabane://actor/agent/gemini", scopeRequired: false });
   if (!cancelled.ok) process.exit(3);
   return reply(message.id, { stopReason: "end_turn" });
  }
@@ -172,7 +172,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  const until = Date.now() + 5000;
  while (existsSync(together) && Date.now() < until && readdirSync(join(script, "started")).length < Number(readFileSync(together, "utf8"))) await Bun.sleep(5);
  rmSync(live, { force: true });
- const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "kabane://actor/agent/gemini", scopeRequired: false });
  if (!closed.ok) process.exit(1);
  reply(message.id, { stopReason: "end_turn" });
 });
@@ -593,8 +593,8 @@ describe("Subtasks in worktrees of their own", () => {
 	// A human, in a process of their own, cancels or deletes a task: `<home> <change> <taskId>`.
 	// Done again or after the task is gone, it changes nothing and still exits 0.
 	const HUMAN = `
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { Planner } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { Planner } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const [home, change, id] = process.argv.slice(2);
 if (change === "cancelled") await Planner.updateTask(home, id, { state: "cancelled" });
 else await Planner.deleteTask(home, id);

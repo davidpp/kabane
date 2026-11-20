@@ -1,7 +1,7 @@
 {
-	"name": "@cabane/acp",
+	"name": "@kabane/acp",
 	"version": "0.1.0",
-	"description": "Cabane ACP client: harness registry and a session runner over Bun.spawn",
+	"description": "Kabane ACP client: harness registry and a session runner over Bun.spawn",
 	"license": "MIT",
 	"private": true,
 	"type": "module",
@@ -22,7 +22,7 @@
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "2.7.0",
-		"@cabane/core": "workspace:*",
+		"@kabane/core": "workspace:*",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {

@@ -127,7 +127,7 @@ What a settings screen generated for any namespace needs, and where each part st
 | Primitive | Exists | Missing |
 | --- | --- | --- |
 | Field kinds from zod | Three walkers of zod schemas: `LoopSettings.kindOf`/`fieldsOf` (`extensions/loop/src/settings.ts:99`, `:108`; enum, number, boolean, string, other), `keysOf`/`parseValue` (`config-settings.ts:30`, `:109`; list, number, boolean, record from text), and `Settings.unwrap` (`settings.ts:81`) | One walker that yields a plain field description: `enum` with values, `number` with integer/min/max from the zod checks, `boolean`, `string` with min length, `list` (free, or picked from options), `record` (key schema plus value), and `optional` |
-| Field description shared by surfaces | `CopilotFormField` (`packages/board/src/ports.ts:262`) already carries kind, bounds and options; `TriggerInput` (`ports.ts:160`) carries only type, default, label, group and options | One type in `@cabane/board/ports`, since extension already depends on board and board has no zod |
+| Field description shared by surfaces | `CopilotFormField` (`packages/board/src/ports.ts:262`) already carries kind, bounds and options; `TriggerInput` (`ports.ts:160`) carries only type, default, label, group and options | One type in `@kabane/board/ports`, since extension already depends on board and board has no zod |
 | Labels and groups | `LOOKS` and `GROUPS`, private to the loop (`settings.ts:43`, `:82`); `.describe()` on every key | A declared place on the contract (`Extension.looks?`, keyed by dotted path) and one from the CLI for device keys. `LOOKS` repeats the schema's bounds (`range(1, 8)` beside `.max(8)`) |
 | Options known only at run time | `Harnesses.IDS`, `Extensions.names`, `Lenses.offered(projectDir)` | A way for a look to name its option source, so `copilot.harness`, `extensions` and `loop.lenses` show choices |
 | Per-field origin | `Settings.Resolved.origins` per leaf (`settings.ts:29`); `get --layers` leaves; `layer`/`from` on list rows | What the layers below say. Only the winner is reported, so neither "the project says 2 and your scope overrides it" nor "unsetting here falls back to 2" can be shown |
@@ -153,7 +153,7 @@ There are three form surfaces today, and they differ in interaction more than in
 Recommendation: share three things.
 
 1. The field description, the `CopilotFormField` shape extended with a label, a group and
-   whether the field is optional. It is derived from zod in `@cabane/extension`.
+   whether the field is optional. It is derived from zod in `@kabane/extension`.
 2. The reading of typed values: `FormField.read`, which the loop's questions already reuse.
 3. The grid interaction between the run form and the editor. The editor is the run form plus
    an origin column, a target layer, text entry, unset and save.
@@ -266,7 +266,7 @@ Two things to take from it:
 
 1. **A write says when a higher layer still decides** (JCAB-169), in the CLI and MCP, and `get --layers` lists
    the values each leaf hides.
-2. **Settings rows describe their fields** (JCAB-170). One zod walker in `@cabane/extension` replaces
+2. **Settings rows describe their fields** (JCAB-170). One zod walker in `@kabane/extension` replaces
    `keysOf` and `fieldsOf`. Rows gain `field`, `layers`, `secret` and `restart`.
    `kabane_configSet`'s restart note follows `restart`.
 3. **Looks are declared** (JCAB-171). `Extension.looks` replaces the loop's private `LOOKS` and names

@@ -10,7 +10,7 @@ import type {
 	Outcome,
 	ProjectScope,
 	Result,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { Recipe } from "./recipe";

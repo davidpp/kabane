@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Exercise the runner's claim path on disposable trackers. Missing harnesses test the first
 // scheduling batch; the scripted ACP subprocess holds turns open while gates are exercised.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -18,8 +18,8 @@ import {
 	Planner,
 	type Task,
 	type TaskUpdate,
-} from "@cabane/core";
-import { Settings } from "@cabane/extension";
+} from "@kabane/core";
+import { Settings } from "@kabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
@@ -110,14 +110,14 @@ const link = async (a: Task, b: Task, type: LinkType): Promise<void> => {
 const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 let cancelled = false;
 let task;
 const tool = async (name, args) => {
  const definition = KABANE_TOOLS.find(t => t.name === name);
  const result = await definition.handler(args, {
-  basePath: process.cwd(), actor: "cabane://actor/agent/gemini", scopeRequired: false
+  basePath: process.cwd(), actor: "kabane://actor/agent/gemini", scopeRequired: false
  });
  if (!result.ok) throw result.error;
 };

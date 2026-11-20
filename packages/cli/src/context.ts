@@ -7,8 +7,9 @@
  */
 
 import { existsSync } from "node:fs";
-import { checklistModule } from "@cabane/checklist";
+import { checklistModule } from "@kabane/checklist";
 import {
+	ActorScheme,
 	err,
 	type KabaneModule,
 	type ProjectScope,
@@ -19,17 +20,17 @@ import {
 	type ToolContext,
 	Runtime,
 	tryCatch,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	type Extension,
 	flagString,
 	type ParsedArgs,
 	Settings,
-} from "@cabane/extension";
-import { handoffModule } from "@cabane/handoff";
-import { outcomeModule } from "@cabane/outcome";
-import { questionsModule } from "@cabane/questions";
-import { SqliteDb } from "@cabane/sqlite";
+} from "@kabane/extension";
+import { handoffModule } from "@kabane/handoff";
+import { outcomeModule } from "@kabane/outcome";
+import { questionsModule } from "@kabane/questions";
+import { SqliteDb } from "@kabane/sqlite";
 import {
 	type Config,
 	configPath,
@@ -122,6 +123,27 @@ export const registerModules = async (
 	return modules.length > 0 ? ok(undefined) : configureRuntime(config, actor);
 };
 
+/**
+ * Kabane reads no actor under the old prefix: `kabane doctor --fix` migrates the device and
+ * rewrites both places one comes from, `config.json` and the `--as` of a harness registration.
+ * Both are checked, since the configured actor is the human a relayed reply credits even under
+ * `--as`.
+ */
+const refuseLegacyActor = (config: Config, args: ParsedArgs): Result<void> => {
+	const given: [string | undefined, string][] = [
+		[flagString(args, "as"), "--as"],
+		[config.actor, "config.json's actor"],
+	];
+	for (const [actor, from] of given)
+		if (ActorScheme.isLegacy(actor))
+			return err(
+				new Error(
+					`${from} is ${actor}, under the ${ActorScheme.LEGACY_PREFIX} prefix kabane no longer reads. Run \`kabane doctor --fix\`: it migrates this device's database and rewrites config.json and the harness registrations.`,
+				),
+			);
+	return ok(undefined);
+};
+
 /** Load config, register every module, ensure the schema. */
 export const openContext = async (
 	home: string,
@@ -131,6 +153,8 @@ export const openContext = async (
 	activateHostRecord(home);
 	const config = loadConfig(home);
 	if (!config.ok) return config;
+	const legacy = refuseLegacyActor(config.value, args);
+	if (!legacy.ok) return legacy;
 	const actor = flagString(args, "as") ?? config.value.actor;
 	const registered = await registerModules(home, config.value, actor);
 	if (!registered.ok) return registered;

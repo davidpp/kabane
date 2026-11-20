@@ -1,5 +1,5 @@
-import { ScopeUri } from "@cabane/core";
-import { success } from "@cabane/extension";
+import { ScopeUri } from "@kabane/core";
+import { success } from "@kabane/extension";
 import { type Command, detectProject } from "../context";
 
 export const scope: Command = {

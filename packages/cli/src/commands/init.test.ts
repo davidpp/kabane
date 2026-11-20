@@ -9,13 +9,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { configPath, SCOPE_FILE } from "../config";
 import { run } from "../main";
 import { ProjectDirs } from "../scope/detect";
 import { buildConfig } from "./init";
 
-const BASE = { actor: "cabane://actor/human/ada", deviceId: "mbp" };
+const BASE = { actor: "kabane://actor/human/ada", deviceId: "mbp" };
 
 describe("buildConfig", () => {
 	test("a local device: sync off", () => {
@@ -57,7 +57,7 @@ describe("init --scope on a configured device", () => {
 		mkdirSync(cwd);
 		GitFixture.run(cwd, ["init", "-q"]);
 		const first = await run(
-			["init", "--actor", "cabane://actor/human/ada", "--device", "mbp"],
+			["init", "--actor", "kabane://actor/human/ada", "--device", "mbp"],
 			env(),
 			cwd,
 		);
@@ -116,7 +116,7 @@ describe("init --scope on a configured device", () => {
 
 	test("still refuses to rewrite the config without --force", async () => {
 		const refused = await run(
-			["init", "--scope", "myapp", "--actor", "cabane://actor/human/bob"],
+			["init", "--scope", "myapp", "--actor", "kabane://actor/human/bob"],
 			env(),
 			cwd,
 		);

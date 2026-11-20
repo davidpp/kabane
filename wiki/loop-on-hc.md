@@ -165,7 +165,7 @@ All three hit the trust dialog unless loop worktrees live under a path the human
   machine (`hc templates` → `[]`).
 
 **How this relates to JCAB-160 (decomposition).**
-- The engine seam is a decomposition seam. The practice layer should load without `@cabane/acp`,
+- The engine seam is a decomposition seam. The practice layer should load without `@kabane/acp`,
   and an hc engine should load only with `extensions/herdr`, off by default. That is #3's "the
   core stays small", applied to the loop.
 - Shape (b) is the far end of decomposition: the practice ships as text, and no loop code runs at all.

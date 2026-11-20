@@ -9,7 +9,7 @@ import type {
 	ActivityDiff,
 	ActivityEvent,
 	ActivityToolDetail,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { formatPatch, OMIT_HEADERS, structuredPatch } from "diff";
 
 export namespace ToolRows {

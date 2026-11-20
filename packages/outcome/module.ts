@@ -1,4 +1,4 @@
-import type { KabaneModule } from "@cabane/core";
+import type { KabaneModule } from "@kabane/core";
 
 /** The session outcomes kept on the issue's timeline. Handoffs have their own module. */
 export const OUTCOME_KINDS = {

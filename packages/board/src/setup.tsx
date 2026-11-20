@@ -9,7 +9,7 @@
 // see every key, handler first, and the handler preventDefaults the keys it takes (tab, arrows,
 // enter, esc, and space on a checkbox row) so the input never acts on them too.
 
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { createCliRenderer, TextAttributes } from "@opentui/core";
 import {
 	createRoot,
@@ -181,7 +181,7 @@ export const wordmarkRuns = (row: string): WordmarkRun[] =>
 
 /**
  * A path cut to `room` columns from the left, whole segments at a time, so it never wraps mid-word
- * and keeps the file name: `/var/folders/…/cabane/.kabane/config.json` → `…/.kabane/config.json`.
+ * and keeps the file name: `/var/folders/…/kabane/.kabane/config.json` → `…/.kabane/config.json`.
  */
 export const elidePath = (path: string, room: number): string => {
 	if (path.length <= room) return path;

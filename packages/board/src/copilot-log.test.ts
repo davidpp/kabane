@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { ok } from "@cabane/core";
-import type { ActivityCard, ActivitySource } from "@cabane/extension";
+import { ok } from "@kabane/core";
+import type { ActivityCard, ActivitySource } from "@kabane/extension";
 import { BoardActivity } from "./activity";
 import { CopilotLog } from "./copilot-log";
 import type { CopilotStep, CopilotUpdate, PlanEntry } from "./ports";

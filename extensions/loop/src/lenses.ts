@@ -11,7 +11,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@kabane/core";
 import { z } from "zod";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { join } from "node:path";
-import type { AcpClient } from "@cabane/acp";
-import { Planner, type Result } from "@cabane/core";
+import type { AcpClient } from "@kabane/acp";
+import { Planner, type Result } from "@kabane/core";
 import { Elicitation } from "./elicitation";
 import { isAnswerTo, parseQuestionBody } from "./question-body";
 import type { RunStore } from "./store";
@@ -549,7 +549,7 @@ const relay = (
 			origin: "test",
 			signal: stop.signal,
 			emit: (e) => events.push(e),
-			answeredBy: () => "cabane://actor/human/david",
+			answeredBy: () => "kabane://actor/human/david",
 			now: () => new Date(),
 			pollMs: 5,
 		},
@@ -624,7 +624,7 @@ describe("Elicitation.relay", () => {
 		expect(events.at(-1)?.data).toMatchObject({
 			action: "accept",
 			fields: "question_0,question_1_custom",
-			by: "cabane://actor/human/david",
+			by: "kabane://actor/human/david",
 			toolCallId: "toolu_ask_two",
 		});
 		const needs = await TestSessions.pending(base);

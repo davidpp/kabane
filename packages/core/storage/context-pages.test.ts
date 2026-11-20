@@ -9,7 +9,7 @@ import {
 } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import { z } from "zod";
 import {
 	CONTEXT_BYTES,

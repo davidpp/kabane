@@ -1,5 +1,5 @@
 /**
- * The hub's `SyncTransport`: `CabaneLog` reached through its Durable Object
+ * The hub's `SyncTransport`: `KabaneLog` reached through its Durable Object
  * stub, not over HTTP.
  *
  * Same wire as `http-transport.ts` minus the network: the log hands back
@@ -24,8 +24,8 @@ import {
 	SyncOpSchema,
 	type SyncTransport,
 	tryCatch,
-} from "@cabane/core";
-import type { CabaneLog } from "./log";
+} from "@kabane/core";
+import type { KabaneLog } from "./log";
 import { MAX_PULL_LIMIT, type PullPage as WirePullPage } from "./wire";
 
 const PulledOpSchema = SyncOpSchema.passthrough();
@@ -57,7 +57,7 @@ const tryCatchSync = <T>(fn: () => T): Result<T> => {
 
 export namespace LogTransport {
 	export const create = (
-		log: DurableObjectStub<CabaneLog>,
+		log: DurableObjectStub<KabaneLog>,
 		deviceId: string,
 		name: string,
 	): SyncTransport => ({

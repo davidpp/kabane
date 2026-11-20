@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import type { Host, Result, TriggerInput } from "@cabane/extension";
+import type { Host, Result, TriggerInput } from "@kabane/extension";
 import { err, ok, trySync } from "./result";
 
 export namespace Recipe {

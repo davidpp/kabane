@@ -1,4 +1,4 @@
-// An agent's decision on an issue (`kabane_ask`, @cabane/questions) as the form a harness asks
+// An agent's decision on an issue (`kabane_ask`, @kabane/questions) as the form a harness asks
 // with, so the board answers it with the copilot's keys (elicitation-form.ts) and draws it with the
 // copilot's block (elicitation-block.tsx) rather than a second form of its own. Pure: a question row
 // in, its fields out, and the filled-in fields back to the one answer `Questions.answer` takes,
@@ -11,14 +11,14 @@ import type {
 	CopilotFormField,
 	CopilotFormOption,
 	CopilotFormValue,
-} from "@cabane/acp/form-field";
-import { err, ok, type Result } from "@cabane/core";
+} from "@kabane/acp/form-field";
+import { err, ok, type Result } from "@kabane/core";
 import {
 	type ParsedDecision,
 	parseDecisionBody,
 	type QuestionView,
 	validateAnswer,
-} from "@cabane/questions";
+} from "@kabane/questions";
 import type { CopilotElicitation } from "./ports";
 
 export namespace DecisionForm {

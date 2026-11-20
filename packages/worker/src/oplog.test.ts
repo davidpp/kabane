@@ -1,13 +1,13 @@
 import { env, runInDurableObject } from "cloudflare:test";
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { describe, expect, it } from "vitest";
-import type { CabaneLog } from "./log";
+import type { KabaneLog } from "./log";
 import type { PullPage, PushAck, WireOp } from "./wire";
 
 const DEVICE_A = "device-a";
 const DEVICE_B = "device-b";
 
-const log = (name: string) => env.CABANE_LOG.getByName(name);
+const log = (name: string) => env.KABANE_LOG.getByName(name);
 
 const op = (opId: string, deviceId: string, extra: object = {}): WireOp => ({
 	opId,
@@ -266,7 +266,7 @@ type DeviceRow = {
 const storedSeqs = async (name: string): Promise<Record<string, number>> => {
 	const rows = await runInDurableObject(
 		log(name),
-		(_instance: CabaneLog, ctx) =>
+		(_instance: KabaneLog, ctx) =>
 			ctx.storage.sql
 				.exec<{ op_id: string; server_seq: number }>(
 					"SELECT op_id, server_seq FROM oplog ORDER BY server_seq",
@@ -277,7 +277,7 @@ const storedSeqs = async (name: string): Promise<Record<string, number>> => {
 };
 
 const devices = async (name: string): Promise<DeviceRow[]> =>
-	runInDurableObject(log(name), (_instance: CabaneLog, ctx) =>
+	runInDurableObject(log(name), (_instance: KabaneLog, ctx) =>
 		ctx.storage.sql
 			.exec<DeviceRow>("SELECT * FROM devices ORDER BY device_id")
 			.toArray(),

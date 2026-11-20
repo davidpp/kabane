@@ -2,7 +2,7 @@ import { expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Keymap } from "@cabane/board/keymap";
+import { Keymap } from "@kabane/board/keymap";
 import { configPath } from "../config";
 
 // The copilot's config-and-help procedure reads the board's keymap from here.
@@ -54,7 +54,7 @@ it("fails on an unknown --issue in one line, without starting the board", async 
 	const home = mkdtempSync(join(tmpdir(), "kabane-board-issue-"));
 	writeFileSync(
 		configPath(home),
-		JSON.stringify({ actor: "cabane://actor/human/ada", deviceId: "mbp" }),
+		JSON.stringify({ actor: "kabane://actor/human/ada", deviceId: "mbp" }),
 	);
 	try {
 		const proc = Bun.spawn(

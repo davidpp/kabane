@@ -4,7 +4,7 @@ import {
 	type ChecklistItemView,
 	type ChecklistProgress,
 	checklistModule,
-} from "@cabane/checklist";
+} from "@kabane/checklist";
 // The one module the whole board reads tracker data through. Everything talks to storage via the
 // Planner.* functions over the configured Db provider (same path as the CLI — no server required),
 // so a future swap to a remote client touches this file only.
@@ -25,13 +25,13 @@ import {
 	type TaskState,
 	type TaskWorkLog,
 	type UpstreamLink,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	type AnswerInput,
 	Questions,
 	type QuestionView,
 	questionsModule,
-} from "@cabane/questions";
+} from "@kabane/questions";
 
 export namespace BoardData {
 	// Sections rendered top-to-bottom (linear-tui grouped-list order) — every one of the seven states,

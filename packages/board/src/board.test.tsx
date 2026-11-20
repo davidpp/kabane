@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
-import type { Task } from "@cabane/core";
-import type { ActivityCard, TriggerDescriptor } from "@cabane/extension";
+import type { Task } from "@kabane/core";
+import type { ActivityCard, TriggerDescriptor } from "@kabane/extension";
 import { type CapturedSpan, type RGBA, TextAttributes } from "@opentui/core";
 import { BoardActivity } from "./activity";
 import {
@@ -634,7 +634,7 @@ test("DispatchOverlay renders the title, the numbered host triggers, the preview
 			description: "needs a field",
 			inputs: { field: { type: "string", required: true } },
 			satisfiable: false,
-			hint: "run via: cabane dispatch custom -i …",
+			hint: "run via: kabane dispatch custom -i …",
 		},
 	];
 	const { renderOnce, captureCharFrame, destroy } = await renderTest(
@@ -656,7 +656,7 @@ test("DispatchOverlay renders the title, the numbered host triggers, the preview
 		// Preview of the selected (unsatisfiable) trigger: description, inputs, hint.
 		expect(frame).toContain("needs a field");
 		expect(frame).toContain("field: string (required)");
-		expect(frame).toContain("run via: cabane dispatch custom -i …");
+		expect(frame).toContain("run via: kabane dispatch custom -i …");
 		expect(frame).toContain("enter run · esc close");
 	} finally {
 		destroy();

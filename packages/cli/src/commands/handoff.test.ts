@@ -2,11 +2,11 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Result, type TaskEntry } from "@cabane/core";
-import { HANDOFF_TEMPLATE } from "@cabane/handoff";
+import { Planner, type Result, type TaskEntry } from "@kabane/core";
+import { HANDOFF_TEMPLATE } from "@kabane/handoff";
 import { run } from "../main";
 
-const HUMAN = "cabane://actor/human/test";
+const HUMAN = "kabane://actor/human/test";
 const unwrap = <T>(result: Result<T>): T => {
 	if (!result.ok) throw result.error;
 	return result.value;

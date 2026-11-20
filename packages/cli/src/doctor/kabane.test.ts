@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { err } from "@cabane/core";
-import { Doctor } from "@cabane/extension";
+import { err } from "@kabane/core";
+import { Doctor } from "@kabane/extension";
 import { settingsPort } from "../context";
 import { builtin } from "./kabane";
 

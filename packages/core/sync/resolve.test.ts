@@ -554,14 +554,14 @@ describe("Resolve.decide — same-id clock tie", () => {
 				payload: taskRow(LOW, T2, {
 					title: "three edits on bbb",
 					version: 3,
-					updated_by: "cabane://actor/human/zed",
+					updated_by: "kabane://actor/human/zed",
 				}),
 			}),
 			local({
 				byId: taskRow(LOW, T2, {
 					title: "one edit on aaa",
 					version: 1,
-					updated_by: "cabane://actor/human/amy",
+					updated_by: "kabane://actor/human/amy",
 				}),
 				localDeviceId: DEVICE_A,
 			}),
@@ -588,16 +588,16 @@ describe("Resolve.decide — same-id clock tie", () => {
 		// Device order says bbb loses; actor order says bbb's author (amy) wins.
 		// Actor is consulted first, so amy's content lands on both machines.
 		const onA = Resolve.decide(
-			authored(DEVICE_B, "cabane://actor/human/amy", "from amy"),
+			authored(DEVICE_B, "kabane://actor/human/amy", "from amy"),
 			local({
-				byId: held("cabane://actor/human/zed", "from zed"),
+				byId: held("kabane://actor/human/zed", "from zed"),
 				localDeviceId: DEVICE_A,
 			}),
 		);
 		const onB = Resolve.decide(
-			authored(DEVICE_A, "cabane://actor/human/zed", "from zed"),
+			authored(DEVICE_A, "kabane://actor/human/zed", "from zed"),
 			local({
-				byId: held("cabane://actor/human/amy", "from amy"),
+				byId: held("kabane://actor/human/amy", "from amy"),
 				localDeviceId: DEVICE_B,
 			}),
 		);

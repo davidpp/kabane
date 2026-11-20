@@ -4,7 +4,7 @@
 // only names the machine once sync is set up (docs/deploy.md), and it can be renamed in the config
 // until the first push. setup.tsx is a thin layer over this; the host turns a Plan into its own
 // config (the board cannot see the CLI's schema), runs the installs and files the first issue.
-import { err, ok, type Result } from "@cabane/core";
+import { ActorUri, err, ok, type Result } from "@kabane/core";
 
 export namespace SetupPlan {
 	/** A harness the host found on this machine, by the id its installer takes. */
@@ -51,7 +51,7 @@ export namespace SetupPlan {
 	/** The issue setup filed for an agent, as the host reports it. */
 	export type FirstIssue = { shortId: string; title: string };
 
-	export const ACTOR_PREFIX = "cabane://actor/human/";
+	export const ACTOR_PREFIX = ActorUri.HUMAN;
 
 	export const fields = (defaults: Defaults): Field[] => [
 		{ kind: "name" },

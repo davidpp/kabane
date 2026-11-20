@@ -12,8 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { ok, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { Worktree } from "./worktree";
 
 let root = "";

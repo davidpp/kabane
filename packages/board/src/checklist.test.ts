@@ -1,7 +1,7 @@
 // An issue's checklist on the board's state: the cursor `J/K` move, `space` toggling the item under
 // it through the one key router, a press shown until the records agree, and the cards' `3/5`.
 import { describe, expect, it } from "bun:test";
-import type { ChecklistItemView } from "@cabane/checklist";
+import type { ChecklistItemView } from "@kabane/checklist";
 import { BoardChecklist } from "./checklist";
 import { BoardDecisions } from "./decisions";
 import { Keymap } from "./keymap";

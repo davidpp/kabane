@@ -2,9 +2,9 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Result } from "@cabane/core";
-import type { Outcome } from "@cabane/extension";
-import { type QuestionView, Questions } from "@cabane/questions";
+import { Planner, type Result } from "@kabane/core";
+import type { Outcome } from "@kabane/extension";
+import { type QuestionView, Questions } from "@kabane/questions";
 import { run } from "../main";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -22,7 +22,7 @@ const device = async () => {
 	homes.push(home);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const init = await run(
-		["init", "--actor", "cabane://actor/human/test", "--device", "test"],
+		["init", "--actor", "kabane://actor/human/test", "--device", "test"],
 		env,
 		home,
 	);

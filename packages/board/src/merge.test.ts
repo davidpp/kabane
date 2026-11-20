@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { err, ok } from "@cabane/core";
+import { err, ok } from "@kabane/core";
 import type {
 	ActivityCard,
 	ActivityQuestion,
@@ -10,7 +10,7 @@ import type {
 	JobFacts,
 	JobSource,
 	TriggerDescriptor,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { Activity, Dispatchers, Headers, JobSources } from "./merge";
 
 const card = (id: string, startedAt: string): ActivityCard => ({

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@kabane/acp";
 import {
 	BoardCopilot,
 	Activity,
@@ -10,7 +10,7 @@ import {
 	type OpenRequests,
 	type SettingsSource,
 	startBoard,
-} from "@cabane/board";
+} from "@kabane/board";
 import {
 	err,
 	ok,
@@ -18,7 +18,7 @@ import {
 	type Result,
 	type Task,
 	tryCatch,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	type ActivitySource,
 	type Header,
@@ -30,7 +30,7 @@ import {
 	type Outcome,
 	type ParsedArgs,
 	success,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { configPath } from "../config";
 import { ConfigSettings } from "../config-settings";
 import {
