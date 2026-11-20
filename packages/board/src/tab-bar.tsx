@@ -6,9 +6,9 @@
 // tracker's `?n` counts every question, and the Jobs tab's the jobs whose run waits on the human. Only the tab on screen
 // animates: a running card on another tab is the still echo (spinner.ts).
 //
-// A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
-// many of the rest as fit in tab order, and counts the others in a `+n` cell; `{` `}` still reach
-// them.
+// A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n` or an
+// accent `?`, then as many of the rest as fit in tab order, and counts the others in a `+n` cell;
+// `{` `}` still reach them.
 import type { ActivityCard } from "@kabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
@@ -92,6 +92,8 @@ type Tab = {
 	index: number;
 	onScreen: boolean;
 	waiting: number;
+	// A finished card whose left-for-you list the human has not seen: kept in sight like a `?n`.
+	unseen: boolean;
 	parts: Part[];
 };
 
@@ -108,7 +110,9 @@ const fitting = (
 	const total = all.reduce((sum, tab) => sum + widthOf(tab), 0);
 	if (total <= room) return { shown: [...all], hidden: 0 };
 	const kept = new Set(
-		all.filter((tab) => tab.index === 0 || tab.onScreen || tab.waiting > 0),
+		all.filter(
+			(tab) => tab.index === 0 || tab.onScreen || tab.waiting > 0 || tab.unseen,
+		),
 	);
 	// The `+n` cell, its rule included, at its widest.
 	let left =
@@ -170,19 +174,21 @@ export const TabBar = ({
 				: id === null
 					? "tracker"
 					: "jobs";
+			const unseen =
+				id !== null && id !== BoardTabs.JOBS && BoardTabs.unseen(tabs, id);
 			return {
 				id,
 				card,
 				index,
 				onScreen,
 				waiting,
+				unseen,
 				parts: tabParts(index + 1, card, name, {
 					onScreen,
 					waiting,
 					spinnerFrame,
 					theme,
-					unseen:
-						id !== null && id !== BoardTabs.JOBS && BoardTabs.unseen(tabs, id),
+					unseen,
 				}),
 			};
 		});
