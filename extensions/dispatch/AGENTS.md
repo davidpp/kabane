@@ -1,18 +1,19 @@
 # @cabane/dispatch (extensions/dispatch)
 
-The dispatch extension: the dispatch and grill skill templates, the setup-dispatch skill that
-fills a project's dispatch skill from them, the copilot procedure that grills the human through
-open questions, the `/setup-dispatch` shortcut that runs the setup skill on the board, `kabane dispatch stamp`, and the `kabane doctor` checks that say a
+The dispatch extension: the dispatch skill template, the setup-dispatch skill that fills a
+project's dispatch skill from it, the grill skill that walks the human through open questions,
+the `/setup-dispatch` shortcut that runs the setup skill on the board, `kabane dispatch stamp`, and the `kabane doctor` checks that say a
 project's copy is behind. `README.md` is what a user reads.
 
 | Where | What it holds |
 |---|---|
 | `src/extension.ts` | the `(host) => Extension` factory: the `dispatch` command (`stamp`) and the doctor checks |
 | `src/templates.ts` | `Templates.hashDir` and `Templates.stamp`, read from this directory's `templates/` |
-| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `-unlinked`, `dispatch-template-unavailable`, `grill-skill-behind`, `-unlinked` |
+| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `-unlinked`, `dispatch-template-unavailable` |
+| `skills/grill/SKILL.md` | the grill skill `kabane mcp` serves; it needs no filling, and nothing copies it into a project |
 | `skills/setup-dispatch/` | the router skill `kabane mcp` serves: `SKILL.md` with the options table and the menu, one `references/<option>.md` per option; `{{extension}}` and `{{kabane}}` filled by the host |
-| `copilot/procedures/*.md`, `copilot/shortcuts/*.md` | the copilot's text, `{{extension}}` filled by the host |
-| `templates/dispatch/**`, `templates/grill/SKILL.md` | what a skill or procedure tells a session to copy into a project |
+| `copilot/shortcuts/*.md` | the board's `/setup-dispatch`, `{{extension}}` filled by the host |
+| `templates/dispatch/**` | what the setup-dispatch skill tells a session to copy into a project |
 | `evals/setup-dispatch/evals.json` | skill-creator's test prompts for the setup skill, run by hand against a real session |
 
 ## It takes types from kabane and no value

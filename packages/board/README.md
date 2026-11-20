@@ -444,8 +444,9 @@ It can also:
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
   the `auto` fixes unasked, waits for a yes on the rest, follows a `route`, and hands you the
   command for a harness MCP entry instead of rewriting it.
-- Follow the procedures an enabled extension adds. The dispatch extension's write a project's
-  dispatch skill (`/setup-dispatch`) and grill the human through open questions. The loop's procedures let it start a run
+- Follow the procedures an enabled extension adds, and the skills `kabane mcp` serves. The dispatch
+  extension's skills write a project's dispatch skill (`/setup-dispatch`) and grill the human
+  through open questions. The loop's procedures let it start a run
   when asked, such as “run this issue with codex”, and set one up from `kabane loop advise`. A
   run handles a single issue or a parent's subtasks; follow it in its board tab.
 

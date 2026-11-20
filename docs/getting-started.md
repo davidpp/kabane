@@ -195,8 +195,9 @@ The [dispatch extension](../extensions/dispatch/README.md) adds the setup-dispat
 writes a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks
 into kabane issues. `/setup-dispatch` runs it on the board; any session connected to kabane's MCP
 server can run it too, by asking for the dispatch setup. It asks you the few setup questions your project's files leave open, such as
-whether a team tracker holds the requests, and records the answers in the skill. It also adds the grill skill: ask the copilot to "grill me" and it walks you
-through the questions agents left open, one at a time. Without it, the copilot offers neither. A skill an
+whether a team tracker holds the requests, and records the answers in the skill. It also serves the grill skill: ask the copilot, or any session
+connected to kabane's MCP server, to "grill me" and it walks you through the questions agents left
+open, one at a time. Without it, the copilot offers neither. A skill an
 earlier kabane wrote keeps working without the extension; `kabane doctor` then says it cannot
 tell whether that skill is current. [Extensions](extensions.md) says how to install it.
 
@@ -392,7 +393,7 @@ require restoring that backup. Reporting findings does not apply their offered r
 
 The source identifies the check owner: `kabane` for settings and MCP, `project` for
 project files, and an extension name such as `loop` or `dispatch`. For example,
-`kabane doctor --fix dispatch/grill-skill-behind` applies the dispatch extension's offered
+`kabane doctor --fix dispatch/dispatch-skill-unlinked` applies the dispatch extension's offered
 repair.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no

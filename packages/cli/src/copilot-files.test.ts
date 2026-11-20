@@ -275,7 +275,7 @@ describe("CopilotFiles.read", () => {
 
 // As the board composes it: the loader over a KABANE_HOME whose extensions/dispatch is this
 // checkout's extension, its directory's files, then the one prompt every harness is sent.
-it("the dispatch extension's procedures and shortcut reach the copilot once when enabled, and not at all otherwise", async () => {
+it("the dispatch extension's shortcut reaches the copilot once when enabled, and not at all otherwise", async () => {
 	const home = join(ROOT, `dispatch-home-${crypto.randomUUID()}`);
 	mkdirSync(join(home, "extensions"), { recursive: true });
 	symlinkSync(DISPATCH, join(home, "extensions/dispatch"));
@@ -301,12 +301,8 @@ it("the dispatch extension's procedures and shortcut reach the copilot once when
 	};
 	const on = await compose(["dispatch"]);
 	expect(on.names).toEqual(["dispatch"]);
-	const count = (text: string) => on.prompt.split(text).length - 1;
-	expect(count("EXTENSION dispatch.")).toBe(1);
-	expect(count("GRILLING.")).toBe(1);
-	expect(on.prompt).not.toContain("{{extension}}");
-	const installed = realpathSync(join(home, "extensions/dispatch"));
-	expect(on.prompt).toContain(`at ${installed}/templates/grill/SKILL.md:`);
+	// Its how-to is served skills, so no procedure of its own reaches the prompt.
+	expect(on.prompt).not.toMatch(/EXTENSION dispatch|GRILLING|templates\/grill/);
 	expect(on.shortcuts.filter((name) => name === "setup-dispatch")).toEqual([
 		"setup-dispatch",
 	]);

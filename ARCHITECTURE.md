@@ -214,8 +214,8 @@ and renders `BoardContext` into every prompt. `mailbox.ts` lives beside it. The 
 Of `instructions.ts`, the prose lives in the board as `packages/board/src/copilot-instructions.ts`
 (`BLOCK`, `SKILLS`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
 `CopilotInstructions` with two names the board reads: `actorUri` and `SERVER_NAME`. The loop keeps
-its own copies (`extensions/loop/src/session-identity.ts`). The dispatch and grill templates
-belong to the dispatch extension, which reads them from its own directory. The path kabane runs
+its own copies (`extensions/loop/src/session-identity.ts`). The dispatch template and the grill
+skill belong to the dispatch extension, which reads them from its own directory. The path kabane runs
 as is required in `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the
 board never imports `Self`, which lives in the CLI host. The CLI imports
 `@cabane/board/copilot-instructions` in `copilot-files.ts` to refuse an extension's procedure
