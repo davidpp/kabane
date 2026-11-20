@@ -38,7 +38,7 @@ export namespace BoardCopilot {
 		// The mode the session starts in; the harness's own auto mode when absent.
 		mode?: Harnesses.Mode;
 		// This device's config, which the copilot is told it may edit when asked to set kabane up,
-		// and the procedures and shortcuts its enabled extensions contribute.
+		// and the shortcuts its enabled extensions contribute.
 		setup: CopilotInstructions.Setup;
 		// How the harness is reached. Defaults to spawning it; tests pass an in-process transport,
 		// and it is the seam for a connection opened elsewhere.

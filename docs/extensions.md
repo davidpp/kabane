@@ -9,7 +9,7 @@ This repository has three:
 
 | Extension | What it adds |
 |---|---|
-| `loop` | `kabane loop`, which drives an issue or a parent issue's subtasks through coding harnesses on your machine; `a` on the board to start a run, with a tab per run; the copilot's procedures to start and advise a run; the `kabane_loop_advise` MCP tool; `loop.*` settings; doctor checks under `loop`. See [loop.md](loop.md). |
+| `loop` | `kabane loop`, which drives an issue or a parent issue's subtasks through coding harnesses on your machine; `a` on the board to start a run, with a tab per run; the served `loop-run` skill to set up and start a run; the `kabane_loop_advise` MCP tool; `loop.*` settings; doctor checks under `loop`. See [loop.md](loop.md). |
 | `dispatch` | The dispatch skill for your projects; two skills `kabane mcp` serves to any session: setup-dispatch, which writes a project's dispatch skill and runs on the board with `/setup-dispatch`, and grill, which walks you through open questions; `kabane dispatch stamp`; doctor checks under `dispatch`. See [its README](../extensions/dispatch/README.md). |
 | `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop those runs; `kabane job` to run a recipe on a schedule, with `kabane job tick` for launchd or cron; on the board, a card for each run that works on an issue, with its state and the command that attaches to it, and `a` on an issue to start a recipe; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
 

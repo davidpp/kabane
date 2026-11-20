@@ -227,7 +227,7 @@ installed. Disabling such an extension keeps its tables and rows: deleting a tas
 the deletes of its rows for the other devices, which hold what they receive for that extension
 until it is enabled there.
 
-Markdown files under `copilot/` add procedures and `/` shortcuts to the board's copilot; the
+Markdown files under `copilot/shortcuts/` add `/` shortcuts to the board's copilot; the
 board's README describes them, under its copilot. Skills under `skills/<name>/` are served by
 `kabane mcp` (below).
 

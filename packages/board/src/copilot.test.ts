@@ -246,7 +246,6 @@ const context = (
 const SETUP: CopilotInstructions.Setup = {
 	configPath: "/home/me/.kabane/config.json",
 	extensions: [{ name: "loop" }],
-	procedures: [],
 	shortcuts: [],
 };
 

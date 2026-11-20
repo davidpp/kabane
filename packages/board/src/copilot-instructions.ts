@@ -3,9 +3,10 @@
 // tool loop is deliberately NOT restated here — the kabane MCP server sends SERVER_INSTRUCTIONS on
 // initialize, and a second description of one loop is a second thing to keep in sync.
 //
-// BLOCK is who the copilot is; SKILLS holds procedures; setup supplies this device's context;
-// enabled extensions' procedure files follow it. They are joined by systemPrompt, because
-// procedures grow without diluting the identity paragraph. Base kabane's text names no extension.
+// BLOCK is who the copilot is; SKILLS holds procedures; setup supplies this device's context. They
+// are joined by systemPrompt, because procedures grow without diluting the identity paragraph.
+// Base kabane's text names no extension; an extension's how-to is a skill kabane's MCP server
+// serves, never text in this prompt.
 import { Harnesses } from "@cabane/acp/harnesses";
 import { CopilotInstructions as HarnessInstructions } from "@cabane/acp/instructions";
 import type { CopilotShortcut } from "@cabane/extension";
@@ -53,7 +54,7 @@ DOCTOR. \`kabane doctor\` reports what kabane wrote, in its settings, this proje
 - route names the procedure that repairs it. Follow the finding's route text: when it names a procedure, or a / shortcut that stands for one, offer to run that procedure, whose own rules on when a write waits for a yes still hold.
 Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its severity, even after a yes: give the human its command, \`kabane doctor --fix kabane/mcp-entry-stale-<harness>\`, to run themselves, because it rewrites that harness's MCP entries, which are theirs. Report every group in one pass, auto first. Findings are not errors, so do not present them as failures. Only this procedure repairs drift: never run a fix as a side effect of another request, and never re-run doctor to retry a fix that failed; report its message as it is.`;
 
-	/** Base kabane's own headings, which an extension's procedure may not take as its title. */
+	/** Base kabane's own headings, which an extension's package.json description may not contain. */
 	export const HEADINGS: readonly string[] = [
 		"LINKING A TASK TO AN EXTERNAL ISSUE",
 		"CONFIG AND HELP",
@@ -70,25 +71,14 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 			.replace(/[.:;,!?]+$/, "")
 			.toUpperCase();
 
-	/** One procedure an extension's `copilot/procedures/<name>.md` contributes, `{{extension}}` filled. */
-	export type Procedure = { title: string; body: string };
-
-	/** The procedures one enabled extension contributes, appended under a heading naming it. */
-	export type Contribution = {
-		extension: string;
-		procedures: readonly Procedure[];
-	};
-
 	export type Installed = { name: string; description?: string };
 
-	/** Device and build context for the config-and-help procedure, and what extensions add. */
+	/** Device and build context for the config-and-help procedure, and the shortcuts extensions add. */
 	export type Setup = {
 		/** The resolved `KABANE_HOME/config.json`, never assumed to be `~/.kabane`. */
 		configPath: string;
 		/** The installed extensions, by the name `extensions` takes, and what each says it adds. */
 		extensions: readonly Installed[];
-		/** What enabled extensions add to base kabane's text, in the order they are enabled. */
-		procedures: readonly Contribution[];
 		/** The `/` shortcuts enabled extensions add, none named like a built-in or like each other. */
 		shortcuts: readonly CopilotShortcut[];
 	};
@@ -124,25 +114,9 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 	// systemPromptAppend and the first prompt's opening block — send this, so a harness that honours
 	// only one of the two still gets the whole thing.
 	export const systemPrompt = (config: Setup, kabane: string): string =>
-		[
-			BLOCK,
-			SKILLS,
-			setup(config, kabane),
-			installed(config.extensions),
-			...config.procedures
-				.filter(({ procedures }) => procedures.length > 0)
-				.map(contributed),
-		].join("\n\n");
-
-	// After base kabane's whole text, so an extension adds procedures and cannot replace or reorder
-	// kabane's own.
-	const contributed = ({ extension, procedures }: Contribution): string =>
-		[
-			`EXTENSION ${extension}. These procedures come from the ${extension} extension and add to kabane's own above.`,
-			...procedures.map(
-				({ title, body }) => `${title.replace(/[.:]+$/, "")}. ${body}`,
-			),
-		].join("\n\n");
+		[BLOCK, SKILLS, setup(config, kabane), installed(config.extensions)].join(
+			"\n\n",
+		);
 
 	// The `/name` expansions the prompt window offers. `template` is dropped into the input line for
 	// the human to read and edit before they send it, so each one is a single line of plain prose,

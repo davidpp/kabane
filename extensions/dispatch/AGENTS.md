@@ -23,7 +23,7 @@ runtime dependency. Scope detection, zod, outcomes and the result helpers arrive
 factory binds the result helpers through `src/result.ts` before anything else runs. Core and the
 contract are development dependencies for types and for the tests' own result helpers.
 
-A skill or procedure file computes nothing: the stamp a filled skill records is
+A skill or shortcut file computes nothing: the stamp a filled skill records is
 `kabane dispatch stamp`'s output, which the setup-dispatch skill runs as `{{kabane}}`. The stamp is sha256 over the
 template's relative paths and bytes, `PLACEHOLDERS.md` excluded, so a skill base kabane stamped
 before the template moved here still compares equal. Any change to `templates/dispatch/` other

@@ -28,8 +28,8 @@ does not read or answer them through core, which keeps no session: a session is 
 in the work log and its outcomes are timeline entries.
 `Header` returns data: `src/card-header.tsx` polls it and lays out its rows, sharing tone mapping
 with trigger previews. Base kabane's copilot text and setup screen name no extension: an
-extension's procedures and shortcuts arrive in `CopilotInstructions.Setup`, read by the host from
-its files, and `systemPrompt` appends them after base kabane's text.
+extension's shortcuts arrive in `CopilotInstructions.Setup`, read by the host from its files, and
+its how-to is a skill `kabane mcp` serves, never text in `systemPrompt`.
 
 Where things are drawn: `src/app.tsx` holds the state and wires the ports; `src/board.tsx` is
 the board view, one row per card; `src/detail.tsx` an issue's detail; `src/tab-bar.tsx` and
