@@ -879,7 +879,7 @@ const ToolCallRow = ({
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0 }}>
 			<box
-				style={{ flexDirection: "row", flexShrink: 0, paddingLeft: indent }}
+				style={{ flexDirection: "row", flexShrink: 0 }}
 				onMouseUp={(event) => onToggle(event.currentTarget)}
 			>
 				{tag ? (
@@ -887,7 +887,8 @@ const ToolCallRow = ({
 						{`${tag.text} `}
 					</text>
 				) : null}
-				<text fg={fg} style={{ flexShrink: 0 }}>
+				{/* The indent comes after the tag, so the tag column lines up with every other row. */}
+				<text fg={fg} style={{ flexShrink: 0, marginLeft: indent }}>
 					{`${glyph} `}
 				</text>
 				<text
