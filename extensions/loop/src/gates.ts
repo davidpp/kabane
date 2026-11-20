@@ -70,11 +70,29 @@ export namespace Gates {
 		trySync(() => process.kill(-pid, signal));
 	};
 
+	/**
+	 * What a gate's environment changes from the runner's: a string sets the variable, undefined
+	 * takes out the one it would inherit.
+	 */
+	export type Env = Readonly<Record<string, string | undefined>>;
+
+	const inherit = (env: Env): Record<string, string> => {
+		const merged: Record<string, string | undefined> = {
+			...process.env,
+			...env,
+		};
+		return Object.fromEntries(
+			Object.entries(merged).filter(
+				(entry): entry is [string, string] => entry[1] !== undefined,
+			),
+		);
+	};
+
 	const one = async (
 		name: string,
 		command: string,
 		cwd: string,
-		env: Record<string, string>,
+		env: Env,
 		signal: AbortSignal,
 	): Promise<Result> => {
 		const started = performance.now();
@@ -85,7 +103,7 @@ export namespace Gates {
 				cwd,
 				stdout: "pipe",
 				stderr: "ignore",
-				env: { ...process.env, ...env },
+				env: inherit(env),
 				detached: true,
 			});
 			let killed = false;
@@ -132,7 +150,7 @@ export namespace Gates {
 	export const run = async (
 		gates: Readonly<Record<string, string>>,
 		cwd: string,
-		env: Record<string, string>,
+		env: Env,
 		signal: AbortSignal,
 	): Promise<Result[]> => {
 		const results: Result[] = [];
