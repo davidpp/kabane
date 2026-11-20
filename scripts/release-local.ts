@@ -16,6 +16,7 @@ import {
 import { err, ok, type Result } from "../packages/core/result";
 import { prepareRelease } from "./release";
 import {
+	npmViewSchema,
 	readArtifactFile,
 	sha256,
 	verifyReleaseFiles,
@@ -431,9 +432,13 @@ const newerThanPublished = async (
 	const previousBeta = beta ? await distTag("beta") : ok("");
 	if (!previousBeta.ok) return previousBeta;
 	const floors = [
-		StableVersionSchema.safeParse(JSON.parse(latest.value)),
+		npmViewSchema(StableVersionSchema).safeParse(JSON.parse(latest.value)),
 		...(previousBeta.value
-			? [ChannelVersionSchema.safeParse(JSON.parse(previousBeta.value))]
+			? [
+					npmViewSchema(ChannelVersionSchema).safeParse(
+						JSON.parse(previousBeta.value),
+					),
+				]
 			: []),
 	];
 	return floors.some(

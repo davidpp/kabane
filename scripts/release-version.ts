@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { err, ok, type Result } from "../packages/core/result";
-import { ReleaseVersionSchema } from "./release-artifact";
+import { npmViewSchema, ReleaseVersionSchema } from "./release-artifact";
 import { queryRelease } from "./release-process";
 
 export const StableReleaseVersionSchema = ReleaseVersionSchema.refine(
@@ -240,7 +240,7 @@ export const selectReleaseVersion = async (
 			env,
 		);
 		if (!latest.ok) return latest;
-		const version = StableReleaseVersionSchema.safeParse(
+		const version = npmViewSchema(StableReleaseVersionSchema).safeParse(
 			JSON.parse(latest.value),
 		);
 		if (!version.success)
@@ -259,7 +259,9 @@ export const selectReleaseVersion = async (
 			env,
 		);
 		if (!metadata.ok) return metadata;
-		const release = RegistryRelease.safeParse(JSON.parse(metadata.value));
+		const release = npmViewSchema(RegistryRelease).safeParse(
+			JSON.parse(metadata.value),
+		);
 		if (!release.success || release.data.version !== version.data)
 			return fail(`Invalid previous npm release metadata. ${GUIDANCE}`);
 		const baseline = await releaseBaseline(release.data, root, env);

@@ -39,6 +39,13 @@ export const PackOutputSchema = z
 			.transform((byName) => Object.values(byName)),
 	])
 	.refine((packed) => packed.length === 1, "Expected exactly one archive.");
+/**
+ * What `npm view --json` prints for one value or one version: npm 11 prints it bare, npm 12
+ * wraps it in a one-element array. An error (`{ error: { code: "E404" } }`) stays bare in both,
+ * so callers read it without this.
+ */
+export const npmViewSchema = <T extends z.ZodType>(value: T) =>
+	z.union([value, z.tuple([value]).transform(([only]) => only)]);
 export const PublishManifestSchema = z
 	.object({
 		name: z.literal("kabane"),
