@@ -23,7 +23,11 @@ export namespace McpInstall {
 	export type Runner = (argv: string[]) => Promise<Run>;
 	export type Which = (binary: string) => string | null;
 
-	type Options = { force?: boolean };
+	type Options = {
+		force?: boolean;
+		/** Claude's scopes to replace; every one it holds when absent. */
+		scopes?: readonly ("user" | "local")[];
+	};
 	export type Deps = {
 		run?: Runner;
 		which?: Which;
@@ -93,6 +97,26 @@ export namespace McpInstall {
 		error: result.err.trim() || result.out.trim() || `exit ${result.code}`,
 	});
 
+	/** Claude's entries replaced scope by scope, only `opts.scopes` when named. */
+	const replaceScoped = async (
+		harness: McpClients.Id,
+		found: readonly { scope?: "user" | "local" }[],
+		opts: Options,
+		deps: Required<Deps>,
+	): Promise<Report> => {
+		const entry = McpClients.entry(harness);
+		const launch = McpClients.launchFor(deps.launcher, harness);
+		for (const { scope } of found) {
+			if (!scope || !entry.removeScoped) continue;
+			if (opts.scopes && !opts.scopes.includes(scope)) continue;
+			const removed = await deps.run(entry.removeScoped(scope));
+			if (removed.code !== 0) return failed(harness, removed);
+			const added = await deps.run(entry.add(launch, scope));
+			if (added.code !== 0) return failed(harness, added);
+		}
+		return { harness, status: "replaced" };
+	};
+
 	const installOne = async (
 		harness: McpClients.Id,
 		opts: Options,
@@ -114,16 +138,8 @@ export namespace McpInstall {
 				found.value.some((r) => !McpClients.sameLaunch(r.launch, launch));
 			return { harness, status: stale ? "stale" : "present" };
 		}
-		if (present && entry.removeScoped && found.ok && found.value.length > 0) {
-			for (const registration of found.value) {
-				if (!registration.scope) continue;
-				const removed = await deps.run(entry.removeScoped(registration.scope));
-				if (removed.code !== 0) return failed(harness, removed);
-				const added = await deps.run(entry.add(launch, registration.scope));
-				if (added.code !== 0) return failed(harness, added);
-			}
-			return { harness, status: "replaced" };
-		}
+		if (present && entry.removeScoped && found.ok && found.value.length > 0)
+			return replaceScoped(harness, found.value, opts, deps);
 		if (present) {
 			const removed = await deps.run(entry.remove);
 			if (removed.code !== 0) return failed(harness, removed);

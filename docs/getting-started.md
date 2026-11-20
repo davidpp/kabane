@@ -629,6 +629,9 @@ start them again, harness sessions included, so each `kabane mcp` starts with it
   another command, such as one `mise up` left on an older binary, is reported as
   `mcp-entry-stale-<harness>` instead, which a bare `--fix` does not apply:
   `kabane doctor --fix kabane/mcp-entry-stale-<harness>` re-registers it with the new actor.
+  An entry that sets more than its command, such as an `env` with its own `KABANE_HOME`, is
+  reported as `mcp-entry-actor-kept-<harness>` and left alone, because re-registering would
+  drop the rest: replace the old actor after `--as` in the file it names, by hand.
 - **Extensions you installed from a clone.** Rebuild and reinstall each one
   ([extensions.md](extensions.md), "Update an extension"): an older loop starts its sessions as
   `cabane://actor/agent/<harness>`, which this version refuses, and an older recipes leaves its
