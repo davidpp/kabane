@@ -13,7 +13,7 @@ it on that harness, and agent:<name> runs it as the harness's named agent (Claud
 an agent that pins a model keeps it). A tag the run cannot honour is noted on the trace and the
 claim runs on the run's settings.`;
 
-	export const INSTRUCTIONS = `Use kabane_loop_advise before starting a run; start applies no advice automatically. For run controls, see \`kabane loop --help\`. ${TAG_VOCABULARY.replaceAll("\n", " ")}`;
+	export const INSTRUCTIONS = `To set up, tune or start a run, read the loop-run skill with kabane_skillGet and follow it. Use kabane_loop_advise before starting a run; start applies no advice automatically. For run controls, see \`kabane loop --help\`. ${TAG_VOCABULARY.replaceAll("\n", " ")}`;
 
 	export type Recommendation =
 		| {

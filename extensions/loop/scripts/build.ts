@@ -70,8 +70,7 @@ export const build = async (
 			"\t",
 		)}\n`,
 	);
-	for (const directory of ["copilot", "lenses"])
-		cpSync(join(root, directory), join(into, directory), { recursive: true });
+	cpSync(join(root, "lenses"), join(into, "lenses"), { recursive: true });
 	// What kabane mcp serves to any session; an extension that ships none has no skills/.
 	if (existsSync(join(root, "skills")))
 		cpSync(join(root, "skills"), join(into, "skills"), { recursive: true });

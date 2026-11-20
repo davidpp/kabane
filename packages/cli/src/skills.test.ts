@@ -278,3 +278,38 @@ it("kabane mcp lists and serves an enabled extension's skill over stdio", async 
 		await client.close();
 	}
 });
+
+it("the loop's loop-run skill sets up and starts a run with the kabane this server runs", () => {
+	const loop = {
+		name: "loop",
+		directory: join(import.meta.dir, "../../../extensions/loop"),
+	};
+	const read = Skills.read([loop]);
+	expect(read.refused).toEqual([]);
+	const got = Skills.get(read.skills, "loop-run", undefined, "KABANE");
+	if (!got.ok) throw got.error;
+	const text = got.value.text;
+	expect(got.value.files).toEqual([]);
+	expect(text).not.toContain("{{");
+	// Setting one up reads the advice first, proposes, and waits for a yes before it writes.
+	for (const line of [
+		"`KABANE loop advise <id>`",
+		"It starts nothing",
+		"an agent:<name> tag only for an agent the harness already has",
+		"Never change the implementer or the verifier unless asked",
+		"Your proposal is your own suggestion: wait for a yes",
+		"keeping each subtask's other tags",
+		"Never pass layer: shared",
+		// What starting lets the session do, and what it must not do on its own idea.
+		"`KABANE loop start <id>`",
+		'When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead',
+		"When a run is your own suggestion, name the issue and the harness and wait for a yes",
+		"pass only what the human asked for: the loop's settings (kabane_configGet key loop) supply the rest",
+		"report its message as it is and do not retry with other flags",
+		"report the run id it prints",
+		"`KABANE loop status <runId>`",
+		"`KABANE loop stop <runId>`",
+		"The run's sessions change the code, not you, and a question one of them asks is the human's to answer.",
+	])
+		expect(text).toContain(line);
+});

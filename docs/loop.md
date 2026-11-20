@@ -10,7 +10,7 @@ its own branch and checkpoints it as work passes the gates.
 The loop is an extension, built from a kabane checkout and installed under
 `$KABANE_HOME/extensions/loop`. [Extensions](extensions.md) says how to build, install and enable it;
 `kabane loop --help` then prints its commands. The build includes its harness client, its
-copilot procedures and the verifier lenses it ships. The harness you choose must be installed
+`loop-run` skill and the verifier lenses it ships. The harness you choose must be installed
 and logged in.
 
 When upgrading from a version that bundled the loop, install this directory before using
@@ -333,11 +333,12 @@ have no start flags; set them through `kabane config set` if you want those sugg
 The board form applies the advice you reviewed to that run, without saving it as your
 defaults.
 
-The board copilot sets up and starts runs only from the loop's procedure files, in
-`copilot/procedures/` of the loop's directory, and kabane reads those files only from an
-extension loaded as a directory under `$KABANE_HOME/extensions/`. The loop that ships inside
-kabane adds none, so with it the copilot neither sets up nor starts a run. Set one up with
-`kabane loop advise` or the board's `a` form, and start it with `kabane loop start`.
+Any session connected to kabane's MCP server, the board's copilot included, can set up and
+start a run by asking for it ("set up a loop for JCAB-79"): the loop ships how to do it as its
+`loop-run` skill, which the session reads with `kabane_skillGet`. kabane serves skills only
+from an extension loaded as a directory under `$KABANE_HOME/extensions/`. Without the skill,
+set a run up with `kabane loop advise` or the board's `a` form, and start it with
+`kabane loop start`.
 
 ## How much review a run gets
 
