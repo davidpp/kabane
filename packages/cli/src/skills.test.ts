@@ -1,6 +1,7 @@
 // Real extension directories on disk, read by the real reader and served by the real `kabane mcp`.
 import { afterAll, describe, expect, it } from "bun:test";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	realpathSync,
@@ -196,6 +197,38 @@ describe("Skills.get", () => {
 		expect(unknown.ok ? unknown.value : unknown.error.message).toBe(
 			"No skill is named other; kabane_skillList names the skills served",
 		);
+	});
+
+	it("serves a skill holding an unreadable directory and file, and refuses its unreadable files", () => {
+		const locked = extension("locked", {
+			"skills/demo/SKILL.md": skill("demo", "Use it.", "Body"),
+			"skills/demo/references/how.md": "How.\n",
+			"skills/demo/locked/inside.md": "Hidden by its directory.\n",
+			"skills/demo/sealed.md": "Unreadable.\n",
+		});
+		const demo = join(locked.directory, "skills/demo");
+		chmodSync(join(demo, "locked"), 0o000);
+		chmodSync(join(demo, "sealed.md"), 0o000);
+		try {
+			const read = Skills.read([locked]);
+			const got = Skills.get(read.skills, "demo", undefined, kabane);
+			if (!got.ok) throw got.error;
+			expect(got.value.files).toEqual(["references/how.md", "sealed.md"]);
+			const sealed = Skills.get(read.skills, "demo", "sealed.md", kabane);
+			expect(sealed.ok ? sealed.value : sealed.error.message).toStartWith(
+				"sealed.md ",
+			);
+			const inside = Skills.get(
+				read.skills,
+				"demo",
+				"locked/inside.md",
+				kabane,
+			);
+			expect(inside.ok).toBe(false);
+		} finally {
+			chmodSync(join(demo, "locked"), 0o755);
+			chmodSync(join(demo, "sealed.md"), 0o644);
+		}
 	});
 });
 

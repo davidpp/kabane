@@ -6,13 +6,7 @@
  * be served is refused on its own, with one line naming the extension and the skill, and the rest
  * are served.
  */
-import {
-	lstatSync,
-	readdirSync,
-	readFileSync,
-	realpathSync,
-	statSync,
-} from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { CopilotInstructions } from "@cabane/board/copilot-instructions";
 import {
@@ -200,16 +194,22 @@ export namespace Skills {
 	};
 
 	// Every regular file under the skill's directory by its `/` path from there, hidden ones left
-	// out. A link is left out too: it may lead out of the skill.
-	const files = (directory: string): string[] =>
-		readdirSync(directory, { recursive: true, encoding: "utf8" })
-			.filter(
-				(path) =>
-					!path.split(sep).some((part) => part.startsWith(".")) &&
-					lstatSync(join(directory, path)).isFile(),
-			)
-			.map((path) => path.split(sep).join("/"))
+	// out. A link is left out too: it may lead out of the skill. A directory that cannot be listed
+	// is left out, so one unreadable entry does not keep the rest of the skill from being served.
+	const files = (directory: string, under = ""): string[] => {
+		const entries = trySync(() =>
+			readdirSync(join(directory, under), { withFileTypes: true }),
+		);
+		if (!entries.ok) return [];
+		return entries.value
+			.filter((entry) => !entry.name.startsWith("."))
+			.flatMap((entry) => {
+				const path = under === "" ? entry.name : `${under}/${entry.name}`;
+				if (entry.isDirectory()) return files(directory, path);
+				return entry.isFile() ? [path] : [];
+			})
 			.sort();
+	};
 
 	export type Got = {
 		name: string;
@@ -259,7 +259,8 @@ export namespace Skills {
 		const real = trySync(() => realpathSync(join(skill.directory, asked)));
 		if (!root.ok || !real.ok) return refuse;
 		const path = relative(root.value, real.value);
-		if (path === "" || outside(path) || !statSync(real.value).isFile())
+		const stat = trySync(() => statSync(real.value));
+		if (path === "" || outside(path) || !stat.ok || !stat.value.isFile())
 			return refuse;
 		const text = trySync(() => readFileSync(real.value, "utf8"));
 		if (!text.ok) return err(new Error(`${asked} cannot be read`));
