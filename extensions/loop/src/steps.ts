@@ -194,6 +194,14 @@ export namespace RunSteps {
 		const names = Object.keys(run.config.gates);
 		if (names.length === 0) return null;
 		const gating = RunStore.isLive(run.status) ? (run.gating ?? []) : [];
+		// A pass under way when the run ended (its runner died, or a stop) was never recorded.
+		const cut = RunStore.isLive(run.status) ? [] : (run.gating ?? []);
+		if (cut.length > 0)
+			return {
+				name: "gates",
+				state: overState(run),
+				result: `cut short for ${cut.join(", ")}`,
+			};
 		const last = run.gateRuns.at(-1);
 		const red = last?.results.find((r) => !r.ok);
 		const passes = run.gateRuns.length;
@@ -301,7 +309,7 @@ export namespace RunSteps {
 		);
 		const state: ActivityStepState =
 			status.running.length > 0
-				? "running"
+				? underWay(run)
 				: status.failed.length > 0
 					? "failed"
 					: Lenses.finished(status)
@@ -358,7 +366,7 @@ export namespace RunSteps {
 				: { name: "fixer", state: "pending" };
 		const state: ActivityStepState =
 			status.kind === "running"
-				? "running"
+				? underWay(run)
 				: status.kind === "ended"
 					? "done"
 					: status.kind === "failed"
@@ -474,8 +482,10 @@ export namespace RunSteps {
 
 	const land = (run: RunStore.Run): ActivityStep => {
 		const how = run.config.land;
-		if (run.landingFrom !== undefined && RunStore.isLive(run.status))
-			return { name: "land", state: "running", result: `${how}: landing` };
+		if (run.landingFrom !== undefined)
+			return RunStore.isLive(run.status)
+				? { name: "land", state: "running", result: `${how}: landing` }
+				: { name: "land", state: overState(run), result: `${how}: cut short` };
 		if (run.landing)
 			return {
 				name: "land",
@@ -504,6 +514,15 @@ export namespace RunSteps {
 			land(run),
 		].filter((step): step is ActivityStep => step !== null);
 	};
+
+	// How a step under way ends when the run ends under it (its runner died, or a stop): failed with
+	// the run, else stopped. `Lenses.status` and `Fixer.status` read a claim the runner never ended
+	// as running.
+	const overState = (run: RunStore.Run): ActivityStepState =>
+		run.status === "failed" ? "failed" : "stopped";
+
+	const underWay = (run: RunStore.Run): ActivityStepState =>
+		RunStore.isLive(run.status) ? "running" : overState(run);
 
 	/**
 	 * What an over run left for the human: every finding still open, reopened by a recheck or filed

@@ -435,6 +435,40 @@ describe("RunSteps", () => {
 	});
 });
 
+describe("RunSteps of a run whose runner died", () => {
+	it("leaves no step running: the fixer it was in, and a gate pass and a landing it cut short", () => {
+		const died = finished({
+			status: "failed",
+			exit: { reason: "runner-died", detail: "runner pid 7 exited" },
+			claims: [
+				...RUN_JSON.claims.slice(0, 3),
+				claim("fixer", "08:43:41", undefined, {
+					harness: "claude",
+					fixer: true,
+					findings: ["01F1"],
+				}),
+			],
+			gating: ["PROJ-5"],
+			landingFrom: "abc123",
+			config: { ...RUN_JSON.config, land: "pr" },
+		});
+		const steps = RunSteps.of(died, NODES, NOW);
+		expect(steps.filter((s) => s.state === "running")).toEqual([]);
+		expect(
+			steps
+				.filter((s) => ["gates", "fixer", "land"].includes(s.name))
+				.map((s) => `${s.state} ${s.name} · ${s.result ?? ""}`),
+		).toEqual([
+			"failed gates · cut short for PROJ-5",
+			"failed fixer · 0 settled",
+			"failed land · pr: cut short",
+		]);
+		const fixer = steps.find((s) => s.name === "fixer");
+		expect(fixer?.startedAt).toBeUndefined();
+		expect(fixer?.sessions?.[0]?.state).toBe("stopped");
+	});
+});
+
 describe("LoopActivity.card", () => {
 	it("carries the steps and what is left, and leaves out an empty left list", () => {
 		const card = LoopActivity.card(finished(), NODES, NOW);
