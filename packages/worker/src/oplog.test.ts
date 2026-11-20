@@ -142,11 +142,12 @@ describe("push", () => {
 	});
 
 	it("fails closed on an op too big to store, and stays usable", async () => {
-		// 2 MB is the row/string limit. The batch must roll back and the object must
-		// survive — a sync failure can never be allowed to take the log with it.
+		// 8 MB is the row/string limit (2 MB before workerd raised it). The batch must
+		// roll back and the object must survive — a sync failure can never be allowed
+		// to take the log with it.
 		const oversized = await log("toobig").push({
 			deviceId: DEVICE_A,
-			ops: [op("op-1", DEVICE_A, { payload: { blob: "x".repeat(2_500_000) } })],
+			ops: [op("op-1", DEVICE_A, { payload: { blob: "x".repeat(9_000_000) } })],
 		});
 
 		expect(oversized.ok).toBe(false);

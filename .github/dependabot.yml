@@ -11,10 +11,6 @@ updates:
     cooldown:
       default-days: 5
     ignore:
-      # @cloudflare/vitest-pool-workers peers on vitest ^4; JCAB-572 moves the worker to
-      # @cloudflare/vitest-plugin, which takes vitest 5. Drop this then.
-      - dependency-name: vitest
-        update-types: ["version-update:semver-major"]
       # `typescript` is the JS-API compiler that scripts/layers.ts and dts-bundle-generator
       # load, and TS 7 has none. The native compiler is tracked under the `tsgo` alias.
       - dependency-name: typescript

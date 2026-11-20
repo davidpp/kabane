@@ -1,10 +1,10 @@
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 /**
- * Vitest 4 shape: the pool is a Vite plugin now, not `poolOptions.workers`
- * (`@cloudflare/vitest-pool-workers` >= 0.18 dropped the `/config` entrypoint;
- * every tutorial still shows `defineWorkersConfig`).
+ * The Workers pool is a Vite plugin, not `poolOptions.workers`: older tutorials
+ * still show `defineWorkersConfig` from `@cloudflare/vitest-pool-workers/config`,
+ * which the package dropped at 0.18 before it was renamed `@cloudflare/vitest-plugin`.
  *
  * The bearer secret is a real secret in production (`wrangler secret put`), so
  * it cannot live in `wrangler.jsonc`. Tests bind their own value here instead.

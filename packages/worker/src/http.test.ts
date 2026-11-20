@@ -5,7 +5,7 @@ import { MAX_PULL_LIMIT, type PullPage, type PushAck } from "./wire";
 
 // `SELF` is marked deprecated in favour of `ctx.exports` from
 // "cloudflare:workers", which needs a `Cloudflare.GlobalProps` declaration to be
-// typed. Not worth the machinery while pinned to pool-workers 0.18.
+// typed. Not worth the machinery yet.
 const TOKEN = env.SYNC_TOKEN ?? "";
 
 const call = (
@@ -157,8 +157,8 @@ describe("routing", () => {
 
 /**
  * Every HTTP test shares one log — the Worker routes to a single DO instance by
- * name, and pool-workers 0.18 no longer rolls storage back between tests (the
- * `isolatedStorage` option is gone from the vitest-4 plugin API). So: unique
+ * name, and the Workers vitest plugin does not roll storage back between tests
+ * (pool-workers 0.18 dropped the `isolatedStorage` option). So: unique
  * `opId`s per test, and assertions relative to the head the push reported.
  */
 describe("round trip", () => {

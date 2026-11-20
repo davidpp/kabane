@@ -6,7 +6,7 @@
  * the only one it has.
  *
  * Three platform facts shape this file (verified against the sync PRD table
- * and the live pool-workers runtime):
+ * and the live Workers vitest runtime):
  * - `BEGIN` / `SAVEPOINT` are refused. `transaction` is `transactionSync`, and
  *   `atomic` is the storage API's own `transaction` so an awaiting body still
  *   lands whole or not at all.

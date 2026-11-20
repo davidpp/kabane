@@ -139,17 +139,17 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
 
 ## Notes for whoever touches this next
 
-- **Vitest, not `bun test`.** The suite uses `@cloudflare/vitest-pool-workers`, which
+- **Vitest, not `bun test`.** The suite uses `@cloudflare/vitest-plugin`, which
   only runs under vitest. The root `test` script invokes it after the bun packages.
-- **Tests do not get isolated storage.** pool-workers >= 0.18 (the vitest 4 line)
-  dropped the `isolatedStorage` option, and rows persist between tests even though
+- **Tests do not get isolated storage.** The plugin has no `isolatedStorage` option
+  (pool-workers dropped it at 0.18), and rows persist between tests even though
   the upstream README still advertises isolation. Give each test its own DO name,
   or assert relative to what a write returned.
-- **`defineWorkersConfig` is gone** since 0.18. The pool is a Vite plugin now:
-  `cloudflareTest()` from `@cloudflare/vitest-pool-workers`, inside `plugins: []`.
+- **`defineWorkersConfig` is gone** since pool-workers 0.18. The pool is a Vite plugin:
+  `cloudflareTest()` from `@cloudflare/vitest-plugin`, inside `plugins: []`.
   Every tutorial online still shows the old shape.
 - **`/types` is where `cloudflare:test` is declared.** `tsconfig.json` lists
-  `@cloudflare/vitest-pool-workers/types`, not the package root.
+  `@cloudflare/vitest-plugin/types`, not the package root.
 - **The Worker typecheck includes no Bun types.** It rejects Bun globals
   reachable from core's production barrel. Core reads file references through
   a host port; the hub uses its default, which leaves a pointer.
@@ -171,5 +171,5 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
   only front door. `bindings.d.ts` is hand-written so secrets, which never appear
   in `wrangler.jsonc`, are not silently dropped from `Env`.
 - **Keep a push batch under ~1.5 MB.** The batch crosses as one bound parameter and
-  parameter values are capped at 2 MB. One op over 2 MB poisons every retry that
+  parameter values are capped at 8 MB. One op over 8 MB poisons every retry that
   includes it; the device-side quarantine exists for exactly that.

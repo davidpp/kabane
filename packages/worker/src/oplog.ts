@@ -19,7 +19,7 @@ import type { PullPage, PullRequest, PushAck, PushRequest } from "./wire";
  * A row-per-statement insert breaks at ~4 ops: DO SQLite allows 100 bound
  * parameters per query and each op needs 4 of them. Passing the batch as a
  * single JSON string also sidesteps the 100 KB SQL-statement limit, because a
- * parameter VALUE is bounded by the 2 MB row/string limit instead.
+ * parameter VALUE is bounded by the 8 MB row/string limit instead.
  *
  * Three details that are each load-bearing:
  * - `WHERE true` — without it SQLite cannot tell the upsert's `ON CONFLICT` from

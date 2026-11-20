@@ -4,8 +4,8 @@
  * MCP: initialize, tools/list, tools/call for every tool, over Streamable HTTP
  * with the Access assertion the edge maps to an actor.
  *
- * Sync round trip, both directions, without bun:sqlite (unavailable under
- * pool-workers): a write at the hub is pushed to `CabaneLog` and shows up on
+ * Sync round trip, both directions, without bun:sqlite (unavailable in the
+ * Workers pool): a write at the hub is pushed to `CabaneLog` and shows up on
  * a device's `/pull`; an op pushed by a device is applied by the hub's alarm
  * and shows up in `kabane_list`. The device-side op is derived from one the
  * hub itself emitted, so the payload shape is exactly what a real device sends.
