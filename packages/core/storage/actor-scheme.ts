@@ -86,12 +86,21 @@ export namespace ActorScheme {
 			? { ...object, [key]: current(object[key]) }
 			: object;
 
-	/** `task_work_log.refs`: a JSON array of work refs, each `addedBy` renamed and typed. */
+	/**
+	 * `task_work_log.refs`: a JSON array of work refs, each `addedBy` renamed, and typed `ai` when
+	 * it names an agent. Unlike a row's type column, a ref's `addedByType` is optional, so a ref
+	 * by an agent that carries none gets one (JCAB-598:3).
+	 */
 	const refs: Nested = inJson((value) => {
 		if (!Array.isArray(value)) return value;
 		const renamed = value.map((ref: unknown) => {
 			const named = renamedKey(ref, "addedBy");
-			return isRow(named) ? typed(named, "addedBy", "addedByType") : named;
+			return isRow(named) &&
+				named.addedByType !== "ai" &&
+				typeof named.addedBy === "string" &&
+				named.addedBy.startsWith(ActorUri.AGENT)
+				? { ...named, addedByType: "ai" }
+				: named;
 		});
 		return renamed.some((ref, i) => ref !== value[i]) ? renamed : value;
 	});
@@ -242,7 +251,8 @@ export namespace ActorScheme {
 	 * Migration 12: core's identity fields, in its rows and in their logged snapshots; the data
 	 * modules' actors in their logged and parked snapshots (`MODULE_ACTORS`); and `updated_by`
 	 * in every logged or parked op of any other table, the writer sync carries for every one. An
-	 * agent typed `human` beside its actor becomes `ai`, in rows and snapshots alike. A module's
+	 * agent typed `human` beside its actor becomes `ai`, and so does an agent's work ref that
+	 * carries no type, in rows and snapshots alike. A module's
 	 * rows are its own migration's. No row's version or clock
 	 * moves and nothing is captured: each device renames its own rows, and the same row renamed
 	 * on two devices is the same row.

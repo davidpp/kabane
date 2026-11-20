@@ -1053,6 +1053,72 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 		await mustInit(base);
 		expect(await rows()).toEqual(after);
 	});
+
+	it("types as ai a work-log ref by an agent that carries no type, and leaves an untyped human ref untyped", async () => {
+		base = freshBase("ref-untyped");
+		await withDb((db) => {
+			must(Migrate.run(db, Migrations.LIST.slice(0, 10)));
+			must(Oplog.initDevice(db, "device-a"));
+		});
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		for (const addedBy of [CLAUDE, ADA])
+			must(
+				await Planner.addWorkLog(base, {
+					taskId: task.id,
+					refs: [{ uri: "commit:abc" }],
+					addedBy,
+				}),
+			);
+		const refs = () =>
+			withDb((db) => ({
+				rows: db
+					.query<{ refs: string }, []>(
+						`SELECT refs FROM ${TABLES.work_log} ORDER BY id`,
+					)
+					.all()
+					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
+				ops: db
+					.query<{ payload: string }, [string]>(
+						`SELECT payload FROM ${TABLES.sync_oplog} WHERE tbl = ? ORDER BY seq`,
+					)
+					.all(TABLES.work_log)
+					.map(
+						(op) =>
+							JSON.parse(
+								String((JSON.parse(op.payload) as { refs: string }).refs),
+							) as Record<string, unknown>[],
+					),
+			}));
+		const before = await refs();
+		expect(before.rows.flat().map((ref) => "addedByType" in ref)).toEqual([
+			false,
+			false,
+		]);
+
+		await mustInit(base);
+		const after = await refs();
+		const expected = [
+			[{ addedBy: "kabane://actor/agent/claude", addedByType: "ai" }],
+			[{ addedBy: "kabane://actor/human/ada" }],
+		];
+		for (const stored of [after.rows, after.ops])
+			expect(
+				stored
+					.map((list) =>
+						list.map(({ addedBy, addedByType }) =>
+							addedByType === undefined
+								? { addedBy }
+								: { addedBy, addedByType },
+						),
+					)
+					.sort((a, b) =>
+						String(a[0]?.addedBy).localeCompare(String(b[0]?.addedBy)),
+					),
+			).toEqual(expected);
+
+		await mustInit(base);
+		expect(await refs()).toEqual(after);
+	});
 });
 
 describe("Migrations when several processes boot one database at once", () => {
