@@ -425,9 +425,12 @@ export namespace RunSteps {
 				...(n.filed > 0 ? [`${n.filed} filed`] : []),
 			].join(" · ");
 		};
-		const ran = claims.map((c) =>
-			session(run, c, c.lane.replace(/-recheck(?=#|$)/, ""), said(c), now),
-		);
+		const toSession = (c: RunStore.Claim): ActivitySession =>
+			session(run, c, c.lane.replace(/-recheck(?=#|$)/, ""), said(c), now);
+		// Every attempt is listed, for its log; a lens's latest decides where it stands and what it
+		// found, so a retry neither keeps an interrupted attempt's state nor counts twice.
+		const ran = claims.map(toSession);
+		const latest = [...new Map(claims.map((c) => [c.recheck, c])).values()];
 		const claimed = new Set(claims.map((c) => c.recheck));
 		const waiting: ActivitySession[] = [...due]
 			.filter(([name]) => !claimed.has(name))
@@ -443,8 +446,8 @@ export namespace RunSteps {
 				(nodes !== null && fixed?.state === "done")
 				? { name: "recheck", state: "done", result: "nothing to recheck" }
 				: { name: "recheck", state: "pending" };
-		const state = stateOf(sessions);
-		const total = claims.reduce(
+		const state = stateOf([...latest.map(toSession), ...waiting]);
+		const total = latest.reduce(
 			(sum, c) => {
 				const n = counts(c);
 				return {
@@ -457,7 +460,10 @@ export namespace RunSteps {
 		);
 		const result =
 			state === "running" || state === "pending"
-				? progress(sessions, sessions.length)
+				? progress(
+						[...latest.map(toSession), ...waiting],
+						latest.length + waiting.length,
+					)
 				: nodes
 					? [
 							`${total.confirmed} confirmed`,

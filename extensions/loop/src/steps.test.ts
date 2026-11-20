@@ -435,6 +435,42 @@ describe("RunSteps", () => {
 	});
 });
 
+describe("RunSteps with a recheck retried", () => {
+	it("reads the lens's latest attempt for the step and its totals, and still lists both", () => {
+		const retried = finished({
+			claims: [
+				...RUN_JSON.claims.slice(0, 3),
+				claim("fixer", "08:43:41", "09:10:39", {
+					harness: "claude",
+					fixer: true,
+					head: "def456",
+					findings: ["01F1", "01F2"],
+				}),
+				{
+					...claim("functional-recheck", "09:12:28", "09:13:00", {
+						recheck: "functional",
+						findings: ["01F1", "01F2"],
+					}),
+					outcome: "interrupted",
+				},
+				claim("functional-recheck#2", "09:13:10", "09:15:39", {
+					recheck: "functional",
+					findings: ["01F1", "01F2"],
+				}),
+			],
+		});
+		const recheck = RunSteps.of(retried, NODES, NOW).find(
+			(s) => s.name === "recheck",
+		);
+		expect(recheck?.state).toBe("done");
+		expect(recheck?.result).toBe("1 confirmed · 1 reopened · 0 filed");
+		expect(recheck?.sessions?.map((s) => `${s.state} ${s.name}`)).toEqual([
+			"stopped functional",
+			"done functional#2",
+		]);
+	});
+});
+
 describe("RunSteps of a run whose runner died", () => {
 	it("leaves no step running: the fixer it was in, and a gate pass and a landing it cut short", () => {
 		const died = finished({
