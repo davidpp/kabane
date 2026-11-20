@@ -601,7 +601,9 @@ In 1.0.0-beta.0 the loop came inside kabane, and `"extensions": ["loop"]` in `co
 it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Kabane now
 bundles neither: the loop and the [dispatch extension](../extensions/dispatch/README.md), which
 holds the dispatch and grill skills and `/setup-dispatch`, are directories you build and install
-yourself. Updating kabane does not install them.
+yourself. Updating kabane does not install them. The grill skill is now served by `kabane mcp`
+rather than copied into a project: a copy under a project's `.agents/skills/grill/` is no longer
+checked and drifts from the served one, so delete it.
 
 With `loop` still in `extensions` and nothing installed, the record commands (`kabane list`,
 `kabane add` and the others) work as before and say nothing about it. `kabane --help`,
