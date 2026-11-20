@@ -225,6 +225,9 @@ export namespace AcpClient {
 		// ask), as one line naming the form and the field, after the harness was answered `cancel`.
 		onElicitationRefused?: (reason: string) => void;
 		handshakeMs?: number;
+		// Aborted before the harness answers `initialize`, the start fails and a spawned harness is
+		// killed: nobody else holds it yet. Once connected, closing it is the caller's.
+		signal?: AbortSignal;
 	};
 
 	export type SpawnOptions = ConnectOptions & {
@@ -262,6 +265,20 @@ export namespace AcpClient {
 	const DEFAULT_HANDSHAKE_MS = 30_000;
 	const STDERR_CAP = 16_384;
 
+	const stoppedMessage = (harness: Harnesses.Id) =>
+		`${harness}: stopped before it answered ACP initialize`;
+
+	// Rejects once `signal` aborts, so a wait raced against it is let go of; never otherwise.
+	const abandoned = (
+		signal: AbortSignal | undefined,
+		message: string,
+	): Promise<never> =>
+		new Promise((_, reject) => {
+			const stop = () => reject(new Error(message));
+			if (signal?.aborted) stop();
+			else signal?.addEventListener("abort", stop, { once: true });
+		});
+
 	export const spawn = async (
 		harness: Harnesses.Id,
 		cwd: string,
@@ -272,6 +289,7 @@ export namespace AcpClient {
 			options.overrides,
 			options.profile,
 		);
+		if (options.signal?.aborted) return err(new Error(stoppedMessage(harness)));
 		const spawned = await tryCatch(async () =>
 			Bun.spawn([launch.command, ...launch.args], {
 				cwd,
@@ -384,12 +402,15 @@ export namespace AcpClient {
 			},
 		};
 		const handshake = await withTimeout(
-			raw.agent.request(methods.agent.initialize, {
-				protocolVersion: PROTOCOL_VERSION,
-				clientCapabilities: onElicitation
-					? { session: { notices: {} }, elicitation: { form: {} } }
-					: { session: { notices: {} } },
-			}),
+			Promise.race([
+				raw.agent.request(methods.agent.initialize, {
+					protocolVersion: PROTOCOL_VERSION,
+					clientCapabilities: onElicitation
+						? { session: { notices: {} }, elicitation: { form: {} } }
+						: { session: { notices: {} } },
+				}),
+				abandoned(options.signal, stoppedMessage(harness)),
+			]),
 			options.handshakeMs ?? DEFAULT_HANDSHAKE_MS,
 			`${harness}: no ACP initialize response`,
 		);

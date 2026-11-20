@@ -436,8 +436,8 @@ export namespace Dispatch {
 
 	/**
 	 * Launch the claim's harness on the loop's profile and open its session, resuming the one it
-	 * continues where it can. `connected` hears of the process as soon as it is up, so a
-	 * session that fails to open still has it closed.
+	 * continues where it can. `stopped` kills a harness still in its ACP handshake; `connected`
+	 * hears of it once it has answered, so a session that fails to open still has it closed.
 	 */
 	const open = async (
 		claim: Claim,
@@ -447,6 +447,7 @@ export namespace Dispatch {
 			permission: AcpClient.OnPermission;
 			elicitation: AcpClient.OnElicitation;
 			connected: (connection: AcpClient.Connection) => void;
+			stopped: AbortSignal;
 		},
 	): Promise<Result<Opened & { ran: Ran }>> => {
 		const cli = Harnesses.installedCli(claim.harness);
@@ -462,6 +463,7 @@ export namespace Dispatch {
 				sink.emit("notice", `error: ${reason}`, { severity: "error" }),
 			...(env.overrides ? { overrides: env.overrides } : {}),
 			profile,
+			signal: on.stopped,
 		});
 		if (!spawned.ok) return spawned;
 		on.connected(spawned.value);
@@ -986,7 +988,8 @@ export namespace Dispatch {
 		let lastMessage: string | undefined;
 		// Aborting it lets go of every permission request and form still waiting on a human. A claim that
 		// is cancelled, closed or over has nobody left to answer for, and the harness would
-		// otherwise sit on a request that never settles.
+		// otherwise sit on a request that never settles. It also kills a harness still in its
+		// handshake, which no `connection` holds yet.
 		const waiting = new AbortController();
 
 		const sink: Sink = {
@@ -1019,8 +1022,13 @@ export namespace Dispatch {
 				connected: (c) => {
 					connection = c;
 				},
+				stopped: waiting.signal,
 			});
-			if (!opened.ok) return ended("error", opened.error.message);
+			if (!opened.ok)
+				return ended(
+					waiting.signal.aborted ? "cancelled" : "error",
+					opened.error.message,
+				);
 			const current = opened.value.session;
 			session = current;
 			hooks.opened(current.id, opened.value.ran);
