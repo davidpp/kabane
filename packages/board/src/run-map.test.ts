@@ -254,6 +254,35 @@ describe("what a finished card left", () => {
 		expect(BoardTabs.unseen(s.tabs, "loop:r1")).toBe(false);
 	});
 
+	it("enter on an issue known by its short id alone opens it, or says it is not on the board", () => {
+		const shortOnly = card({
+			status: "completed",
+			liveLanes: undefined,
+			steps: [],
+			left: [{ taskShortId: "PROJ-22", how: "reopened by functional" }],
+		});
+		const at = (s: BoardNav.BoardState): BoardNav.BoardState => ({
+			...s,
+			tabs: {
+				...s.tabs,
+				views: new Map(s.tabs.views).set("loop:r1", {
+					...CardTab.view(s.tabs, "loop:r1"),
+					cursor: "left:PROJ-22",
+					follow: false,
+				}),
+			},
+		});
+		const step = BoardNav.reduceKey(
+			BoardNav.sight(at(onTab([{ ...shortOnly, steps: STEPS }])), 0),
+			key("return"),
+			BoardNav.ARM_MS,
+		);
+		expect(step.effect).toEqual({
+			type: "notice",
+			notice: { text: "PROJ-22 is not on the board", tone: "success" },
+		});
+	});
+
 	it("enter on an issue it left opens it on the tracker", () => {
 		const s = onTab([finished]);
 		const last = RunMap.rows(s.tabs.cards.get("loop:r1") ?? {}, {}).findLast(

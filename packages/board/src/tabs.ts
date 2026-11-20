@@ -346,11 +346,29 @@ export namespace BoardTabs {
 		};
 	};
 
-	/** The issue `taskId` on the tracker, as `o` opens its card's task. */
-	export const openTask = (state: State, taskId: string): State => ({
-		...show(state, null),
-		view: { type: "detail", taskId },
-	});
+	/**
+	 * An issue on the tracker by its id or its short id, as `o` opens its card's task; one the board
+	 * does not hold says so.
+	 */
+	export const openIssue = (
+		state: State,
+		issue: { taskId?: string; taskShortId?: string },
+	): Step => {
+		const taskId =
+			issue.taskId ??
+			(issue.taskShortId
+				? taskIdOfShortId(state, issue.taskShortId)
+				: undefined);
+		return taskId
+			? {
+					state: { ...show(state, null), view: { type: "detail", taskId } },
+					effect: NOTHING,
+				}
+			: notice(
+					state,
+					`${issue.taskShortId ?? "that issue"} is not on the board`,
+				);
+	};
 
 	// `{` `}`: the previous or next tab, the tracker included, wrapping.
 	const step = (state: State, delta: 1 | -1): Step => {

@@ -238,12 +238,11 @@ export namespace CardTab {
 					: null;
 			case "step":
 				return fold(state, id, !row.open);
-			case "left": {
-				const taskId = row.item.taskId;
-				return taskId
-					? { state: BoardTabs.openTask(state, taskId), effect: NOTHING }
+			case "left":
+				return row.item.taskId !== undefined ||
+					row.item.taskShortId !== undefined
+					? BoardTabs.openIssue(state, row.item)
 					: null;
-			}
 			default:
 				return null;
 		}

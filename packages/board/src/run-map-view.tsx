@@ -6,6 +6,7 @@
 //
 // Rows come from RunMap, which the keys read too; this file only lays them out.
 import type {
+	ActivityLeft,
 	ActivitySession,
 	ActivityStep,
 	ActivityStepState,
@@ -26,6 +27,8 @@ const NAME_SHARE = 0.35;
 const SESSION_INDENT = 2;
 // A left item's reason needs this much room to say anything; with less, the row drops it.
 const MIN_REASON_COLS = 12;
+// A left issue with no short id shows this much of its id.
+const ID_COLS = 10;
 
 type Cell = { text: string; fg: ColorInput; bold?: boolean };
 // One drawn row and the keys of the map rows it stands for: one, or several finished steps that
@@ -181,6 +184,11 @@ const mergedLines = (
 	}));
 };
 
+// An issue left for the human as the row names it: its short id, else the head of its id; a line
+// with neither is not an issue.
+const idOf = (item: ActivityLeft): string =>
+	item.taskShortId ?? item.taskId?.slice(0, ID_COLS) ?? "";
+
 const leftLine = (
 	row: Extract<RunMap.Row, { type: "left" }>,
 	idCols: number,
@@ -189,7 +197,7 @@ const leftLine = (
 ): Line => {
 	const { theme, width } = layout;
 	const { item } = row;
-	const id = item.taskShortId ?? (item.taskId ? item.taskId.slice(0, 8) : "");
+	const id = idOf(item);
 	if (id === "") {
 		const text = cut(
 			[item.how, item.reason].filter(Boolean).join(" · "),
@@ -246,23 +254,14 @@ const mapLines = (
 		else steps.push(...mergedLines(run.steps, run.keys, layout));
 		run = null;
 	};
-	const idCols = Math.max(
-		0,
-		...rows.flatMap((row) =>
-			row.type === "left" ? [(row.item.taskShortId ?? "").length] : [],
-		),
+	// The id and `how` columns, as wide as the widest issue's, `how` up to a third of the row.
+	const issues = rows.flatMap((row) =>
+		row.type === "left" && idOf(row.item) !== "" ? [row.item] : [],
 	);
-	// The `how` column, as wide as the widest that has an issue, up to a third of the row.
+	const idCols = Math.max(0, ...issues.map((item) => idOf(item).length));
 	const howCols = Math.min(
 		Math.floor(layout.width / 3),
-		Math.max(
-			0,
-			...rows.flatMap((row) =>
-				row.type === "left" && row.item.taskShortId
-					? [row.item.how.length]
-					: [],
-			),
-		),
+		Math.max(0, ...issues.map((item) => item.how.length)),
 	);
 	const left: Line[] = [];
 	for (const row of rows) {
