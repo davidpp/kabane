@@ -3,11 +3,12 @@
  *
  * An actor was `cabane://actor/...` until schema 12, a name kept from before the project was
  * called kabane, and is `kabane://actor/...` since (JCAB-607). Migration 12 renames core's
- * identity fields and `updated_by` in every op still in this device's log or parked, and types
- * as `ai` every agent among them stored as `human` (JCAB-598:3); each data
- * module that stores actors appends its own migration for its table (`renameColumns`). Nothing
- * reads the old prefix afterwards: a process given one stops and points at `kabane doctor
- * --fix`, and an op pulled from a device still on schema 11 is not translated.
+ * identity fields in its rows, and the actors of every op this device holds at that moment,
+ * logged or parked, whichever table it is for; it types as `ai` every agent among them stored
+ * as `human` (JCAB-598:3). Each data module that stores actors appends its own migration for
+ * its table's rows (`renameColumns`). Nothing reads the old prefix afterwards: a process given
+ * one stops and points at `kabane doctor --fix`, and an op pulled from a device still on schema
+ * 11 is not translated, whenever its module registers.
  */
 
 import { ActorUri } from "../actor";
@@ -174,7 +175,7 @@ export namespace ActorScheme {
 		}
 	};
 
-	const rename = (db: Db, table: string, fields: Fields): void => {
+	const renameRows = (db: Db, table: string, fields: Fields): void => {
 		for (const column of fields.columns)
 			db.run(
 				`UPDATE ${table} SET ${column} = ? || substr(${column}, ?)
@@ -208,25 +209,41 @@ export namespace ActorScheme {
 					]);
 			}
 		}
+	};
+
+	const rename = (db: Db, table: string, fields: Fields): void => {
+		renameRows(db, table, fields);
 		renameSnapshots(db, table, fields);
 	};
 
 	/**
-	 * Every value of `columns` in `table` that starts with the old prefix, renamed, in its rows
-	 * and in the snapshots of its rows this device has logged or parked. A value that only
-	 * mentions it further in is left as written.
+	 * Every value of `columns` in `table`'s rows that starts with the old prefix, renamed. A
+	 * value that only mentions it further in is left as written. The snapshots of those rows
+	 * were renamed by migration 12, whether the module was registered then or not.
 	 */
 	export const renameColumns = (
 		db: Db,
 		table: string,
 		columns: readonly string[],
-	): void => rename(db, table, { columns });
+	): void => renameRows(db, table, { columns });
 
 	/**
-	 * Migration 12: core's identity fields, in its rows and in their logged snapshots, and
-	 * `updated_by` in every logged or parked op of any table, the writer sync carries for every
-	 * one. An agent typed `human` beside its actor becomes `ai`, in rows and snapshots alike. A
-	 * module's other identity columns are its own migration's. No row's version or clock
+	 * The data modules' tables that held actors besides `updated_by` at schema 11, with those
+	 * columns, as they stood then. Migration 12 renames their snapshots at the cutover, so an op
+	 * this device logged before it leaves whole even when its module registers only later, and
+	 * an op pulled after it stays as it came.
+	 */
+	const MODULE_ACTORS: Readonly<Record<string, readonly string[]>> = {
+		task_questions: ["asked_by", "answered_by", "updated_by"],
+		task_checklist_items: ["done_by", "updated_by"],
+	};
+
+	/**
+	 * Migration 12: core's identity fields, in its rows and in their logged snapshots; the data
+	 * modules' actors in their logged and parked snapshots (`MODULE_ACTORS`); and `updated_by`
+	 * in every logged or parked op of any other table, the writer sync carries for every one. An
+	 * agent typed `human` beside its actor becomes `ai`, in rows and snapshots alike. A module's
+	 * rows are its own migration's. No row's version or clock
 	 * moves and nothing is captured: each device renames its own rows, and the same row renamed
 	 * on two devices is the same row.
 	 */
@@ -253,6 +270,8 @@ export namespace ActorScheme {
 			TABLES.upstream_links,
 		])
 			rename(db, table, { columns: ["updated_by"] });
+		for (const [table, columns] of Object.entries(MODULE_ACTORS))
+			renameSnapshots(db, table, { columns });
 		renameSnapshots(db, undefined, { columns: ["updated_by"] });
 	};
 }

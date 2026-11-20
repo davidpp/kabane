@@ -908,15 +908,15 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				(op) => op.row?.description === `${CLAUDE} starts this description`,
 			),
 		).toBe(true);
-		// A parked op's writer, in its envelope and its snapshot; a module's other columns are its
-		// own migration's, and an extension's free text stays as written.
+		// A parked op's writer, in its envelope and its snapshot; a module's actors, registered or
+		// not; and an extension's free text stays as written.
 		expect(after.parked).toEqual([
 			{
 				...before.parked[0],
 				payload: {
 					id: "c1",
 					text: `${ADA} wrote this`,
-					done_by: ADA,
+					done_by: "kabane://actor/human/ada",
 					updated_by: "kabane://actor/human/ada",
 				},
 				updatedBy: "kabane://actor/human/ada",
