@@ -56,7 +56,7 @@ it("builds a relocatable extension that kabane loads from a home, with its templ
 				);
 		}
 		expect(readFileSync(join(installed, "index.js"), "utf8")).not.toContain(
-			"@cabane/",
+			"@kabane/",
 		);
 		writeFileSync(
 			join(home, "config.json"),

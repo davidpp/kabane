@@ -1,6 +1,6 @@
 // Made-up props the render tests and the gallery's stories share, so a component is drawn from the
 // same data in both: what a test pins is what David looks at.
-import type { ChecklistItemView } from "@cabane/checklist";
+import type { ChecklistItemView } from "@kabane/checklist";
 import {
 	type LinkType,
 	TASK_STATE_DISPLAY,
@@ -8,20 +8,20 @@ import {
 	type TaskEntry,
 	type TaskLink,
 	type UpstreamLink,
-} from "@cabane/core";
+} from "@kabane/core";
 import type {
 	ActivityCard,
 	HeaderPart,
 	JobFacts,
 	TriggerDescriptor,
 	SettingKind,
-} from "@cabane/extension";
-import { handoffModule } from "@cabane/handoff";
+} from "@kabane/extension";
+import { handoffModule } from "@kabane/handoff";
 import {
 	type DecisionMeta,
 	formatDecisionBody,
 	type QuestionView,
-} from "@cabane/questions";
+} from "@kabane/questions";
 import type { BoardData } from "../data";
 import type { BoardJobs } from "../jobs";
 import type { BoardNav } from "../nav";
@@ -366,7 +366,7 @@ export namespace Fixtures {
 The wave is merged on local \`main\` at \`1519458\`, not pushed. An issue's comments are now a timeline of entries with a kind; a handoff is the first kind built on it.
 
 - JCAB-217: comments carry a \`kind\` (migration 9); \`Planner.addEntry\`, \`getEntries\`, \`latestEntry\`; entries are append-only; a module declares kinds as data; the brief keeps every typed entry and lifts a kind projected as \`latest\` into its own section. \`kabane_comment\` and \`kabane comment\` take a kind.
-- JCAB-218: \`@cabane/handoff\`, with no table: the \`handoff\` kind, a four-heading template, \`kabane_handoff(id, body)\`, \`kabane handoff <id> [--all] [--json] | --from <file|-> | --template\`. \`kabane show\` and \`kabane context --help\` follow the registered sections through one core helper.
+- JCAB-218: \`@kabane/handoff\`, with no table: the \`handoff\` kind, a four-heading template, \`kabane_handoff(id, body)\`, \`kabane handoff <id> [--all] [--json] | --from <file|-> | --template\`. \`kabane show\` and \`kabane context --help\` follow the registered sections through one core helper.
 - JCAB-219: every instruction that told an agent to report finished work in a comment now says to hand off: this repo's dispatch skill, the shipped template, the first-run Tracker block and its copy in the docs, the copilot's \`/setup-dispatch\`.
 - JCAB-221: the board's comments tab names an entry's kind, and the description tab shows the latest handoff under the description. A band never wraps: it cuts a long author first.
 - JCAB-224: an upgrade note for someone coming from \`1.0.0-beta.0\`.

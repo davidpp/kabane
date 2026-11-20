@@ -1,5 +1,5 @@
 /**
- * @cabane/core
+ * @kabane/core
  *
  * Local-first issue tracker core: schemas, storage over the Db port, sync.
  * A host supplies a `DbProvider` through

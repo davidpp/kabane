@@ -1,4 +1,4 @@
-import type { KabaneModule } from "@cabane/core";
+import type { KabaneModule } from "@kabane/core";
 import { ITEMS_TABLE, migrations } from "./migrations";
 import { itemsSection } from "./section";
 import { checklistTools } from "./tools";

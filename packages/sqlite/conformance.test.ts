@@ -8,7 +8,7 @@ import { afterAll, describe, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { conformanceCases } from "@cabane/core";
+import { conformanceCases } from "@kabane/core";
 import { SqliteDb } from "./index";
 
 const base = join(tmpdir(), `cabane-conformance-${crypto.randomUUID()}`);

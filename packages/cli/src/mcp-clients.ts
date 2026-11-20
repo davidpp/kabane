@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { err, ok, type Result, trySync } from "@cabane/core";
+import { err, ok, type Result, trySync } from "@kabane/core";
 import { z } from "zod";
 
 /**
@@ -17,7 +17,7 @@ import { z } from "zod";
  */
 export namespace McpClients {
 	/**
-	 * The same ids as `Harnesses.IDS` in `@cabane/acp`, kept as a literal
+	 * The same ids as `Harnesses.IDS` in `@kabane/acp`, kept as a literal
 	 * because importing that package loads the ACP SDK on every CLI start. A
 	 * test asserts the two lists match.
 	 */

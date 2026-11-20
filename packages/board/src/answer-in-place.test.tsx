@@ -9,8 +9,8 @@
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, Planner, type Task } from "@cabane/core";
-import type { ActivityCard, ActivitySource } from "@cabane/extension";
+import { ok, Planner, type Task } from "@kabane/core";
+import type { ActivityCard, ActivitySource } from "@kabane/extension";
 import { App } from "./app";
 import { BoardNav } from "./nav";
 import { dropDb, freshDb } from "./test-db";

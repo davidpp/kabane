@@ -24,7 +24,7 @@ const ROOT = resolve(import.meta.dir, ".."),
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
 /** Links the checkout's own core where `bun install` puts workspace packages, as in a real installed checkout. */
 const linkCore = (checkout: string): void => {
-	const link = join(checkout, "packages/cli/node_modules/@cabane/core");
+	const link = join(checkout, "packages/cli/node_modules/@kabane/core");
 	mkdirSync(dirname(link), { recursive: true });
 	symlinkSync("../../../core", link);
 };
@@ -255,7 +255,7 @@ process.exitCode = result.ok ? 0 : 1;`,
 	writeFileSync(
 		join(root, "packages/core/package.json"),
 		JSON.stringify({
-			name: "@cabane/core",
+			name: "@kabane/core",
 			private: true,
 			type: "module",
 			exports: { "./result": "./result.ts" },

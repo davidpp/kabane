@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Where a gate retry runs: the decision on its own, then the real runner on a disposable tracker
 // with a scripted ACP subprocess that writes a draft the gate refuses, then the fix.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@cabane/core";
+import { Planner, type Task } from "@kabane/core";
 import type { Budget } from "./budget";
 import { LoopConfig } from "./config";
 import { Retry } from "./retry";
@@ -96,8 +96,8 @@ afterEach(() => rmSync(home, { recursive: true, force: true }));
 const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const config = JSON.parse(readFileSync("agent.json", "utf8"));
 const task = readFileSync("task", "utf8");
 const tool = async (name, args) => {

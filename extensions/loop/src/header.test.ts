@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+import { Planner, type Task } from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import { LoopConfig } from "./config";
 import { LoopHeader } from "./header";
 import type { LoopPlan } from "./plan";

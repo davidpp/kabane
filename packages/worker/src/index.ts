@@ -18,8 +18,8 @@
  * idempotency belong to `CabaneLog`; tools and sync belong to `CabaneHub`.
  */
 
-import type { Result } from "@cabane/core";
-import { err, ok } from "@cabane/core";
+import type { Result } from "@kabane/core";
+import { err, ok } from "@kabane/core";
 import { Access, type Principal } from "./access";
 import { Auth } from "./auth";
 import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER, SHARED_LOG } from "./names";

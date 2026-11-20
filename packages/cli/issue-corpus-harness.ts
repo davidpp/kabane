@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { err, ok } from "@cabane/core";
-import { createCorpusTracker as createTracker } from "@cabane/core/testing/issue-corpus";
+import { err, ok } from "@kabane/core";
+import { createCorpusTracker as createTracker } from "@kabane/core/testing/issue-corpus";
 
 export const CLI_BIN = join(import.meta.dir, "index.ts");
 export const payloadMetrics = (text: string) => ({

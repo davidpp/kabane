@@ -24,8 +24,8 @@ const Manifest = z.object({
 
 /** Bare imports that are a board or a harness client. */
 const FORBIDDEN = [
-	"@cabane/board",
-	"@cabane/acp",
+	"@kabane/board",
+	"@kabane/acp",
 	"@opentui/",
 	"react",
 	"@agentclientprotocol/",

@@ -2,8 +2,8 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Oplog, Planner, type Result, withDb } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { Oplog, Planner, type Result, withDb } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { checklistModule } from "./module";
 import { Checklist } from "./storage";
 

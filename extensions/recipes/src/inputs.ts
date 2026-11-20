@@ -1,7 +1,7 @@
 // A recipe's inputs, from `--input k=v` pairs, a JSON object, the declared defaults and, at a
 // terminal, a prompt for each required input still missing. Every value is checked against its
 // declared type and options; any problem is one message the caller prints as a usage error.
-import type { Host, Result } from "@cabane/extension";
+import type { Host, Result } from "@kabane/extension";
 import type { Recipe } from "./recipe";
 import { err, ok, trySync } from "./result";
 

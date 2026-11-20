@@ -21,8 +21,8 @@ import {
 	type TaskEntry,
 	type TaskLink,
 	type WorkRef,
-} from "@cabane/core";
-import { parseDecisionBody } from "@cabane/questions";
+} from "@kabane/core";
+import { parseDecisionBody } from "@kabane/questions";
 import type { BoardActivity } from "./activity";
 import type { BoardData } from "./data";
 

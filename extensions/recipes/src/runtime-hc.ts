@@ -1,7 +1,7 @@
 // The runtime adapter: the one file that runs `hc` (herdr core). It starts a program in a
 // terminal that outlives kabane, reads its state and screen, types into it and ends it. A run's
 // session is the terminal's name.
-import type { Host, Result } from "@cabane/extension";
+import type { Host, Result } from "@kabane/extension";
 import { err, ok, tryCatch, trySync } from "./result";
 import type { Runs } from "./runs";
 import type { Runtime } from "./runtime";

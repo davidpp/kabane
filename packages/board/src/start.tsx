@@ -8,7 +8,7 @@ import {
 	type Header,
 	type Dispatcher,
 	type JobSource,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import type { ReactNode } from "react";

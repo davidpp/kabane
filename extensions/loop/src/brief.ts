@@ -7,7 +7,7 @@
 // and how it files findings; the fixer hears which findings are its own, in what order, and how
 // it settles each; a lens's recheck hears the fixer's diff and the findings it closed. The kabane
 // tool loop itself is the MCP server's to describe, so it is not restated.
-import type { Task } from "@cabane/core";
+import type { Task } from "@kabane/core";
 import type { Checklists } from "./checklists";
 import type { LoopConfig } from "./config";
 import { Gates } from "./gates";

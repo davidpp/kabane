@@ -7,7 +7,7 @@
 // find no CLI to run, so it could not spend anything. It is the loop's test support only, never a
 // preload: `packages/acp/src/client.harness.test.ts` launches the real adapters on purpose.
 import { onTestFinished } from "bun:test";
-import type { Harnesses } from "@cabane/acp";
+import type { Harnesses } from "@kabane/acp";
 import type { LoopConfig } from "./config";
 
 export namespace TestHarnesses {

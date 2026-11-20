@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ok, Planner } from "@cabane/core";
-import { Doctor, flagList, success, usage } from "@cabane/extension";
+import { ok, Planner } from "@kabane/core";
+import { Doctor, flagList, success, usage } from "@kabane/extension";
 import { configPath, DB_NAME, loadConfig } from "../config";
 import {
 	activateContextRecord,

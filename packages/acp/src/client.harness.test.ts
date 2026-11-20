@@ -3,7 +3,7 @@
 // adapters send a mode config option, so both must take that path rather than session/set_mode. A harness whose CLI is not
 // on PATH is skipped, with the reason in the test's name.
 import { describe, expect, it } from "bun:test";
-import { err } from "@cabane/core";
+import { err } from "@kabane/core";
 import { AcpClient } from "./client";
 import { Harnesses } from "./harnesses";
 

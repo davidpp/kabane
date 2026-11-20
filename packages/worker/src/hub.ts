@@ -23,7 +23,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { checklistModule } from "@cabane/checklist";
+import { checklistModule } from "@kabane/checklist";
 import {
 	ANONYMOUS_ACTOR,
 	Deadline,
@@ -38,10 +38,10 @@ import {
 	SyncDevice,
 	TABLES,
 	type ToolContext,
-} from "@cabane/core";
-import { handoffModule } from "@cabane/handoff";
-import { outcomeModule } from "@cabane/outcome";
-import { questionsModule } from "@cabane/questions";
+} from "@kabane/core";
+import { handoffModule } from "@kabane/handoff";
+import { outcomeModule } from "@kabane/outcome";
+import { questionsModule } from "@kabane/questions";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
 import { handleHttpRequest } from "./mcp-http";

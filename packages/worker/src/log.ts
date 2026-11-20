@@ -17,7 +17,7 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { type Result, trySync } from "@cabane/core";
+import { type Result, trySync } from "@kabane/core";
 import { Migrations } from "./migrations";
 import { Oplog } from "./oplog";
 import type { PullPage, PullRequest, PushAck, PushRequest } from "./wire";

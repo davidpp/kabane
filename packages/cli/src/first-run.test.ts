@@ -2,9 +2,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { parseArgs } from "@cabane/extension";
+import { Planner } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { parseArgs } from "@kabane/extension";
 import { configPath, loadConfig } from "./config";
 import { openContext } from "./context";
 import {

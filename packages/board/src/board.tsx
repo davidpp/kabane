@@ -4,13 +4,13 @@
 // expanded parent. Pure rendering — it takes sections + selection + expansion and draws them; data
 // loading, selection, and expansion state live in App / BoardNav.
 
-import type { ChecklistProgress } from "@cabane/checklist";
+import type { ChecklistProgress } from "@kabane/checklist";
 import {
 	TASK_PRIORITY_DISPLAY,
 	TASK_STATE_DISPLAY,
 	type Task,
-} from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+} from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import {
 	type ColorInput,
 	type MouseEvent,

@@ -6,8 +6,8 @@ import type {
 	TaskLink,
 	TaskWorkLog,
 	UpstreamLink,
-} from "@cabane/core";
-import { HANDOFF_TEMPLATE } from "@cabane/handoff";
+} from "@kabane/core";
+import { HANDOFF_TEMPLATE } from "@kabane/handoff";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 

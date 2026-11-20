@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { expect, test } from "bun:test";
-import type { Task } from "@cabane/core";
-import type { ActivityCard, TriggerDescriptor } from "@cabane/extension";
+import type { Task } from "@kabane/core";
+import type { ActivityCard, TriggerDescriptor } from "@kabane/extension";
 import { type CapturedSpan, type RGBA, TextAttributes } from "@opentui/core";
 import { BoardActivity } from "./activity";
 import {

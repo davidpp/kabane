@@ -2,8 +2,8 @@
 // What the board puts on screen for a state: the tab bar over the view in hand (the board, a task's
 // detail, a card's events), the copilot's pane and any open prompt under the view, and the overlays
 // floating over whichever view is on screen. Every key and click goes back through BoardInput.
-import type { Result } from "@cabane/core";
-import type { ActivityCard, ActivitySource, Header } from "@cabane/extension";
+import type { Result } from "@kabane/core";
+import type { ActivityCard, ActivitySource, Header } from "@kabane/extension";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import {
 	type ReactNode,

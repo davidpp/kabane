@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { err, ok } from "@cabane/core";
+import { err, ok } from "@kabane/core";
 import {
 	type ActivityCard,
 	type ActivityQuestion,
 	type ActivitySource,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { BoardActivity } from "./activity";
 import { noActivity } from "./ports";
 

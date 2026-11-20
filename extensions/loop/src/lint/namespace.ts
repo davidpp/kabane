@@ -7,7 +7,7 @@ import { ok } from "../result";
  * progress entries.
  */
 
-import { type Result } from "@cabane/core";
+import { type Result } from "@kabane/core";
 import { type CollectOptions, LintCollectors } from "./collectors";
 import { type ReopenEvent, RiskAnalyzer } from "./risks";
 import type { Risk, RiskSeverity } from "./schemas";

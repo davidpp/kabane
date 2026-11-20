@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { err, ok } from "@cabane/core";
+import { err, ok } from "@kabane/core";
 import { Doctor, type Extension, Settings } from "./index";
 
 const ctx: Extension.Ctx = {

@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { Planner } from "@kabane/core";
 import {
 	type CapturedSpan,
 	RGBA,

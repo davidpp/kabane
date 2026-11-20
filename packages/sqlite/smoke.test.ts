@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, Runtime, TABLES } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { Planner, Runtime, TABLES } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { SqliteDb } from "./index";
 
 const DB_NAME = "smoke.db";

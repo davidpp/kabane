@@ -12,7 +12,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Doctor } from "@cabane/extension";
+import type { Doctor } from "@kabane/extension";
 import { trySync } from "./result";
 
 export namespace JobSkill {

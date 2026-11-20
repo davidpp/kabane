@@ -9,7 +9,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import { Runtime, type FileReader, type RuntimeConfig } from "./runtime";
 
 /** Read real test files through the runtime port without a CLI dependency. */

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Only git's config is the fixture's (an identity, no signing), as in every test. GitHub is the
 // one thing not real: `gh` goes through the runner's port, here a recorder that answers as gh
 // does, so no test reaches a GitHub repository.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	chmodSync,
 	existsSync,
@@ -16,8 +16,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { err, ok, Planner, type Task, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { err, ok, Planner, type Task, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Land } from "./land";

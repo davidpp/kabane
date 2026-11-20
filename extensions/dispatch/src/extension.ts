@@ -1,6 +1,6 @@
 // The dispatch extension as a directory extension: the templates and copilot files beside it, one
 // `kabane dispatch` command for what a procedure file cannot compute, and the skill checks.
-import type { Extension, Host } from "@cabane/extension";
+import type { Extension, Host } from "@kabane/extension";
 import { DispatchDoctor } from "./doctor";
 import { Kabane } from "./result";
 import { Templates } from "./templates";

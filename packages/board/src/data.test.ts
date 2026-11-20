@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { Checklist, type ChecklistItemView } from "@cabane/checklist";
-import { Planner, ScopeUri, type Task, type TaskDraft } from "@cabane/core";
+import { Checklist, type ChecklistItemView } from "@kabane/checklist";
+import { Planner, ScopeUri, type Task, type TaskDraft } from "@kabane/core";
 import { BoardData } from "./data";
 import { dropDb, freshDb } from "./test-db";
 

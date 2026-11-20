@@ -197,7 +197,7 @@ const inspectExtractedPackage = (
 		return err(new Error("Unexpected published package file shape."));
 	const raw = readArtifactFile(join(unpacked, "package/package.json"), 65_536);
 	if (!raw.ok) return raw;
-	if (raw.value.toString().includes("@cabane/"))
+	if (raw.value.toString().includes("@kabane/"))
 		return err(
 			new Error("Published manifest names a private workspace package."),
 		);

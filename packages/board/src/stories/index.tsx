@@ -3,8 +3,8 @@
 // at. No story-authoring layer: a story is the JSX a render test would mount. A copilot surface is
 // shown in its place on the board, because its height is the terminal's business (a third of it for
 // an ask) and reads wrong on its own.
-import { ok } from "@cabane/core";
-import type { QuestionView } from "@cabane/questions";
+import { ok } from "@kabane/core";
+import type { QuestionView } from "@kabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import { createRef, type ReactNode, useEffect, useRef } from "react";

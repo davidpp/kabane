@@ -3,7 +3,7 @@
 // stays: the drift guard below fails the gate then, context by context. The rest pins what the
 // registry promises the views: whole hints at forty columns, `? help` kept, a key listed once.
 import { describe, expect, test } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
 import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";

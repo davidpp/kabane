@@ -1,6 +1,6 @@
 // Real run-store setup and reads for session tests. Answers use the public command entry point.
 import { mkdirSync } from "node:fs";
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { ok } from "./result";

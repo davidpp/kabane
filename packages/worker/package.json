@@ -1,5 +1,5 @@
 {
-	"name": "cabane-worker",
+	"name": "kabane-worker",
 	"version": "0.1.0",
 	"description": "Cabane hub: the sync log Durable Object and the cloud device serving MCP",
 	"license": "MIT",
@@ -22,11 +22,11 @@
 		"wrangler": "4.162.0"
 	},
 	"dependencies": {
-		"@cabane/checklist": "workspace:*",
-		"@cabane/core": "workspace:*",
-		"@cabane/handoff": "workspace:*",
-		"@cabane/outcome": "workspace:*",
-		"@cabane/questions": "workspace:*",
+		"@kabane/checklist": "workspace:*",
+		"@kabane/core": "workspace:*",
+		"@kabane/handoff": "workspace:*",
+		"@kabane/outcome": "workspace:*",
+		"@kabane/questions": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.32.2",
 		"jose": "6.2.17",
 		"zod": "4.6.7"

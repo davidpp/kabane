@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { err, ok, type Result, tryCatch, trySync } from "@kabane/core";
 import { runUpdateProcess } from "./update-process";
 import { type DistTags, DistTagsSchema } from "./update-version";
 

@@ -1,5 +1,5 @@
 import { env, runInDurableObject } from "cloudflare:test";
-import { KABANE_TOOLS, Runtime, type ToolDef } from "@cabane/core";
+import { KABANE_TOOLS, Runtime, type ToolDef } from "@kabane/core";
 import { expect, it } from "vitest";
 import { DoDb } from "./db-do";
 import { type CabaneHub, HUB_BASE } from "./hub";

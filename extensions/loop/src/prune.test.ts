@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // removes, with real git: the project's remote is a bare repository on disk, and a squash merge
 // is made on it as GitHub makes one, so git calls the merged branch unmerged. What GitHub says of
 // the pull request is the one thing not real: `gh` is the start's port, here a recorder.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -13,9 +13,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { err, ok, Planner, type Task, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { Settings } from "@cabane/extension";
+import { err, ok, Planner, type Task, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { Settings } from "@kabane/extension";
 import { Loop } from "./commands";
 import type { Land } from "./land";
 import { RunStore } from "./store";

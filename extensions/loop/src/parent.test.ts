@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The parent's state across a run, driven by the real runner on a real tracker. Every run here is
 // paused or has nothing to claim, so no harness is reached.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task, type TaskDraft } from "@cabane/core";
+import { Planner, type Task, type TaskDraft } from "@kabane/core";
 import { LoopConfig } from "./config";
 import { Runner } from "./runner";
 import { Steering } from "./steering";

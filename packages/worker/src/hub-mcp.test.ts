@@ -12,7 +12,7 @@
  */
 
 import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
-import { questionsModule } from "@cabane/questions";
+import { questionsModule } from "@kabane/questions";
 import { describe, expect, it } from "vitest";
 import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER } from "./names";
 import { HERMES, HUMAN, withAccess } from "./test-access";

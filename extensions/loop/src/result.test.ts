@@ -1,9 +1,9 @@
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { Planner } from "@kabane/core";
 import { loop } from "./extension";
 import { err, ok, tryCatch, trySync } from "./result";
 import { testHost } from "./test-host";

@@ -1,6 +1,6 @@
 // Claim decisions. Continuous, not in waves: every tick, each free slot under the concurrency cap
 // takes the next ready subtask, so one slow session never holds the others back. Pure.
-import type { TaskPriority } from "@cabane/core";
+import type { TaskPriority } from "@kabane/core";
 import type { LoopPlan } from "./plan";
 
 export namespace Scheduler {

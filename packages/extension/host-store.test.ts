@@ -13,8 +13,8 @@ import {
 	Planner,
 	type Result,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { createHostRecord } from "./host-record";
 import { createHostStore, HostWrites } from "./host-store";
 

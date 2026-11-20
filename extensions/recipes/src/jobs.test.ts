@@ -12,9 +12,9 @@ import {
 	tryCatch,
 	trySync,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
-import { createHostStore } from "@cabane/extension";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
+import { createHostStore } from "@kabane/extension";
 import { z } from "zod";
 import { Jobs } from "./jobs";
 import { Kabane } from "./result";

@@ -11,12 +11,12 @@
 // block's input and sent with `enter`, which also leaves an optional one empty. `esc` declines the
 // whole form wherever it is. Nothing is ever filled in on the human's behalf: a field they leave
 // empty is absent from the answer.
-import { FormField } from "@cabane/acp/form-field";
+import { FormField } from "@kabane/acp/form-field";
 import type {
 	CopilotElicitationAnswer,
 	CopilotFormField,
 	CopilotFormValue,
-} from "@cabane/acp/form-field";
+} from "@kabane/acp/form-field";
 import type { CopilotElicitation } from "./ports";
 
 export namespace ElicitationForm {

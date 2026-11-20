@@ -1,5 +1,5 @@
 {
-	"name": "@cabane/questions",
+	"name": "@kabane/questions",
 	"version": "0.1.0",
 	"description": "Kabane data module: replicated questions and human decisions",
 	"license": "MIT",
@@ -16,14 +16,14 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@cabane/core": "workspace:*",
+		"@kabane/core": "workspace:*",
 		"ulid": "3.0.2",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
 		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2",
-		"@cabane/sqlite": "workspace:*",
+		"@kabane/sqlite": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.32.2"
 	}
 }

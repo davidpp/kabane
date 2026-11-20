@@ -7,8 +7,8 @@
 // the ref, so every key stays in board-input.ts's one useKeyboard handler). DetailModel decides
 // what goes where; this file only draws it. The agent brief is not drawn here: `y` copies it, and
 // it is what an agent reads.
-import type { Result, TaskEntry } from "@cabane/core";
-import type { ActivityCard, ActivityStatus } from "@cabane/extension";
+import type { Result, TaskEntry } from "@kabane/core";
+import type { ActivityCard, ActivityStatus } from "@kabane/extension";
 import {
 	BoxRenderable,
 	type MarkdownOptions,

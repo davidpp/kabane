@@ -1,5 +1,5 @@
 import { env, runInDurableObject } from "cloudflare:test";
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { describe, expect, it } from "vitest";
 import type { CabaneLog } from "./log";
 import type { PullPage, PushAck, WireOp } from "./wire";

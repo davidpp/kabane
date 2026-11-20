@@ -4,8 +4,8 @@
 //
 // A job is an item of kind `job` in core, so its detail is the tracker's detail view; only the
 // schedule and the runs, which an issue has no equivalent of, are drawn by the tab (jobs-view.tsx).
-import { ScopeUri, type Task } from "@cabane/core";
-import type { JobFacts, JobRunState } from "@cabane/extension";
+import { ScopeUri, type Task } from "@kabane/core";
+import type { JobFacts, JobRunState } from "@kabane/extension";
 
 export namespace BoardJobs {
 	export type Job = { task: Task; facts?: JobFacts };

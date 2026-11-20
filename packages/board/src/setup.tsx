@@ -9,7 +9,7 @@
 // see every key, handler first, and the handler preventDefaults the keys it takes (tab, arrows,
 // enter, esc, and space on a checkbox row) so the input never acts on them too.
 
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { createCliRenderer, TextAttributes } from "@opentui/core";
 import {
 	createRoot,

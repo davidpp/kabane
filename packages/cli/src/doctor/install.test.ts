@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Doctor, type Extension } from "@cabane/extension";
+import { Doctor, type Extension } from "@kabane/extension";
 import type { McpInstall } from "../commands/mcp-install";
 import { settingsPort } from "../context";
 import { McpClients } from "../mcp-clients";

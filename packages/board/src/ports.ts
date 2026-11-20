@@ -6,8 +6,8 @@
 import type {
 	CopilotElicitationAnswer,
 	CopilotFormField,
-} from "@cabane/acp/form-field";
-import { ok, type Result, type Task } from "@cabane/core";
+} from "@kabane/acp/form-field";
+import { ok, type Result, type Task } from "@kabane/core";
 import type {
 	ActivityCard,
 	ActivitySource,
@@ -16,7 +16,7 @@ import type {
 	Dispatcher,
 	NoticeSeverity,
 	SettingField,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import type { BoardContext } from "./context";
 
 // The one event type the view draws as a rule rather than as a row: what was ASKED, which opens a

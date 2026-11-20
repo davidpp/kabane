@@ -1,5 +1,5 @@
 /**
- * @cabane/recipes
+ * @kabane/recipes
  *
  * The recipes extension: recipes from a project's `.kabane/recipes/`, each naming a project skill
  * or carrying its own prompt, `kabane run` to start one in an hc terminal, and `kabane runs` to

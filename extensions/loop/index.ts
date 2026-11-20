@@ -1,5 +1,5 @@
 /**
- * @cabane/loop
+ * @kabane/loop
  *
  * The loop extension: drives a parent issue's subtasks to completion through ACP harnesses, one
  * ACP session per claimed subtask, or a single issue with no subtasks as its own one work item,

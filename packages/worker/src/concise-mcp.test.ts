@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
-import { ContextPageSchema } from "@cabane/core";
-import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
+import { ContextPageSchema } from "@kabane/core";
+import issues from "@kabane/core/testing/fixtures/issue-corpus/issues.json";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { HUMAN, withAccess } from "./test-access";

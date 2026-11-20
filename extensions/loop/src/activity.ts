@@ -10,10 +10,10 @@ import {
 	type CardAction,
 	type NoticeSeverity,
 	type StopAction,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { err, ok } from "./result";
 
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { Loop } from "./commands";
 import { parseQuestionBody } from "./question-body";
 import { RunStore } from "./store";

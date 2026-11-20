@@ -14,9 +14,9 @@ import {
 	mkdirSync,
 } from "node:fs";
 import { join, relative } from "node:path";
-import type { Harnesses } from "@cabane/acp";
-import { type Result, type Task } from "@cabane/core";
-import type { Host, Doctor, Extension } from "@cabane/extension";
+import type { Harnesses } from "@kabane/acp";
+import { type Result, type Task } from "@kabane/core";
+import type { Host, Doctor, Extension } from "@kabane/extension";
 import { LoopConfig } from "./config";
 import { Lenses } from "./lenses";
 import { err, ok, tryCatch, trySync } from "./result";

@@ -1,6 +1,6 @@
 /** Extension-facing board ports, produced by extensions and read by clients and the host. */
 
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 
 export type ActivityStatus =
 	| "pending"
@@ -281,7 +281,7 @@ export interface JobSource {
 	): Promise<Result<Readonly<Record<string, JobFacts>>>>;
 }
 
-// What a setting's value is, as its schema declares it (`Settings.fields` in @cabane/extension):
+// What a setting's value is, as its schema declares it (`Settings.fields` in @kabane/extension):
 // the kinds of `CopilotFormField`, plus a list, a record and a group of settings. `other` is a value
 // no kind describes. `optional`: absent is a valid setting; `default`: what the schema fills in when
 // no layer sets it.

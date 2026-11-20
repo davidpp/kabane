@@ -3,7 +3,7 @@ import {
 	parseQuestionBody,
 	QuestionMetaSchema,
 	type ParsedQuestion,
-} from "@cabane/core";
+} from "@kabane/core";
 import { z } from "zod";
 
 export const DecisionMetaSchema = QuestionMetaSchema.extend({

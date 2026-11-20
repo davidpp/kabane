@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { checklistModule } from "@cabane/checklist";
+import { checklistModule } from "@kabane/checklist";
 import {
 	err,
 	type KabaneModule,
@@ -19,17 +19,17 @@ import {
 	type ToolContext,
 	Runtime,
 	tryCatch,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	type Extension,
 	flagString,
 	type ParsedArgs,
 	Settings,
-} from "@cabane/extension";
-import { handoffModule } from "@cabane/handoff";
-import { outcomeModule } from "@cabane/outcome";
-import { questionsModule } from "@cabane/questions";
-import { SqliteDb } from "@cabane/sqlite";
+} from "@kabane/extension";
+import { handoffModule } from "@kabane/handoff";
+import { outcomeModule } from "@kabane/outcome";
+import { questionsModule } from "@kabane/questions";
+import { SqliteDb } from "@kabane/sqlite";
 import {
 	type Config,
 	configPath,

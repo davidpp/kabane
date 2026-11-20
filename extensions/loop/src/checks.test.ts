@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // Gates, checkpoints and rollback against a real tracker and a real git repository with a real
 // worktree. Only git's config is the fixture's (an identity, no signing), as in every test.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -12,8 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { Planner, type Task, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { Brief } from "./brief";
 import { Checks } from "./checks";
 import { Claims } from "./claims";
@@ -565,8 +565,8 @@ describe("A worktree run without gates", () => {
 	const IMPLEMENTER = `
 import { createInterface } from "node:readline";
 import { writeFileSync } from "node:fs";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const [home] = process.argv.slice(2);
 const done = KABANE_TOOLS.find((t) => t.name === "kabane_done");
 const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, result }));
@@ -743,8 +743,8 @@ describe("A single-issue run", () => {
 	const IMPLEMENTER = `
 import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const [home, prompts] = process.argv.slice(2);
 const done = KABANE_TOOLS.find((t) => t.name === "kabane_done");
 const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, result }));

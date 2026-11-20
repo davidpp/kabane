@@ -12,7 +12,7 @@
  *
  *   Should we use Redis or an in-memory cache?
  *
- * Producers serialize via `formatQuestionBody`; consumers (`@cabane/questions`,
+ * Producers serialize via `formatQuestionBody`; consumers (`@kabane/questions`,
  * which extends the metadata with its own keys) recover the pieces via
  * `parseQuestionBody`. The block is OPTIONAL — a body with no leading json fence
  * parses as a pure freeform question (choices=[], freeform on). Migration

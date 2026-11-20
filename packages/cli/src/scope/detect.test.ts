@@ -12,7 +12,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { GitFixture } from "@kabane/core/git-fixture";
 import {
 	detectScope,
 	findProjectRoot,
@@ -450,12 +450,12 @@ describe("detectScope", () => {
 		pin(root, "cabane");
 		writeFileSync(
 			join(root, "package.json"),
-			JSON.stringify({ name: "cabane-monorepo" }),
+			JSON.stringify({ name: "kabane-monorepo" }),
 		);
 		const nested = dir("repo", "packages", "core");
 		writeFileSync(
 			join(nested, "package.json"),
-			JSON.stringify({ name: "@cabane/core" }),
+			JSON.stringify({ name: "@kabane/core" }),
 		);
 
 		const scope = await detectScope(nested, { home });
@@ -465,11 +465,11 @@ describe("detectScope", () => {
 		expect(scope?.scopeId).toBe("cabane");
 		expect(scope?.name).toBe("cabane");
 		expect(scope?.extensions).toEqual({
-			package: "@cabane/core",
+			package: "@kabane/core",
 			branch: "main",
 		});
 		expect(scope?.scopeUri).toBe(
-			"kabane://scope/cabane?branch=main&package=%40cabane%2Fcore",
+			"kabane://scope/cabane?branch=main&package=%40kabane%2Fcore",
 		);
 	});
 

@@ -12,10 +12,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Checklist, checklistModule } from "@cabane/checklist";
-import { Planner, type Task, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { Checklist, checklistModule } from "@kabane/checklist";
+import { Planner, type Task, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { Checklists } from "./checklists";
 import { Checks } from "./checks";
 import { LoopConfig } from "./config";
@@ -123,9 +123,9 @@ const runOn = async (
 const AGENT = `
 import { createInterface } from "node:readline";
 import { appendFileSync, existsSync } from "node:fs";
-import { configureTestRuntime } from ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
-import { checklistModule } from ${JSON.stringify(import.meta.resolve("@cabane/checklist"))};
+import { configureTestRuntime } from ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
+import { checklistModule } from ${JSON.stringify(import.meta.resolve("@kabane/checklist"))};
 const AGENT_ACTOR = "cabane://actor/agent/gemini";
 let actor = AGENT_ACTOR;
 configureTestRuntime({ modules: [checklistModule], actor: () => actor });

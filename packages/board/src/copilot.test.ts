@@ -11,8 +11,8 @@ import {
 	type ToolCallContent,
 	type ToolCallStatus,
 } from "@agentclientprotocol/sdk";
-import { AcpClient } from "@cabane/acp";
-import { err } from "@cabane/core";
+import { AcpClient } from "@kabane/acp";
+import { err } from "@kabane/core";
 import type { BoardContext } from "./context";
 import { BoardCopilot } from "./copilot";
 import { CopilotInstructions } from "./copilot-instructions";

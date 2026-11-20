@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, Planner } from "@cabane/core";
+import { ok, Planner } from "@kabane/core";
 import { App } from "./app";
 import { type Announcer, noActivity } from "./ports";
 import { dropDb, freshDb } from "./test-db";

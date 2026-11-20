@@ -2,7 +2,7 @@
 // extension and is absent when it is disabled; a device without it, the hub included, parks its
 // ops. Nothing outside this file knows the table, so moving the row elsewhere changes this file.
 import { hostname } from "node:os";
-import type { Db, Host, KabaneModule, Result } from "@cabane/extension";
+import type { Db, Host, KabaneModule, Result } from "@kabane/extension";
 import { err, ok, trySync } from "./result";
 import type { Runtime } from "./runtime";
 

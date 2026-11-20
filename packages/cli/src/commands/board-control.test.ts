@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { err, ok } from "@cabane/core";
+import { err, ok } from "@kabane/core";
 import { BoardControl } from "./board-control";
 
 const HOME = mkdtempSync(join(tmpdir(), "kabane-control-"));
@@ -22,7 +22,7 @@ const child = async (pid: number, then: string) => {
 			process.execPath,
 			"-e",
 			`const { BoardControl } = await import(${JSON.stringify(join(import.meta.dir, "board-control.ts"))});
-			const { ok } = await import("@cabane/core");
+			const { ok } = await import("@kabane/core");
 			const listening = BoardControl.listen(BoardControl.socketPath(${JSON.stringify(HOME)}, ${pid}), async () => ok("X-1"));
 			if (!listening.ok) throw listening.error;
 			console.log("ready");

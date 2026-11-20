@@ -1,10 +1,10 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { checklistModule } from "@cabane/checklist";
-import { ContextPageSchema, KABANE_TOOLS } from "@cabane/core";
-import { handoffModule } from "@cabane/handoff";
-import { questionsModule } from "@cabane/questions";
+import { checklistModule } from "@kabane/checklist";
+import { ContextPageSchema, KABANE_TOOLS } from "@kabane/core";
+import { handoffModule } from "@kabane/handoff";
+import { questionsModule } from "@kabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";

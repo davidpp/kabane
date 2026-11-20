@@ -1,12 +1,12 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { checklistModule } from "@cabane/checklist";
-import { KABANE_TOOLS, Oplog, Runtime } from "@cabane/core";
-import { Apply, configureTestRuntime } from "@cabane/core/testing";
-import { handoffModule } from "@cabane/handoff";
-import { questionsModule } from "@cabane/questions";
-import { SqliteDb } from "@cabane/sqlite";
+import { checklistModule } from "@kabane/checklist";
+import { KABANE_TOOLS, Oplog, Runtime } from "@kabane/core";
+import { Apply, configureTestRuntime } from "@kabane/core/testing";
+import { handoffModule } from "@kabane/handoff";
+import { questionsModule } from "@kabane/questions";
+import { SqliteDb } from "@kabane/sqlite";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";

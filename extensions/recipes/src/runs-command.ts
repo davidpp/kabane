@@ -4,7 +4,7 @@
 // does not have, shows what was last recorded.
 import { hostname } from "node:os";
 import { basename } from "node:path";
-import type { Extension, Host, Outcome } from "@cabane/extension";
+import type { Extension, Host, Outcome } from "@kabane/extension";
 import { Harness } from "./harness";
 import { ok } from "./result";
 import { projectOf, shortIdOf } from "./run-command";

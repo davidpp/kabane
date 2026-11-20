@@ -7,11 +7,11 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { join } from "node:path";
-import { ok, Planner, trySync } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { Settings } from "@cabane/extension";
+import { ok, Planner, trySync } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { Settings } from "@kabane/extension";
 import { Loop } from "./commands";
 import type { LoopConfig } from "./config";
 import { Permission } from "./permission";
@@ -544,7 +544,7 @@ describe("Loop.start's worktree", () => {
 // runs it, with no harness a claim could reach.
 const RUNNER = [
 	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
-	`import ${JSON.stringify(Bun.resolveSync("@cabane/core/testing", import.meta.dir))};`,
+	`import ${JSON.stringify(Bun.resolveSync("@kabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
 	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,

@@ -13,7 +13,7 @@ import type {
 	ProjectScope,
 	Result,
 	StopAction,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { err, ok } from "./result";
 import { shortIdOf } from "./run-command";
 import { Runs } from "./runs";

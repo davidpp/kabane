@@ -19,7 +19,7 @@ import {
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import { ulid } from "ulid";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";

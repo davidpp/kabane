@@ -1,5 +1,5 @@
 /**
- * @cabane/acp
+ * @kabane/acp
  *
  * Agent Client Protocol client: a harness registry, the stdio
  * adapters a Bun subprocess needs, and a small session runner whose update stream is

@@ -1,4 +1,4 @@
-import { type Migrate, TABLES } from "@cabane/core";
+import { type Migrate, TABLES } from "@kabane/core";
 
 export const QUESTIONS_TABLE = "task_questions";
 

@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@cabane/core";
+import { Planner, type Task } from "@kabane/core";
 import { App } from "./app";
 import { noActivity, type OpenRequests } from "./ports";
 import { dropDb, freshDb } from "./test-db";

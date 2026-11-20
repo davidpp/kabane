@@ -2,8 +2,8 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Result, Runtime } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { Planner, type Result, Runtime } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { outcomeModule, OUTCOME_KINDS } from "./module";
 
 const unwrap = <T>(result: Result<T>): T => {

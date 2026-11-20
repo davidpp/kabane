@@ -17,14 +17,14 @@ import {
 	toError,
 	tryCatch,
 	trySync,
-} from "@cabane/core";
-import type { Extension } from "@cabane/extension";
+} from "@kabane/core";
+import type { Extension } from "@kabane/extension";
 import { z } from "zod";
 import { findProjectRoot, localPinPath, SCOPE_FILE } from "./scope/detect";
 
 const CopilotConfigSchema = z.object({
 	// A plain string, not an enum, so a config naming a harness a newer kabane added still loads.
-	// `config set` and `kabane board` check it against @cabane/acp/harnesses, which is ID-only:
+	// `config set` and `kabane board` check it against @kabane/acp/harnesses, which is ID-only:
 	// the package root would load the ACP SDK on every command.
 	harness: z
 		.string()
@@ -60,7 +60,7 @@ const HarnessConfigSchema = z.object({
 	 * manual mode to the harness's own auto mode, where the harness decides
 	 * which tool calls need a human; `default` leaves the mode the harness and
 	 * your own settings start it in. Literal values for the same reason as
-	 * `copilot.harness`; `@cabane/acp` names them `Harnesses.MODES`.
+	 * `copilot.harness`; `@kabane/acp` names them `Harnesses.MODES`.
 	 */
 	mode: z
 		.enum(["auto", "default"])

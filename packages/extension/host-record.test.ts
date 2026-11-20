@@ -9,8 +9,8 @@ import {
 	type Result,
 	type CoreToolInputShapes,
 	TaskLinkSchema,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import type { z } from "zod";
 import type { Host } from "./host";
 import { createHostRecord } from "./host-record";

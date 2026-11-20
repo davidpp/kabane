@@ -10,7 +10,7 @@ import {
 	type Task,
 	type TaskEntry,
 	type ToolDef,
-} from "@cabane/core";
+} from "@kabane/core";
 import { z } from "zod";
 import { COMPACT_TEMPLATE, HANDOFF_KIND } from "./template";
 

@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs } from "@cabane/extension";
+import { parseArgs } from "@kabane/extension";
 import { version } from "../package.json";
 import { type Host, runUpdate } from "./commands/update";
 import { UpdateBinary } from "./update-binary";

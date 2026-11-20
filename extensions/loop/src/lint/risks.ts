@@ -9,7 +9,7 @@ import { ok } from "../result";
  * progress data on top of what the planner-side collector produces.
  */
 
-import { type Result } from "@cabane/core";
+import { type Result } from "@kabane/core";
 import { firstGroups } from "./regex";
 import type { Risk } from "./schemas";
 

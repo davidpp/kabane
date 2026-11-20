@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CopilotElicitationAnswer } from "@cabane/acp/form-field";
+import { type CopilotElicitationAnswer } from "@kabane/acp/form-field";
 import {
 	RGBA,
 	type TextareaRenderable,

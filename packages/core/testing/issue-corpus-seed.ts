@@ -2,8 +2,8 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 /** Disposable seeding process: never configure the parent test's shared Runtime. */
 import { basename, join } from "node:path";
-import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
-import { SqliteDb } from "@cabane/sqlite";
+import issues from "@kabane/core/testing/fixtures/issue-corpus/issues.json";
+import { SqliteDb } from "@kabane/sqlite";
 import { z } from "zod";
 import { Planner, Runtime, err, ok, type Result } from "../index";
 

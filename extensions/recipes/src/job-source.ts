@@ -1,7 +1,7 @@
 // The board's Jobs tab, as data: for the job ids the board lists from the tracker, every scope's,
 // what `kabane job show` prints, and its newest runs with the command that attaches to each. The
 // board draws it and never runs `hc`: a run's session opens in a terminal, through that command.
-import type { JobFacts, JobSource } from "@cabane/extension";
+import type { JobFacts, JobSource } from "@kabane/extension";
 import { type Deps, NO_RECIPE, runsOf, SHOWN_RUNS } from "./job-command";
 import { Jobs } from "./jobs";
 import { ok } from "./result";

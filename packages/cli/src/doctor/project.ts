@@ -3,8 +3,8 @@
 // stamp; the extension checks it, and with no such extension enabled doctor says it cannot.
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
-import { ok, type Result, trySync } from "@cabane/core";
-import type { Doctor, Extension } from "@cabane/extension";
+import { ok, type Result, trySync } from "@kabane/core";
+import type { Doctor, Extension } from "@kabane/extension";
 import { z } from "zod";
 import { projectAt } from "../context";
 import { McpClients } from "../mcp-clients";

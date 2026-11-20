@@ -5,7 +5,7 @@
 // This belongs to the CLI host: it reads the Bun process.
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { trySync } from "@cabane/core/result";
+import { trySync } from "@kabane/core/result";
 
 export namespace Self {
 	/** What the process says about itself. Tests pass their own. */

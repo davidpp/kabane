@@ -8,7 +8,7 @@ import {
 	type Result,
 	type ToolContext,
 	type ToolDef,
-} from "@cabane/core";
+} from "@kabane/core";
 import type { Host } from "./host";
 import { HostWrites } from "./host-store";
 

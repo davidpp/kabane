@@ -6,8 +6,8 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute } from "node:path";
-import { err, ok, type Result } from "@cabane/core";
-import type { Doctor, Extension } from "@cabane/extension";
+import { err, ok, type Result } from "@kabane/core";
+import type { Doctor, Extension } from "@kabane/extension";
 import { McpInstall } from "../commands/mcp-install";
 import { projectAt } from "../context";
 import { McpClients } from "../mcp-clients";

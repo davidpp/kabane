@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/react */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { Checklist } from "@cabane/checklist";
-import { Planner, type Result, type Task } from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+import { Checklist } from "@kabane/checklist";
+import { Planner, type Result, type Task } from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createRef, type RefObject } from "react";
 import type { BoardActivity } from "./activity";

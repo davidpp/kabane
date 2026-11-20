@@ -10,8 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { CopilotInstructions } from "@cabane/board/copilot-instructions";
-import { parseArgs } from "@cabane/extension";
+import { CopilotInstructions } from "@kabane/board/copilot-instructions";
+import { parseArgs } from "@kabane/extension";
 import { boardDeps } from "./commands/board-runtime";
 import { configPath } from "./config";
 import { openContext } from "./context";

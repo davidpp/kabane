@@ -10,9 +10,9 @@ import {
 	Runtime,
 	Sync,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
-import { SqliteDb } from "@cabane/sqlite";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
+import { SqliteDb } from "@kabane/sqlite";
 import { checklistModule } from "./module";
 import { Checklist } from "./storage";
 

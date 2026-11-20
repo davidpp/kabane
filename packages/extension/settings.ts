@@ -9,7 +9,7 @@
 // replaced, so a record of gates gains a gate per layer, defaulted ones included, while a list of
 // lenses is whatever the highest layer that names it says. A key set to null (or undefined, from
 // code) unsets what the layers below it say; it must still name a setting.
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import { z } from "zod";
 import type { SettingField, SettingKind, SettingValue } from "./ports";
 

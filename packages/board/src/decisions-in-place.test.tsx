@@ -7,8 +7,8 @@
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, withDb } from "@cabane/core";
-import { Questions } from "@cabane/questions";
+import { Planner, withDb } from "@kabane/core";
+import { Questions } from "@kabane/questions";
 import { App } from "./app";
 import { BoardNav } from "./nav";
 import { noActivity } from "./ports";

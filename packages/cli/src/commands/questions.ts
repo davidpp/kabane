@@ -4,8 +4,8 @@ import {
 	flagString,
 	success,
 	usage,
-} from "@cabane/extension";
-import { questionPageMarkdown, questionRowPage } from "@cabane/questions";
+} from "@kabane/extension";
+import { questionPageMarkdown, questionRowPage } from "@kabane/questions";
 import { type Command, resolveScopeUri } from "../context";
 import { pageOptions } from "../response-format";
 

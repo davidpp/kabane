@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The fixer phase on the real runner and a disposable tracker. A scripted ACP subprocess stands in
 // for the model: it reads the finding ids off the fixer's prompt and closes each one, or parks the
 // ones the test marks as left, through the real kabane tools.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, Planner, type Task, type TaskDraft } from "@cabane/core";
-import { Settings } from "@cabane/extension";
+import { ok, Planner, type Task, type TaskDraft } from "@kabane/core";
+import { Settings } from "@kabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { Fixer } from "./fixer";
@@ -94,8 +94,8 @@ const createRun = (
 const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, appendFileSync } from "node:fs";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const tool = async (name, args) => {
  const definition = KABANE_TOOLS.find(t => t.name === name);
  const result = await definition.handler(args, {

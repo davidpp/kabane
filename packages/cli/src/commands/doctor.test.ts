@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Doctor, parseArgs } from "@cabane/extension";
+import { Doctor, parseArgs } from "@kabane/extension";
 import { DB_NAME } from "../config";
 import { ConfigLayers } from "../config-layers";
 import { openContext } from "../context";

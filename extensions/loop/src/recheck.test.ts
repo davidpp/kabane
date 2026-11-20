@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // A scripted ACP subprocess stands in for the model, through the real kabane tools: as the fixer
 // it closes every finding it is given and edits a tracked file, and as a lens's recheck it reopens
 // the findings the test marks.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	appendFileSync,
 	existsSync,
@@ -14,8 +14,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task, type TaskDraft } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { Planner, type Task, type TaskDraft } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { LoopConfig } from "./config";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
@@ -110,8 +110,8 @@ const createRun = (
 const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, appendFileSync } from "node:fs";
-import ${JSON.stringify(import.meta.resolve("@cabane/core/testing"))};
-import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@cabane/core"))};
+import ${JSON.stringify(import.meta.resolve("@kabane/core/testing"))};
+import { KABANE_TOOLS } from ${JSON.stringify(import.meta.resolve("@kabane/core"))};
 const tool = async (name, args) => {
  const definition = KABANE_TOOLS.find(t => t.name === name);
  const result = await definition.handler(args, {

@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { detectScope, ProjectDirs } from "../scope/detect";
 
 const initial = {

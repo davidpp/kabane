@@ -1,14 +1,14 @@
 // The loop as a directory extension: one `kabane loop` command whose first positional picks the
 // entry point. The CLI has already wired the runtime (`openContext`) by the time `run` is called.
-import { Harnesses } from "@cabane/acp/harnesses";
-import type { Result } from "@cabane/core";
+import { Harnesses } from "@kabane/acp/harnesses";
+import type { Result } from "@kabane/core";
 import {
 	type Extension,
 	type Host,
 	type Outcome,
 	type ParsedArgs,
 	type Settings,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { LoopActivity } from "./activity";
 import { LoopAdvice } from "./advice";
 import { Loop } from "./commands";

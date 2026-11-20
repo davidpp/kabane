@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
-import { err, ok, type Result, trySync } from "@cabane/core";
-import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
+import { err, ok, type Result, trySync } from "@kabane/core";
+import { type Outcome, type ParsedArgs, usage } from "@kabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import type { Command } from "../context";

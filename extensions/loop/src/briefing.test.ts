@@ -1,7 +1,7 @@
 import "./test-host";
 import { describe, expect, it } from "bun:test";
-import type { Task, TaskState } from "@cabane/core";
-import type { PanelLine } from "@cabane/extension";
+import type { Task, TaskState } from "@kabane/core";
+import type { PanelLine } from "@kabane/extension";
 import { Briefing } from "./briefing";
 import { LoopPlan } from "./plan";
 

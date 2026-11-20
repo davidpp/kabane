@@ -8,7 +8,7 @@
 // are letters it takes. `j/k` walk the fields in the host's order, `enter` fires the trigger with
 // every value unless a required one is empty, and `esc` goes back to the picker with the trigger
 // still selected, one level per press like every other `esc` on the board.
-import type { TriggerDescriptor, TriggerInput } from "@cabane/extension";
+import type { TriggerDescriptor, TriggerInput } from "@kabane/extension";
 import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
 

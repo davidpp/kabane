@@ -13,9 +13,9 @@ import {
 	realpathSync,
 } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { Harnesses } from "@cabane/acp/harnesses";
-import type { Result, Task } from "@cabane/core";
-import type { Host, Settings } from "@cabane/extension";
+import { Harnesses } from "@kabane/acp/harnesses";
+import type { Result, Task } from "@kabane/core";
+import type { Host, Settings } from "@kabane/extension";
 import { z } from "zod";
 import { LoopAdvice } from "./advice";
 import { LoopConfig } from "./config";

@@ -14,9 +14,9 @@ import {
 	type Result,
 	Sync,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
-import { parseArgs } from "@cabane/extension";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
+import { parseArgs } from "@kabane/extension";
 import { configPath } from "./config";
 import { openContext } from "./context";
 import { NotesExtension } from "./extension-fixture";

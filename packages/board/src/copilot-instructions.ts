@@ -7,9 +7,9 @@
 // do a task, base kabane's included, is a skill kabane's MCP server serves, never text in this
 // prompt: base kabane's is the `kabane` skill (packages/cli/skills/kabane). Base kabane's text
 // names no extension.
-import { Harnesses } from "@cabane/acp/harnesses";
-import { CopilotInstructions as HarnessInstructions } from "@cabane/acp/instructions";
-import type { CopilotShortcut } from "@cabane/extension";
+import { Harnesses } from "@kabane/acp/harnesses";
+import { CopilotInstructions as HarnessInstructions } from "@kabane/acp/instructions";
+import type { CopilotShortcut } from "@kabane/extension";
 
 const { SERVER_NAME } = HarnessInstructions;
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
-import type { TriggerDescriptor } from "@cabane/extension";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
+import type { TriggerDescriptor } from "@kabane/extension";
 import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";

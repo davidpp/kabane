@@ -1,5 +1,5 @@
-import { type LinkType, LinkTypeSchema, Planner } from "@cabane/core";
-import { failure, flagString, success, usage } from "@cabane/extension";
+import { type LinkType, LinkTypeSchema, Planner } from "@kabane/core";
+import { failure, flagString, success, usage } from "@kabane/extension";
 import type { Command } from "../context";
 
 export const link: Command = {

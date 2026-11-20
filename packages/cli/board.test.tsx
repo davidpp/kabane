@@ -15,9 +15,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { App, noActivity } from "@cabane/board";
-import { Planner, type Result, type Task } from "@cabane/core";
-import { parseArgs } from "@cabane/extension";
+import { App, noActivity } from "@kabane/board";
+import { Planner, type Result, type Task } from "@kabane/core";
+import { parseArgs } from "@kabane/extension";
 import { testRender } from "@opentui/react/test-utils";
 import {
 	type BoardWiring,

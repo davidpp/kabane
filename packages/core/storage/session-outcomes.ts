@@ -35,7 +35,7 @@ const ACTIVITIES = "agent_activities";
 
 /**
  * The entry kind of each durable activity type, the ones the brief kept. These
- * are the kinds `@cabane/outcome` and `@cabane/handoff` declare, written as
+ * are the kinds `@kabane/outcome` and `@kabane/handoff` declare, written as
  * literals: core cannot import a module, and an entry's kind is a soft string
  * stored whether or not a module declares it.
  */

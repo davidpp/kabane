@@ -7,7 +7,7 @@ import {
 	type TaskDraft,
 	type TaskPriority,
 	type TaskState,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	conciseSuccess,
 	failure,
@@ -15,7 +15,7 @@ import {
 	flagString,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { type Command, resolveScopeUri } from "../context";
 import { formatTaskLine } from "../output";
 import { responseFormat } from "../response-format";

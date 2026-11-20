@@ -1,4 +1,4 @@
-import type { Host, Header, HeaderPart, PanelPart } from "@cabane/extension";
+import type { Host, Header, HeaderPart, PanelPart } from "@kabane/extension";
 import { ok } from "./result";
 // The loop tab's header: what the board draws above a run's stream, in place of its one-line title.
 // Three rows, in order of what matters: the run's state, its steps as a strip, its budgets as

@@ -1,4 +1,4 @@
-import { defineTool, ok, type ToolDef } from "@cabane/core";
+import { defineTool, ok, type ToolDef } from "@kabane/core";
 import { z } from "zod";
 import { changeReceipt, editReceipt } from "./markdown";
 import { AddSchema, EditSchema, TickSchema } from "./schema";

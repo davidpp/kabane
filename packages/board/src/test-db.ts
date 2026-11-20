@@ -2,11 +2,11 @@
 // the CLI registers, plus a fresh base directory per test. Importing this module configures
 // the runtime once for the process.
 import { mkdirSync, rmSync } from "node:fs";
-import { checklistModule } from "@cabane/checklist";
-import { Planner, Runtime } from "@cabane/core";
-import { handoffModule } from "@cabane/handoff";
-import { questionsModule } from "@cabane/questions";
-import { SqliteDb } from "@cabane/sqlite";
+import { checklistModule } from "@kabane/checklist";
+import { Planner, Runtime } from "@kabane/core";
+import { handoffModule } from "@kabane/handoff";
+import { questionsModule } from "@kabane/questions";
+import { SqliteDb } from "@kabane/sqlite";
 
 Runtime.configure({
 	provider: SqliteDb.provider(),

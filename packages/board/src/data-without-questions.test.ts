@@ -4,11 +4,11 @@
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Checklist, checklistModule } from "@cabane/checklist";
-import { Planner, Runtime } from "@cabane/core";
-import { handoffModule } from "@cabane/handoff";
-import { Questions, questionsModule } from "@cabane/questions";
-import { SqliteDb } from "@cabane/sqlite";
+import { Checklist, checklistModule } from "@kabane/checklist";
+import { Planner, Runtime } from "@kabane/core";
+import { handoffModule } from "@kabane/handoff";
+import { Questions, questionsModule } from "@kabane/questions";
+import { SqliteDb } from "@kabane/sqlite";
 import { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 import { dropDb, freshDb } from "./test-db";

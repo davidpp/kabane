@@ -1,4 +1,4 @@
-import { type ModuleContextSection, ok } from "@cabane/core";
+import { type ModuleContextSection, ok } from "@kabane/core";
 import { checklistMarkdown } from "./markdown";
 import { Checklist } from "./storage";
 

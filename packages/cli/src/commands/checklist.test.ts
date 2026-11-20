@@ -2,8 +2,8 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChecklistItemView } from "@cabane/checklist";
-import { Planner, type Result } from "@cabane/core";
+import type { ChecklistItemView } from "@kabane/checklist";
+import { Planner, type Result } from "@kabane/core";
 import { run } from "../main";
 
 const unwrap = <T>(result: Result<T>): T => {

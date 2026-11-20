@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Result } from "@cabane/core";
+import { Planner, type Result } from "@kabane/core";
 import { run } from "../main";
 
 const unwrap = <T>(result: Result<T>): T => {

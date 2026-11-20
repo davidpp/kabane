@@ -1,4 +1,4 @@
-import type { Extension, Host } from "@cabane/extension";
+import type { Extension, Host } from "@kabane/extension";
 import { LoopAdvice } from "./advice";
 import { Loop } from "./commands";
 

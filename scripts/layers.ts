@@ -16,60 +16,60 @@ type Rule = {
 
 // The current workspace graph, not a proposal for future package boundaries.
 export const layers: Readonly<Record<string, Rule>> = {
-	"@cabane/core": {
+	"@kabane/core": {
 		layer: "core",
 		dependencies: [],
-		devDependencies: ["@cabane/sqlite"],
+		devDependencies: ["@kabane/sqlite"],
 		testSupport: [
 			"packages/core/testing.ts",
 			"packages/core/testing/issue-corpus-seed.ts",
 		],
 	},
-	"@cabane/sqlite": {
+	"@kabane/sqlite": {
 		layer: "storage adapter",
-		dependencies: ["@cabane/core"],
+		dependencies: ["@kabane/core"],
 		devDependencies: [],
 	},
-	"@cabane/questions": {
+	"@kabane/questions": {
 		layer: "data module",
-		dependencies: ["@cabane/core"],
-		devDependencies: ["@cabane/sqlite"],
+		dependencies: ["@kabane/core"],
+		devDependencies: ["@kabane/sqlite"],
 	},
-	"@cabane/checklist": {
+	"@kabane/checklist": {
 		layer: "data module",
-		dependencies: ["@cabane/core"],
-		devDependencies: ["@cabane/sqlite"],
+		dependencies: ["@kabane/core"],
+		devDependencies: ["@kabane/sqlite"],
 	},
-	"@cabane/handoff": {
+	"@kabane/handoff": {
 		layer: "data module",
-		dependencies: ["@cabane/core"],
+		dependencies: ["@kabane/core"],
 		devDependencies: [],
 	},
-	"@cabane/outcome": {
+	"@kabane/outcome": {
 		layer: "data module",
-		dependencies: ["@cabane/core"],
+		dependencies: ["@kabane/core"],
 		devDependencies: [],
 	},
-	"@cabane/extension": {
+	"@kabane/extension": {
 		layer: "extension contract",
-		dependencies: ["@cabane/core"],
+		dependencies: ["@kabane/core"],
 		devDependencies: [],
 	},
-	"@cabane/acp": {
+	"@kabane/acp": {
 		layer: "harness client",
-		dependencies: ["@cabane/core"],
+		dependencies: ["@kabane/core"],
 		devDependencies: [],
 	},
-	"@cabane/board": {
+	"@kabane/board": {
 		layer: "client",
 		dependencies: [
-			"@cabane/core",
-			"@cabane/checklist",
-			"@cabane/questions",
-			"@cabane/acp",
-			"@cabane/extension",
+			"@kabane/core",
+			"@kabane/checklist",
+			"@kabane/questions",
+			"@kabane/acp",
+			"@kabane/extension",
 		],
-		devDependencies: ["@cabane/handoff", "@cabane/sqlite"],
+		devDependencies: ["@kabane/handoff", "@kabane/sqlite"],
 		// The gallery and its stories are dev tooling: `bun run gallery` and the render tests.
 		testSupport: [
 			"packages/board/gallery.tsx",
@@ -82,50 +82,50 @@ export const layers: Readonly<Record<string, Rule>> = {
 		layer: "host",
 		testSupport: ["packages/cli/issue-corpus-harness.ts"],
 		dependencies: [
-			"@cabane/acp",
-			"@cabane/board",
-			"@cabane/checklist",
-			"@cabane/core",
-			"@cabane/extension",
-			"@cabane/handoff",
-			"@cabane/outcome",
-			"@cabane/questions",
-			"@cabane/sqlite",
+			"@kabane/acp",
+			"@kabane/board",
+			"@kabane/checklist",
+			"@kabane/core",
+			"@kabane/extension",
+			"@kabane/handoff",
+			"@kabane/outcome",
+			"@kabane/questions",
+			"@kabane/sqlite",
 		],
 		devDependencies: [],
 	},
-	"cabane-worker": {
+	"kabane-worker": {
 		layer: "hub",
 		dependencies: [
-			"@cabane/core",
-			"@cabane/checklist",
-			"@cabane/handoff",
-			"@cabane/outcome",
-			"@cabane/questions",
+			"@kabane/core",
+			"@kabane/checklist",
+			"@kabane/handoff",
+			"@kabane/outcome",
+			"@kabane/questions",
 		],
 		devDependencies: [],
 	},
-	"@cabane/loop": {
+	"@kabane/loop": {
 		testSupport: [
 			"extensions/loop/src/test-host.ts",
 			"extensions/loop/src/test-sessions.ts",
 		],
 		layer: "extension",
 		// An extension brings its own harness client and bundles it (JCAB-316:2).
-		dependencies: ["@cabane/acp"],
-		devDependencies: ["@cabane/checklist", "@cabane/core", "@cabane/extension"],
+		dependencies: ["@kabane/acp"],
+		devDependencies: ["@kabane/checklist", "@kabane/core", "@kabane/extension"],
 	},
-	"@cabane/dispatch": {
+	"@kabane/dispatch": {
 		layer: "extension",
 		// Templates, copilot files and node built-ins: no harness client to bundle.
 		dependencies: [],
-		devDependencies: ["@cabane/core", "@cabane/extension"],
+		devDependencies: ["@kabane/core", "@kabane/extension"],
 	},
-	"@cabane/recipes": {
+	"@kabane/recipes": {
 		layer: "extension",
 		// Recipe files, its run table and the hc CLI: no harness client to bundle.
 		dependencies: [],
-		devDependencies: ["@cabane/core", "@cabane/extension"],
+		devDependencies: ["@kabane/core", "@kabane/extension"],
 	},
 };
 
@@ -152,7 +152,7 @@ function dependencyFindings(
 				? rule.dependencies
 				: [...rule.dependencies, ...rule.devDependencies];
 		for (const dependency of Object.keys(pkg[field]).sort()) {
-			if (!names.has(dependency) && !dependency.startsWith("@cabane/"))
+			if (!names.has(dependency) && !dependency.startsWith("@kabane/"))
 				continue;
 			if (allowed.includes(dependency)) continue;
 			if (field === "dependencies" && rule.exceptions?.[dependency]) continue;
@@ -283,7 +283,7 @@ function workspaceImportFinding(
 		: specifier.split("/")[0];
 	if (!dependency || dependency === pkg.name) return undefined;
 	if (
-		!dependency.startsWith("@cabane/") &&
+		!dependency.startsWith("@kabane/") &&
 		!packages.some((other) => other.name === dependency)
 	)
 		return undefined;
@@ -316,12 +316,12 @@ function importsCoreTestSupport(
 	if (
 		CORE_TEST_SUPPORT.some(
 			({ subpath, directory }) =>
-				specifier === `@cabane/core/${subpath}` ||
-				(directory && specifier.startsWith(`@cabane/core/${subpath}/`)),
+				specifier === `@kabane/core/${subpath}` ||
+				(directory && specifier.startsWith(`@kabane/core/${subpath}/`)),
 		)
 	)
 		return true;
-	if (pkg.name !== "@cabane/core" || !specifier.startsWith(".")) return false;
+	if (pkg.name !== "@kabane/core" || !specifier.startsWith(".")) return false;
 	const target = relative(pkg.directory, resolve(dirname(file), specifier))
 		.split(sep)
 		.join("/");
@@ -390,7 +390,7 @@ function importFindings(
 			const location = `${relative(root, file)}:${line}`;
 			if (!testSupport && importsCoreTestSupport(pkg, file, specifier)) {
 				findings.push(
-					`${pkg.name} -> @cabane/core: production import ${specifier} in ${location} uses test support; move it to a test or listed test-support file.`,
+					`${pkg.name} -> @kabane/core: production import ${specifier} in ${location} uses test support; move it to a test or listed test-support file.`,
 				);
 				continue;
 			}

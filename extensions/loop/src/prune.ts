@@ -8,8 +8,8 @@
 // loop made, under KABANE_HOME/loops, is ever removed, and never one a live run works in or a
 // landing by hand holds (`Worktree.lock`).
 import { existsSync } from "node:fs";
-import { type Result } from "@cabane/core";
-import type { Host } from "@cabane/extension";
+import { type Result } from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { Land } from "./land";
 import { Parent } from "./parent";
 import { Paths } from "./paths";

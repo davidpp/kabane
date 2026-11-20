@@ -12,7 +12,7 @@
 // The heading under the cursor is the last one scrolled past. When the poll brings a newer entry
 // while the reader is open, that heading is kept where it was on screen; when the newer entry has no
 // heading of that name, the reader goes back to the top.
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import {

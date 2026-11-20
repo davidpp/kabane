@@ -12,7 +12,7 @@ import {
 	methods,
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import { AcpClient } from "./client";
 
 type Seen = { newSession: unknown[]; prompts: unknown[]; cancels: number };

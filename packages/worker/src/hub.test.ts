@@ -11,7 +11,7 @@
  */
 
 import { env, runInDurableObject } from "cloudflare:test";
-import { conformanceCases, Deadline, Migrate, Planner } from "@cabane/core";
+import { conformanceCases, Deadline, Migrate, Planner } from "@kabane/core";
 import { describe, expect, it } from "vitest";
 import { DoDb } from "./db-do";
 import { type CabaneHub, HUB_BASE, hubTimezone } from "./hub";

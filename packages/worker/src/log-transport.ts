@@ -24,7 +24,7 @@ import {
 	SyncOpSchema,
 	type SyncTransport,
 	tryCatch,
-} from "@cabane/core";
+} from "@kabane/core";
 import type { CabaneLog } from "./log";
 import { MAX_PULL_LIMIT, type PullPage as WirePullPage } from "./wire";
 

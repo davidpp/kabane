@@ -1,5 +1,5 @@
-import { ok, tryCatch } from "@cabane/core";
-import type { Doctor } from "@cabane/extension";
+import { ok, tryCatch } from "@kabane/core";
+import type { Doctor } from "@kabane/extension";
 import { checkout } from "./checkout";
 import { install } from "./install";
 import { project } from "./project";

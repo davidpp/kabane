@@ -1,4 +1,4 @@
-// Public entry for @cabane/board. JSX-free on purpose: the render lifecycle lives in src/start.tsx so
+// Public entry for @kabane/board. JSX-free on purpose: the render lifecycle lives in src/start.tsx so
 // consumers that reach startBoard's type (e.g. the CLI) don't need OpenTUI's jsxImportSource.
 export { App, type AppProps } from "./src/app";
 export { Board, type BoardProps } from "./src/board";

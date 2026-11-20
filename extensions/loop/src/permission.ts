@@ -7,8 +7,8 @@
 // maps its label back to the harness's option id, and answers the
 // harness with it. A run that stops while it waits, or a harness that withdraws the request,
 // cancels it through ACP instead and closes the question as withdrawn (`questions.ts`).
-import type { AcpClient } from "@cabane/acp";
-import { type Result } from "@cabane/core";
+import type { AcpClient } from "@kabane/acp";
+import { type Result } from "@kabane/core";
 import {
 	formatQuestionBody,
 	type PermissionRequestMeta,

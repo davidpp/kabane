@@ -8,11 +8,11 @@
 // The loop session itself is opened and closed by the runner, which owns the claim; this module
 // emits the session stream through its hooks. The one tracker write of its own: an implementing session that closed an issue
 // whose checklist still has items open has it reopened, and is nudged to go on from the first.
-import { AcpClient } from "@cabane/acp/client";
-import { Harnesses } from "@cabane/acp/harnesses";
-import { ToolCalls } from "@cabane/acp/tool-calls";
-import { type Result, type Task } from "@cabane/core";
-import type { Host } from "@cabane/extension";
+import { AcpClient } from "@kabane/acp/client";
+import { Harnesses } from "@kabane/acp/harnesses";
+import { ToolCalls } from "@kabane/acp/tool-calls";
+import { type Result, type Task } from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { Brief } from "./brief";
 import type { Budget } from "./budget";
 import { Checklists } from "./checklists";

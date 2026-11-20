@@ -17,7 +17,7 @@
  * mapping with hand-made tokens; `wrangler.jsonc` never sets it.
  */
 
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { err, ok, type Result, tryCatch, trySync } from "@kabane/core";
 import {
 	createRemoteJWKSet,
 	decodeJwt,

@@ -11,8 +11,8 @@ import {
 	symlinkSync,
 } from "node:fs";
 import { join, relative } from "node:path";
-import type { Result } from "@cabane/core";
-import type { Doctor, Extension, Host } from "@cabane/extension";
+import type { Result } from "@kabane/core";
+import type { Doctor, Extension, Host } from "@kabane/extension";
 import { ok, trySync } from "./result";
 import { Templates } from "./templates";
 

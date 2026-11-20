@@ -10,9 +10,9 @@ import {
 	CopilotInstructions as HarnessInstructions,
 	type Harnesses,
 	ToolCalls,
-} from "@cabane/acp";
-import { err, ok, type Result } from "@cabane/core";
-import type { CopilotShortcut } from "@cabane/extension";
+} from "@kabane/acp";
+import { err, ok, type Result } from "@kabane/core";
+import type { CopilotShortcut } from "@kabane/extension";
 import { BoardContext } from "./context";
 import { CopilotInstructions } from "./copilot-instructions";
 import { Mailbox } from "./mailbox";

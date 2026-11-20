@@ -1,6 +1,6 @@
 import "./test-host";
 import { describe, expect, it } from "bun:test";
-import type { Task } from "@cabane/core";
+import type { Task } from "@kabane/core";
 import { Brief } from "./brief";
 import type { Gates } from "./gates";
 

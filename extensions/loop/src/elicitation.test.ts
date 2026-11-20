@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { join } from "node:path";
-import type { AcpClient } from "@cabane/acp";
-import { Planner, type Result } from "@cabane/core";
+import type { AcpClient } from "@kabane/acp";
+import { Planner, type Result } from "@kabane/core";
 import { Elicitation } from "./elicitation";
 import { isAnswerTo, parseQuestionBody } from "./question-body";
 import type { RunStore } from "./store";

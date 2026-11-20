@@ -10,7 +10,7 @@ import {
 	tryCatch,
 	trySync,
 	type ToolContext,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	createHostRecord,
 	createHostStore,
@@ -24,7 +24,7 @@ import {
 	success,
 	usage,
 	Settings,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { z } from "zod";
 import { version } from "../package.json";
 import { type Config, harnessMode, loadConfig } from "./config";

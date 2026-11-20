@@ -4,7 +4,7 @@
 // issue, show each outcome and the next step, then the board. Frames are checked at 120 columns and
 // at the 40-column pane PRODUCT.md targets.
 import { describe, expect, it } from "bun:test";
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import { type CapturedSpan, RGBA, TextAttributes } from "@opentui/core";
 import {
 	AGENTS_NOTE,

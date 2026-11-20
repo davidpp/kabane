@@ -1,5 +1,5 @@
-import { DEFAULT_ENTRY_KIND, Planner } from "@cabane/core";
-import { failure, flagString, success, usage } from "@cabane/extension";
+import { DEFAULT_ENTRY_KIND, Planner } from "@kabane/core";
+import { failure, flagString, success, usage } from "@kabane/extension";
 import { authorTypeOf } from "../config";
 import type { Command } from "../context";
 

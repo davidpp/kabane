@@ -1,5 +1,5 @@
-import { failure, flagString, success, usage } from "@cabane/extension";
-import { questionMarkdown, Questions } from "@cabane/questions";
+import { failure, flagString, success, usage } from "@kabane/extension";
+import { questionMarkdown, Questions } from "@kabane/questions";
 import type { Command } from "../context";
 
 export const answer: Command = {

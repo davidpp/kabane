@@ -2,8 +2,8 @@
 // now, which subtasks a free slot would claim first and what each of the others waits on, the
 // longest chain of blockers, and what could go wrong. Pure over a loaded plan and the risks core
 // `lint` found, so it is the same plan the runner will read on its first tick.
-import type { Task } from "@cabane/core";
-import type { PanelLine, PanelPart } from "@cabane/extension";
+import type { Task } from "@kabane/core";
+import type { PanelLine, PanelPart } from "@kabane/extension";
 import type { LoopAdvice } from "./advice";
 import { LoopPlan } from "./plan";
 

@@ -2,8 +2,8 @@
 // `X` stops it while `x` still cancels the task, and its other actions answer only where the
 // detail has no key of its own.
 import { describe, expect, it } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import { DetailCard } from "./detail-card";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";

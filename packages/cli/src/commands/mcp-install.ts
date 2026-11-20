@@ -6,7 +6,7 @@ import {
 	type ParsedArgs,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { resolveHome } from "../config";
 import { McpClients } from "../mcp-clients";
 import { findProjectRoot } from "../scope/detect";
