@@ -79,7 +79,7 @@ export namespace Loop {
 		config?: LoopConfig.Overrides;
 	};
 
-	const RUNNER_ACTOR = "cabane://actor/agent/loop";
+	const RUNNER_ACTOR = "kabane://actor/agent/loop";
 	const BOOT_MS = 15_000;
 	const STOP_WAIT_MS = 30_000;
 	const POLL_MS = 100;

@@ -31,7 +31,7 @@ const register = (enabled: boolean, actor: string) =>
 		Runtime.configure({
 			provider: SqliteDb.provider(),
 			modules: enabled ? [checklistModule] : [],
-			actor: () => `cabane://actor/human/${actor}`,
+			actor: () => `kabane://actor/human/${actor}`,
 		}),
 	);
 const device = async (name: string, enabled: boolean) => {
@@ -66,7 +66,7 @@ it("parks item ops on a device without the module and replays them on registrati
 	expect(unwrap(await Sync.pull(beta, b)).replayed).toBe(2);
 	expect(unwrap(await Checklist.list(beta, task.id))[0]).toMatchObject({
 		done: true,
-		doneBy: "cabane://actor/human/alpha",
+		doneBy: "kabane://actor/human/alpha",
 		version: 2,
 	});
 });

@@ -13,12 +13,12 @@ describe("TaskSchema replication fields", () => {
 	it("accepts updatedBy and version as read back from storage", () => {
 		const parsed = TaskSchema.safeParse({
 			...base,
-			updatedBy: "cabane://actor/human/tester",
+			updatedBy: "kabane://actor/human/tester",
 			version: 3,
 		});
 		expect(parsed.success).toBe(true);
 		if (parsed.success) {
-			expect(parsed.data.updatedBy).toBe("cabane://actor/human/tester");
+			expect(parsed.data.updatedBy).toBe("kabane://actor/human/tester");
 			expect(parsed.data.version).toBe(3);
 		}
 	});
@@ -39,7 +39,7 @@ describe("TaskSchema replication fields", () => {
 	it("keeps both fields storage-owned: drafts strip them", () => {
 		const parsed = TaskDraftSchema.safeParse({
 			title: "Draft",
-			updatedBy: "cabane://actor/human/tester",
+			updatedBy: "kabane://actor/human/tester",
 			version: 9,
 		});
 		expect(parsed.success).toBe(true);

@@ -59,7 +59,7 @@ const createRun = (parent: Task, paused: boolean): RunStore.Run => {
 const deps = (signal?: AbortSignal) => ({
 	home,
 	basePath: home,
-	host: testHost(home, "cabane://actor/human/runner"),
+	host: testHost(home, "kabane://actor/human/runner"),
 	kabaneBin: "/nonexistent/kabane",
 	pid: process.pid,
 	overrides: TestHarnesses.overrides({
@@ -129,7 +129,7 @@ describe("Parent state across a run", () => {
 				{
 					uri: "loop:run-1",
 					label: "loop run started",
-					addedBy: "cabane://actor/human/runner",
+					addedBy: "kabane://actor/human/runner",
 				},
 			]);
 		});

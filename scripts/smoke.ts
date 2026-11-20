@@ -202,7 +202,7 @@ const checkCommands = (version: string): string => {
 		kabane(
 			"init",
 			"--actor",
-			"cabane://actor/human/smoke",
+			"kabane://actor/human/smoke",
 			"--device",
 			"smoke",
 		);
@@ -504,7 +504,7 @@ const checkMcpWrites = (replies: SmokeReply[], taskId: string): void => {
 		comments.length !== 4 ||
 		comments.some(
 			(comment) =>
-				comment.author !== "cabane://actor/human/smoke" ||
+				comment.author !== "kabane://actor/human/smoke" ||
 				comment.authorType !== "human",
 		)
 	)
@@ -680,7 +680,7 @@ if (binaryMode && input) {
 	);
 	// Leave KABANE_HOME unset once: dotenv would otherwise be masked by the explicit env.
 	runOk(
-		[BIN, "init", "--actor", "cabane://actor/human/smoke", "--device", "smoke"],
+		[BIN, "init", "--actor", "kabane://actor/human/smoke", "--device", "smoke"],
 		REPO,
 		{ ...isolated, KABANE_HOME: undefined },
 	);

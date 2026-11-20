@@ -32,7 +32,7 @@ const kabaneLoop = (...argv: string[]) => {
 		home,
 		store: home,
 		cwd: home,
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		harnessMode: "auto",
 		settings: Settings.port(async () => ok([])),
 	});
@@ -70,7 +70,7 @@ describe("kabane loop start", () => {
 			host: testHost(home),
 			kabaneBin: "/nonexistent/kabane",
 			cwd: home,
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			mode: "auto" as const,
 			settings: Settings.port(async () => ok([])),
 			runner: (runId: string) => [process.execPath, "-e", RUNNER, runId],
@@ -183,7 +183,7 @@ describe("kabane loop start", () => {
 			"--land",
 			"pr",
 			"--as",
-			"cabane://actor/human/test",
+			"kabane://actor/human/test",
 		);
 		// Past the flags: the parent is what is missing.
 		expect(started.exitCode).toBe(1);
@@ -474,7 +474,7 @@ describe("kabane loop advise", () => {
 				home,
 				store: home,
 				cwd: home,
-				actor: "cabane://actor/human/test",
+				actor: "kabane://actor/human/test",
 				harnessMode: "auto",
 				settings: Settings.port(async () =>
 					ok([
@@ -561,7 +561,7 @@ describe("kabane loop advise", () => {
 					home,
 					store: home,
 					cwd: home,
-					actor: "cabane://actor/human/test",
+					actor: "kabane://actor/human/test",
 					harnessMode: "auto",
 					settings: Settings.port(async () =>
 						ok(layers.map((l) => ({ ...l, label: l.layer }))),

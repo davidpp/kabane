@@ -12,7 +12,7 @@ import { testHost } from "./test-host";
 import { TestSessions } from "./test-sessions";
 
 let home = "";
-const ACTOR = "cabane://actor/human/david";
+const ACTOR = "kabane://actor/human/david";
 
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "loop-activity-"));

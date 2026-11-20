@@ -68,7 +68,7 @@ it("layers global, shared, the legacy scopes block, the local file and the calle
 	writeFileSync(
 		configPath(home),
 		JSON.stringify({
-			actor: "cabane://actor/human/tester",
+			actor: "kabane://actor/human/tester",
 			deviceId: "test",
 			extensions: ["loop"],
 			loop: { stallAfter: 4, gates: { lint: "user lint" } },
@@ -132,7 +132,7 @@ it("resolves before kabane init, and names the layer an error is in", async () =
 	writeFileSync(
 		configPath(home),
 		JSON.stringify({
-			actor: "cabane://actor/human/tester",
+			actor: "kabane://actor/human/tester",
 			deviceId: "test",
 			extensions: ["loop"],
 			scopes: [],

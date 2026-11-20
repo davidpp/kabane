@@ -170,6 +170,33 @@ test("an entry left on a version mise removed is mentioned with the harness, bot
 	]);
 });
 
+test("an entry from before the rename, which differs only by its old-prefix actor, is fixed automatically", async () => {
+	const s = setup();
+	const legacy = (harness: string, command?: string) => {
+		const launch = s.entry(harness, command);
+		return {
+			...launch,
+			args: launch.args.map((arg) =>
+				arg.replace("kabane://actor/", "cabane://actor/"),
+			),
+		};
+	};
+	s.claude({ kabane: legacy("claude") });
+	s.codex(legacy("codex"));
+	const found = await install(s.ctx, s.deps());
+	if (!found.ok) throw found.error;
+	expect(found.value.map(({ id, severity }) => `${id}:${severity}`)).toEqual([
+		"mcp-entry-actor-claude:auto",
+		"mcp-entry-actor-codex:auto",
+	]);
+	expect(found.value[0]?.summary).toContain("cabane://actor/agent/claude");
+	expect(found.value[0]?.summary).toContain("kabane://actor/agent/claude");
+	// An old prefix on an entry that also runs another kabane is that entry's stale finding alone.
+	s.claude({ kabane: legacy("claude", s.binary("1.0.0")) });
+	s.codex(s.entry("codex"));
+	expect(await s.ids()).toEqual(["mcp-entry-stale-claude:mention"]);
+});
+
 test("Claude's local scope for this project is read beside its user scope", async () => {
 	const s = setup();
 	s.claude(
@@ -265,7 +292,7 @@ test("the fix re-registers through mcp install --force, and only when named", as
 		s.binary("1.1.0"),
 		"mcp",
 		"--as",
-		"cabane://actor/agent/gemini",
+		"kabane://actor/agent/gemini",
 	]);
 });
 

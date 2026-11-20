@@ -62,12 +62,12 @@ describe("kabane cli", () => {
 		const r = await run(
 			"init",
 			"--actor",
-			"cabane://actor/human/tester",
+			"kabane://actor/human/tester",
 			"--device",
 			"t1",
 		);
 		expect(r.code).toBe(0);
-		expect(r.out).toContain("actor:  cabane://actor/human/tester");
+		expect(r.out).toContain("actor:  kabane://actor/human/tester");
 
 		const again = await run("init");
 		expect(again.code).toBe(1);
@@ -97,7 +97,7 @@ describe("kabane cli", () => {
 		}>(r);
 		expect(task.scopeUri).toBe("kabane://scope/demo");
 		expect(task.kind).toBe("issue");
-		expect(task.provenance.discoveredBy).toBe("cabane://actor/human/tester");
+		expect(task.provenance.discoveredBy).toBe("kabane://actor/human/tester");
 		issueId = task.shortId;
 
 		const t = await run(
@@ -196,14 +196,14 @@ describe("kabane cli", () => {
 			issueId,
 			"Picked up",
 			"--as",
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 			"--json",
 		);
 		expect(json<{ authorType: string; author: string }>(ai).authorType).toBe(
 			"ai",
 		);
 		expect(json<{ author: string }>(ai).author).toBe(
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 		);
 		const review = await run(
 			"comment",
@@ -212,7 +212,7 @@ describe("kabane cli", () => {
 			"--kind",
 			"review",
 			"--as",
-			"cabane://actor/agent/codex",
+			"kabane://actor/agent/codex",
 		);
 		expect(review.code).toBe(0);
 		expect(review.out).toContain(`review added to ${issueId}`);
@@ -253,9 +253,9 @@ describe("kabane cli", () => {
 		expect(shown.out).toContain("Links:");
 		expect(shown.out).toContain("Comments:");
 		expect(shown.out).toContain("Work log:");
-		expect(shown.out).toContain("🤖 cabane://actor/agent/claude");
+		expect(shown.out).toContain("🤖 kabane://actor/agent/claude");
 		expect(shown.out).toMatch(
-			/🤖 cabane:\/\/actor\/agent\/codex · \S+ · review\n {4}Reviewed: the runbook covers rollback/,
+			/🤖 kabane:\/\/actor\/agent\/codex · \S+ · review\n {4}Reviewed: the runbook covers rollback/,
 		);
 		expect(shown.out).not.toMatch(/claude · \S+ · comment/);
 
@@ -270,7 +270,7 @@ describe("kabane cli", () => {
 			"comment",
 			"review",
 		]);
-		expect(detail.task.updatedBy).toBe("cabane://actor/human/tester");
+		expect(detail.task.updatedBy).toBe("kabane://actor/human/tester");
 		expect(detail.task.version).toBeGreaterThanOrEqual(2);
 		expect(shown.out).not.toMatch(/^Version:/m);
 	});
@@ -430,7 +430,7 @@ describe("kabane cli", () => {
 	it("mcp serves the same tools over stdio, with the directory scope as default", async () => {
 		const transport = new StdioClientTransport({
 			command: "bun",
-			args: [BIN, "mcp", "--as", "cabane://actor/agent/codex"],
+			args: [BIN, "mcp", "--as", "kabane://actor/agent/codex"],
 			cwd,
 			env: { ...process.env, KABANE_HOME: home },
 		});
@@ -449,7 +449,7 @@ describe("kabane cli", () => {
 				(created.content as { text: string }[])[0]?.text ?? "{}",
 			) as { scopeUri: string; updatedBy: string; shortId: string };
 			expect(task.scopeUri).toBe("kabane://scope/demo");
-			expect(task.updatedBy).toBe("cabane://actor/agent/codex");
+			expect(task.updatedBy).toBe("kabane://actor/agent/codex");
 
 			const shown = await run("show", task.shortId, "--json");
 			expect(shown.code).toBe(0);
@@ -466,7 +466,7 @@ describe("MCP write inputs over the actual stdio entry point", () => {
 		mkdirSync(join(cwd, ".kabane"), { recursive: true });
 		writeFileSync(join(cwd, ".kabane", "scope"), "inputs\n");
 		const run = makeRunner(home, cwd);
-		const actor = "cabane://actor/agent/stdio-test";
+		const actor = "kabane://actor/agent/stdio-test";
 		const client = new Client({ name: "write-inputs-test", version: "0" });
 		try {
 			expect(
@@ -474,7 +474,7 @@ describe("MCP write inputs over the actual stdio entry point", () => {
 					await run(
 						"init",
 						"--actor",
-						"cabane://actor/human/tester",
+						"kabane://actor/human/tester",
 						"--device",
 						"inputs",
 					)
@@ -613,7 +613,7 @@ describe("the owner's timezone", () => {
 		const init = await run(
 			"init",
 			"--actor",
-			"cabane://actor/human/tester",
+			"kabane://actor/human/tester",
 			"--device",
 			"tz",
 		);

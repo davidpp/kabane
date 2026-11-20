@@ -41,7 +41,7 @@ describe("kabane board", () => {
 		mkdirSync(join(cwd, ".kabane"), { recursive: true });
 		writeFileSync(join(cwd, ".kabane", "scope"), "demo\n");
 		const saved = saveConfig(home, {
-			actor: "cabane://actor/human/tester",
+			actor: "kabane://actor/human/tester",
 			deviceId: "t1",
 			sync: { enabled: false, batchBytes: 262144 },
 		});

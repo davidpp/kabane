@@ -22,7 +22,7 @@ it("answers 500 with the duplicate tool error before serving Streamable HTTP", a
 			const response = await handleHttpRequest(
 				{
 					basePath: HUB_BASE,
-					actor: "cabane://actor/agent/test",
+					actor: "kabane://actor/agent/test",
 					scopeRequired: true,
 				},
 				new Request("https://kabane.test/mcp", {

@@ -45,7 +45,7 @@ it("counts no decisions or items and loads a task's detail without them", async 
 	const handoff = await Planner.addEntry(BASE, {
 		taskId: task.value.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "written by a host that declares the kind",
 	});

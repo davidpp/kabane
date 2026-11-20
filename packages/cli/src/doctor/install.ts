@@ -6,7 +6,7 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute } from "node:path";
-import { err, ok, type Result } from "@kabane/core";
+import { ActorScheme, err, ok, type Result } from "@kabane/core";
 import type { Doctor, Extension } from "@kabane/extension";
 import { McpInstall } from "../commands/mcp-install";
 import { projectAt } from "../context";
@@ -54,6 +54,12 @@ const bunOnly = (a: McpClients.Launch, b: McpClients.Launch): boolean =>
 	isBun(b.command) &&
 	McpClients.sameLaunch({ ...a, command: b.command }, b);
 
+/** `launch` with an old-prefix `--as` renamed: an entry `kabane mcp install` wrote before 1.0.0. */
+const renamed = (launch: McpClients.Launch): McpClients.Launch => ({
+	...launch,
+	args: launch.args.map((arg) => ActorScheme.current(arg)),
+});
+
 export const install = async (
 	ctx: Extension.Ctx,
 	deps: InstallDeps = {},
@@ -83,11 +89,45 @@ export const install = async (
 			continue;
 		}
 		const expected = McpClients.launchFor(launcher, harness);
-		const other = found.value.filter(
+		const current = (launch: McpClients.Launch): boolean =>
+			McpClients.sameLaunch(launch, expected) ||
+			(bunOnly(launch, expected) && launches(launch, which));
+		const reregister = async (): Promise<Result<string>> => {
+			const [report] = await McpInstall.run(
+				[harness],
+				{ force: true },
+				{
+					which,
+					launcher,
+					where,
+					...(deps.run ? { run: deps.run } : {}),
+				},
+			);
+			if (report?.status === "failed") return err(new Error(report.error));
+			if (report?.status !== "replaced" && report?.status !== "installed")
+				return err(new Error(`${harness}: ${report?.status ?? "not run"}`));
+			return ok(`${harness} now runs ${shown(expected)}`);
+		};
+		const differing = found.value.filter((r) => !current(r.launch));
+		// An entry that differs only by its old-prefix actor is this kabane's own, from before the
+		// rename: nothing about it is deliberate, so re-registering it is automatic.
+		const legacy = differing.filter(
 			(r) =>
-				!McpClients.sameLaunch(r.launch, expected) &&
-				!(bunOnly(r.launch, expected) && launches(r.launch, which)),
+				r.launch.args.some(ActorScheme.isLegacy) && current(renamed(r.launch)),
 		);
+		if (legacy.length > 0)
+			findings.push({
+				id: `mcp-entry-actor-${harness}`,
+				severity: "auto",
+				path: legacy[0]?.path,
+				summary: `${harness}'s kabane MCP entry runs as ${legacy
+					.flatMap((r) => r.launch.args.filter(ActorScheme.isLegacy))
+					.join(
+						", ",
+					)}, under the ${ActorScheme.LEGACY_PREFIX} prefix kabane no longer reads; --fix re-registers it as ${McpClients.actorFor(harness)}.`,
+				fix: reregister,
+			});
+		const other = differing.filter((r) => !legacy.includes(r));
 		if (other.length === 0) continue;
 		const id = `mcp-entry-stale-${harness}`;
 		const dead = other.filter((r) => !launches(r.launch, which));
@@ -105,22 +145,7 @@ export const install = async (
 				dead.length > 0
 					? `${harness}'s kabane MCP entry no longer launches: it runs ${registered}; this kabane is ${shown(expected)}. ${command} re-registers it.`
 					: `${harness}'s kabane MCP entry runs another kabane: ${registered}; this one is ${shown(expected)}. If that is not deliberate, ${command} re-points it here.`,
-			fix: async () => {
-				const [report] = await McpInstall.run(
-					[harness],
-					{ force: true },
-					{
-						which,
-						launcher,
-						where,
-						...(deps.run ? { run: deps.run } : {}),
-					},
-				);
-				if (report?.status === "failed") return err(new Error(report.error));
-				if (report?.status !== "replaced" && report?.status !== "installed")
-					return err(new Error(`${harness}: ${report?.status ?? "not run"}`));
-				return ok(`${harness} now runs ${shown(expected)}`);
-			},
+			fix: reregister,
 		});
 	}
 	return ok(findings);

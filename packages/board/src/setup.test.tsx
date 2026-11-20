@@ -318,7 +318,7 @@ describe("SetupScreen form", () => {
 			expect(seen.filed).toEqual(["claude"]);
 			expect(seen.saved).toEqual([
 				{
-					actor: "cabane://actor/human/david",
+					actor: "kabane://actor/human/david",
 					deviceId: "mbp",
 					install: ["claude", "codex"],
 				},
@@ -378,7 +378,7 @@ describe("SetupScreen form", () => {
 			await until((f) => f.includes("Ada Lovelace"));
 			mockInput.pressEnter();
 			await until(() => seen.saved.length === 1);
-			expect(seen.saved[0]?.actor).toBe("cabane://actor/human/ada-lovelace");
+			expect(seen.saved[0]?.actor).toBe("kabane://actor/human/ada-lovelace");
 		} finally {
 			destroy();
 		}

@@ -22,7 +22,7 @@ const device = async () => {
 	homes.push(home);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const init = await run(
-		["init", "--actor", "cabane://actor/human/test", "--device", "test"],
+		["init", "--actor", "kabane://actor/human/test", "--device", "test"],
 		env,
 		home,
 	);

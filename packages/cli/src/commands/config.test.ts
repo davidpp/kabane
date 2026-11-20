@@ -15,7 +15,7 @@ import { GitFixture } from "@kabane/core/git-fixture";
 import { detectScope, ProjectDirs } from "../scope/detect";
 
 const initial = {
-	actor: "cabane://actor/human/tester",
+	actor: "kabane://actor/human/tester",
 	deviceId: "test",
 	extensions: ["loop"],
 };

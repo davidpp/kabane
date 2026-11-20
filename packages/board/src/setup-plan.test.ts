@@ -43,7 +43,7 @@ describe("plan", () => {
 		expect(planned).toEqual({
 			ok: true,
 			value: {
-				actor: "cabane://actor/human/david",
+				actor: "kabane://actor/human/david",
 				deviceId: "mbp",
 				install: ["claude", "codex"],
 			},
@@ -74,7 +74,7 @@ describe("plan", () => {
 			DEFAULTS,
 		);
 		expect(planned.ok && planned.value.actor).toBe(
-			"cabane://actor/human/david-paquet",
+			"kabane://actor/human/david-paquet",
 		);
 	});
 

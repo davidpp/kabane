@@ -17,7 +17,7 @@ beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "kabane-questions-"));
 	configureTestRuntime({
 		modules: [questionsModule],
-		actor: () => "cabane://actor/human/test",
+		actor: () => "kabane://actor/human/test",
 	});
 	unwrap(await Planner.init(base));
 	unwrap(await withDb(base, (db) => Oplog.initDevice(db, "questions-test")));
@@ -67,7 +67,7 @@ it("migrates prefixed tables, assigns stable ordinals and captures every write",
 	expect(reanswer.question).toMatchObject({
 		answer: "Remote",
 		version: 3,
-		answeredBy: "cabane://actor/human/test",
+		answeredBy: "kabane://actor/human/test",
 	});
 	expect(
 		unwrap(await Questions.list(base, { id: task.id, status: "open" })).map(
@@ -85,7 +85,7 @@ it("migrates prefixed tables, assigns stable ordinals and captures every write",
 	);
 	expect(ops).toHaveLength(4);
 	expect(
-		ops.every((op) => op.module === "questions" && op.module_schema === 1),
+		ops.every((op) => op.module === "questions" && op.module_schema === 2),
 	).toBe(true);
 });
 
@@ -161,7 +161,7 @@ it("renders selected brief decisions and omits withdrawals", async () => {
 	);
 	const brief = unwrap(await Planner.assembleContext(base, task.id));
 	expect(brief).toContain(
-		"Which store? (choices only) → SQLite (cabane://actor/human/test, Local)",
+		"Which store? (choices only) → SQLite (kabane://actor/human/test, Local)",
 	);
 	expect(brief).not.toContain("Which name?");
 });
@@ -520,7 +520,7 @@ it("replaces an open question in one write: withdrawn as replaced, the issue sti
 	expect(unwrap(await Questions.list(base, { id: task.id }))[0]).toMatchObject({
 		status: "withdrawn",
 		reasoning: `${Questions.REPLACED_REASON} ${second.handle} id:${second.id}`,
-		answeredBy: "cabane://actor/human/test",
+		answeredBy: "kabane://actor/human/test",
 	});
 	expect(unwrap(await Planner.getTask(base, task.id))?.state).toBe("waiting");
 	const answered = unwrap(
@@ -613,7 +613,7 @@ it("closing an issue withdraws its open questions as issue closed, keeps answers
 			["withdrawn", undefined, Questions.CLOSED_REASON],
 		]);
 		expect(closed[1]).toMatchObject({
-			answeredBy: "cabane://actor/human/test",
+			answeredBy: "kabane://actor/human/test",
 			version: 2,
 		});
 		expect(await questionOps()).toBe((before ?? 0) + 1);

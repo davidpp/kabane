@@ -258,10 +258,10 @@ export namespace Fixtures {
 		id: `01H00000000000000000000Q${n}0`,
 		taskId: on.id,
 		status: "open",
-		askedBy: "cabane://actor/agent/claude",
+		askedBy: "kabane://actor/agent/claude",
 		createdAt: "2026-10-10T00:00:00.000Z",
 		updatedAt: "2026-10-10T00:00:00.000Z",
-		updatedBy: "cabane://actor/agent/claude",
+		updatedBy: "kabane://actor/agent/claude",
 		version: 1,
 		visibility: "shared",
 		body: formatDecisionBody(question, meta),
@@ -288,13 +288,13 @@ export namespace Fixtures {
 		...(done
 			? {
 					doneAt: "2026-10-10T00:00:00.000Z",
-					doneBy: "cabane://actor/agent/claude",
+					doneBy: "kabane://actor/agent/claude",
 				}
 			: {}),
 		rank: `a${n}`,
 		createdAt: "2026-10-10T00:00:00.000Z",
 		updatedAt: "2026-10-10T00:00:00.000Z",
-		updatedBy: "cabane://actor/agent/claude",
+		updatedBy: "kabane://actor/agent/claude",
 		version: 1,
 		visibility: "shared",
 		handle: `${on.shortId ?? on.id}.${n}`,
@@ -317,7 +317,7 @@ export namespace Fixtures {
 		taskId: on.id,
 		kind,
 		author,
-		authorType: author.startsWith("cabane://actor/agent/") ? "ai" : "human",
+		authorType: author.startsWith("kabane://actor/agent/") ? "ai" : "human",
 		content,
 		createdAt: `2026-10-10T${String(n).padStart(2, "0")}:00:00.000Z`,
 	});
@@ -479,7 +479,7 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 			{
 				label: "actor",
 				group: "Identity",
-				value: "cabane://actor/human/ada",
+				value: "kabane://actor/human/ada",
 				layer: "global",
 				from: `${HOME}/config.json`,
 				readOnly: true,

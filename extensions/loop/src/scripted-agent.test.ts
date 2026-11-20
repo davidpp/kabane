@@ -92,7 +92,7 @@ it("commits once and closes its own issue through kabane MCP, given the loop's i
 				{
 					name: "kabane",
 					command: process.execPath,
-					args: [CLI, "mcp", "--as", "cabane://actor/agent/gemini"],
+					args: [CLI, "mcp", "--as", "kabane://actor/agent/gemini"],
 					env: { KABANE_HOME: home },
 				},
 			],

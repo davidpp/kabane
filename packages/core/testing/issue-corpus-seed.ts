@@ -151,7 +151,7 @@ const seed = async (): Promise<Result<string[]>> => {
 	const provider = SqliteDb.provider();
 	Runtime.configure({
 		provider,
-		actor: () => "cabane://actor/human/fixture",
+		actor: () => "kabane://actor/human/fixture",
 		timezone: () => "UTC",
 	});
 	const initialized = await Planner.init(home);

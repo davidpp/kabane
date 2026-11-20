@@ -3178,7 +3178,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 });
 
 describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
-	const ACTOR = "cabane://actor/agent/claude";
+	const ACTOR = "kabane://actor/agent/claude";
 	const TURN_START = "2026-09-12T10:00:00.000Z";
 	const before = "2026-09-12T09:59:59.000Z";
 	const after = "2026-09-12T10:00:01.000Z";
@@ -3195,7 +3195,7 @@ describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
 		const human = task({
 			id: "human",
 			parentTaskId: "agent",
-			updatedBy: "cabane://actor/human/david",
+			updatedBy: "kabane://actor/human/david",
 			updatedAt: after,
 		});
 		const stale = task({

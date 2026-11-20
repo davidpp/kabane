@@ -42,7 +42,7 @@ export type Story = {
 	render: () => ReactNode;
 };
 
-const CLAUDE = "cabane://actor/agent/claude";
+const CLAUDE = "kabane://actor/agent/claude";
 const { task, section } = Fixtures;
 
 const SECTIONS = [
@@ -307,7 +307,7 @@ const TIMELINE = [
 		STEPWISE,
 		3,
 		"review",
-		"cabane://actor/agent/codex",
+		"kabane://actor/agent/codex",
 		"The migration is idempotent. `write` misses one error path.",
 	),
 ];
@@ -318,14 +318,14 @@ const LONG_COMMENT = Fixtures.entry(
 	STEPWISE,
 	3,
 	"comment",
-	"cabane://actor/agent/claude-sonnet-4-5-20250929-preview",
+	"kabane://actor/agent/claude-sonnet-4-5-20250929-preview",
 	"Starting on the read path.",
 );
 const LONG_HANDOFF = Fixtures.entry(
 	STEPWISE,
 	4,
 	"handoff",
-	"cabane://actor/agent/claude-sonnet-4-20250514",
+	"kabane://actor/agent/claude-sonnet-4-20250514",
 	"Picked up where the first pass stopped.",
 );
 
@@ -416,7 +416,7 @@ const WAVE_RECORDS = Fixtures.records(WAVE, {
 			{
 				status: "answered",
 				answer: "An entry kind",
-				answeredBy: "cabane://actor/human/david",
+				answeredBy: "kabane://actor/human/david",
 				reasoning: "one timeline",
 			},
 		),
@@ -1041,14 +1041,14 @@ export const STORIES: readonly Story[] = [
 					...STORE_DECISION,
 					status: "answered",
 					answer: "SQLite",
-					answeredBy: "cabane://actor/human/david",
+					answeredBy: "kabane://actor/human/david",
 					reasoning: "the hub syncs it anyway",
 				},
 				{
 					...CHECKS_DECISION,
 					status: "answered",
 					answer: "Lint, Tests",
-					answeredBy: "cabane://actor/human/david",
+					answeredBy: "kabane://actor/human/david",
 				},
 			]),
 	},

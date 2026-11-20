@@ -31,7 +31,7 @@ const connect = async (
 	const server = unwrap(
 		createMcpServer({
 			basePath: base,
-			actor: "cabane://actor/agent/test",
+			actor: "kabane://actor/agent/test",
 			humanActor,
 			scopeRequired,
 			defaultScope,
@@ -152,8 +152,8 @@ it("rejects invalid MCP inputs, answers by the id kabane_ask returns, and record
 		expect(row).toMatchObject({
 			id,
 			answer: "B",
-			askedBy: "cabane://actor/agent/test",
-			answeredBy: "cabane://actor/agent/test",
+			askedBy: "kabane://actor/agent/test",
+			answeredBy: "kabane://actor/agent/test",
 		});
 	} finally {
 		await client.close();
@@ -283,7 +283,7 @@ it("credits a relayed answer to the human, the plain one to the agent, and refus
 	// As `kabane mcp --as <agent>` runs: every write stamped by the agent.
 	configureTestRuntime({
 		modules: [questionsModule],
-		actor: () => "cabane://actor/agent/test",
+		actor: () => "kabane://actor/agent/test",
 	});
 	const task = unwrap(
 		await Planner.addTask(base, { title: "Relay", kind: "issue" }),
@@ -314,7 +314,7 @@ it("credits a relayed answer to the human, the plain one to the agent, and refus
 	const relaying = await connect(
 		false,
 		undefined,
-		"cabane://actor/human/david",
+		"kabane://actor/human/david",
 	);
 	const bare = await connect(false);
 	try {
@@ -335,15 +335,15 @@ it("credits a relayed answer to the human, the plain one to the agent, and refus
 		});
 		expect(refused).toEqual({
 			isError: true,
-			text: "Error: relayed: true needs the human this connection relays for, and cabane://actor/agent/test has none configured. Omit relayed to record the answer as cabane://actor/agent/test.",
+			text: "Error: relayed: true needs the human this connection relays for, and kabane://actor/agent/test has none configured. Omit relayed to record the answer as kabane://actor/agent/test.",
 		});
 		const rows = unwrap(await Questions.list(base, { id: task.id }));
 		expect(
 			rows.map((row) => [row.status, row.answeredBy, row.updatedBy]),
 		).toEqual([
-			["answered", "cabane://actor/human/david", "cabane://actor/agent/test"],
-			["answered", "cabane://actor/agent/test", "cabane://actor/agent/test"],
-			["open", undefined, "cabane://actor/agent/test"],
+			["answered", "kabane://actor/human/david", "kabane://actor/agent/test"],
+			["answered", "kabane://actor/agent/test", "kabane://actor/agent/test"],
+			["open", undefined, "kabane://actor/agent/test"],
 		]);
 		const brief = await relaying.callTool({
 			name: "kabane_context",
@@ -354,7 +354,7 @@ it("credits a relayed answer to the human, the plain one to the agent, and refus
 			},
 		});
 		expect(JSON.stringify(brief.content)).toContain(
-			"Relayed? → Yes (cabane://actor/human/david)",
+			"Relayed? → Yes (kabane://actor/human/david)",
 		);
 	} finally {
 		await relaying.close();

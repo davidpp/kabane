@@ -11,7 +11,7 @@ describe("kabane-worker", () => {
 		expect(await res.json()).toEqual({
 			ok: true,
 			service: "kabane-worker",
-			actor: "cabane://actor/human/david",
+			actor: "kabane://actor/human/david",
 		});
 	});
 

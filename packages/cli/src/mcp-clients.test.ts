@@ -28,7 +28,7 @@ describe("McpClients", () => {
 				"/home/me/cabane/packages/cli/index.ts",
 				"mcp",
 				"--as",
-				"cabane://actor/agent/codex",
+				"kabane://actor/agent/codex",
 			],
 		});
 	});
@@ -97,20 +97,20 @@ describe("McpClients", () => {
 		const claude = JSON.parse(McpClients.snippetFor("claude", LAUNCHER).text);
 		expect(claude.mcpServers.kabane.command).toBe("/opt/bun/bin/bun");
 		expect(claude.mcpServers.kabane.args.at(-1)).toBe(
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 		);
 
 		expect(McpClients.snippetFor("codex", LAUNCHER).text).toBe(
 			[
 				"[mcp_servers.kabane]",
 				'command = "/opt/bun/bin/bun"',
-				'args = ["/home/me/cabane/packages/cli/index.ts", "mcp", "--as", "cabane://actor/agent/codex"]',
+				'args = ["/home/me/cabane/packages/cli/index.ts", "mcp", "--as", "kabane://actor/agent/codex"]',
 			].join("\n"),
 		);
 
 		const gemini = JSON.parse(McpClients.snippetFor("gemini", LAUNCHER).text);
 		expect(gemini.mcpServers.kabane.args.at(-1)).toBe(
-			"cabane://actor/agent/gemini",
+			"kabane://actor/agent/gemini",
 		);
 	});
 
@@ -122,7 +122,7 @@ describe("McpClients", () => {
 				"/home/me/cabane/packages/cli/index.ts",
 				"mcp",
 				"--as",
-				"cabane://actor/agent/<client>",
+				"kabane://actor/agent/<client>",
 			],
 		});
 	});

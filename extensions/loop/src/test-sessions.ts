@@ -91,7 +91,7 @@ export namespace TestSessions {
 				home,
 				basePath: home,
 				host: testHost(home),
-				actor: "cabane://actor/human/test",
+				actor: "kabane://actor/human/test",
 			},
 			input.questionId,
 			input.answer,

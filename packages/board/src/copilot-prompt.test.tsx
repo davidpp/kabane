@@ -832,7 +832,7 @@ const mountPane = async (
 describe("the copilot pane's look", () => {
 	it("is a raised panel with no frame, titled as a Label, the harness in the text color, over a field one step up", async () => {
 		const { frame, spans, destroy } = await mountPane(
-			Fixtures.copilot({ actor: "cabane://actor/agent/claude" }),
+			Fixtures.copilot({ actor: "kabane://actor/agent/claude" }),
 			true,
 		);
 		try {
@@ -986,7 +986,7 @@ describe("the ask panel's height", () => {
 			<CopilotPane
 				copilot={Fixtures.copilot({
 					asks: [ask],
-					actor: "cabane://actor/agent/claude",
+					actor: "kabane://actor/agent/claude",
 				})}
 				chip="JALL-1"
 				focused={ask.type === "permission"}
@@ -1061,7 +1061,7 @@ describe("the ask panel's height", () => {
 
 describe("the pane's words", () => {
 	it("harnessOf reads the harness from the actor, and nothing from no actor", () => {
-		expect(harnessOf("cabane://actor/agent/codex")).toBe("codex");
+		expect(harnessOf("kabane://actor/agent/codex")).toBe("codex");
 		expect(harnessOf(null)).toBeNull();
 	});
 
@@ -1203,7 +1203,7 @@ describe("a click on the pane's ask", () => {
 			<CopilotPane
 				copilot={Fixtures.copilot({
 					asks: [ask],
-					actor: "cabane://actor/agent/claude",
+					actor: "kabane://actor/agent/claude",
 				})}
 				chip="JALL-1"
 				focused={focused}

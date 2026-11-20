@@ -517,7 +517,7 @@ describe("lifted", () => {
 					entry({
 						id: "h2",
 						kind: "handoff",
-						author: "cabane://actor/agent/claude",
+						author: "kabane://actor/agent/claude",
 						content: "  the newer one\n",
 						createdAt: at(13),
 					}),
@@ -727,8 +727,8 @@ describe("tabs and the tab bar", () => {
 
 describe("actorName", () => {
 	it("names an actor URI by its last segment and passes anything else through", () => {
-		expect(DetailModel.actorName("cabane://actor/agent/claude")).toBe("claude");
-		expect(DetailModel.actorName("cabane://actor/human/david-paquet")).toBe(
+		expect(DetailModel.actorName("kabane://actor/agent/claude")).toBe("claude");
+		expect(DetailModel.actorName("kabane://actor/human/david-paquet")).toBe(
 			"david-paquet",
 		);
 		expect(DetailModel.actorName("david")).toBe("david");

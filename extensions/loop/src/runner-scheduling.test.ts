@@ -117,7 +117,7 @@ let task;
 const tool = async (name, args) => {
  const definition = KABANE_TOOLS.find(t => t.name === name);
  const result = await definition.handler(args, {
-  basePath: process.cwd(), actor: "cabane://actor/agent/gemini", scopeRequired: false
+  basePath: process.cwd(), actor: "kabane://actor/agent/gemini", scopeRequired: false
  });
  if (!result.ok) throw result.error;
 };

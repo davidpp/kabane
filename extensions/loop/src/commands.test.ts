@@ -671,7 +671,7 @@ describe("Loop.restart", () => {
 });
 
 describe("Loop.answer", () => {
-	const HUMAN = "cabane://actor/human/david";
+	const HUMAN = "kabane://actor/human/david";
 
 	// A loop session of run `runId` blocked on a relayed permission request.
 	const blocked = async (runId: string) => {

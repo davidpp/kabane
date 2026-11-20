@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { err, ok, type Result, trySync } from "@kabane/core";
+import { ActorUri, err, ok, type Result, trySync } from "@kabane/core";
 import { z } from "zod";
 
 /**
@@ -265,8 +265,7 @@ export namespace McpClients {
 	export const entry = (id: Id): Entry => TABLE[id];
 
 	/** Writes through a harness are stamped with the harness's own agent actor. */
-	export const actorFor = (client: string): string =>
-		`cabane://actor/agent/${client}`;
+	export const actorFor = (client: string): string => ActorUri.agent(client);
 
 	export const launchFor = (launcher: Launch, client: string): Launch => ({
 		command: launcher.command,

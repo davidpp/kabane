@@ -27,8 +27,8 @@ someone the Worker knows (`src/access.ts`):
 
 | Assertion carries | Admitted when | Actor stamped on writes |
 |---|---|---|
-| `common_name` (a service token) | its client id is a key in `SERVICE_ACTORS`, and no entry maps to a human actor | the mapped URI, e.g. `cabane://actor/agent/hermes` |
-| `email` (a human) | it equals `HUMAN_EMAIL` | `cabane://actor/human/<local part>` |
+| `common_name` (a service token) | its client id is a key in `SERVICE_ACTORS`, and every entry maps to an agent actor | the mapped URI, e.g. `kabane://actor/agent/hermes` |
+| `email` (a human) | it equals `HUMAN_EMAIL` | `kabane://actor/human/<local part>` |
 
 Anything else is `401`, before any stub is obtained. Empty `HUMAN_EMAIL` and
 `SERVICE_ACTORS` mean nobody is admitted, which is the state a fresh deploy is
@@ -97,7 +97,7 @@ repository variables, `docs/deploy.md` 1.0 and 1.5).
 | vars (`--var`, CI: repository variables) | `ACCESS_TEAM_DOMAIN` | `https://<team>.cloudflareaccess.com` |
 | | `ACCESS_AUD` | the Access application's AUD tag |
 | | `HUMAN_EMAIL` | the one human allowed in |
-| | `SERVICE_ACTORS` | JSON, service-token client id → `cabane://actor/agent/<runtime>` |
+| | `SERVICE_ACTORS` | JSON, service-token client id → `kabane://actor/agent/<runtime>` |
 | | `KABANE_TIMEZONE` | the owner's IANA timezone (`America/Toronto`): which day is today and when a date deadline's day ends for MCP clients; unset is UTC, an unknown name stops the hub from booting |
 | `wrangler.jsonc` vars | `SYNC_INTERVAL_MINUTES` | scheduled pass interval, default `5` |
 | `wrangler secret put` | `SYNC_TOKEN` | the log bearer secret every device carries |

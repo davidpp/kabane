@@ -23,7 +23,7 @@ it("lists in its usage the sections the invalid-section error lists, the registe
 	const init = await kabane([
 		"init",
 		"--actor",
-		"cabane://actor/human/test",
+		"kabane://actor/human/test",
 		"--device",
 		"test",
 	]);

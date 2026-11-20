@@ -28,7 +28,7 @@ const makeHome = (config?: Record<string, unknown>): string => {
 		writeFileSync(
 			configPath(home),
 			JSON.stringify({
-				actor: "cabane://actor/human/t",
+				actor: "kabane://actor/human/t",
 				deviceId: "t",
 				...config,
 			}),

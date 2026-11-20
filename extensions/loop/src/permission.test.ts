@@ -137,7 +137,7 @@ describe("Permission.choose", () => {
 describe("Permission.relay", () => {
 	it("waits on the human, then answers the harness with the option they chose", async () => {
 		const sessionId = await session();
-		const { result, events } = relay(sessionId, "cabane://actor/human/david");
+		const { result, events } = relay(sessionId, "kabane://actor/human/david");
 		const question = await pending(sessionId);
 		const waiting = await TestSessions.pending(base);
 		expect(waiting.ok && waiting.value.map((r) => r.question.id)).toContain(
@@ -155,7 +155,7 @@ describe("Permission.relay", () => {
 			questionId: question.id,
 			optionId: "allow",
 			optionKind: "allow_once",
-			by: "cabane://actor/human/david",
+			by: "kabane://actor/human/david",
 		});
 		const after = await TestSessions.pending(base);
 		expect(after.ok && after.value).toEqual([]);

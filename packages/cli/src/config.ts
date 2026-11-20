@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import {
+	ActorUri,
 	err,
 	ok,
 	type Result,
@@ -128,8 +129,7 @@ export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
 
 export const configPath = (home: string): string => join(home, CONFIG_FILE);
 
-export const defaultActor = (): string =>
-	`cabane://actor/human/${userInfo().username}`;
+export const defaultActor = (): string => ActorUri.human(userInfo().username);
 
 export const defaultDeviceId = (): string =>
 	hostname().split(".")[0] ?? "device";
@@ -250,4 +250,4 @@ export const writeLocalScope = async (
 
 /** Human authors comment as `human`; agent actor URIs comment as `ai`. */
 export const authorTypeOf = (actor: string): "human" | "ai" =>
-	actor.startsWith("cabane://actor/agent/") ? "ai" : "human";
+	actor.startsWith(ActorUri.AGENT) ? "ai" : "human";

@@ -13,7 +13,7 @@ import { Fixtures } from "./stories/fixtures";
 import { pumpUntil, renderTest } from "./testing";
 
 const ISSUE = Fixtures.task({ id: "w1", shortId: "JREP-1" });
-const CLAUDE = "cabane://actor/agent/claude";
+const CLAUDE = "kabane://actor/agent/claude";
 
 // The issue's lifted entries with `bodies` as its handoffs, the last one the newest.
 const lifted = (...bodies: string[]): DetailModel.LiftedEntry[] =>

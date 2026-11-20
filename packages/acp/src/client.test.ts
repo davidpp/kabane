@@ -119,7 +119,7 @@ const openSession = async (
 			{
 				name: "cabane",
 				command: "/usr/local/bin/cabane",
-				args: ["mcp", "--as", "cabane://actor/agent/claude"],
+				args: ["mcp", "--as", "kabane://actor/agent/claude"],
 				env: { KABANE_SESSION: "1" },
 			},
 		],
@@ -168,7 +168,7 @@ describe("AcpClient", () => {
 				{
 					name: "cabane",
 					command: "/usr/local/bin/cabane",
-					args: ["mcp", "--as", "cabane://actor/agent/claude"],
+					args: ["mcp", "--as", "kabane://actor/agent/claude"],
 					env: [{ name: "KABANE_SESSION", value: "1" }],
 				},
 			],

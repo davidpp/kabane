@@ -373,7 +373,7 @@ test("Detail's comments tab shows every comment whole, newest first", async () =
 	const task = await seed();
 	for (const [author, content] of [
 		["david", "Let's go with option B\nbecause it keeps the scan."],
-		["cabane://actor/agent/claude", "Implemented option B per feedback."],
+		["kabane://actor/agent/claude", "Implemented option B per feedback."],
 	] as const) {
 		const added = await Planner.addComment(TEST_BASE, {
 			taskId: task.id,
@@ -393,7 +393,7 @@ test("Detail's comments tab shows every comment whole, newest first", async () =
 		);
 		expect(frame).toContain("comments 2");
 		expect(frame).toContain("because it keeps the scan.");
-		expect(frame).not.toContain("cabane://actor");
+		expect(frame).not.toContain("kabane://actor");
 		const agent = rows(frame).findIndex((r) => r.includes("claude ·"));
 		const human = rows(frame).findIndex((r) => r.includes("david ·"));
 		expect(agent).toBeGreaterThan(-1);
@@ -407,8 +407,8 @@ test("Detail's comments tab names a typed entry's kind in its band, declared or 
 	const task = await seed();
 	for (const [kind, author] of [
 		["comment", "david"],
-		["handoff", "cabane://actor/agent/claude"],
-		["review", "cabane://actor/agent/codex"],
+		["handoff", "kabane://actor/agent/claude"],
+		["review", "kabane://actor/agent/codex"],
 	] as const) {
 		const added = await Planner.addEntry(TEST_BASE, {
 			taskId: task.id,
@@ -440,7 +440,7 @@ test("Detail heads a comment with a raised author band at forty columns, and set
 	const task = await seed();
 	const added = await Planner.addComment(TEST_BASE, {
 		taskId: task.id,
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "Picked this up, `bun test` next.",
 	});
@@ -775,7 +775,7 @@ test("Detail lifts the latest handoff under the checklist at forty columns, coun
 		const added = await Planner.addEntry(TEST_BASE, {
 			taskId: task.id,
 			kind: "handoff",
-			author: "cabane://actor/agent/claude",
+			author: "kabane://actor/agent/claude",
 			authorType: "ai",
 			content,
 		});
@@ -853,7 +853,7 @@ test("Detail shows a handoff as a digest: its first section open, every further 
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: body,
 	});
@@ -898,7 +898,7 @@ test("Detail cuts a long author's name and holds the age, on now and on the band
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude-sonnet-4-20250514",
+		author: "kabane://actor/agent/claude-sonnet-4-20250514",
 		authorType: "ai",
 		content: "Picked up where the first pass stopped.",
 	});
@@ -933,7 +933,7 @@ test("Detail's lifted block spends no line on a count it does not have", async (
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "The only pass.",
 	});
@@ -963,7 +963,7 @@ test("Detail's band for a plain comment is one row at forty columns, a long name
 	const task = await seed();
 	const added = await Planner.addComment(TEST_BASE, {
 		taskId: task.id,
-		author: "cabane://actor/agent/claude-sonnet-4-5-20250929-preview",
+		author: "kabane://actor/agent/claude-sonnet-4-5-20250929-preview",
 		authorType: "ai",
 		content: "Starting on the read path.",
 	});
@@ -990,7 +990,7 @@ test("Detail opens on now when a handoff is all an issue holds, the handoff firs
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: "Only a handoff here.",
 	});
@@ -1090,7 +1090,7 @@ test("Detail's digest with nothing cut ends its last fold on the r hint, at fort
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: [
 			"### Summary",

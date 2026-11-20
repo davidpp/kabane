@@ -35,7 +35,7 @@ export const createCorpusTracker = async (
 			const init = await runCli(cwd, env)(
 				"init",
 				"--actor",
-				"cabane://actor/human/fixture",
+				"kabane://actor/human/fixture",
 				"--device",
 				"fixture",
 			);

@@ -39,7 +39,7 @@ const configure = (home: string, deviceId: string, extensions: string[]) =>
 	writeFileSync(
 		configPath(home),
 		JSON.stringify({
-			actor: `cabane://actor/human/${deviceId}`,
+			actor: `kabane://actor/human/${deviceId}`,
 			deviceId,
 			extensions,
 		}),

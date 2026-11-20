@@ -83,6 +83,7 @@ export {
 	unwrapOr,
 	NotFoundError,
 } from "./result";
+export { ActorUri } from "./actor";
 export {
 	type ActorSource,
 	ANONYMOUS_ACTOR,
@@ -104,6 +105,7 @@ export * from "./scope/schemas";
 export { ScopeUri } from "./scope/uri";
 // Storage
 export { normalizeScopeUri, Planner, scopeClause } from "./storage";
+export { ActorScheme } from "./storage/actor-scheme";
 export { Migrations } from "./storage/migrations";
 export { Oplog } from "./storage/oplog";
 // Sync (multi-device replication)

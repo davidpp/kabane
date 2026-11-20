@@ -16,7 +16,7 @@ test("the board gets the release notice unless updates.check is false", async ()
 	mkdirSync(HOME, { recursive: true });
 	writeFileSync(
 		configPath(HOME),
-		JSON.stringify({ actor: "cabane://actor/human/ada", deviceId: "mbp" }),
+		JSON.stringify({ actor: "kabane://actor/human/ada", deviceId: "mbp" }),
 	);
 	const args = parseArgs([]);
 	const ctx = await openContext(HOME, HOME, args);
@@ -61,7 +61,7 @@ describe("kabane board --issue <id> --to <pid>", () => {
 		mkdirSync(HOME, { recursive: true });
 		writeFileSync(
 			configPath(HOME),
-			JSON.stringify({ actor: "cabane://actor/human/ada", deviceId: "mbp" }),
+			JSON.stringify({ actor: "kabane://actor/human/ada", deviceId: "mbp" }),
 		);
 		const ctx = await openContext(HOME, HOME, parseArgs([]));
 		if (!ctx.ok) throw ctx.error;

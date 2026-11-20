@@ -323,7 +323,7 @@ describe("BoardCopilot", () => {
 						"--scope",
 						"kabane://scope/cabane",
 						"--as",
-						"cabane://actor/agent/claude",
+						"kabane://actor/agent/claude",
 					],
 					env: [{ name: "KABANE_HOME", value: "/home/me/.kabane" }],
 				},
@@ -394,7 +394,7 @@ describe("BoardCopilot", () => {
 		expect(server?.args).toEqual([
 			"mcp",
 			"--as",
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 		]);
 		copilot.close();
 	});

@@ -66,7 +66,7 @@ describe("McpInstall.run", () => {
 				"/src/cli/index.ts",
 				"mcp",
 				"--as",
-				"cabane://actor/agent/claude",
+				"kabane://actor/agent/claude",
 			],
 		]);
 	});
@@ -166,7 +166,7 @@ describe("mcp install command", () => {
 		});
 		expect(outcome.exitCode).toBe(0);
 		expect(outcome.text).toContain(
-			"✓ claude installed  as cabane://actor/agent/claude",
+			"✓ claude installed  as kabane://actor/agent/claude",
 		);
 		expect(outcome.text).toContain("✓ gemini installed");
 		expect(fake.calls.some((c) => c[0] === "codex")).toBe(false);
@@ -179,7 +179,7 @@ describe("mcp install command", () => {
 			const codexEntry = (command: string) =>
 				writeFileSync(
 					join(home, ".codex/config.toml"),
-					`[mcp_servers.kabane]\ncommand = "${command}"\nargs = ["/src/cli/index.ts", "mcp", "--as", "cabane://actor/agent/codex"]\n`,
+					`[mcp_servers.kabane]\ncommand = "${command}"\nargs = ["/src/cli/index.ts", "mcp", "--as", "kabane://actor/agent/codex"]\n`,
 				);
 			codexEntry("/opt/old-bun");
 			const fake = fakeRunner(["codex"]);

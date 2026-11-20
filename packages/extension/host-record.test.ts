@@ -30,7 +30,7 @@ it("maps every wrapper to the full tool result in a real database", async () => 
 	const home = mkdtempSync(join(tmpdir(), "kabane-record-"));
 	homes.push(home);
 	value(await Planner.init(home));
-	const actor = "cabane://actor/agent/host-test";
+	const actor = "kabane://actor/agent/host-test";
 	const record = createHostRecord(KABANE_TOOLS, {
 		basePath: home,
 		actor,
@@ -253,7 +253,7 @@ it("pages full records through the tool and named wrapper", async () => {
 	value(await Planner.init(home));
 	const record = createHostRecord(KABANE_TOOLS, {
 		basePath: home,
-		actor: "cabane://actor/agent/test",
+		actor: "kabane://actor/agent/test",
 		scopeRequired: false,
 	});
 	for (let i = 0; i < 5; i++) {
@@ -286,7 +286,7 @@ it("preserves a real database read failure", async () => {
 	homes.push(home);
 	const record = createHostRecord(KABANE_TOOLS, {
 		basePath: home,
-		actor: "cabane://actor/agent/test",
+		actor: "kabane://actor/agent/test",
 		scopeRequired: false,
 	});
 	const result = await record.get({ id: "missing" });

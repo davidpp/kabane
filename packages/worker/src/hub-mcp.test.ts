@@ -215,7 +215,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		const resumed = await callTool(HUMAN, "kabane_get", { id: issue.id });
 		expect(resumed.value).toMatchObject({
 			state: "next",
-			updatedBy: "cabane://actor/human/david",
+			updatedBy: "kabane://actor/human/david",
 		});
 	});
 
@@ -251,7 +251,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		const service = await relay(HERMES, 1);
 		expect(service.isError).toBe(true);
 		expect(String(service.value)).toContain(
-			"relayed: true needs the human this connection relays for, and cabane://actor/agent/hermes has none configured",
+			"relayed: true needs the human this connection relays for, and kabane://actor/agent/hermes has none configured",
 		);
 
 		// A human-looking actor the edge did not authenticate as a human, as a
@@ -262,7 +262,7 @@ describe("hub MCP over Streamable HTTP", () => {
 				headers: {
 					"Content-Type": "application/json",
 					Accept: "application/json, text/event-stream",
-					[ACTOR_HEADER]: "cabane://actor/human/david",
+					[ACTOR_HEADER]: "kabane://actor/human/david",
 					[PRINCIPAL_HEADER]: "service",
 				},
 				body: JSON.stringify({
@@ -291,7 +291,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			true,
 		);
 		expect(String(decisions.value)).toContain(
-			"→ yes (cabane://actor/human/david)",
+			"→ yes (kabane://actor/human/david)",
 		);
 	});
 
@@ -308,7 +308,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		});
 		expect(human.isError).toBe(false);
 		expect((human.value as TaskLike).updatedBy).toBe(
-			"cabane://actor/human/david",
+			"kabane://actor/human/david",
 		);
 
 		const service = await callTool(HERMES, "kabane_add", {
@@ -320,7 +320,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		});
 		expect(service.isError).toBe(false);
 		const issue = service.value as TaskLike;
-		expect(issue.updatedBy).toBe("cabane://actor/agent/hermes");
+		expect(issue.updatedBy).toBe("kabane://actor/agent/hermes");
 		expect(issue.shortId).toMatch(/^JKAB-\d+$/);
 
 		const comment = await callTool(HERMES, "kabane_comment", {
@@ -348,7 +348,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			expect(comment.isError).toBe(false);
 			expect(comment.value).toMatchObject({
 				content: body,
-				author: "cabane://actor/agent/hermes",
+				author: "kabane://actor/agent/hermes",
 				authorType: "ai",
 			});
 		}
@@ -375,7 +375,7 @@ describe("hub MCP over Streamable HTTP", () => {
 		for (const comment of comments)
 			expect(comment.payload).toMatchObject({
 				content: body,
-				author: "cabane://actor/agent/hermes",
+				author: "kabane://actor/agent/hermes",
 				author_type: "ai",
 			});
 		expect(
@@ -556,7 +556,7 @@ describe("hub as sync device cloud", () => {
 				scopeUri: "sync",
 			})
 		).value as TaskLike;
-		expect(created.updatedBy).toBe("cabane://actor/human/david");
+		expect(created.updatedBy).toBe("kabane://actor/human/david");
 
 		// The post-write push runs in waitUntil; a direct pass makes it deterministic.
 		const hub = env.KABANE_HUB.getByName(HUB_NAME);
@@ -604,14 +604,14 @@ describe("hub as sync device cloud", () => {
 			deviceId: "device-a",
 			rowId,
 			rowUpdatedAt: now,
-			updatedBy: "cabane://actor/human/david",
+			updatedBy: "kabane://actor/human/david",
 			capturedAt: now,
 			payload: {
 				...template.payload,
 				id: rowId,
 				short_id: "JSYN-9001",
 				title: "Written on device-a",
-				updated_by: "cabane://actor/human/david",
+				updated_by: "kabane://actor/human/david",
 				created_at: now,
 				updated_at: now,
 			},
@@ -633,6 +633,6 @@ describe("hub as sync device cloud", () => {
 		).value as TaskLike[];
 		expect(listed.map((t) => t.title)).toContain("Written on device-a");
 		const applied = listed.find((t) => t.title === "Written on device-a");
-		expect(applied?.updatedBy).toBe("cabane://actor/human/david");
+		expect(applied?.updatedBy).toBe("kabane://actor/human/david");
 	});
 });

@@ -1,4 +1,4 @@
-import { type Migrate, TABLES } from "@kabane/core";
+import { ActorScheme, type Migrate, TABLES } from "@kabane/core";
 
 export const QUESTIONS_TABLE = "task_questions";
 
@@ -27,5 +27,15 @@ export const migrations: readonly Migrate.Migration[] = [
 				`CREATE INDEX idx_task_questions_task_status ON ${QUESTIONS_TABLE} (task_id, status)`,
 			);
 		},
+	},
+	{
+		// `cabane://actor/` became `kabane://actor/` (core's migration 12, JCAB-607).
+		name: "actor-scheme",
+		up: (db) =>
+			ActorScheme.renameColumns(db, QUESTIONS_TABLE, [
+				"asked_by",
+				"answered_by",
+				"updated_by",
+			]),
 	},
 ];

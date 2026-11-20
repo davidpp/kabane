@@ -71,14 +71,14 @@ describe("setupDeps", () => {
 		const home = join(ROOT, "home-save");
 		const deps = await setupDeps(home, NOWHERE, installer);
 		const plan = {
-			actor: "cabane://actor/human/ada",
+			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: [],
 		};
 		const saved = await deps.save(plan);
 		expect(saved).toEqual({ ok: true, value: tildePath(configPath(home)) });
 		const config = loadConfig(home);
-		expect(config.ok && config.value.actor).toBe("cabane://actor/human/ada");
+		expect(config.ok && config.value.actor).toBe("kabane://actor/human/ada");
 		expect(config.ok && config.value.sync.enabled).toBe(false);
 		expect((await deps.save(plan)).ok).toBe(false);
 	});
@@ -100,7 +100,7 @@ describe("setupDeps", () => {
 		const repo = gitRepo("gadget");
 		const deps = await setupDeps(home, repo, installer);
 		await deps.save({
-			actor: "cabane://actor/human/ada",
+			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: ["claude"],
 		});
@@ -121,7 +121,7 @@ describe("setupDeps", () => {
 		const home = join(ROOT, "home-no-project");
 		const deps = await setupDeps(home, NOWHERE, installer);
 		await deps.save({
-			actor: "cabane://actor/human/ada",
+			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: ["claude"],
 		});

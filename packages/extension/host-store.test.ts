@@ -248,7 +248,7 @@ it("refuses a host.record write inside a write at once; a record read sees what 
 	);
 	const record = createHostRecord(KABANE_TOOLS, {
 		basePath: home,
-		actor: "cabane://actor/agent/kit",
+		actor: "kabane://actor/agent/kit",
 		scopeRequired: false,
 	});
 	let comment: [Result<unknown>, number] | undefined;
@@ -372,7 +372,7 @@ it("fails every later write after the bound when fn does not settle, and none of
 	);
 	const record = createHostRecord(KABANE_TOOLS, {
 		basePath: home,
-		actor: "cabane://actor/agent/kit",
+		actor: "kabane://actor/agent/kit",
 		scopeRequired: false,
 	});
 	let settle = () => {};

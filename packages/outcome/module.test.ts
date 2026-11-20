@@ -60,7 +60,7 @@ it("writes every outcome to SQLite and keeps each in the brief's Discussion", as
 			await Planner.addEntry(base, {
 				taskId: task.id,
 				kind,
-				author: "cabane://actor/agent/test",
+				author: "kabane://actor/agent/test",
 				authorType: "ai",
 				content: contents[kind],
 			}),

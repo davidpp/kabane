@@ -16,7 +16,7 @@ import { dropDb, freshDb } from "./test-db";
 import { pumpUntil, renderTest } from "./testing";
 
 const BASE = join(tmpdir(), `cabane-board-decisions-${crypto.randomUUID()}`);
-const AGENT = "cabane://actor/agent/claude";
+const AGENT = "kabane://actor/agent/claude";
 
 let issueId = "";
 let scopeId = "";

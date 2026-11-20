@@ -21,7 +21,7 @@ beforeEach(async () => {
 	const server = unwrap(
 		createMcpServer({
 			basePath: base,
-			actor: "cabane://actor/agent/test",
+			actor: "kabane://actor/agent/test",
 			scopeRequired: false,
 		}),
 	);

@@ -161,7 +161,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  if (text.includes("then reopened") && existsSync(join(script, task + ".cancel"))) {
   rmSync(live, { force: true });
   const edit = KABANE_TOOLS.find((t) => t.name === "kabane_edit");
-  const cancelled = await edit.handler({ id: task, state: "cancelled" }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+  const cancelled = await edit.handler({ id: task, state: "cancelled" }, { basePath: home, actor: "kabane://actor/agent/gemini", scopeRequired: false });
   if (!cancelled.ok) process.exit(3);
   return reply(message.id, { stopReason: "end_turn" });
  }
@@ -172,7 +172,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  const until = Date.now() + 5000;
  while (existsSync(together) && Date.now() < until && readdirSync(join(script, "started")).length < Number(readFileSync(together, "utf8"))) await Bun.sleep(5);
  rmSync(live, { force: true });
- const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "kabane://actor/agent/gemini", scopeRequired: false });
  if (!closed.ok) process.exit(1);
  reply(message.id, { stopReason: "end_turn" });
 });

@@ -20,7 +20,7 @@ beforeEach(async () => {
 	base = mkdtempSync(join(tmpdir(), "kabane-checklist-"));
 	configureTestRuntime({
 		modules: [checklistModule],
-		actor: () => "cabane://actor/human/test",
+		actor: () => "kabane://actor/human/test",
 	});
 	unwrap(await Planner.init(base));
 	unwrap(await withDb(base, (db) => Oplog.initDevice(db, "checklist-test")));
@@ -89,7 +89,7 @@ it("adds at the end or a position, hands out creation-order handles and captures
 			(op) =>
 				op.op === "insert" &&
 				op.module === "checklist" &&
-				op.module_schema === 1,
+				op.module_schema === 2,
 		),
 	).toBe(true);
 });
@@ -105,7 +105,7 @@ it("ticks and unticks by handle, ULID or id:, as the actor given, and leaves a t
 		await Checklist.tick(
 			base,
 			{ items: [`${label}.1`, `id:${two.id}`, `${label}.1`] },
-			"cabane://actor/agent/claude",
+			"kabane://actor/agent/claude",
 		),
 	);
 	expect(ticked.progress).toEqual({ done: 2, total: 3 });
@@ -115,13 +115,13 @@ it("ticks and unticks by handle, ULID or id:, as the actor given, and leaves a t
 	]);
 	expect(ticked.items[0]).toMatchObject({
 		done: true,
-		doneBy: "cabane://actor/agent/claude",
+		doneBy: "kabane://actor/agent/claude",
 		version: 2,
 	});
 	const again = unwrap(await Checklist.tick(base, { items: [one.id] }));
 	expect(again.items[0]).toMatchObject({
 		version: 2,
-		doneBy: "cabane://actor/agent/claude",
+		doneBy: "kabane://actor/agent/claude",
 	});
 	const unticked = unwrap(
 		await Checklist.tick(base, { items: [one.id], done: false }),

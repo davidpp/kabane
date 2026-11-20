@@ -3,6 +3,7 @@
 // ops. Nothing outside this file knows the table, so moving the row elsewhere changes this file.
 import { hostname } from "node:os";
 import type { Db, Host, KabaneModule, Result } from "@kabane/extension";
+import { actorScheme } from "./actor-scheme";
 import { err, ok, trySync } from "./result";
 import type { Runtime } from "./runtime";
 
@@ -76,6 +77,7 @@ export namespace Runs {
 				name: "add-recipes-runs-harness",
 				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN harness TEXT`),
 			},
+			actorScheme(TABLE),
 		],
 		// A run names its issue without owning it: deleting the issue keeps its runs.
 		syncTables: [

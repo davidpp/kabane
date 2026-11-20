@@ -30,7 +30,7 @@ describe("the copilot pane's plan", () => {
 			<CopilotPane
 				copilot={Fixtures.copilot({
 					turn: "running",
-					actor: "cabane://actor/agent/claude",
+					actor: "kabane://actor/agent/claude",
 					hasLog: true,
 				})}
 				chip="JREP-1"

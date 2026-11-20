@@ -24,8 +24,8 @@ export default defineConfig({
 					ACCESS_DEV_UNVERIFIED: "true",
 					HUMAN_EMAIL: "david@example.com",
 					SERVICE_ACTORS: JSON.stringify({
-						"hermes-client-id.access": "cabane://actor/agent/hermes",
-						"claude-client-id.access": "cabane://actor/agent/claude",
+						"hermes-client-id.access": "kabane://actor/agent/hermes",
+						"claude-client-id.access": "kabane://actor/agent/claude",
 					}),
 					SYNC_INTERVAL_MINUTES: "5",
 				},

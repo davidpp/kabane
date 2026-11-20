@@ -726,7 +726,7 @@ describe("concise receipt atomicity and cursor invalidation", () => {
 			const remoteId = "00000000000000000000000000";
 			Runtime.configure({
 				provider: SqliteDb.provider(),
-				actor: () => "cabane://actor/human/fixture",
+				actor: () => "kabane://actor/human/fixture",
 				timezone: () => "UTC",
 			});
 			const armed = await SqliteDb.provider().withDb(tracker.home, (db) =>

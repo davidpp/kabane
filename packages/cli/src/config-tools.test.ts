@@ -89,7 +89,7 @@ it("manages device config through the real stdio MCP server", async () => {
 		await cli(
 			"init",
 			"--actor",
-			"cabane://actor/human/config-test",
+			"kabane://actor/human/config-test",
 			"--device",
 			"config-test",
 		);
@@ -349,7 +349,7 @@ it("writes a project's local layer by default over stdio, and names layers the n
 			bin,
 			"init",
 			"--actor",
-			"cabane://actor/human/config-test",
+			"kabane://actor/human/config-test",
 			"--device",
 			"config-test",
 		],
@@ -481,7 +481,7 @@ it("reads and writes the project's shared layer over stdio from a nested directo
 			bin,
 			"init",
 			"--actor",
-			"cabane://actor/human/config-test",
+			"kabane://actor/human/config-test",
 			"--device",
 			"config-test",
 		],

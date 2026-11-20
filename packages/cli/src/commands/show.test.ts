@@ -23,7 +23,7 @@ it("shows registered decisions through the real CLI entry and consumes multiple 
 	expect(
 		(
 			await run(
-				["init", "--actor", "cabane://actor/human/test", "--device", "test"],
+				["init", "--actor", "kabane://actor/human/test", "--device", "test"],
 				env,
 				home,
 			)
@@ -75,7 +75,7 @@ it("shows registered decisions through the real CLI entry and consumes multiple 
 	expect(shown.exitCode).toBe(0);
 	expect(shown.text).toContain("Keep ordinary detail");
 	expect(shown.text).toContain(
-		"Which store? (choices only) → SQLite (cabane://actor/human/test, Local)",
+		"Which store? (choices only) → SQLite (kabane://actor/human/test, Local)",
 	);
 	expect(shown.text).not.toContain("Withdraw this");
 	expect(shown.text).toContain("Long decision 7:");
@@ -96,7 +96,7 @@ it("prints a lifted kind's latest entry as its section, and not a second time un
 			await kabane([
 				"init",
 				"--actor",
-				"cabane://actor/human/test",
+				"kabane://actor/human/test",
 				"--device",
 				"test",
 			])

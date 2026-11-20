@@ -17,7 +17,7 @@ const entry = (taskId: string, kind: string, content: string) =>
 	Planner.addEntry(TEST_BASE, {
 		taskId,
 		kind,
-		author: "cabane://actor/agent/claude",
+		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content,
 	});

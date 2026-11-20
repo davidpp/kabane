@@ -363,7 +363,7 @@ describe("Checks", () => {
 });
 
 describe("Loop.rollback", () => {
-	const HUMAN = "cabane://actor/human/david";
+	const HUMAN = "kabane://actor/human/david";
 
 	it("resets the worktree to one of the run's checkpoints and refuses any other sha", async () => {
 		const parent = await add("parent");
@@ -578,7 +578,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
  const task = /Your subtask is ([^.]+)\\./.exec(text)?.[1];
  writeFileSync("feature.txt", "made by " + task + "\\n");
- const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "kabane://actor/agent/gemini", scopeRequired: false });
  if (!closed.ok) process.exit(1);
  reply(message.id, { stopReason: "end_turn" });
 });
@@ -758,7 +758,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  const task = /Your issue is ([^.]+)\\./.exec(text)?.[1];
  if (!task) process.exit(1);
  appendFileSync("attempts.txt", "attempt\\n");
- const closed = await done.handler({ id: task }, { basePath: home, actor: "cabane://actor/agent/gemini", scopeRequired: false });
+ const closed = await done.handler({ id: task }, { basePath: home, actor: "kabane://actor/agent/gemini", scopeRequired: false });
  if (!closed.ok) process.exit(1);
  reply(message.id, { stopReason: "end_turn" });
 });

@@ -426,7 +426,7 @@ describe("the copilot pane with a form at the head of its queue", () => {
 			<CopilotPane
 				copilot={Fixtures.copilot({
 					turn: "running",
-					actor: "cabane://actor/agent/claude",
+					actor: "kabane://actor/agent/claude",
 					asks: [ask],
 				})}
 				chip="JALL-1"

@@ -54,7 +54,7 @@ it("fails on an unknown --issue in one line, without starting the board", async 
 	const home = mkdtempSync(join(tmpdir(), "kabane-board-issue-"));
 	writeFileSync(
 		configPath(home),
-		JSON.stringify({ actor: "cabane://actor/human/ada", deviceId: "mbp" }),
+		JSON.stringify({ actor: "kabane://actor/human/ada", deviceId: "mbp" }),
 	);
 	try {
 		const proc = Bun.spawn(

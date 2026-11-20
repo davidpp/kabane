@@ -222,7 +222,7 @@ const EXPECTED_ISSUE_OUTCOMES: Awaited<ReturnType<typeof outcomesOf>> = [
 	{
 		id: "01D1",
 		kind: "outcome.decision",
-		author: "cabane://actor/human/ada",
+		author: "kabane://actor/human/ada",
 		authorType: "human",
 		content: "Plain text or markdown?\n→ Markdown",
 		createdAt: at(3),
@@ -281,9 +281,9 @@ describe("Migration session-outcomes on a database with session rows", () => {
 		for (const entry of entries) {
 			expect(entry.visibility).toBe("shared");
 			expect(entry.updated_by).toBe(
-				String(entry.author).startsWith("cabane://")
+				String(entry.author).startsWith("kabane://")
 					? entry.author
-					: `cabane://actor/agent/${entry.author}`,
+					: `kabane://actor/agent/${entry.author}`,
 			);
 			expect(entry.version).toBe(1);
 			expect(entry.updated_at).toBeNull();
@@ -331,7 +331,7 @@ describe("Migration session-outcomes on a database with session rows", () => {
 			(r) => r.id === "01S1",
 		);
 		expect(migratedLog).toMatchObject({
-			updated_by: "cabane://actor/agent/claude",
+			updated_by: "kabane://actor/agent/claude",
 			visibility: "shared",
 			version: 1,
 		});
@@ -343,7 +343,7 @@ describe("Migration session-outcomes on a database with session rows", () => {
 		const brief = must(await Planner.assembleContext(base, issue.id));
 		const discussion = brief.slice(brief.indexOf("## Discussion"));
 		expect(discussion).toContain(
-			"**cabane://actor/human/ada** (outcome.decision, human, 2026-10-01T10:03:00.000Z):\nPlain text or markdown?\n→ Markdown",
+			"**kabane://actor/human/ada** (outcome.decision, human, 2026-10-01T10:03:00.000Z):\nPlain text or markdown?\n→ Markdown",
 		);
 		expect(discussion).toContain("**claude** (outcome.summary, ai, ");
 		expect(discussion).toContain("Severity: P2");
@@ -444,8 +444,8 @@ describe("Migration session-outcomes through sync", () => {
 		const actors = (await rows(alpha, TABLES.comments))
 			.filter((r) => r.kind !== "comment")
 			.map((r) => r.updated_by);
-		expect(actors).not.toContain("cabane://actor/human/alpha");
-		expect(actors).not.toContain("cabane://actor/human/beta");
+		expect(actors).not.toContain("kabane://actor/human/alpha");
+		expect(actors).not.toContain("kabane://actor/human/beta");
 	});
 
 	it("seeds the migrated rows by backfill on a device armed after the migration", async () => {

@@ -24,7 +24,7 @@ declare namespace Cloudflare {
 		ACCESS_AUD: string;
 		/** The one human allowed in. Anyone else with a valid assertion is refused. */
 		HUMAN_EMAIL: string;
-		/** JSON: service-token client id → actor URI (`cabane://actor/agent/hermes`). */
+		/** JSON: service-token client id → actor URI (`kabane://actor/agent/hermes`). */
 		SERVICE_ACTORS: string;
 		/** Minutes between the hub's scheduled pull/push passes. */
 		SYNC_INTERVAL_MINUTES: string;
