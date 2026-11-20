@@ -4,6 +4,7 @@
 import {
 	type Host,
 	type ActivityCard,
+	type ActivityEvent,
 	type ActivityQuestion,
 	type ActivitySource,
 	type ActivityStatus,
@@ -236,6 +237,100 @@ export namespace LoopActivity {
 		value: string | number | undefined,
 	): NoticeSeverity | undefined => SEVERITIES.find((s) => s === value);
 
+	const BOARD_TYPE: Readonly<Record<string, string>> = {
+		session_start: "phase",
+		session_end: "done",
+		gate_passed: "done",
+		landed: "done",
+		gate_failed: "error",
+		merge_conflict: "error",
+		pruned: "done",
+		permission_asked: "permission",
+		elicitation_asked: "permission",
+	};
+	const summaryOf = (e: RunStore.Event): string => {
+		switch (e.type) {
+			case "pruned":
+				return `pruned · ${e.summary.replace(/^worktree .+ and branch .+ removed: /, "worktree and branch removed: ")}`;
+			case "gate_passed":
+			case "gate_failed":
+				return `gates · ${e.summary}`;
+			case "landed":
+				return `land · ${e.summary}`;
+			default:
+				return e.summary;
+		}
+	};
+	const TRANSCRIPT = new Set([
+		"text",
+		"thought",
+		"prompt",
+		"tool_call",
+		"tool_completed",
+		"tool_failed",
+		"notice",
+		"warning",
+		"error",
+		"metric",
+		"phase",
+		"permission",
+	]);
+	const RUN_EVENTS = new Set([
+		"claim",
+		"gates",
+		"gate_passed",
+		"gate_failed",
+		"merged",
+		"merge_conflict",
+	]);
+
+	type Setup = { claim?: string; detail: string[] };
+	const boardEvent = (e: RunStore.Event, start?: Setup): ActivityEvent => {
+		const severity =
+			e.type === "notice" ? noticeSeverity(e.data?.severity) : undefined;
+		return {
+			seq: e.seq,
+			at: e.at,
+			type:
+				BOARD_TYPE[e.type] ?? (TRANSCRIPT.has(e.type) ? e.type : "progress"),
+			summary: start?.claim ?? summaryOf(e),
+			...(severity ? { severity } : {}),
+			...(e.lane && !RUN_EVENTS.has(e.type) ? { lane: e.lane } : {}),
+			...(e.callId ? { callId: e.callId } : {}),
+			...(start?.detail.length
+				? { detail: { input: start.detail.join("\n") } }
+				: e.detail
+					? { detail: e.detail }
+					: {}),
+		};
+	};
+
+	// A poll can split the claim and handshake from the start. Recover the start's context
+	// from the same append-only log, including entries before the caller's cursor.
+	export const boardEvents = (
+		log: readonly RunStore.Event[],
+		afterSeq: number,
+	): ActivityEvent[] => {
+		if ((log.at(-1)?.seq ?? 0) <= afterSeq) return [];
+		const setup = new Map<string, Setup>();
+		const out: ActivityEvent[] = [];
+		for (const e of log) {
+			const key = e.session ?? e.lane;
+			if (key && e.type === "claim")
+				setup.set(key, { claim: e.summary, detail: [] });
+			if (key && ["launch", "model", "mode"].includes(e.type)) {
+				const entry = setup.get(key) ?? { detail: [] };
+				entry.detail.push(e.summary);
+				setup.set(key, entry);
+			}
+			if (e.seq <= afterSeq) continue;
+			const start =
+				key && e.type === "session_start" ? setup.get(key) : undefined;
+			out.push(boardEvent(e, start));
+		}
+		return out;
+	};
+
 	/**
 	 * The device's runs, read from `$KABANE_HOME/loops` on every call. A question the board
 	 * answers for one of a run's sessions is noted in the run's inbox as answered by `actor`, the
@@ -270,29 +365,8 @@ export namespace LoopActivity {
 				return run.ok ? ok(await cardOf(run.value)) : run;
 			},
 			events: async (id, afterSeq) => {
-				const events = RunStore.readEvents(home, id, afterSeq);
-				return events.ok
-					? ok(
-							events.value.map(
-								({ seq, at, type, summary, lane, callId, detail, data }) => {
-									const severity =
-										type === "notice"
-											? noticeSeverity(data?.severity)
-											: undefined;
-									return {
-										seq,
-										at,
-										type,
-										summary,
-										...(severity ? { severity } : {}),
-										...(lane ? { lane } : {}),
-										...(callId ? { callId } : {}),
-										...(detail ? { detail } : {}),
-									};
-								},
-							),
-						)
-					: events;
+				const events = RunStore.readEvents(home, id);
+				return events.ok ? ok(boardEvents(events.value, afterSeq)) : events;
 			},
 			act: (id, actionId, input) =>
 				act({ home, basePath, host, kabaneBin }, id, actionId, input),

@@ -530,3 +530,40 @@ it("lists only loop questions with their card and lane, and answers through the 
 	]);
 	expect(await source.questions?.()).toEqual({ ok: true, value: [] });
 });
+
+it("maps loop events across a poll boundary and joins setup only to its own session", () => {
+	const event = (
+		seq: number,
+		type: string,
+		summary: string,
+		lane?: string,
+	): RunStore.Event => ({
+		seq,
+		type,
+		summary,
+		lane,
+		at: "2026-11-20T09:15:00Z",
+	});
+	const log = [
+		event(1, "claim", "codex claims docs", "docs"),
+		event(2, "launch", "run codex", "docs"),
+		event(3, "model", "astra", "docs"),
+		event(4, "model", "another model", "arch"),
+		event(5, "mode", "default", "docs"),
+		event(6, "session_start", "started", "docs"),
+		event(7, "session_end", "done", "docs"),
+		event(8, "gate_passed", "tests pass"),
+		event(9, "checkpoint", "saved"),
+		event(10, "permission_asked", "Allow?", "arch"),
+	];
+	const rows = LoopActivity.boardEvents(log, 5);
+	expect(rows.map((e) => [e.type, e.summary])).toEqual([
+		["phase", "codex claims docs"],
+		["done", "done"],
+		["done", "gates · tests pass"],
+		["progress", "saved"],
+		["permission", "Allow?"],
+	]);
+	expect(rows[0]?.detail?.input).toBe("run codex\nastra\ndefault");
+	expect(LoopActivity.boardEvents(log, 0)[0]?.lane).toBeUndefined();
+});
