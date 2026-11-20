@@ -327,7 +327,8 @@ describe("actions", () => {
 			...Keymap.EVERYWHERE,
 		]
 			.flatMap((binding) => binding.keys)
-			.filter((name) => !name.includes("+"));
+			// `f` is the board's only on a card with steps (run-map.test.ts); this card has none.
+			.filter((name) => !name.includes("+") && name !== "f");
 		const s = onTab([
 			card({
 				actions: [

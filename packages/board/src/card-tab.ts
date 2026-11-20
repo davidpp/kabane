@@ -34,7 +34,7 @@ export namespace CardTab {
 	// Keys the board answers on a card's tab, whatever a host binds: an action under one is never
 	// offered. `x` is the stop action's alone.
 	const RESERVED: ReadonlySet<string> = new Set([
-		..."xhlewoqjkgGtf{}!?A:O,0123456789",
+		..."xhlewoqjkgGt{}!?A:O,0123456789",
 		"escape",
 		"return",
 		"tab",
@@ -92,9 +92,17 @@ export namespace CardTab {
 	};
 
 	/** The actions a key can reach on the card's tab, `stop` included. */
+	// `f` follows the run on a map; on a card without steps it stays the host's to bind.
+	const MAP_RESERVED: ReadonlySet<string> = new Set(["f"]);
+
 	const actionsOf = (tabs: BoardTabs.Tabs, id: string): readonly CardAction[] =>
-		(tabs.cards.get(id)?.actions ?? []).filter((action) =>
-			action.id === STOP_ACTION ? true : !RESERVED.has(action.key),
+		(tabs.cards.get(id)?.actions ?? []).filter(
+			(action) =>
+				action.id === STOP_ACTION ||
+				!(
+					RESERVED.has(action.key) ||
+					(isMap(tabs, id) && MAP_RESERVED.has(action.key))
+				),
 		);
 
 	const notice = (state: State, text: string): Step => ({

@@ -197,6 +197,20 @@ describe("the run map", () => {
 			"functional-recheck",
 		);
 	});
+
+	it("leaves `f` to the host on a card without steps, and keeps it for following on a map", () => {
+		const follow = { id: "focus", key: "f", label: "focus" };
+		const plain = onTab([card({ steps: undefined, actions: [follow] })]);
+		expect(
+			BoardNav.reduceKey(BoardNav.sight(plain, 0), key("f"), BoardNav.ARM_MS)
+				.effect,
+		).toEqual({ type: "act", cardId: "loop:r1", actionId: "focus" });
+		const mapped = onTab([card({ actions: [follow] })]);
+		expect(
+			BoardNav.reduceKey(BoardNav.sight(mapped, 0), key("f"), BoardNav.ARM_MS)
+				.effect,
+		).toEqual({ type: "none" });
+	});
 });
 
 describe("what a finished card left", () => {
