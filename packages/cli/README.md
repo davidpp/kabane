@@ -228,7 +228,8 @@ the deletes of its rows for the other devices, which hold what they receive for 
 until it is enabled there.
 
 Markdown files under `copilot/` add procedures and `/` shortcuts to the board's copilot; the
-board's README describes them, under its copilot.
+board's README describes them, under its copilot. Skills under `skills/<name>/` are served by
+`kabane mcp` (below).
 
 Only enabled directories run code; a directory alone, a single `.ts` file, or a repository's
 files load nothing. Directory settings become known to `kabane config` only after enablement.
@@ -389,6 +390,12 @@ The brief opens with the latest after the description, and counts the earlier on
 Enabled extensions contribute tools named `kabane_<extension>_<verb>` and instructions after
 registered modules, in device configuration order. With the loop enabled, `kabane_loop_advise`
 returns recommended settings and per-subtask harness/model routes; see [loop advice](../../docs/loop.md#advice-over-mcp).
+Enabled extensions' skills (`skills/<name>/SKILL.md`, [writing an
+extension](../../docs/writing-an-extension.md#ship-how-to-as-skills)) are served by
+`kabane_skillList`, which names them, and `kabane_skillGet { name, file? }`, which returns one
+file of a skill with `{{extension}}` and `{{kabane}}` filled and the manifest of its other files.
+Both are listed, with one line of server instructions naming them, only when an enabled
+extension ships a skill.
 Disabled extensions contribute nothing. Restart the MCP process after changing `extensions`.
 These contributions are device-only; the hub's tool list is unchanged. Duplicate tool names
 are refused.

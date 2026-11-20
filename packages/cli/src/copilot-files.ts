@@ -68,24 +68,16 @@ export namespace CopilotFiles {
 		);
 	};
 
-	// The YAML between the file's opening `---` and the next, checked against `fields`, and the
-	// body after it with the placeholder filled. A byte-order mark and CRLF line ends are read as
-	// an editor meant them.
-	const parse = <T>(
-		dir: string,
+	/**
+	 * The YAML between a file's opening `---` and the next, checked against `fields`, and the body
+	 * after it, trimmed. A byte-order mark and CRLF line ends are read as an editor meant them.
+	 */
+	export const frontmatter = <T>(
 		file: string,
+		raw: string,
 		fields: z.ZodType<T>,
 	): Result<{ fields: T; body: string }> => {
-		if (basename(file) === ".md")
-			return err(new Error(`${file} has no name; name it <name>.md`));
-		const size = trySync(() => statSync(join(dir, file)).size);
-		if (size.ok && size.value > MAX_BYTES)
-			return err(
-				new Error(`${file} is over the 16 KiB a copilot file may hold`),
-			);
-		const raw = trySync(() => readFileSync(join(dir, file), "utf8"));
-		if (!raw.ok) return err(new Error(`${file} cannot be read`));
-		const text = raw.value.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+		const text = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 		const [first, ...rest] = text.split("\n");
 		const end = rest.findIndex((line) => line.trimEnd() === "---");
 		if (first?.trimEnd() !== "---" || end === -1)
@@ -116,14 +108,33 @@ export namespace CopilotFiles {
 				new Error(`${file}: invalid frontmatter (${where}${issue?.message})`),
 			);
 		}
-		const body = fill(
-			rest
+		return ok({
+			fields: parsed.data,
+			body: rest
 				.slice(end + 1)
 				.join("\n")
 				.trim(),
-			dir,
-		);
-		return ok({ fields: parsed.data, body });
+		});
+	};
+
+	// A copilot file's frontmatter and its body with the placeholder filled.
+	const parse = <T>(
+		dir: string,
+		file: string,
+		fields: z.ZodType<T>,
+	): Result<{ fields: T; body: string }> => {
+		if (basename(file) === ".md")
+			return err(new Error(`${file} has no name; name it <name>.md`));
+		const size = trySync(() => statSync(join(dir, file)).size);
+		if (size.ok && size.value > MAX_BYTES)
+			return err(
+				new Error(`${file} is over the 16 KiB a copilot file may hold`),
+			);
+		const raw = trySync(() => readFileSync(join(dir, file), "utf8"));
+		if (!raw.ok) return err(new Error(`${file} cannot be read`));
+		const read = frontmatter(file, raw.value, fields);
+		if (!read.ok) return read;
+		return ok({ fields: read.value.fields, body: fill(read.value.body, dir) });
 	};
 
 	/**

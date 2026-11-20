@@ -99,7 +99,7 @@ it("carries a modules entry into the built manifest, at the built path kabane im
 	);
 	try {
 		const source = join(work, "source");
-		const files: Record<string, string> = {
+		const sources: Record<string, string> = {
 			"package.json": JSON.stringify({
 				name: "sample",
 				version: "0.0.0",
@@ -111,8 +111,11 @@ it("carries a modules entry into the built manifest, at the built path kabane im
 			}),
 			"index.ts": 'export default () => ({ name: "sample" });\n',
 			"src/modules.ts": "export default () => [];\n",
+			"skills/sample-setup/SKILL.md":
+				"---\nname: sample-setup\ndescription: Use it.\n---\nSet up.\n",
+			"skills/sample-setup/references/init.md": "Init.\n",
 		};
-		for (const [file, text] of Object.entries(files)) {
+		for (const [file, text] of Object.entries(sources)) {
 			mkdirSync(dirname(join(source, file)), { recursive: true });
 			writeFileSync(join(source, file), text);
 		}
@@ -127,6 +130,10 @@ it("carries a modules entry into the built manifest, at the built path kabane im
 		expect(
 			JSON.parse(readFileSync(join(installed, "package.json"), "utf8")).kabane,
 		).toEqual({ extension: "./index.js", api: 1, modules: "./src/modules.js" });
+		expect(files(join(installed, "skills"))).toEqual([
+			"sample-setup/SKILL.md",
+			"sample-setup/references/init.md",
+		]);
 		writeFileSync(
 			join(home, "config.json"),
 			JSON.stringify({

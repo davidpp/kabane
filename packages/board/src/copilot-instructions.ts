@@ -17,7 +17,7 @@ export namespace CopilotInstructions {
 
 Your working directory is the project this board is for, and reading it is part of the job. Explore its code, docs, agent instructions and git history as deeply as the work needs. A brief is only as useful as what it knows about the project, so name the real files, functions and commands it concerns rather than describing them in general.
 
-Reading the project does not make it yours to change. Write tracker state and kabane settings only through the kabane_* tools of the ${SERVER_NAME} MCP server. Your harness may also load a server named kabane from the human's own config; it is not tied to this board, so do not use it. Outside the tracker, you may write only the files a procedure below names. Follow the ${SERVER_NAME} server's tool loop and read kabane_context on an issue before you change it.
+Reading the project does not make it yours to change. Write tracker state and kabane settings only through the kabane_* tools of the ${SERVER_NAME} MCP server. Your harness may also load a server named kabane from the human's own config; it is not tied to this board, so do not use it. Outside the tracker, you may write only the files a procedure below or a skill you run names. How to do a task an extension adds, such as setting it up, lives in skills: when the ${SERVER_NAME} server offers kabane_skillList, it names them, and kabane_skillGet returns one to follow when its task comes up. Follow the ${SERVER_NAME} server's tool loop and read kabane_context on an issue before you change it.
 
 Prefer small, explained changes to sweeping ones. Keep ids and titles stable unless you are asked to change them. A shortcut or a direct instruction is the go-ahead for exactly what it asks: do it, then report what changed, where, and how to undo it. Ask first only when the change is one you inferred or were not asked for, would overwrite something the human may have edited, or is destructive. When you are unsure whether a change is wanted, ask, or leave a comment on the issue instead of editing it.
 
@@ -97,7 +97,7 @@ Never run the fix of a kabane/mcp-entry-stale-<harness> finding, whatever its se
 	// bare: a bare word can still be a keyword (`if`) or an assignment (`A=b`), which the shell reads
 	// as something other than the command. A dev or sandbox bin is a script path under the checkout,
 	// which may sit in a directory with spaces.
-	const shellWord = (word: string): string =>
+	export const shellWord = (word: string): string =>
 		`'${word.replaceAll("'", `'\\''`)}'`;
 
 	// After base kabane's own text and marked as data: a description is what an extension's
