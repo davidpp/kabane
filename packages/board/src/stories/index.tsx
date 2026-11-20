@@ -1246,6 +1246,23 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "detail-run-silent",
+		about:
+			"a recipe run whose harness reports no status: no spinner and no pause, `no status reported`",
+		width: 80,
+		height: 12,
+		render: () => (
+			<Detail
+				taskId={SITTING.id}
+				task={SITTING}
+				tab="description"
+				records={ok(TRAIL_ONLY)}
+				cards={[Fixtures.silentRun(SITTING)]}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
 		name: "detail-run-stop",
 		about:
 			"the same run at forty columns: it has no tab, so its issue's footer offers X to stop it",

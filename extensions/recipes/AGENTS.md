@@ -136,7 +136,7 @@ board writes itself.
 
 | Run state | `ActivityStatus` | Why |
 |---|---|---|
-| `live` | `paused` | in flight without a spinner and without claiming work; `detail[0]` is `live`, so the row reads `⏸ <label> · paused · live` |
+| `live` | `unreported` | in flight, but nothing says whether it works or waits: no spinner and no pause glyph (JCAB-534; a silent Claude Code run is working). `detail[0]` is `live`, so the row reads `◌ <label> · no status reported · live` |
 | `running` | `running` | in flight, animated |
 | `waiting` | `paused` | in flight without a spinner: the harness waits on the human. The row reads `⏸ <label> · paused · waiting` |
 | `idle`, `ended` | `completed` | finished; `detail[0]` is the run state, though the board draws no badge or header line for a finished card, so only `kabane runs` tells the two apart |

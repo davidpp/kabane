@@ -2,10 +2,13 @@
 
 import type { Result } from "@cabane/core";
 
+// `unreported` is in flight, but the host has no word on whether the work is running or waiting, so
+// the board draws it neither with a spinner nor as paused.
 export type ActivityStatus =
 	| "pending"
 	| "running"
 	| "paused"
+	| "unreported"
 	| "completed"
 	| "stopped"
 	| "failed";

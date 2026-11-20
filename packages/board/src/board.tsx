@@ -27,6 +27,7 @@ import { BoardDecisions } from "./decisions";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
+import { isInFlight, stillMark } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE, useSpinnerFrame } from "./spinner";
 import { type Theme, useTheme } from "./theme";
@@ -125,17 +126,22 @@ export const heldColumns = (
 const truncate = (text: string, max: number): string =>
 	text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 
-// The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. Paused shows ⏸
-// with no churn and its first detail line after `paused`; a stale running card (the host's
+// The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. A still card
+// shows its mark with no churn, `⏸ … · paused` or `◌ … · no status reported`, and its first detail
+// line after that word; a stale running card (the host's
 // crashed-runner heuristic) keeps the badge but drops the animation and dims to muted. Exported pure
 // so the badge text/width contract is assertable without a renderer.
 export const cardBadge = (
 	card: ActivityCard,
 	frame: string,
 ): { text: string; muted: boolean } => {
-	if (card.status === "paused") {
+	const still = stillMark(card.status);
+	if (still) {
 		const detail = card.detail[0] ? ` · ${card.detail[0]}` : "";
-		return { text: ` · ⏸ ${card.label} · paused${detail}`, muted: false };
+		return {
+			text: ` · ${still.glyph} ${card.label} · ${still.word}${detail}`,
+			muted: false,
+		};
 	}
 	const glyph = card.status === "running" && !card.stale ? frame : SPINNER_IDLE;
 	const detail = card.detail[0] ?? card.status;
@@ -162,12 +168,7 @@ export const activityStrip = (
 ): string => {
 	const byKind = new Map<string, number>();
 	for (const card of hostCards(activity)) {
-		if (
-			card.status !== "running" &&
-			card.status !== "pending" &&
-			card.status !== "paused"
-		)
-			continue;
+		if (!isInFlight(card)) continue;
 		byKind.set(card.kind, (byKind.get(card.kind) ?? 0) + 1);
 	}
 	const inputs = BoardActivity.questions(activity).length;

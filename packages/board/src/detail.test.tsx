@@ -598,6 +598,10 @@ test("cardStatusLine covers paused and stale-agnostic running text", () => {
 	expect(cardStatusLine({ ...running, status: "paused", detail: [] })).toBe(
 		"⏸ loop · paused",
 	);
+	// Unreported claims neither work nor a pause: the host cannot say which.
+	expect(cardStatusLine({ ...running, status: "unreported" })).toBe(
+		"◌ loop · no status reported · verify · iteration 2 · $1.50",
+	);
 });
 
 test("cardStatusLine uses spinnerFrame when provided and the card is not stale", () => {
@@ -618,6 +622,7 @@ test("cardStatusGlyph returns animated frame for running/pending, • for comple
 	expect(cardStatusGlyph("completed")).toBe("•");
 	expect(cardStatusGlyph("failed")).toBe("✗");
 	expect(cardStatusGlyph("paused")).toBe("⏸");
+	expect(cardStatusGlyph("unreported")).toBe("◌");
 });
 
 test("formatElapsed formats durations correctly", () => {

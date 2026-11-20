@@ -293,6 +293,7 @@ against every glyph already here.
 | `●` (badge) | in flight, echoed on a surface that does not own it | working |
 | `⠋` frozen | in flight, but the runner stopped reporting | muted |
 | `⏸` | paused | muted |
+| `◌` | in flight, but nothing reports whether it is working or waiting | muted |
 | `⏹` | stopped on purpose before it finished (a human, a budget): over, not failed | muted |
 | `✓` `•` | done | done |
 | `○` | pending plan step | muted |

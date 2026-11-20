@@ -14,6 +14,7 @@ import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import { BoardJobs } from "./jobs";
+import { STILL } from "./ports";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { BoardTabs } from "./tabs";
 import { type Theme, useTheme } from "./theme";
@@ -35,7 +36,8 @@ const glyphOf = (
 				fg: theme.working,
 			};
 		case "paused":
-			return { text: "⏸", fg: theme.muted };
+		case "unreported":
+			return { text: STILL[card.status].glyph, fg: theme.muted };
 		case "completed":
 			return { text: "✓", fg: theme.done };
 		case "stopped":

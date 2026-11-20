@@ -263,7 +263,7 @@ each state from the terminal, as `kabane runs` does, and draws it this way:
 | State | On the board |
 |---|---|
 | `running` | in flight, with a spinner: the issue's row shows the recipe's name and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
-| `live` | paused, with no spinner, since nothing says the program is working: the issue's row shows `⏸ <recipe> · paused · live`, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
+| `live` | in flight with no status reported, since the program has said neither that it works nor that it waits: no spinner and no pause. The issue's row shows `◌ <recipe> · no status reported · live`, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy |
 | `waiting` | paused, with no spinner: the issue's row shows `⏸ <recipe> · paused` and the state, and its header also shows the run's inputs, its machine and `kabane runs attach <id>` to copy. The agent waits on you: answer it with `kabane runs attach <id>` |
 | `idle`, `ended` | finished: no badge on the row or line in the header. `kabane runs --ended` says which of the two it is |
 

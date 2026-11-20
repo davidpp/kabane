@@ -245,6 +245,16 @@ export namespace Fixtures {
 	});
 
 	/**
+	 * The same run while its harness has reported no status (`live`): the recipes extension draws
+	 * it unreported, neither working nor paused.
+	 */
+	export const silentRun = (on: Task): ActivityCard => ({
+		...waitingRun(on),
+		status: "unreported",
+		detail: ["live", ...waitingRun(on).detail.slice(1)],
+	});
+
+	/**
 	 * A decision an agent filed on `on`, its `n`th: open unless `over` answers it. `meta` is what
 	 * `kabane_ask` records beside the question (choices, recommended, multi-select, freeform).
 	 */

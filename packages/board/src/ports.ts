@@ -11,6 +11,7 @@ import { ok, type Result, type Task } from "@cabane/core";
 import type {
 	ActivityCard,
 	ActivitySource,
+	ActivityStatus,
 	ActivityToolDetail,
 	CopilotShortcut,
 	Dispatcher,
@@ -258,4 +259,20 @@ export const noAnnouncer: Announcer = {
 export const isInFlight = (card: ActivityCard): boolean =>
 	card.status === "pending" ||
 	card.status === "running" ||
-	card.status === "paused";
+	stillMark(card.status) !== undefined;
+
+type StillStatus = Extract<ActivityStatus, "paused" | "unreported">;
+
+// The in-flight statuses the board draws still, without a spinner: each one's glyph and the word
+// after its label.
+export const STILL: Readonly<
+	Record<StillStatus, { glyph: string; word: string }>
+> = {
+	paused: { glyph: "⏸", word: "paused" },
+	unreported: { glyph: "◌", word: "no status reported" },
+};
+
+export const stillMark = (
+	status: ActivityStatus,
+): (typeof STILL)[StillStatus] | undefined =>
+	status === "paused" || status === "unreported" ? STILL[status] : undefined;
