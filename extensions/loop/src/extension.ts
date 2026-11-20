@@ -354,6 +354,7 @@ export const start: Verb = async (args, deps, target) => {
 	const started = await Loop.start(deps, input.value);
 	if (!started.ok) return ran(deps.host, started);
 	const placed = Loop.placement(started.value);
+	const unpushed = await Loop.unpushedBase(started.value);
 	const isNew =
 		started.value.worktree !== undefined && !started.value.worktreeReused;
 	const moves = Lenses.moves(
@@ -367,6 +368,7 @@ export const start: Verb = async (args, deps, target) => {
 			...(placed ? [`  ${placed}`] : []),
 			...(isNew ? [WORKTREE_NOTE] : []),
 			...moves.map((move) => `  note: ${move}`),
+			...(unpushed ? [`  note: ${unpushed}`] : []),
 		].join("\n"),
 	);
 };
@@ -456,6 +458,7 @@ const advisedText = (a: Loop.Advised): string => {
 			: []),
 		...(a.subtasks.length > 0 ? ["subtasks:"] : []),
 		...a.subtasks.flatMap(routedLines),
+		...(a.unpushedBase ? [`note: ${a.unpushedBase}`] : []),
 	].join("\n");
 };
 

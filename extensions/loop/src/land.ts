@@ -56,6 +56,68 @@ export namespace Land {
 		return parsed.ok ? ok(parsed.value.trim()) : parsed;
 	};
 
+	/** A commit by its short sha and subject: a rebase gives it a new sha, never a new subject. */
+	export type Commit = { sha: string; subject: string };
+
+	// The commits `tip` has and `against` lacks, oldest first; none when git cannot say.
+	const lacking = async (
+		git: Worktree.Git,
+		dir: string,
+		against: string,
+		tip: string,
+	): Promise<Commit[]> => {
+		const listed = await git(dir, [
+			"log",
+			"--reverse",
+			"--format=%h%x09%s",
+			`${against}..${tip}`,
+		]);
+		if (!listed.ok) return [];
+		return listed.value
+			.split("\n")
+			.filter((line) => line !== "")
+			.map((line) => {
+				const [sha = "", ...subject] = line.split("\t");
+				return { sha, subject: subject.join("\t") };
+			});
+	};
+
+	const quoted = (c: Commit): string => `${c.sha} "${c.subject}"`;
+
+	// "2 commits (abc1234 "first" … def5678 "last")": how many, the first and the last.
+	const counted = (commits: readonly Commit[]): string => {
+		const first = commits[0];
+		const last = commits.at(-1);
+		if (first === undefined || last === undefined) return "no commits";
+		return commits.length === 1
+			? `1 commit (${quoted(first)})`
+			: `${commits.length} commits (${quoted(first)} … ${quoted(last)})`;
+	};
+
+	/**
+	 * What a `pr` landing of a run started from `head` in the checkout at `dir` would publish
+	 * beyond the run's own work: the commits the local base has that its remote-tracking branch
+	 * lacks. Read from that branch as it is, since nothing is fetched here, so it may be stale.
+	 * Undefined when there are none, on a detached HEAD, and for a base with no remote-tracking
+	 * branch.
+	 */
+	export const unpushedBase = async (
+		git: Worktree.Git,
+		dir: string,
+		head: Worktree.Head,
+	): Promise<string | undefined> => {
+		const base = head.branch;
+		if (base === undefined) return undefined;
+		const remote = await remoteOf(git, dir, base);
+		const tracking = await revParse(git, dir, `refs/remotes/${remote}/${base}`);
+		if (!tracking.ok) return undefined;
+		const commits = await lacking(git, dir, tracking.value, head.sha);
+		if (commits.length === 0) return undefined;
+		return Exec.redact(
+			`${base} has ${counted(commits)} that ${remote}/${base} lacks, as of the last fetch: a pr landing pushes them in the run's pull request, beside the run's own work`,
+		);
+	};
+
 	/** Where a landing stands once the branch is on the base's latest commit. */
 	type OnBase = {
 		dir: string;
@@ -63,6 +125,8 @@ export namespace Land {
 		base: string;
 		/** The run's own branch, the one checked out in its worktree. */
 		branch: string;
+		/** The base's latest commit on the remote, which the branch is now on. */
+		onto: string;
 		rebased?: RunStore.Landing["rebased"];
 		/** How the branch got onto the base, for the summary. */
 		said: string;
@@ -119,6 +183,7 @@ export namespace Land {
 				remote,
 				base,
 				branch,
+				onto: onto.value,
 				said: `The branch is on ${target}`,
 			});
 		RunState.save(ctx, { ...ctx.run, landingFrom: from.value });
@@ -142,6 +207,7 @@ export namespace Land {
 				remote,
 				base,
 				branch,
+				onto: onto.value,
 				rebased: moved,
 				said: `Rebased onto ${target}${Gates.configured(ctx.run.config.gates) ? ", gates green again" : ""}`,
 			});
@@ -235,11 +301,29 @@ export namespace Land {
 	const lines = (items: readonly string[], none: string): string =>
 		items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : none;
 
+	/** The commits a `pr` landing pushes that came from the local base, not from the run. */
+	type Carried = { base: string; remote: string; commits: Commit[] };
+
+	// What a landing that pushed says of the base commits it published, after its own sentence.
+	const carriedSaid = ({ base, remote, commits }: Carried): string =>
+		commits.length === 0
+			? ""
+			: ` The branch also carries ${counted(commits)} from the local ${base} that ${Exec.redact(remote)}/${base} lacked, not the run's own.`;
+
+	const alsoCarried = (outcome: Outcome, carried: Carried): Outcome => ({
+		...outcome,
+		summary: `${outcome.summary}${carriedSaid(carried)}`,
+	});
+
 	/**
 	 * The pull request's body: the parent's brief, the gates' last results, and what the lenses
 	 * found, each finding with where it stands.
 	 */
-	const body = (run: RunStore.Run, plan: LoopPlan.Plan): string => {
+	const body = (
+		run: RunStore.Run,
+		plan: LoopPlan.Plan,
+		carried: Carried,
+	): string => {
 		const gates = run.gateRuns.at(-1)?.results ?? [];
 		const findings = plan.nodes
 			.filter((n) => n.finding)
@@ -252,6 +336,16 @@ export namespace Land {
 		return [
 			plan.parent.description?.trim() || plan.parent.title,
 			"",
+			...(carried.commits.length > 0
+				? [
+						"## Not this run's work",
+						"",
+						`The run started from the local \`${carried.base}\`, which had these commits \`${carried.remote}/${carried.base}\` lacked. They are part of this pull request:`,
+						"",
+						lines(carried.commits.map(quoted), ""),
+						"",
+					]
+				: []),
 			"## Gates",
 			"",
 			lines(gates.map(Gates.describe), "No gates configured."),
@@ -273,6 +367,7 @@ export namespace Land {
 		ctx: Ctx,
 		plan: LoopPlan.Plan,
 		placed: OnBase,
+		carried: Carried,
 	): Promise<Result<string, Outcome>> => {
 		const git = ctx.deps.git ?? Worktree.git;
 		const run = ctx.deps.gh ?? gh;
@@ -315,9 +410,12 @@ export namespace Land {
 		});
 		if (stopping(ctx))
 			return err(
-				notLanded(
-					`the run was stopped once branch ${branch} was pushed, before a pull request was opened`,
-					keep,
+				alsoCarried(
+					notLanded(
+						`the run was stopped once branch ${branch} was pushed, before a pull request was opened`,
+						keep,
+					),
+					carried,
 				),
 			);
 		const open = await openPr(run, dir, branch);
@@ -325,9 +423,12 @@ export namespace Land {
 		// A stop that came while gh looked the pull request up opens none.
 		if (stopping(ctx))
 			return err(
-				notLanded(
-					`the run was stopped once branch ${branch} was pushed, before a pull request was opened`,
-					keep,
+				alsoCarried(
+					notLanded(
+						`the run was stopped once branch ${branch} was pushed, before a pull request was opened`,
+						keep,
+					),
+					carried,
 				),
 			);
 		const created = await run(dir, [
@@ -340,13 +441,16 @@ export namespace Land {
 			"--title",
 			plan.parent.title,
 			"--body",
-			body(ctx.run, plan),
+			body(ctx.run, plan, carried),
 		]);
 		if (!created.ok)
 			return err(
-				notLanded(
-					`branch ${branch} is pushed, but no pull request was opened: ${created.error.message}`,
-					keep,
+				alsoCarried(
+					notLanded(
+						`branch ${branch} is pushed, but no pull request was opened: ${created.error.message}`,
+						keep,
+					),
+					carried,
 				),
 			);
 		const url = created.value
@@ -356,9 +460,12 @@ export namespace Land {
 		return url
 			? ok(url)
 			: err(
-					notLanded(
-						`gh pr create printed no pull request URL: ${created.value.trim()}`,
-						keep,
+					alsoCarried(
+						notLanded(
+							`gh pr create printed no pull request URL: ${created.value.trim()}`,
+							keep,
+						),
+						carried,
 					),
 				);
 	};
@@ -691,14 +798,25 @@ export namespace Land {
 	): Promise<RunStore.Landing> => {
 		const placed = await onBase(ctx, plan.parent);
 		if (!placed.ok) return record(ctx, placed.error);
-		const pr = await toPr(ctx, plan, placed.value);
+		const { dir, remote, base, onto, said, rebased } = placed.value;
+		// What the branch has from the local base the run started from that the remote's base
+		// lacks: the push publishes it with the run's work.
+		const from = ctx.run.base?.sha;
+		const carried: Carried = {
+			base,
+			remote,
+			commits:
+				from === undefined
+					? []
+					: await lacking(ctx.deps.git ?? Worktree.git, dir, onto, from),
+		};
+		const pr = await toPr(ctx, plan, placed.value, carried);
 		if (!pr.ok) return record(ctx, pr.error);
-		const { said, rebased } = placed.value;
 		return record(
 			ctx,
 			{
 				ok: true,
-				summary: `${said}; pull request ${pr.value} is open.`,
+				summary: `${said}; pull request ${pr.value} is open.${carriedSaid(carried)}`,
 				...(rebased ? { rebased } : {}),
 			},
 			pr.value,

@@ -417,7 +417,8 @@ describe("Land.land to a pull request", () => {
 		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(true);
-		expect(landing.summary).toContain(`pull request ${PR_URL} is open`);
+		expect(landing.summary).toContain(`pull request ${PR_URL} is open.`);
+		expect(landing.summary).not.toContain("also carries");
 		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
 		expect(ctx.run.pushed).toBe(remoteTip());
 		expect(ctx.run.pr).toBe(PR_URL);
@@ -538,6 +539,96 @@ describe("Land.land to a pull request", () => {
 		);
 		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
 		expect(ctx.run.pr).toBeUndefined();
+	});
+});
+
+// Two commits on the project's main that its remote lacks: merged locally, not pushed.
+const baseAhead = (): string[] => {
+	commit(repo, "local-a.txt");
+	commit(repo, "local-b.txt");
+	return GitFixture.run(repo, ["log", "--reverse", "--format=%h", "-2"])
+		.trim()
+		.split("\n");
+};
+
+describe("Land.unpushedBase", () => {
+	const notice = (dir = repo): Promise<string | undefined> =>
+		Worktree.head(dir, git).then((h) => {
+			if (!h.ok) throw h.error;
+			return Land.unpushedBase(git, dir, h.value);
+		});
+
+	it("says nothing for a base its remote-tracking branch has", async () => {
+		expect(await notice()).toBeUndefined();
+	});
+
+	it("names how many commits the remote lacks, the first and the last, as of the last fetch", async () => {
+		const [a, b] = baseAhead();
+
+		expect(await notice()).toBe(
+			`main has 2 commits (${a} "local-a.txt" … ${b} "local-b.txt") that origin/main lacks, as of the last fetch: a pr landing pushes them in the run's pull request, beside the run's own work`,
+		);
+	});
+
+	it("says nothing on a detached HEAD, or for a branch the remote has no counterpart of", async () => {
+		baseAhead();
+		GitFixture.run(repo, ["switch", "-q", "--detach"]);
+		expect(await notice()).toBeUndefined();
+		GitFixture.run(repo, ["switch", "-q", "-c", "local-only"]);
+		expect(await notice()).toBeUndefined();
+	});
+});
+
+describe("Land.land to a pull request from a base ahead of its remote", () => {
+	it("names the base's commits the remote lacked, in the landed event and the pull request's body", async () => {
+		const [a, b] = baseAhead();
+		const ctx = ctxFor(await completedRun(await parentIssue()));
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(true);
+		expect(landing.summary).toEndWith(
+			`pull request ${PR_URL} is open. The branch also carries 2 commits (${a} "local-a.txt" … ${b} "local-b.txt") from the local main that origin/main lacked, not the run's own.`,
+		);
+		const events = RunStore.readEvents(home, ctx.run.id);
+		expect(
+			events.ok && events.value.map((e) => [e.type, e.summary]).at(-1),
+		).toEqual(["landed", landing.summary]);
+		const body = ghCalls.find((c) => c[1] === "create")?.[9] ?? "";
+		expect(body).toStartWith(
+			`The brief.\n\n## Not this run's work\n\nThe run started from the local \`main\`, which had these commits \`origin/main\` lacked. They are part of this pull request:\n\n- ${a} "local-a.txt"\n- ${b} "local-b.txt"\n\n## Gates`,
+		);
+		expect(body).not.toContain("work.txt");
+	});
+
+	it("names them by subject once a rebase onto a base that moved gave them new shas", async () => {
+		baseAhead();
+		const ctx = ctxFor(await completedRun(await parentIssue()));
+		baseMoves("teammate.txt");
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(true);
+		expect(landing.rebased).toBeDefined();
+		expect(landing.summary).toContain("The branch also carries 2 commits (");
+		expect(landing.summary).toContain('"local-a.txt" … ');
+		expect(landing.summary).not.toContain("teammate.txt");
+	});
+
+	it("names them when the branch is pushed but no pull request opens", async () => {
+		const [a] = baseAhead();
+		const ctx = ctxFor(await completedRun(await parentIssue()));
+		ghFails = "gh: To get started with GitHub CLI, please run: gh auth login";
+
+		const landing = await landed(ctx);
+
+		expect(landing.ok).toBe(false);
+		expect(landing.summary).toContain(
+			"is pushed, but no pull request was opened",
+		);
+		expect(landing.summary).toContain(
+			`The branch also carries 2 commits (${a} "local-a.txt"`,
+		);
 	});
 });
 
