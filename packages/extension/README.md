@@ -60,5 +60,7 @@ a heuristic, not a migration guarantee. The storage owner constructs findings an
 chooses severity and any repair; inferred renames alone are informational.
 
 `ports.ts` exports the activity, dispatch, header, panel, settings field and copilot shortcut
-types through `@kabane/extension`. `StopAction` is the literal type `"stop"`; consumers use
+types through `@kabane/extension`. An `ActivityCard` may carry its `steps` (`ActivityStep`, each
+with its `ActivitySession`s) and, once over, what it `left` for the human (`ActivityLeft`); a
+client draws them as a map on the card's tab, and the `@kabane/board` README says how. `StopAction` is the literal type `"stop"`; consumers use
 their own constant. The contract has no dependency on the board.
