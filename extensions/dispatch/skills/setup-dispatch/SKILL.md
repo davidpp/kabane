@@ -26,7 +26,7 @@ Read a reference with `kabane_skillGet` and `name: "setup-dispatch"`, its path f
 ## Routing
 
 - **An option named, or clearly implied** ("refresh the dispatch skill", "we use Linear" for `upstream`): read its reference and follow it. When two fit, ask which.
-- **No option:** build the menu below, show it, and ask which option to run. Never run one before the human picks: the menu is a suggestion.
+- **No option:** build the menu below, show it, and ask which option to run. A bare "set up dispatch" or `/setup-dispatch` names no option. Never run one before the human picks: the menu is a suggestion, and the pick is the request the write rule below speaks of.
 
 The menu leads with what the project shows:
 
@@ -40,13 +40,13 @@ Then the full options table. Ask through your harness's own choice prompt whenev
 
 Read what the project says about itself before writing anything: CLAUDE.md and AGENTS.md, the package manifest's scripts and the gate the instructions name, .claude/agents/, any testing constraints, where it keeps decisions, research and docs, how it names branches, worktrees and commits, and whether the recent git log merges locally or through pull requests.
 
-PLACEHOLDERS.md takes the scope and the issue prefix from the board context block. A session outside the board has none: take the scope from `kabane_scopeList` for this project root, and the prefix from this scope's issue ids (`kabane_list`).
+PLACEHOLDERS.md takes the scope and the issue prefix from the board context block. A session outside the board has none: take the scope's `scopeUri` from `{{kabane}} scope --json`, run in the project root, and the prefix from this scope's issue ids (`kabane_list`). When the scope has no issue yet, file the handoff issue below first and take the prefix from the id it returns.
 
 ## Asking the questions
 
 Settle the questions under ## Questions in PLACEHOLDERS.md. Answer each one from the project's files where they settle it, and note the file that did. When the project already has a dispatch skill, read its ## This project section first and keep every answer it records, so a refresh asks only what it leaves unanswered. Ask the ones that remain together, in as few prompts as your harness allows: through your harness's own choice prompt whenever it has one, each question's choices as its options and the recommended one first, and in plain text, ending your turn on it, only where it has none. Write nothing until they are answered.
 
-Offer every choice the question lists, as PLACEHOLDERS.md words it. Never drop, merge or reword a choice, and never leave one out because the project's files make it look unlikely: an answer the files did not settle is the human's to pick from the whole list. A choice the human's request already names becomes the recommended one, and the others are still offered.
+Offer every choice the question lists, as PLACEHOLDERS.md words it. Never drop, merge or reword a choice, and never leave one out because the project's files make it look unlikely: an answer the files did not settle is the human's to pick from the whole list. A choice the human's request already names ("we use Linear") is not yet their answer: still ask that question, with the named choice as the recommended one and every other choice offered after it, so they confirm it from the whole list.
 
 {{extension}}/templates/examples/ shows the ## This project section for three setups: one person landing on main, a team on GitHub with pull requests, and goals carried by a steward. The answers fill {{SETUP_ANSWERS}}, each with its source, and select the overlays: copy an overlay only when an answer selects it, and on a refresh an overlay the answers no longer select is removed, which the diff shows. The answers are about the project, not permission to write: the write rule below still decides whether you write without asking.
 
