@@ -172,6 +172,14 @@ and series indices.
 
 ### Copilot procedures and shortcuts: files, over a `copilot(ctx)` code slot
 
+**Superseded for procedures** by [ADR 0004](adr/0004-extension-how-to-ships-as-skills-served-by-kabane-mcp.md)
+(JCAB-585, 2026-11-19). How-to now ships as skills in `skills/<name>/`, which `kabane mcp` serves
+to any session through `kabane_skillList` and `kabane_skillGet`, and the host fills
+`{{kabane}}` beside `{{extension}}` on a get. Procedures appended to every copilot session cost
+every session all of them and reached no session but the copilot. Shortcuts stay files, as below.
+The reasoning below is kept as the record of the first design: its case for files over a code slot
+still holds for skills.
+
 opencode ships commands, agents and skills as markdown, and those survived its V2 rewrite
 unchanged while code plugins broke ("should continue to work without changes",
 `opencode-architecture.md`). Base kabane's `CopilotShortcut` is already plain data,
