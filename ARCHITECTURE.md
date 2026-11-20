@@ -212,7 +212,7 @@ and renders `BoardContext` into every prompt. `mailbox.ts` lives beside it. The 
 `BoardCopilot` from `@cabane/board`; acp has no dependency on the board.
 
 Of `instructions.ts`, the prose lives in the board as `packages/board/src/copilot-instructions.ts`
-(`BLOCK`, `SKILLS`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
+(`BLOCK`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
 `CopilotInstructions` with two names the board reads: `actorUri` and `SERVER_NAME`. The loop keeps
 its own copies (`extensions/loop/src/session-identity.ts`). The dispatch template and the grill
 skill belong to the dispatch extension, which reads them from its own directory. The path kabane runs
@@ -674,8 +674,10 @@ Skills do not trigger on their own by description: the server instructions name 
 the board's `/` shortcuts name the skill to fetch. The copilot's instructions
 (`packages/board/src/copilot-instructions.ts`) keep only what code alone knows: the per-prompt
 `kabane-board` block, `setup()`'s machine context, the copilot's identity and its write
-boundaries in `BLOCK`. Base kabane's own how-to (`SKILLS`) names no extension and moves to a
-skill of its own last (JCAB-585).
+boundaries in `BLOCK`. Base kabane's own how-to (linking external issues, config and help,
+doctor) is the `kabane` skill, `packages/cli/skills/kabane/`, which names no extension. `kabane
+mcp` serves it first, always, with an extension's skill of that name refused; the CLI imports
+its files as text so a compiled kabane, which has no source tree, serves it too.
 
 ### Copilot shortcuts are markdown files
 

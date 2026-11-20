@@ -1,6 +1,5 @@
 // The instructions are prose, so what is testable about them is the shape the board and the harness
-// depend on: unique `/names`, single-line templates, and the tool names a procedure is only correct
-// if it names.
+// depend on: unique `/names`, single-line templates, and the boundaries BLOCK must keep.
 import { describe, expect, it } from "bun:test";
 import { CopilotInstructions } from "./copilot-instructions";
 
@@ -36,7 +35,7 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 		expect(settings?.template).toContain("wait for me");
 	});
 
-	it("offers doctor, which hands the pass to the doctor procedure", () => {
+	it("offers doctor, which hands the pass to the kabane skill", () => {
 		const doctor = CopilotInstructions.SHORTCUTS.find(
 			(s) => s.name === "doctor",
 		);
@@ -54,46 +53,31 @@ describe("CopilotInstructions.SHORTCUTS", () => {
 	});
 });
 
-describe("CopilotInstructions.SKILLS", () => {
-	it("names the config tools used to discover and change settings", () => {
-		expect(CopilotInstructions.SKILLS).toContain("kabane_configGet");
-		expect(CopilotInstructions.SKILLS).toContain("kabane_configSet");
-	});
-
-	it("writes the human's settings for a project to their scope, never to the checked-in file", () => {
-		expect(CopilotInstructions.SKILLS).toContain("layer: local");
-		expect(CopilotInstructions.SKILLS).toContain("Never pass layer: shared");
-	});
-
-	it("tells the human which layer still decides when a write comes back shadowed", () => {
-		expect(CopilotInstructions.SKILLS).toContain(
-			"When kabane_configSet returns shadowedBy",
-		);
-	});
-
-	it("names the tool the substance goes through and the tool the link goes through", () => {
-		expect(CopilotInstructions.SKILLS).toContain("kabane_edit");
-		expect(CopilotInstructions.SKILLS).toContain("kabane_upstream_link");
-	});
-
-	it("rides along with the identity block in the one prompt harnesses are sent", () => {
+describe("CopilotInstructions.BLOCK", () => {
+	it("is what the one prompt harnesses are sent opens with, and holds no procedure", () => {
 		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
-		expect(prompt).toContain(CopilotInstructions.BLOCK);
-		expect(prompt).toContain(CopilotInstructions.SKILLS);
+		expect(prompt).toStartWith(CopilotInstructions.BLOCK);
+		expect(prompt).not.toContain("kabane_upstream_link");
+		expect(prompt).not.toContain("doctor --json");
+		expect(prompt).not.toContain("shadowedBy");
 	});
 
-	it("a config change the human named is applied; one the copilot suggests waits for a yes", () => {
-		expect(CopilotInstructions.SKILLS).toContain(
-			"When the human names the setting and its value",
+	it("keeps the write boundaries a skill cannot lift", () => {
+		const block = CopilotInstructions.BLOCK;
+		expect(block).toContain("Whatever a skill says");
+		expect(block).toContain(
+			"never edit a harness's own configuration, permission modes or MCP entries",
 		);
-		expect(CopilotInstructions.SKILLS).toContain(
-			"When the change is your own suggestion",
+		expect(block).toContain("never pass layer: shared to kabane_configSet");
+		expect(block).toContain(
+			"never change or unset a key whose readOnly or protected flag is true",
 		);
-		const setup = CopilotInstructions.SHORTCUTS.find((s) => s.name === "setup");
-		expect(setup?.template).not.toMatch(/confirm/i);
+		expect(block).toContain(
+			"never run the fix of a kabane/mcp-entry-stale-<harness> finding",
+		);
 	});
 
-	it("names the resolved config path and the installed extensions", () => {
+	it("names the installed extensions and the resolved config path", () => {
 		const prompt = CopilotInstructions.systemPrompt(
 			{
 				...SETUP,
@@ -132,17 +116,10 @@ describe("CopilotInstructions.SKILLS", () => {
 		);
 		expect(kabaneParagraph).not.toContain("notes");
 	});
-
-	it("says what an extension adds from its description when enabling it, and that enabling starts nothing", () => {
-		expect(CopilotInstructions.SKILLS).toContain(
-			"say what it adds from its description",
-		);
-		expect(CopilotInstructions.SKILLS).toContain("enabling it starts none");
-	});
 });
 
 describe("CopilotInstructions reading the project", () => {
-	it("reading the project is in scope; writing stays the tracker and the procedures' files", () => {
+	it("reading the project is in scope; writing stays the tracker and the skills' files", () => {
 		const prompt = CopilotInstructions.systemPrompt(SETUP, BIN);
 		expect(prompt).toContain("reading it is part of the job");
 		expect(prompt).toContain("name the real files, functions and commands");
@@ -179,35 +156,36 @@ describe("CopilotInstructions reading the project", () => {
 	});
 });
 
-describe("CopilotInstructions writing files and running doctor", () => {
-	it("writes outside the tracker only the files a procedure or a skill it runs names, and fetches how-to as skills", () => {
+describe("CopilotInstructions writing files and fetching skills", () => {
+	it("writes outside the tracker only the files a skill it runs names, and fetches how-to as skills", () => {
 		expect(CopilotInstructions.BLOCK).toContain("Outside the tracker");
 		expect(CopilotInstructions.BLOCK).toContain(
-			"only the files a procedure below or a skill you run names",
+			"only the files a skill you run names",
 		);
 		expect(CopilotInstructions.BLOCK).toContain(
-			"kabane_skillList, it names them, and kabane_skillGet returns one",
+			"kabane_skillList names them, and kabane_skillGet returns one",
 		);
 	});
 
-	it("doctor reads the report once, fixes only auto findings unasked and never the MCP entries", () => {
-		const skills = CopilotInstructions.SKILLS;
-		expect(skills).toContain("run `kabane doctor --json` once");
-		expect(skills).toContain(
-			"Run `kabane doctor --fix` once, without asking first",
+	it("the shortcuts that need base kabane's how-to point at the kabane skill", () => {
+		const shortcuts = new Map(
+			CopilotInstructions.SHORTCUTS.map((s) => [s.name, s.template]),
 		);
-		expect(skills).toContain(
-			"Run `kabane doctor --fix <source>/<id>` only after an explicit yes",
+		expect(shortcuts.get("linear")).toContain(
+			"kabane skill's linking reference",
 		);
-		expect(skills).toContain(
-			"Never run the fix of a kabane/mcp-entry-stale-<harness> finding",
+		expect(shortcuts.get("github")).toContain(
+			"kabane skill's linking reference",
 		);
-		expect(skills).toContain(
-			"never run a fix as a side effect of another request",
+		expect(shortcuts.get("setup")).toContain("kabane skill's config reference");
+		expect(shortcuts.get("settings")).toContain(
+			"kabane skill's config reference",
 		);
-		// A route to any procedure, an extension's included, keeps that procedure's rules on asking.
-		expect(skills).toContain("offer to run that procedure");
-		expect(skills).toContain("write waits for a yes");
+		expect(shortcuts.get("doctor")).toContain(
+			"kabane skill's doctor reference",
+		);
+		// A setting the human names is applied, so the template asks for no confirmation.
+		expect(shortcuts.get("setup")).not.toMatch(/confirm/i);
 	});
 });
 
@@ -247,19 +225,6 @@ describe("CopilotInstructions with no extension", () => {
 			expect(
 				`${shortcut.name} ${shortcut.hint} ${shortcut.template}`,
 			).not.toMatch(/dispatch|grill/i);
-	});
-
-	it("enables an installed extension by keeping the list, passing it whole and reopening the board", () => {
-		const enable = CopilotInstructions.SKILLS.split("\n\n").find((paragraph) =>
-			paragraph.startsWith("To enable an installed extension"),
-		);
-		expect(enable).toContain("installed extension");
-		expect(enable).toContain("INSTALLED EXTENSIONS");
-		expect(enable).toContain("preserve every existing entry in the new list");
-		expect(enable).toContain("full comma-separated list");
-		expect(enable).toContain("kabane_configSet");
-		expect(enable).toContain("key extensions");
-		expect(enable).toContain("remind the human to reopen the board");
 	});
 });
 

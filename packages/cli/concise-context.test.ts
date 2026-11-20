@@ -14,6 +14,7 @@ import {
 	payloadMetrics,
 } from "./issue-corpus-harness";
 import { configTools } from "./src/config-tools";
+import { Skills } from "./src/skills";
 
 const toolResult = z.object({
 	isError: z.boolean().optional(),
@@ -52,7 +53,8 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 					configTools(tracker.home, { projectDir: tracker.cwd }).length +
 					(questionsModule.tools?.length ?? 0) +
 					(handoffModule.tools?.length ?? 0) +
-					(checklistModule.tools?.length ?? 0),
+					(checklistModule.tools?.length ?? 0) +
+					Skills.tools([], "kabane").length,
 			);
 			for (const field of ["responseFormat", "sections", "cursor"])
 				expect(

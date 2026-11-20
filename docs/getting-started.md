@@ -203,6 +203,11 @@ tell whether that skill is current. [Extensions](extensions.md) says how to inst
 
 `/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
 
+`/linear`, `/github`, `/setup`, `/settings` and `/doctor` follow kabane's own `kabane` skill,
+which kabane's MCP server serves to any session connected to it. Outside the board, ask a
+session to "link this issue to Linear ENG-1" or "check that kabane is current" and it fetches
+the same skill.
+
 The copilot has three requirements of its own. Setup does not check any of them:
 
 - **A logged-in harness.** The default is Claude Code: `claude` on PATH, run once to log
@@ -398,12 +403,12 @@ repair.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
-setting rather than a broken one, and `route` names the procedure that repairs it, such as
+setting rather than a broken one, and `route` names the skill that repairs it, such as
 the dispatch extension's setup-dispatch skill. Findings are not errors, and the command succeeds when it has some.
 
 In the board, `/doctor` has the copilot run the same report and act on it: it applies the
 `auto` fixes without asking, tells you each `mention` and `suggest` and waits for your yes,
-and offers the procedure a `route` names. It never rewrites a harness's MCP entry itself; it
+and offers the skill a `route` names. It never rewrites a harness's MCP entry itself; it
 gives you the `kabane doctor --fix` command to run.
 
 Scripts reading `kabane mcp install --json` must accept `reports[].status: "stale"`
