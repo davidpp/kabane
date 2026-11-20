@@ -180,7 +180,9 @@ names that file. `kabane_configSet` adds
 `restartRequired`, true when `restart` is `start`.
 
 Strings are literal; numbers and booleans use JSON syntax. Arrays take trimmed
-comma-separated values, with an empty string meaning an empty array.
+comma-separated values, with an empty string meaning an empty array, or a JSON array
+(`'["one,two"]'`) for an item that holds a comma, is empty or keeps spaces at an end; a value
+starting with `[` is always read as JSON.
 `sync.headers` and `loop.gates` take a JSON object of string values; one gate is its own key,
 `loop.gates.<name>`. Put `--` before a value starting with `--`. Object groups (`sync`,
 `copilot`, `loop`, `loop.budget`) can be read; edit or unset their dotted keys individually.

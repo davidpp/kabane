@@ -171,7 +171,18 @@ const parseValue = (entry: Key, text: string): Result<unknown> => {
 	const { kind } = entry.field;
 	const expected = JSON_KINDS[kind];
 	let value: unknown = text;
-	if (kind === "list") {
+	if (kind === "list" && text.trimStart().startsWith("[")) {
+		// A JSON array carries the items commas cannot: one holding a comma, an empty one, one
+		// with spaces at an end. Text that opens like one is one, never comma-separated items.
+		const parsed = trySync((): unknown => JSON.parse(text));
+		if (!parsed.ok || !Array.isArray(parsed.value))
+			return err(
+				new Error(
+					`Invalid value for ${entry.key}: expected a JSON array, or comma-separated values that do not start with [.`,
+				),
+			);
+		value = parsed.value;
+	} else if (kind === "list") {
 		value = text === "" ? [] : text.split(",").map((part) => part.trim());
 	} else if (expected !== undefined) {
 		const parsed = trySync((): unknown => JSON.parse(text));

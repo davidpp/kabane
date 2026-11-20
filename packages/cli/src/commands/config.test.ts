@@ -772,6 +772,28 @@ describe.concurrent("config through the real CLI", () => {
 			expect(await json("config", "get", "loop.harnesses.claude.command")).toBe(
 				"/opt/acp/claude",
 			);
+			// A JSON array carries the items commas cannot, and text that opens like one is one.
+			const kept = ["one,two", "", " padded ", '["a"]'];
+			await json(
+				"config",
+				"set",
+				"--layer",
+				"global",
+				"copilot.args",
+				JSON.stringify(kept),
+			);
+			expect(await json("config", "get", "copilot.args")).toEqual(kept);
+			const malformed = await inRepo(
+				"config",
+				"set",
+				"--layer",
+				"global",
+				"copilot.args",
+				'["one,two"',
+			);
+			expect(malformed.code).not.toBe(0);
+			expect(malformed.err).toContain("expected a JSON array");
+			expect(await json("config", "get", "copilot.args")).toEqual(kept);
 			const layers = (await json("config", "get", "loop.harnesses", "--layers"))
 				.leaves as Record<string, { layer: string }>;
 			expect(
