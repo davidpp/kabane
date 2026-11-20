@@ -186,7 +186,8 @@ describe("RunSteps", () => {
 			"done gates · check·test·build · 3 passes",
 			"done triage · 2 review sessions",
 			"done review · 8 findings filed",
-			"done fixer · 5 settled",
+			// The three a recheck reopened were settled by the fixer all the same.
+			"done fixer · 8 settled",
 			"done recheck · 5 confirmed · 3 reopened · 3 filed",
 			"done land · none: kept for review",
 		]);
@@ -293,7 +294,7 @@ describe("RunSteps", () => {
 			"done gates · check·test·build · 2 passes",
 			"done triage · 2 review sessions",
 			"done review · 8 findings filed",
-			"done fixer · 5 settled",
+			"done fixer · 8 settled",
 			"running recheck · 2 of 5 done · 2 live",
 			"pending land · none: the branch stays for review",
 		]);

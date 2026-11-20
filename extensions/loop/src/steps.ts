@@ -332,11 +332,20 @@ export namespace RunSteps {
 		};
 	};
 
-	const closedOf = (ids: readonly string[], nodes: Nodes): number => {
-		const closed = new Set(
-			nodes.filter((n) => LoopPlan.isClosed(n.task)).map((n) => n.task.id),
-		);
-		return ids.filter((id) => closed.has(id)).length;
+	// What the fixer settled of `ids`: the ones closed now, and the ones a recheck was given, which
+	// it closed to make them due even when the recheck reopened them since.
+	const settledOf = (
+		ids: readonly string[],
+		nodes: Nodes,
+		run: RunStore.Run,
+	): number => {
+		const settled = new Set([
+			...nodes.filter((n) => LoopPlan.isClosed(n.task)).map((n) => n.task.id),
+			...run.claims.flatMap((c) =>
+				c.recheck === undefined ? [] : (c.findings ?? []),
+			),
+		]);
+		return ids.filter((id) => settled.has(id)).length;
 	};
 
 	const fixer = (
@@ -353,7 +362,7 @@ export namespace RunSteps {
 				c,
 				c.lane,
 				nodes
-					? `${closedOf(given, nodes)} of ${given.length} settled`
+					? `${settledOf(given, nodes, run)} of ${given.length} settled`
 					: undefined,
 				now,
 			);
@@ -376,7 +385,7 @@ export namespace RunSteps {
 			state === "running"
 				? `on ${plural(given.length, "finding")}`
 				: nodes
-					? `${closedOf(given, nodes)} settled`
+					? `${settledOf(given, nodes, run)} settled`
 					: undefined;
 		return {
 			name: "fixer",
