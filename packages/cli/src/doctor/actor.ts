@@ -1,7 +1,7 @@
 // config.json's actor under the prefix kabane no longer reads. Every other process refuses to
 // start on one (`openContext`); doctor still runs, migrates the database, and rewrites it here.
 import { existsSync } from "node:fs";
-import { ActorScheme, ok, type Result } from "@kabane/core";
+import { ActorScheme, err, ok, type Result } from "@kabane/core";
 import type { Doctor, Extension } from "@kabane/extension";
 import { configPath, loadConfigDocument, saveConfig } from "../config";
 
@@ -21,9 +21,18 @@ export const configActor = async (
 			severity: "auto",
 			path: configPath(ctx.home),
 			summary: `config.json's actor is ${actor}, under the ${ActorScheme.LEGACY_PREFIX} prefix kabane no longer reads; --fix rewrites it to ${renamed}.`,
+			// Read again: another repair of this run may have rewritten config.json since.
 			fix: async () => {
+				const now = loadConfigDocument(ctx.home);
+				if (!now.ok) return now;
+				if (now.value.config.actor !== actor)
+					return err(
+						new Error(
+							`Refused: config.json's actor changed to ${now.value.config.actor} since doctor read it`,
+						),
+					);
 				const written = saveConfig(ctx.home, {
-					...document.value.stored,
+					...now.value.stored,
 					actor: renamed,
 				});
 				return written.ok ? ok(`actor is now ${renamed}`) : written;

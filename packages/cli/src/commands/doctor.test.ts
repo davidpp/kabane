@@ -497,6 +497,24 @@ test("an old-prefix actor stops every other command until a bare --fix rewrites 
 	expect(viaAs.stderr).toContain("--as is cabane://actor/agent/claude");
 });
 
+test("the actor repair keeps what the settings repair moved out of config.json before it", async () => {
+	const { home, cwd, cli, config } = setup();
+	config({
+		actor: "cabane://actor/human/ada",
+		scopes: { pinned: { loop: { concurrency: 2 } } },
+	});
+	const report = JSON.parse(await cli("--fix", "--json"));
+	expect(
+		report.fixes.map((fix: { result: { ok: boolean } }) => fix.result.ok),
+	).toEqual([true, true]);
+	expect(
+		JSON.parse(readFileSync(ConfigLayers.localFile(home, cwd, "loop"), "utf8")),
+	).toEqual({ concurrency: 2 });
+	const stored = JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
+	expect(stored.actor).toBe("kabane://actor/human/ada");
+	expect(stored).not.toHaveProperty("scopes");
+});
+
 test("a named missing fix is visible even with no findings", async () => {
 	const { cli } = setup();
 	expect(await cli("--fix", "nope")).toBe(
