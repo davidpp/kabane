@@ -13,8 +13,8 @@ what the extension adds. Any of these, all optional:
 | `board` | an activity source, a dispatcher for `a`, and card headers on the board ([board README](../packages/board/README.md)) |
 
 More come from files rather than the factory: skills under `skills/` are how-to that `kabane mcp`
-serves to any connected session, markdown files under `copilot/` give the board's copilot
-procedures and `/` shortcuts, and a second entry, `modules`, declares tables the extension keeps
+serves to any connected session, markdown files under `copilot/shortcuts/` give the board's
+copilot `/` shortcuts, and a second entry, `modules`, declares tables the extension keeps
 in the tracker's database.
 
 The walkthrough below builds the `notes` extension that kabane's own tests install
@@ -303,10 +303,10 @@ The severities, fixes and reserved ids are in
 
 ## Teach the board's copilot
 
-Markdown files in the extension's directory add to the copilot's instructions:
-`copilot/procedures/<name>.md`, with a `title` in its frontmatter, and
-`copilot/shortcuts/<name>.md`, with a `hint`, whose one-line body is what `/<name>` puts in the
-prompt. The dispatch extension's `/setup-dispatch` is
+The copilot's instructions take no text from an extension: what it should know how to do ships
+as a skill (below). What an extension adds to the board's copilot is `/` shortcuts:
+`copilot/shortcuts/<name>.md`, with a `hint` in its frontmatter, whose one-line body is what
+`/<name>` puts in the prompt. A shortcut is how a human on the board reaches a skill. The dispatch extension's `/setup-dispatch` is
 `extensions/dispatch/copilot/shortcuts/setup-dispatch.md`:
 
 ```markdown
@@ -316,7 +316,7 @@ hint: write or refresh this project's dispatch skill
 Run the setup-dispatch skill: fetch it with kabane_skillGet (name setup-dispatch) and follow it, starting with its menu for this project.
 ```
 
-`{{extension}}` in a file becomes the extension directory's absolute path, so a procedure can
+`{{extension}}` in a file becomes the extension directory's absolute path, so a shortcut can
 point the copilot at a file the extension ships. The `description` in `package.json` is how the
 copilot describes the extension to you; keep it under 200 characters. What kabane refuses in
 these files is in the [board README](../packages/board/README.md), under its copilot.

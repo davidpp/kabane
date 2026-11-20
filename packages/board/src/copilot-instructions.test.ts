@@ -7,7 +7,6 @@ import { CopilotInstructions } from "./copilot-instructions";
 const SETUP: CopilotInstructions.Setup = {
 	configPath: "/sandbox/home/config.json",
 	extensions: [],
-	procedures: [],
 	shortcuts: [],
 };
 const BIN = "/sandbox/checkout/packages/cli/index.ts";
@@ -289,49 +288,15 @@ describe("CopilotInstructions running kabane", () => {
 	});
 });
 
-describe("CopilotInstructions with contributed procedures and shortcuts", () => {
+describe("CopilotInstructions with contributed shortcuts", () => {
 	const contributed: CopilotInstructions.Setup = {
 		...SETUP,
 		extensions: [{ name: "notes" }, { name: "timer" }, { name: "quiet" }],
-		procedures: [
-			{
-				extension: "notes",
-				procedures: [
-					{
-						title: "KEEPING NOTES",
-						body: "Write notes with the notes command.",
-					},
-					{ title: "READING NOTES", body: "Read them back." },
-				],
-			},
-			{ extension: "quiet", procedures: [] },
-			{
-				extension: "timer",
-				procedures: [{ title: "TIMING.", body: "Start the timer." }],
-			},
-		],
 		shortcuts: [
 			{ name: "note", hint: "write a note", template: "Write a note." },
 			{ name: "triage", hint: "not the built-in", template: "Something else." },
 		],
 	};
-
-	it("appends each extension's procedures after base kabane's whole text, under one heading naming it", () => {
-		const prompt = CopilotInstructions.systemPrompt(contributed, BIN);
-		const base = CopilotInstructions.systemPrompt(
-			{ ...contributed, procedures: [], shortcuts: [] },
-			BIN,
-		);
-		expect(prompt.startsWith(`${base}\n\n`)).toBe(true);
-		const added = prompt.slice(base.length + 2).split("\n\n");
-		expect(added).toHaveLength(5);
-		expect(added[0]).toStartWith("EXTENSION notes.");
-		expect(added[1]).toBe("KEEPING NOTES. Write notes with the notes command.");
-		expect(added[2]).toBe("READING NOTES. Read them back.");
-		expect(added[3]).toStartWith("EXTENSION timer.");
-		expect(added[4]).toBe("TIMING. Start the timer.");
-		expect(prompt).not.toContain("EXTENSION quiet");
-	});
 
 	it("offers built-ins first, then contributed shortcuts, and a built-in name stays the built-in's", () => {
 		const shortcuts = CopilotInstructions.shortcuts(contributed);

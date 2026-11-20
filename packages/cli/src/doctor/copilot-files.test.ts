@@ -31,8 +31,9 @@ const install = (home: string, name: string, files: Record<string, string>) => {
 test("doctor lists every refused copilot file under its extension, one finding per file", () => {
 	const home = join(ROOT, "home");
 	const notes = install(home, "notes", {
-		"copilot/procedures/ok.md": "---\ntitle: KEEPING NOTES\n---\nKeep them.\n",
+		// A leftover procedure is not read, so it is no finding.
 		"copilot/procedures/bare.md": "No frontmatter.\n",
+		"copilot/shortcuts/bare.md": "No frontmatter.\n",
 		"copilot/shortcuts/split.md": "---\nhint: mine\n---\nSplit my way.\n",
 		"copilot/shortcuts/Odd Name.md": "---\nhint: odd\n---\nOne.\nTwo.\n",
 	});
@@ -79,15 +80,6 @@ test("doctor lists every refused copilot file under its extension, one finding p
 	expect(files).toEqual([
 		{
 			source: "notes",
-			id: "copilot-file-procedures-bare",
-			severity: "mention",
-			fixable: false,
-			path: join(notes, "copilot/procedures/bare.md"),
-			summary:
-				"Extension notes: copilot/procedures/bare.md has no frontmatter between --- lines; add one",
-		},
-		{
-			source: "notes",
 			id: expect.stringMatching(
 				/^copilot-file-shortcuts-odd-name-[0-9a-f]{1,8}$/,
 			),
@@ -96,6 +88,15 @@ test("doctor lists every refused copilot file under its extension, one finding p
 			path: join(notes, "copilot/shortcuts/Odd Name.md"),
 			summary:
 				"Extension notes: copilot/shortcuts/Odd Name.md: its body must be one line, the template dropped into the prompt",
+		},
+		{
+			source: "notes",
+			id: "copilot-file-shortcuts-bare",
+			severity: "mention",
+			fixable: false,
+			path: join(notes, "copilot/shortcuts/bare.md"),
+			summary:
+				"Extension notes: copilot/shortcuts/bare.md has no frontmatter between --- lines; add one",
 		},
 		{
 			source: "notes",

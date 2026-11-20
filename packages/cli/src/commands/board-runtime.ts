@@ -341,7 +341,6 @@ export const boardDeps = async (
 			setup: {
 				configPath: configPath(ctx.home),
 				extensions: await CopilotFiles.installed(ctx.home),
-				procedures: contributed.procedures,
 				shortcuts: contributed.shortcuts,
 			},
 		}),

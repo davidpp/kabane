@@ -218,8 +218,8 @@ its own copies (`extensions/loop/src/session-identity.ts`). The dispatch templat
 skill belong to the dispatch extension, which reads them from its own directory. The path kabane runs
 as is required in `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the
 board never imports `Self`, which lives in the CLI host. The CLI imports
-`@cabane/board/copilot-instructions` in `copilot-files.ts` to refuse an extension's procedure
-titled like one of base kabane's headings and a shortcut named like one of its shortcuts. The
+`@cabane/board/copilot-instructions` in `copilot-files.ts` to refuse a package.json description
+that contains one of base kabane's headings and a shortcut named like one of its shortcuts. The
 copilot tests use the ACP SDK's in-process agent, so the board declares the SDK as a development
 dependency.
 
@@ -528,9 +528,9 @@ type Extension = {
   their own that the manifest names (below). Their ops replicate and park like a first-party
   module's (the header of `packages/core/module.ts`), and the hub, which cannot register them,
   parks them.
-- **Skills, copilot `/` shortcuts, copilot procedures and templates** are files in the
-  extension's directory (below). Skills are how-to that `kabane mcp` serves to any session;
-  procedures are being retired in their favour.
+- **Skills, copilot `/` shortcuts and templates** are files in the extension's directory
+  (below). Skills are how-to that `kabane mcp` serves to any session; nothing an extension ships
+  is appended to the copilot's instructions.
 
 ### Every process that opens the database registers the same modules
 
@@ -677,20 +677,18 @@ the board's `/` shortcuts name the skill to fetch. The copilot's instructions
 boundaries in `BLOCK`. Base kabane's own how-to (`SKILLS`) names no extension and moves to a
 skill of its own last (JCAB-585).
 
-### Copilot shortcuts and procedures are markdown files
+### Copilot shortcuts are markdown files
 
-`packages/cli/src/copilot-files.ts` reads an extension's copilot files, as opencode ships
+`packages/cli/src/copilot-files.ts` reads an extension's copilot shortcuts, as opencode ships
 commands (`.opencode/commands/<name>.md`):
 
 - `copilot/shortcuts/<name>.md`: frontmatter `hint`; the body, one line, is the template dropped
   into the prompt line as `/name`. A built-in name wins; two extensions with one name are both
   refused with a diagnostic, because a human types it. A shortcut stays a file: it is how a human
   on the board reaches a skill.
-- `copilot/procedures/<name>.md`: frontmatter `title`; the body is appended to the copilot's
-  instructions after base kabane's own, under a heading naming the extension. An extension cannot
-  replace or reorder base kabane's text. Retired: no new procedure is written, and the mechanism
-  goes once the dispatch and loop procedures are skills (JCAB-585).
-- `templates/<name>/`: skill templates a skill or procedure tells the agent to copy into a
+- `copilot/procedures/` is retired (ADR 0004): the host does not read it, so one left in a
+  third-party extension is ignored.
+- `templates/<name>/`: skill templates a skill tells the agent to copy into a
   project.
 
 Extension commands use the same name rule: a command named like a built-in is refused with
@@ -777,5 +775,5 @@ notice. The architecture lens is `.agents/skills/dispatch/references/lenses/arch
 | `host` and its typed record wrappers | `host-record.test.ts`, the CLI host and directory-extension tests, and the isolated declaration typecheck |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` |
 | Skills are served by `kabane_skillList` and `kabane_skillGet` on devices only; `{{extension}}` and `{{kabane}}` are the only placeholders, a file outside the skill is refused, and a computed value comes from a command | the skills reader and the two tools in `packages/cli` with their tests (JCAB-587; until it lands, ADR 0004 and review); `kabane dispatch stamp` (`extensions/dispatch`) |
-| Shortcuts and procedures are files; `{{extension}}` is their only placeholder | `packages/cli/src/copilot-files.ts` and its test |
+| Shortcuts are files; `{{extension}}` is their only placeholder | `packages/cli/src/copilot-files.ts` and its test |
 | Core reaches files through a port | `RuntimeConfig.fileReader`, defaulting to a pointer; the CLI reader and core assembly tests |

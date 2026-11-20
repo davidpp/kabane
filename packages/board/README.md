@@ -444,42 +444,38 @@ It can also:
 - Check that what kabane wrote is current (`/doctor`): it runs `kabane doctor --json`, applies
   the `auto` fixes unasked, waits for a yes on the rest, follows a `route`, and hands you the
   command for a harness MCP entry instead of rewriting it.
-- Follow the procedures an enabled extension adds, and the skills `kabane mcp` serves. The dispatch
-  extension's skills write a project's dispatch skill (`/setup-dispatch`) and grill the human
-  through open questions. The loop's procedures let it start a run
-  when asked, such as “run this issue with codex”, and set one up from `kabane loop advise`. A
-  run handles a single issue or a parent's subtasks; follow it in its board tab.
+- Follow the skills `kabane mcp` serves for the enabled extensions. The dispatch extension's
+  skills write a project's dispatch skill (`/setup-dispatch`) and grill the human through open
+  questions. The loop's `loop-run` skill lets it start a run when asked, such as “run this issue
+  with codex”, and set one up from `kabane loop advise`. A run handles a single issue or a
+  parent's subtasks; follow it in its board tab.
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
 
-Kabane's own instructions name no extension. An enabled extension loaded from
-`$KABANE_HOME/extensions/<name>/` adds to them with markdown files in that directory:
+Kabane's own instructions name no extension, and an extension adds no text to them. Its how-to
+ships as skills, `skills/<name>/SKILL.md`, which the copilot fetches from its `kabane-session`
+server with `kabane_skillList` and `kabane_skillGet` when a task comes up, as any session
+connected to `kabane mcp` can. Outside the tracker the copilot writes only the files a skill it
+runs names. A refused skill is counted in the footer with the refused files, and `kabane doctor`
+lists it as a `skill-<name>` finding.
 
-- `copilot/procedures/<name>.md`, with frontmatter `title`. Its body is appended after kabane's
-  own instructions, under a heading naming the extension, and cannot replace or reorder them.
-- `copilot/shortcuts/<name>.md`, with frontmatter `hint`. Its body, one line, is the template
-  `/<name>` drops into the prompt. The `/` list shows the built-in shortcuts first, then these.
+An enabled extension loaded from `$KABANE_HOME/extensions/<name>/` adds `/` shortcuts with
+markdown files in that directory: `copilot/shortcuts/<name>.md`, with frontmatter `hint`. Its
+body, one line, is the template `/<name>` drops into the prompt. The `/` list shows the built-in
+shortcuts first, then these. A `copilot/procedures/` directory left in an extension is not read.
 
-An extension's how-to also ships as skills, `skills/<name>/SKILL.md`, which the copilot fetches
-from its `kabane-session` server with `kabane_skillList` and `kabane_skillGet` when a task comes
-up, as any session connected to `kabane mcp` can. Outside the tracker the copilot writes only the
-files a procedure or a skill it runs names. A refused skill is counted in the footer with the
-refused files, and `kabane doctor` lists it as a `skill-<name>` finding.
-
-`{{extension}}` in a body or a procedure's title is replaced with the absolute path of the
-extension's directory; nothing else is substituted. The frontmatter takes only that one key, so a
-file cannot set a harness mode, an allow list or an MCP entry. A byte-order mark is ignored and
-CRLF line ends read as LF. Files not named `*.md` are ignored, and so is a `copilot` that is a
-file rather than a directory. The copilot knows an extension's procedures only when the
-extension is enabled and loaded from its directory.
+`{{extension}}` in a body is replaced with the absolute path of the extension's directory;
+nothing else is substituted. The frontmatter takes only that one key, so a file cannot set a
+harness mode, an allow list or an MCP entry. A byte-order mark is ignored and CRLF line ends read
+as LF. Files not named `*.md` are ignored, and so is a `copilot` that is a file rather than a
+directory. The copilot offers an extension's shortcuts only when the extension is enabled and
+loaded from its directory.
 
 These are refused, each on its own, and the rest of the extension loads:
 
-- `copilot/procedures` or `copilot/shortcuts` that is a file rather than a directory;
+- `copilot/shortcuts` that is a file rather than a directory;
 - a file named only `.md`, or larger than 16 KiB;
-- frontmatter that is missing, not YAML, or holds a key other than `title` or `hint`;
-- a procedure with an empty body, a title of more than one line, or a title that is one of
-  kabane's own headings (`CONFIG AND HELP`, `DOCTOR`, …), so a file cannot pass for kabane's text;
+- frontmatter that is missing, not YAML, or holds a key other than `hint`;
 - a shortcut whose body is not one line;
 - a shortcut named like a built-in (the built-in wins), and a shortcut name two extensions both
   use (neither is offered).
@@ -487,7 +483,7 @@ These are refused, each on its own, and the rest of the extension loads:
 The board's footer has one row, cut at the terminal's width, so it leads with what a reader needs.
 One refused extension is spelled out: "Extension dead refused: package.json is missing", with paths
 relative to its directory. One refused file leads with where to read about it: "kabane doctor: notes
-file copilot/procedures/bare.md has no frontmatter…". More than one refusal of any kind is only
+file copilot/shortcuts/bare.md has no frontmatter…". More than one refusal of any kind is only
 counted: "kabane doctor: refused 1 extension, 3 files". `kabane doctor` lists each refused extension
 as an `extension-refused` finding and each refused file as a `copilot-file-*` finding under its
 extension, with the file's path.
