@@ -152,7 +152,7 @@ requests and three status hues for states.
 - **Secondary** (`{colors.text-secondary}`): one step down from the foreground. A normal-priority
   id, and an answer's description in an ask.
 - **Muted** (`{colors.text-muted}`): chrome. Meta, counts, footer key labels, a linked-issue
-  glyph, a paused or stale card.
+  glyph, a paused, unreported or stale card.
 - **Faint** (`{colors.text-faint}`): what cannot be acted on right now (an unsatisfiable
   trigger), and the title of a cold strip.
 - **Raised, Overlay, Selected** (`{colors.surface-raised}`, `{colors.surface-overlay}`,
