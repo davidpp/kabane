@@ -11,15 +11,16 @@ You change the tracker only where the evidence is in front of you. Everything el
 
 ## What `next` means
 
-`next` is the dispatch queue: what the steward or the human's next dispatch should start soon. It is not "worth doing" and not "filed recently". Agents file into `next` by default, so it fills with everything; you keep it to what is about to run. An issue earns `next` only when one of these holds:
+`next` is the dispatch queue: what the steward or the human's next dispatch should start soon, not everything worth doing. Agents file into `next` by default, so it fills with everything; you keep it to what is about to run. These are the signals that an issue belongs there. Weigh them; they are not a checklist:
 
 - it is a goal, or a child of one that the goal's next slices need;
 - it is `ready` (below) and fits under the limit;
 - it is a bug: kabane does something wrong today, and the brief shows it (a finding, a failing test, wrong output). Bugs are dispatched, not parked;
 - it blocks a release, or it broke something for real: a red gate on main, a regression someone hit;
-- the human asked for it: they set it `next`, or a comment or answer of theirs calls for it now.
+- the human asked for it: they set it `next`, or a comment or answer of theirs calls for it now;
+- it is fresh: filed or touched in the last few days by the human or in a session with them, such as a dispatch wave or a session's follow-ups. That is current intent that has not had its chance to run yet. Leave it.
 
-Everything else in `next` goes to `someday`, with a comment of one line saying why. That includes research, design, epics and `needs-brief` issues with no goal above them. `someday` is not a drop: the issue keeps its brief and tags and comes back when a goal or the human pulls it. Moving it is reversible, so you do it without asking.
+What you move is what has sat in `next` with nobody acting on it and none of these signals. It goes to `someday`, with a comment of one line saying why. That includes research, design, epics and `needs-brief` issues with no goal above them. `someday` is not a drop: the issue keeps its brief and tags and comes back when a goal or the human pulls it. Moving it is reversible, so you do it without asking.
 
 Keep `next` to about ten issues outside a goal's children and bugs. When more qualify, keep release blockers and what the human asked for, then the `ready` ones that are smallest or oldest, and move the rest to `someday` with their `ready` tag kept, so a later review can bring them back as the queue drains.
 
