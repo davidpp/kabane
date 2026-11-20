@@ -288,9 +288,10 @@ The view edits the row in hand. `h/l` step an enum, a boolean, or a single value
 steps (`options`), through `TriggerForm.step` like the run form. `enter` starts editing: on a
 string or a number it types the value, read with `FormField.read` against the field's bounds, and
 a value it refuses shows its reason under the field and is not saved; on a list of strings,
-numbers or enum values it types the whole list, items apart by commas as `kabane config set`
-reads them, each checked against the list's `options` when it has any, and an empty text saves an
-empty list; on a boolean, an enum, or another value with steps it opens the editor on the current
+numbers or enum values it types the whole list, items apart by commas or as a JSON array as
+`kabane config set` reads them, each checked against the list's `options` when it has any, and an
+empty text saves an empty list. A list commas cannot carry (an item with a comma, an empty one,
+one with spaces at an end) opens as a JSON array, so saving it unchanged writes it back whole; on a boolean, an enum, or another value with steps it opens the editor on the current
 value, for `h/l`. On a row with no editor,
 such as a `readOnly` one, `enter` opens or closes its detail. `x` removes the
 key from a layer; a record's entries are added and removed with `kabane config set`. The editor

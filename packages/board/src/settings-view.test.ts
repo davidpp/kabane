@@ -193,6 +193,48 @@ describe("SettingsView's editor", () => {
 		expect(cleared.effect).toMatchObject({ type: "saveSetting", value: "" });
 	});
 
+	test("a list commas cannot carry opens as JSON, and a save with no edit writes it back whole", () => {
+		// A list of any text: the lenses row without its choices.
+		const lenses = Fixtures.SETTINGS.find((row) => row.key === "loop.lenses");
+		if (!lenses) throw new Error("no lenses row");
+		const { options: _options, ...args } = lenses;
+		for (const value of [["one,two"], ["a", ""], [" padded "], ['["a"]']]) {
+			const typing = press(opened([{ ...args, value }]), "return").state;
+			expect(edit(typing)?.change).toEqual({
+				type: "type",
+				text: JSON.stringify(value),
+			});
+			const saved = press(typing, "return").effect;
+			expect(saved).toMatchObject({ type: "saveSetting" });
+			if (saved.type !== "saveSetting") throw new Error("not saved");
+			expect(JSON.parse(String(saved.value))).toEqual(value);
+		}
+		// One that commas carry opens as before.
+		const plain = press(opened([{ ...args, value: ["--x", "y"] }]), "return");
+		expect(edit(plain.state)?.change).toEqual({ type: "type", text: "--x, y" });
+		// An edit in JSON keeps its items; one that opens with [ and is no JSON array is refused.
+		const typed = press(
+			opened([{ ...args, value: [] }]),
+			"return",
+			...'["one,two", " b"]'.split(""),
+			"return",
+		);
+		expect(typed.effect).toMatchObject({
+			type: "saveSetting",
+			value: '["one,two"," b"]',
+		});
+		const broken = press(
+			opened([{ ...args, value: [] }]),
+			"return",
+			...'["one,two"'.split(""),
+			"return",
+		);
+		expect(broken.effect.type).toBe("none");
+		expect(edit(broken.state)?.error).toBe(
+			"a list that starts with [ is a JSON array",
+		);
+	});
+
 	test("h/l step a value as the run form does, and enter saves it where config set would", () => {
 		const stepped = press(on("loop.stallAfter"), "l");
 		expect(edit(stepped.state)).toEqual({

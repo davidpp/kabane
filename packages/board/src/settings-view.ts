@@ -6,6 +6,7 @@
 // the view is generated from them: a namespace an extension declares appears with no code here. A
 // change is saved through the same port, to the layer the editor picks, and the rows are read again.
 import { FormField } from "@cabane/acp/form-field";
+import { trySync } from "@cabane/core";
 import { Grid } from "./grid";
 import type { BoardNav } from "./nav";
 import type {
@@ -206,7 +207,7 @@ export namespace SettingsView {
 			row.options ?? (row.field.kind === "enum" ? row.field.values : undefined),
 	});
 
-	/** A list of strings, numbers or enum values: typed whole, its items apart by commas. */
+	/** A list of strings, numbers or enum values: typed whole, its items apart by commas or as JSON. */
 	const listOf = (row: SettingRow): boolean =>
 		row.field.kind === "list" &&
 		["string", "number", "enum"].includes(row.field.item.kind);
@@ -232,38 +233,91 @@ export namespace SettingsView {
 	};
 
 	/**
-	 * A typed list as `kabane config set` reads one: its items apart by commas, trimmed, the empty
-	 * ones dropped, so an empty text is an empty list; refused when an item is not one of its choices.
+	 * A typed list's items as `kabane config set` reads them: a JSON array when the text opens with
+	 * `[`, which carries an item with a comma, an empty one or one with spaces at an end; otherwise
+	 * apart by commas, trimmed, the empty ones dropped, so an empty text is an empty list.
 	 */
+	const typedItems = (
+		text: string,
+	):
+		| { ok: true; items: unknown[]; json: boolean }
+		| { ok: false; error: string } => {
+		if (!text.trimStart().startsWith("["))
+			return {
+				ok: true,
+				json: false,
+				items: text
+					.split(",")
+					.map((item) => item.trim())
+					.filter((item) => item !== ""),
+			};
+		const parsed = trySync((): unknown => JSON.parse(text));
+		return parsed.ok && Array.isArray(parsed.value)
+			? { ok: true, json: true, items: parsed.value }
+			: { ok: false, error: "a list that starts with [ is a JSON array" };
+	};
+
+	/**
+	 * The list as the editor opens it: apart by commas when typing that back gives the same items,
+	 * and as a JSON array otherwise, so a save with no edit writes the list it read.
+	 */
+	const listText = (value: readonly unknown[]): string => {
+		const items = value.map(plain);
+		const commas = items.join(", ");
+		const back = typedItems(commas);
+		return back.ok &&
+			back.items.length === items.length &&
+			back.items.every((item, at) => item === items[at])
+			? commas
+			: JSON.stringify(value);
+	};
+
+	/** A typed list as the value `kabane config set` reads; refused when an item is not of its kind. */
 	const listInput = (
 		row: SettingRow,
 		text: string,
 	): { ok: true; value: string } | { ok: false; error: string } => {
-		const items = text
-			.split(",")
-			.map((item) => item.trim())
-			.filter((item) => item !== "");
+		const typed = typedItems(text);
+		if (!typed.ok) return typed;
+		const { items, json } = typed;
+		const numbers =
+			row.field.kind === "list" && row.field.item.kind === "number";
+		const quoted = (wrong: readonly unknown[]): string =>
+			wrong.map((item) => JSON.stringify(item)).join(", ");
+		const verb = (wrong: readonly unknown[]): string =>
+			wrong.length === 1 ? "is" : "are";
+		const misfits = json
+			? items.filter((item) =>
+					numbers ? typeof item !== "number" : typeof item !== "string",
+				)
+			: [];
+		if (misfits.length > 0)
+			return {
+				ok: false,
+				error: `${quoted(misfits)} ${verb(misfits)} not ${numbers ? "a number" : "text"}`,
+			};
 		const choices = itemChoices(row);
 		const unknown =
 			choices === undefined
 				? []
-				: items.filter((item) => !choices.includes(item));
+				: items.filter((item) => !choices.includes(String(item)));
 		if (unknown.length > 0)
 			return {
 				ok: false,
-				error: `${unknown.map((item) => `"${item}"`).join(", ")} ${unknown.length === 1 ? "is" : "are"} not one of ${choices?.join(", ")}`,
+				error: `${quoted(unknown)} ${verb(unknown)} not one of ${choices?.join(", ")}`,
 			};
-		const numbers =
-			row.field.kind === "list" && row.field.item.kind === "number";
 		const nan = numbers
 			? items.filter((item) => !Number.isFinite(Number(item)))
 			: [];
 		if (nan.length > 0)
 			return {
 				ok: false,
-				error: `${nan.map((item) => `"${item}"`).join(", ")} ${nan.length === 1 ? "is" : "are"} not a number`,
+				error: `${quoted(nan)} ${verb(nan)} not a number`,
 			};
-		return { ok: true, value: items.join(",") };
+		return {
+			ok: true,
+			value: json ? JSON.stringify(items) : items.join(","),
+		};
 	};
 
 	/** The editor can remove the row's key from a layer: not a record's entry, which the CLI adds and removes. */
@@ -367,7 +421,7 @@ export namespace SettingsView {
 					row.secret || row.value === null || row.value === undefined
 						? ""
 						: Array.isArray(row.value)
-							? row.value.map(plain).join(", ")
+							? listText(row.value)
 							: plain(row.value),
 			});
 		if (row && steps(row))
@@ -418,7 +472,7 @@ export namespace SettingsView {
 		if (!listOf(row)) return undefined;
 		const choices = itemChoices(row);
 		return choices === undefined
-			? "apart by commas; empty for none"
+			? "apart by commas, or a JSON list; empty for none"
 			: `apart by commas, each one of ${choices.join(", ")}; empty for none`;
 	};
 
