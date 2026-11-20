@@ -717,10 +717,42 @@ empty cloud device: nothing carries over from the old one.
 4. The Access application from 1.3 protects the hostname, not the script, so it covers
    `kabane-worker` as it is: same AUD, same policies, same service tokens. Check it with the
    `/health` requests in 1.5.
-5. Each device's next sync finds a log shorter than the one it applied, logs
-   `sync log reset detected` and rewinds (§5.6). Run `kabane sync backfill` on the device
-   that holds everything; the others pull.
-6. Once nothing points at it, delete `cabane-worker` from the dashboard (**Settings →
+5. Reseed the new log from every device. §5.6's rewind is not enough here. A device rewinds
+   only when a push is acknowledged, but a device that already pushed everything has nothing
+   pending, and `kabane sync backfill` re-sends only rows that never had a backfill op. A
+   device that only pulls keeps its old position and reads nothing. Before you start, stop
+   each device's board, `kabane mcp` and loop runner, and let a running `kabane sync` finish.
+   Then run this on every device, one after the other:
+
+   ```bash
+   sqlite3 ~/.kabane/kabane.db \
+     "UPDATE sync_state SET last_pushed_seq = 0, last_applied_seq = 0 WHERE id = 'local'"
+   kabane sync backfill
+   ```
+
+   Each device pushes every op it has logged, plus a backfill op for each row it pulled from
+   another device. The log stores an op it already holds only once, and two devices backfill a
+   row they share under the same op id. Once every device has done this, run
+   `kabane sync pull` on each one, and start their processes again.
+6. Check the new hub before you delete anything. Make a throwaway device that pulls from it
+   and count what it got:
+
+   ```bash
+   check=$(mktemp -d)
+   KABANE_HOME="$check" kabane init --actor kabane://actor/human/check --device check \
+     --sync-url https://<your-domain> --sync-token '<SYNC_TOKEN>' \
+     --access-client-id '<cron client id>.access' --access-client-secret '<cron client secret>'
+   KABANE_HOME="$check" kabane sync pull
+   for db in "$check/kabane.db" ~/.kabane/kabane.db; do
+     sqlite3 "$db" "SELECT (SELECT count(*) FROM tasks), (SELECT count(*) FROM task_comments)"
+   done
+   rm -rf "$check"
+   ```
+
+   The two lines should match, apart from rows marked `visibility: private`, which never
+   leave their device. A device that only pulls never shows up in the log, so the check
+   device leaves nothing behind.
+7. Once the counts match, delete `cabane-worker` from the dashboard (**Settings →
    Delete**). Its Durable Objects and their data go with it.
 
 ---
@@ -745,6 +777,7 @@ localhost.
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
 | 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `kabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
+| 5.9 reseed (2026-11-20) | two devices synced four tasks through one `wrangler dev` log, then pointed at an empty one. A backfill alone left a fresh device pulling two of the four, and the device that only pulled read nothing. With both positions reset and `kabane sync backfill` run on each device, a fresh device pulled all four, and a fifth task pushed afterwards reached the other device |
 
 Not verifiable without the real account, therefore **MANUAL** above: `bun run deploy`,
 the custom domain, the Access application and policies, service tokens, Managed
