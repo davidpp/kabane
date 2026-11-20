@@ -559,7 +559,13 @@ const DetailHeader = ({
 			{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
 			{headline ? (
 				<box style={{ flexDirection: "row", flexShrink: 0 }}>
-					<text fg={headline.stale ? theme.muted : theme.working}>
+					<text
+						fg={
+							headline.stale || stillMark(headline.status)
+								? theme.muted
+								: theme.working
+						}
+					>
 						{cardStatusLine(headline, spinnerFrame)}
 					</text>
 				</box>

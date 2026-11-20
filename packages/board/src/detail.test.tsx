@@ -210,6 +210,34 @@ test("Detail shows a loop status line for a task with an active loop", async () 
 	}
 });
 
+test("Detail draws a working card's status line in the working hue and a still one's muted", async () => {
+	const task = await seed({ state: "in_progress" });
+	const hueOf = async (status: ActivityCard["status"]) => {
+		const card = loopCard({ taskShortId: task.shortId ?? "MILL-1", status });
+		const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+			task,
+			{ cards: [card] },
+		);
+		try {
+			await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("loop · "),
+			);
+			return captureSpans()
+				.lines.flatMap((line) => line.spans)
+				.find((span) => span.text.includes("loop · "))
+				?.fg.toInts()
+				.slice(0, 3);
+		} finally {
+			destroy();
+		}
+	};
+	const rgb = (hex: string) =>
+		[1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+	expect(await hueOf("running")).toEqual(rgb(Theme.DARK.working));
+	expect(await hueOf("paused")).toEqual(rgb(Theme.DARK.muted));
+	expect(await hueOf("unreported")).toEqual(rgb(Theme.DARK.muted));
+});
+
 test("Detail pins a waiting question above the tabs, with no answer hint for a command that does not exist", async () => {
 	const task = await seed({ state: "in_progress" });
 	const questions: BoardActivity.AwaitingQuestion[] = [

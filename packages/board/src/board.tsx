@@ -128,9 +128,9 @@ const truncate = (text: string, max: number): string =>
 
 // The ` · `-prefixed badge for a row's first in-flight card: `⠹ loop · implement 3`. A still card
 // shows its mark with no churn, `⏸ … · paused` or `◌ … · no status reported`, and its first detail
-// line after that word; a stale running card (the host's
-// crashed-runner heuristic) keeps the badge but drops the animation and dims to muted. Exported pure
-// so the badge text/width contract is assertable without a renderer.
+// line after that word, in muted: the working hue would claim work nobody reports. A stale running
+// card (the host's crashed-runner heuristic) keeps the badge but drops the animation and dims to
+// muted. Exported pure so the badge text/width contract is assertable without a renderer.
 export const cardBadge = (
 	card: ActivityCard,
 	frame: string,
@@ -140,7 +140,7 @@ export const cardBadge = (
 		const detail = card.detail[0] ? ` · ${card.detail[0]}` : "";
 		return {
 			text: ` · ${still.glyph} ${card.label} · ${still.word}${detail}`,
-			muted: false,
+			muted: true,
 		};
 	}
 	const glyph = card.status === "running" && !card.stale ? frame : SPINNER_IDLE;

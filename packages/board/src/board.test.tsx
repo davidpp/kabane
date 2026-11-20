@@ -530,14 +530,14 @@ test("Board counts a row's checklist beside its decisions, in the done hue once 
 });
 
 // Pure badge/strip contracts — no renderer needed.
-test("cardBadge renders running/paused/stale variants with a constant-width glyph", () => {
+test("cardBadge renders running/paused/stale variants with a constant-width glyph, a still or stale one muted", () => {
 	expect(cardBadge(activeLoop(), "⠹")).toEqual({
 		text: " · ⠹ loop · implement 3",
 		muted: false,
 	});
 	expect(cardBadge(activeLoop({ status: "paused" }), "⠹")).toEqual({
 		text: " · ⏸ loop · paused · implement 3",
-		muted: false,
+		muted: true,
 	});
 	// A paused card with no detail stops at `paused`.
 	expect(
@@ -545,7 +545,7 @@ test("cardBadge renders running/paused/stale variants with a constant-width glyp
 	).toBe(" · ⏸ loop · paused");
 	expect(cardBadge(activeLoop({ status: "unreported" }), "⠹")).toEqual({
 		text: " · ◌ loop · no status reported · implement 3",
-		muted: false,
+		muted: true,
 	});
 	// Stale running: static idle glyph (no animation frame) and muted color.
 	const stale = cardBadge(activeLoop({ stale: true }), "⠹");
