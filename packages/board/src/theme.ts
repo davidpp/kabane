@@ -111,6 +111,13 @@ export namespace Theme {
 	export const seriesOf = (tokens: Tokens, index: number): string =>
 		tokens.series[index % tokens.series.length] ?? tokens.secondary;
 
+	/** Only concurrent sessions consume series slots. Beyond the palette the name carries identity. */
+	export const liveHue = (
+		tokens: Tokens,
+		lanes: readonly string[],
+		lane: string,
+	): string => tokens.series[lanes.indexOf(lane)] ?? tokens.secondary;
+
 	// The ANSI slots the ink reads: magenta, yellow, cyan. Never blue, green or red, the terminal's
 	// cousins of the working, done and failed hues.
 	const INK_SLOTS = { heading: 5, code: 3, link: 6 } as const;

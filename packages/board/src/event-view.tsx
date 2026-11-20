@@ -15,7 +15,6 @@ import {
 	type ActivitySource,
 	type ActivityStep,
 	type Header,
-	type NoticeSeverity,
 } from "@kabane/extension";
 import {
 	type ColorInput,
@@ -37,9 +36,11 @@ import { CardHeader } from "./card-header";
 import { blockOnSurface, PROSE_MEASURE } from "./detail";
 import { elapsed } from "./elapsed";
 import { ErrorBoundary } from "./error-boundary";
+import { eventStyle } from "./event-style";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
+import { NowFeed } from "./now-feed";
 import { clicks, PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
@@ -125,69 +126,6 @@ export const promptLines = (
 	kept[max - 1] =
 		last.length < room ? `${last}…` : `${last.slice(0, room - 1)}…`;
 	return kept;
-};
-
-// Per-event-type glyph and text colors. Types are host-defined strings; the common ones get a glyph,
-// the rest a blank. The glyph carries the hue (DESIGN.md's glyph table): work that ran is the working
-// hue, a question the accent, a failure the failed hue, the rest muted. The agent's own words carry
-// no hue: they read on the terminal's foreground, dark or light; its thoughts are dimmed under them.
-// Tool calls are not here: they are rows of their own (ToolCallRow).
-const eventStyle = (
-	event: ActivityEvent,
-	theme: Theme.Tokens,
-): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	switch (event.type) {
-		case "text":
-			return { glyph: " ", glyphFg: theme.defaultFg, textFg: theme.defaultFg };
-		case "thought":
-			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
-		case "phase":
-			return { glyph: "▶", glyphFg: theme.working, textFg: theme.defaultFg };
-		case "progress":
-			return { glyph: "·", glyphFg: theme.muted, textFg: theme.muted };
-		case "permission":
-			return { glyph: "?", glyphFg: theme.accent, textFg: theme.defaultFg };
-		case "notice":
-			return noticeStyle(
-				event.severity ?? severityPrefix(event.summary),
-				theme,
-			);
-		// The loop's own warnings (a claim it could not take, a question it gave up on).
-		case "warning":
-			return noticeStyle("warning", theme);
-		case "error":
-			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.failed };
-		case "metric":
-			return { glyph: "$", glyphFg: theme.muted, textFg: theme.muted };
-		default:
-			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
-	}
-};
-
-// A notice that carries no severity of its own: the loop writes its harness's as `<severity>: <text>`,
-// and its runs on disk keep them that way.
-const severityPrefix = (summary: string): NoticeSeverity => {
-	const prefix = /^(\w+):/.exec(summary)?.[1];
-	return prefix === "warning" || prefix === "error" ? prefix : "info";
-};
-
-// What a harness wanted the human to know: a warning in the accent, since it says the session is not
-// running the way it was asked to; an error in the failed hue; information muted.
-const noticeStyle = (
-	severity: NoticeSeverity,
-	theme: Theme.Tokens,
-): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	const fg =
-		severity === "warning"
-			? theme.accent
-			: severity === "error"
-				? theme.failed
-				: theme.muted;
-	return {
-		glyph: "!",
-		glyphFg: fg,
-		textFg: fg === theme.muted ? theme.muted : theme.defaultFg,
-	};
 };
 
 // Status color for the header.
@@ -299,6 +237,10 @@ const useCardEvents = (
 	onCardRef.current = onCard;
 	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const relaunched = initialCard !== undefined && isInFlight(initialCard);
+	// Finished map cards can still acquire a cleanup event. The board's normal card refresh
+	// picks it up while this tab is open, without keeping the live timer running.
+	const finishedMap =
+		!relaunched && initialCard?.steps?.length ? initialCard : undefined;
 	useEffect(() => {
 		let cancelled = false;
 		const poll = async (): Promise<void> => {
@@ -334,7 +276,7 @@ const useCardEvents = (
 			if (timerRef.current) clearInterval(timerRef.current);
 		};
 		// `relaunched` only restarts the poll, which reads the card from the source itself.
-	}, [cardId, source, relaunched]);
+	}, [cardId, source, relaunched, finishedMap]);
 	return { card, events };
 };
 
@@ -375,7 +317,11 @@ export const EventView = ({
 
 	const hints = Keymap.footer(keys.context, keys.situation, keys.host);
 	const contentWidth = Math.max(MIN_ENTRY_COLS, width - RESERVED_COLS);
-	const { stream: streamLanes, chips: lanes } = tabLanes(card, tabbed, map);
+	const {
+		stream: streamLanes,
+		chips: lanes,
+		hasMap,
+	} = tabLanes(card, tabbed, map);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -418,17 +364,27 @@ export const EventView = ({
 					{...(onLane ? { onLane } : {})}
 				/>
 			) : null}
-			<Stream
-				card={card}
-				events={laneEvents(events, streamLanes.length > 0 ? lane : null)}
-				// Tags only where lines from several lanes interleave: the all-lanes stream.
-				lanes={lane === null ? streamLanes : []}
-				width={width}
-				scrollRef={scrollRef}
-				tabbed={tabbed}
-				spinnerFrame={spinnerFrame}
-				toolDetails={toolDetails}
-			/>
+			{hasMap && lane === null ? (
+				<NowFeed
+					card={card}
+					events={events}
+					width={width}
+					scrollRef={scrollRef}
+					spinnerFrame={spinnerFrame}
+				/>
+			) : (
+				<Stream
+					card={card}
+					events={laneEvents(events, streamLanes.length > 0 ? lane : null)}
+					// Tags only where lines from several lanes interleave: the all-lanes stream.
+					lanes={lane === null ? streamLanes : []}
+					width={width}
+					scrollRef={scrollRef}
+					tabbed={tabbed}
+					spinnerFrame={spinnerFrame}
+					toolDetails={toolDetails}
+				/>
+			)}
 			<PermissionDock
 				permissions={permissions}
 				width={contentWidth}
@@ -456,9 +412,10 @@ const tabLanes = (
 	card: ActivityCard,
 	tabbed: boolean,
 	map: EventViewProps["map"],
-): { stream: readonly string[]; chips: readonly string[] } => {
+): { stream: readonly string[]; chips: readonly string[]; hasMap: boolean } => {
 	const stream = tabbed ? (card.lanes ?? []) : [];
-	return { stream, chips: map && (card.steps?.length ?? 0) > 0 ? [] : stream };
+	const hasMap = Boolean(map && (card.steps?.length ?? 0) > 0);
+	return { stream, chips: hasMap ? [] : stream, hasMap };
 };
 
 // Under the header: the map of a card with steps, then what waits on the human, then whose log is
@@ -885,6 +842,9 @@ const EventRow = ({
 			) : (
 				<text fg={textFg} style={{ flexGrow: 1, flexShrink: 1 }}>
 					{event.summary}
+					{event.type === "phase" && event.detail?.input
+						? `\n${event.detail.input}`
+						: ""}
 				</text>
 			)}
 		</box>
