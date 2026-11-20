@@ -15,12 +15,13 @@ You change the tracker only where the evidence is in front of you. Everything el
 
 - it is a goal, or a child of one that the goal's next slices need;
 - it is `ready` (below) and fits under the limit;
+- it is a bug: kabane does something wrong today, and the brief shows it (a finding, a failing test, wrong output). Bugs are dispatched, not parked;
 - it blocks a release, or it broke something for real: a red gate on main, a regression someone hit;
 - the human asked for it: they set it `next`, or a comment or answer of theirs calls for it now.
 
 Everything else in `next` goes to `someday`, with a comment of one line saying why. That includes research, design, epics and `needs-brief` issues with no goal above them. `someday` is not a drop: the issue keeps its brief and tags and comes back when a goal or the human pulls it. Moving it is reversible, so you do it without asking.
 
-Keep `next` to about ten issues outside a goal's children. When more qualify, keep release blockers and what the human asked for, then the `ready` ones that are smallest or oldest, and move the rest to `someday` with their `ready` tag kept, so a later review can bring them back as the queue drains.
+Keep `next` to about ten issues outside a goal's children and bugs. When more qualify, keep release blockers and what the human asked for, then the `ready` ones that are smallest or oldest, and move the rest to `someday` with their `ready` tag kept, so a later review can bring them back as the queue drains.
 
 ## Read
 
@@ -39,6 +40,7 @@ Take the first that applies.
 - **The same as another.** Link the newer to the older with `kabane_link` and type `duplicate`, and put the newer on the drop list.
 - **Overtaken.** A later decision, a goal's non-goal or a merged change makes it moot. Put it on the drop list with the reason.
 - **Part of a goal.** It serves a goal's outcome and is not yet under it: say so in the report. Moving it under the goal is the human's call, or the steward's when the goal's delegation allows.
+- **A bug.** It earns `next` whatever its size or territory. When its brief says where it goes wrong and how to see it, and no decision is open on it, add the tag `ready` so the steward dispatches it. When the brief is thin, add `needs-brief` instead and keep it `next`.
 - **Small and ready.** One concern, one territory, a brief an implementer could work from as it stands, no open decision, nothing a goal's non-goals rule out, and not a change to `packages/core`, sync, stored data or the extension contract. Add the tag `ready`, and set it `next` when "What `next` means" leaves room. A bug or a small improvement does not wait for a goal.
 - **Worth doing, not ready.** The brief is thin. Add the tag `needs-brief` and set it `someday` unless it earns `next` for another reason. Do not rewrite it here.
 - **Parked.** Anything left in `next` that does not earn it under "What `next` means", and every real idea for later. Make sure it is `someday`, and leave it.
