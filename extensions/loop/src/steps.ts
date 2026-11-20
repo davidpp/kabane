@@ -221,7 +221,8 @@ export namespace RunSteps {
 			name: "gates",
 			state,
 			result,
-			...(passes > 0 ? { durationMs: took } : {}),
+			// While a pass runs its time is unknown: the passes before it would read as its own.
+			...(passes > 0 && state !== "running" ? { durationMs: took } : {}),
 		};
 	};
 
