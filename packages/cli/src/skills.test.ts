@@ -1,0 +1,280 @@
+// Real extension directories on disk, read by the real reader and served by the real `kabane mcp`.
+import { afterAll, describe, expect, it } from "bun:test";
+import {
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { z } from "zod";
+import type { Extensions } from "./extensions";
+import { Skills } from "./skills";
+
+const ROOT = realpathSync(mkdtempSync(join(tmpdir(), "kabane-skills-")));
+afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
+
+/** An extension directory holding `files`, by path under it. */
+const extension = (
+	name: string,
+	files: Record<string, string>,
+	parent = join(ROOT, crypto.randomUUID()),
+): Extensions.Directory => {
+	const directory = join(parent, name);
+	for (const [path, text] of Object.entries(files)) {
+		mkdirSync(dirname(join(directory, path)), { recursive: true });
+		writeFileSync(join(directory, path), text);
+	}
+	return { name, directory };
+};
+
+const skill = (name: string, description: string, body: string): string =>
+	`---\nname: ${name}\ndescription: ${description}\nlicense: MIT\n---\n${body}\n`;
+
+const KEEP = {
+	"skills/keep-notes/SKILL.md": skill(
+		"keep-notes",
+		"Use when the human asks to keep notes.",
+		"Copy {{extension}}/templates/notes.md, then run `{{kabane}} notes add`. Read references/how.md.",
+	),
+	"skills/keep-notes/references/how.md": "Run {{kabane}} --help.\n",
+	"skills/.hidden/SKILL.md": "not a skill",
+	"secret.md": "outside the skill",
+};
+
+describe("Skills.read", () => {
+	it("reads each skill's name and description, and refuses the unusable ones one at a time", () => {
+		const notes = extension("notes", {
+			...KEEP,
+			"skills/bare/SKILL.md": "No frontmatter.\n",
+			"skills/no-description/SKILL.md":
+				"---\nname: no-description\n---\nBody\n",
+			"skills/misnamed/SKILL.md": skill("other", "Use it.", "Body"),
+			"skills/Upper/SKILL.md": skill("Upper", "Use it.", "Body"),
+			"skills/empty/notes.md": "no SKILL.md",
+			"skills/loose.md": "a file, not a skill",
+		});
+		const { skills, refused } = Skills.read([notes]);
+		expect(skills).toEqual([
+			{
+				name: "keep-notes",
+				description: "Use when the human asks to keep notes.",
+				extension: "notes",
+				root: notes.directory,
+				directory: join(notes.directory, "skills/keep-notes"),
+			},
+		]);
+		expect(refused).toEqual([
+			{
+				name: "notes",
+				file: "skills/Upper",
+				reason:
+					"skills/Upper/SKILL.md: invalid frontmatter (name: must be lowercase letters and digits joined by single hyphens)",
+			},
+			{
+				name: "notes",
+				file: "skills/bare",
+				reason:
+					"skills/bare/SKILL.md has no frontmatter between --- lines; add one",
+			},
+			{
+				name: "notes",
+				file: "skills/empty",
+				reason: "skills/empty/SKILL.md cannot be read; a skill needs one",
+			},
+			{
+				name: "notes",
+				file: "skills/loose.md",
+				reason: "skills/loose.md must be a directory holding SKILL.md",
+			},
+			{
+				name: "notes",
+				file: "skills/misnamed",
+				reason:
+					"skills/misnamed/SKILL.md: its name other is not its directory's; name both alike",
+			},
+			{
+				name: "notes",
+				file: "skills/no-description",
+				reason:
+					"skills/no-description/SKILL.md: invalid frontmatter (description: Required)",
+			},
+		]);
+	});
+
+	it("refuses a name two extensions ship in both, and serves the rest", () => {
+		const one = extension("one", {
+			"skills/go/SKILL.md": skill("go", "One's.", "Go."),
+			"skills/stay/SKILL.md": skill("stay", "Stay.", "Stay."),
+		});
+		const two = extension("two", {
+			"skills/go/SKILL.md": skill("go", "Two's.", "Go."),
+		});
+		const { skills, refused } = Skills.read([one, two]);
+		expect(skills.map(({ name }) => name)).toEqual(["stay"]);
+		expect(refused.map(({ name, reason }) => [name, reason])).toEqual([
+			[
+				"one",
+				"skills/go: two also ships a skill named go, so neither is served; rename one",
+			],
+			[
+				"two",
+				"skills/go: one also ships a skill named go, so neither is served; rename one",
+			],
+		]);
+	});
+
+	it("serves no tools when no extension ships a skill", () => {
+		expect(Skills.tools([extension("bare", { "x.md": "" })], "kabane")).toEqual(
+			[],
+		);
+	});
+});
+
+describe("Skills.get", () => {
+	const notes = extension("notes", KEEP);
+	symlinkSync(
+		join(notes.directory, "secret.md"),
+		join(notes.directory, "skills/keep-notes/link.md"),
+	);
+	const { skills } = Skills.read([notes]);
+	const kabane = Skills.command("/home/it's", "/bin/kabane");
+
+	it("returns SKILL.md filled, and the manifest of the skill's other files", () => {
+		const got = Skills.get(skills, "keep-notes", undefined, kabane);
+		if (!got.ok) throw got.error;
+		expect(got.value).toEqual({
+			name: "keep-notes",
+			extension: "notes",
+			file: "SKILL.md",
+			text: `---\nname: keep-notes\ndescription: Use when the human asks to keep notes.\nlicense: MIT\n---\nCopy ${notes.directory}/templates/notes.md, then run \`KABANE_HOME='/home/it'\\''s' '/bin/kabane' notes add\`. Read references/how.md.\n`,
+			files: ["references/how.md"],
+		});
+		const how = Skills.get(skills, "keep-notes", "references/how.md", kabane);
+		if (!how.ok) throw how.error;
+		expect(how.value.text).toBe(`Run ${kabane} --help.\n`);
+		expect(how.value.files).toEqual(["SKILL.md"]);
+	});
+
+	it("refuses a file outside the skill, by path or through a link, and an unknown skill", () => {
+		for (const file of [
+			"../../secret.md",
+			"/etc/hosts",
+			"link.md",
+			"references",
+			"nope.md",
+		]) {
+			const got = Skills.get(skills, "keep-notes", file, kabane);
+			expect(got.ok ? got.value : got.error.message).toBe(
+				`${file} is not a file of the skill keep-notes; ask for SKILL.md or one of the files it lists`,
+			);
+		}
+		const unknown = Skills.get(skills, "other", undefined, kabane);
+		expect(unknown.ok ? unknown.value : unknown.error.message).toBe(
+			"No skill is named other; kabane_skillList names the skills served",
+		);
+	});
+});
+
+it("kabane mcp lists and serves an enabled extension's skill over stdio", async () => {
+	const home = join(ROOT, "home");
+	const bin = join(import.meta.dir, "../index.ts");
+	const notes = extension(
+		"notes",
+		{
+			...KEEP,
+			"package.json": JSON.stringify({
+				kabane: { extension: "./index.ts", api: 1 },
+			}),
+			"index.ts": 'export default () => ({name: "notes"});',
+		},
+		join(home, "extensions"),
+	);
+	const env = { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" };
+	const init = Bun.spawnSync(
+		[
+			process.execPath,
+			bin,
+			"init",
+			"--actor",
+			"cabane://actor/human/skills",
+			"--device",
+			"skills",
+		],
+		{ cwd: home, env },
+	);
+	expect(init.exitCode).toBe(0);
+	const set = Bun.spawnSync(
+		[
+			process.execPath,
+			bin,
+			"config",
+			"set",
+			"extensions",
+			"notes",
+			"--layer",
+			"global",
+		],
+		{ cwd: home, env },
+	);
+	expect(set.exitCode).toBe(0);
+	const client = new Client({ name: "skills-test", version: "1" });
+	const text = async (name: string, args: Record<string, unknown>) => {
+		const result = z
+			.object({
+				isError: z.boolean().optional(),
+				content: z.array(
+					z.object({ type: z.literal("text"), text: z.string() }),
+				),
+			})
+			.parse(await client.callTool({ name, arguments: args }));
+		return {
+			error: result.isError ?? false,
+			text: result.content.map((part) => part.text).join("\n"),
+		};
+	};
+	try {
+		await client.connect(
+			new StdioClientTransport({
+				command: process.execPath,
+				args: [bin, "mcp"],
+				cwd: home,
+				env,
+				stderr: "pipe",
+			}),
+		);
+		const names = (await client.listTools()).tools.map(({ name }) => name);
+		expect(names).toContain("kabane_skillList");
+		expect(names).toContain("kabane_skillGet");
+		expect(client.getInstructions()).toContain(Skills.INSTRUCTIONS);
+		expect(JSON.parse((await text("kabane_skillList", {})).text)).toEqual({
+			skills: [
+				{
+					name: "keep-notes",
+					description: "Use when the human asks to keep notes.",
+					extension: "notes",
+				},
+			],
+		});
+		const got = await text("kabane_skillGet", { name: "keep-notes" });
+		expect(got.error).toBe(false);
+		const body = JSON.parse(got.text) as Skills.Got;
+		expect(body.text).toContain(`Copy ${notes.directory}/templates/notes.md`);
+		expect(body.text).toContain(`run \`KABANE_HOME='${home}' '`);
+		expect(body.text).not.toContain("{{");
+		expect(body.files).toEqual(["references/how.md"]);
+		const escaped = await text("kabane_skillGet", {
+			name: "keep-notes",
+			file: "../../secret.md",
+		});
+		expect(escaped.error).toBe(true);
+		expect(escaped.text).toContain("is not a file of the skill keep-notes");
+	} finally {
+		await client.close();
+	}
+});

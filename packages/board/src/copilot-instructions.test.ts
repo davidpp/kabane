@@ -181,9 +181,14 @@ describe("CopilotInstructions reading the project", () => {
 });
 
 describe("CopilotInstructions writing files and running doctor", () => {
-	it("writes outside the tracker only the files a procedure names", () => {
+	it("writes outside the tracker only the files a procedure or a skill it runs names, and fetches how-to as skills", () => {
 		expect(CopilotInstructions.BLOCK).toContain("Outside the tracker");
-		expect(CopilotInstructions.BLOCK).toContain("only the files a procedure");
+		expect(CopilotInstructions.BLOCK).toContain(
+			"only the files a procedure below or a skill you run names",
+		);
+		expect(CopilotInstructions.BLOCK).toContain(
+			"kabane_skillList, it names them, and kabane_skillGet returns one",
+		);
 	});
 
 	it("doctor reads the report once, fixes only auto findings unasked and never the MCP entries", () => {

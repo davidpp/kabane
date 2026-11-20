@@ -459,6 +459,12 @@ Kabane's own instructions name no extension. An enabled extension loaded from
 - `copilot/shortcuts/<name>.md`, with frontmatter `hint`. Its body, one line, is the template
   `/<name>` drops into the prompt. The `/` list shows the built-in shortcuts first, then these.
 
+An extension's how-to also ships as skills, `skills/<name>/SKILL.md`, which the copilot fetches
+from its `kabane-session` server with `kabane_skillList` and `kabane_skillGet` when a task comes
+up, as any session connected to `kabane mcp` can. Outside the tracker the copilot writes only the
+files a procedure or a skill it runs names. A refused skill is counted in the footer with the
+refused files, and `kabane doctor` lists it as a `skill-<name>` finding.
+
 `{{extension}}` in a body or a procedure's title is replaced with the absolute path of the
 extension's directory; nothing else is substituted. The frontmatter takes only that one key, so a
 file cannot set a harness mode, an allow list or an MCP entry. A byte-order mark is ignored and
