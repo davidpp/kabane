@@ -38,7 +38,8 @@ instructions live in `@cabane/board` (see [the board README](../board/README.md#
   `stdinSink(FileSink)` wraps Bun's piped stdin as a `WritableStream`, and `jsonLines()` drops
   the log lines harnesses interleave with JSON-RPC on stdout.
 - `AcpClient` — `spawn(harness, cwd, { onPermission })` starts the process and runs
-  `initialize` (30 s cap, stderr attached on failure); `newSession(conn, { cwd, mcpServers,
+  `initialize` (30 s cap, stderr attached on failure; a `signal` aborted before the harness
+  answers kills it and fails the start); `newSession(conn, { cwd, mcpServers,
   systemPromptAppend?, mode? })` opens a session with stdio MCP servers in the mode
   `session.mode` reports; `prompt(session, blocks)` is a
   lazy `AsyncIterable<Update>`; `cancel(session)`; `close(conn)` kills the process.

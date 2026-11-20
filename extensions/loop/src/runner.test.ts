@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // claims nothing and no harness is reached; a wrong claim would fail at the launch, which points
 // at no harness.
 import "@cabane/core/testing";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner, type Task } from "@cabane/core";
@@ -168,6 +174,51 @@ describe("Runner resume", () => {
 		);
 		const untouched = RunStore.readRaw(home, "run-1");
 		expect(untouched.ok && untouched.value.pid).toBe(dead.pid);
+	});
+});
+
+// A harness that never answers ACP `initialize`, as an adapter stuck in an npx download or an
+// auth prompt would be: a real child, so the test can see whether the stop leaves it running.
+describe("Runner stop during a session's handshake", () => {
+	const alive = (pid: number): boolean => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+
+	it("kills the harness it launched and ends the claim as cancelled", async () => {
+		await orphaned("run-1", { steering: Steering.INITIAL });
+		const pidfile = join(home, "harness.pid");
+		const controller = new AbortController();
+		const running = Runner.run("run-1", {
+			...deps(controller.signal),
+			overrides: TestHarnesses.overrides({
+				claude: {
+					command: "sh",
+					args: ["-c", 'echo $$ > "$0"; exec sleep 600', pidfile],
+				},
+			}),
+		});
+		// sh creates the file before echo fills it: an empty read would be pid 0, always alive.
+		const written = () =>
+			existsSync(pidfile) ? readFileSync(pidfile, "utf8").trim() : "";
+		for (let i = 0; i < 400 && !written(); i++) await Bun.sleep(5);
+		const pid = Number(written());
+		expect(alive(pid)).toBe(true);
+
+		controller.abort();
+		const ended = await running;
+		if (!ended.ok) throw ended.error;
+
+		// The kill is sent before the run returns; the exit lands a moment later. Without it the
+		// child would live until the 30 s handshake cap, long after the runner had gone.
+		for (let i = 0; i < 200 && alive(pid); i++) await Bun.sleep(5);
+		expect(alive(pid)).toBe(false);
+		expect(ended.value.exit?.reason).toBe("stop-requested");
+		expect(ended.value.claims.map((c) => c.outcome)).toEqual(["cancelled"]);
 	});
 });
 

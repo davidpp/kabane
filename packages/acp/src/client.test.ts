@@ -1,5 +1,8 @@
 // The client against the SDK's in-process agent builder: no subprocess, no npx, same wire.
 import { describe, expect, it } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type AgentApp,
 	type AgentContext,
@@ -314,6 +317,43 @@ describe("AcpClient", () => {
 		expect(conn.ok).toBe(false);
 		if (!conn.ok)
 			expect(conn.error.message).toContain("no ACP initialize response");
+	});
+
+	// Nobody holds a harness still in its handshake, so a stop then has to kill it here: a real
+	// child that never answers, as an adapter stuck in an npx download would be.
+	it("a stop during the handshake kills the harness and fails the start", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "acp-stop-"));
+		const pidfile = join(dir, "harness.pid");
+		const stop = new AbortController();
+		const starting = AcpClient.spawn("claude", dir, {
+			onPermission: allow,
+			overrides: {
+				command: "sh",
+				args: ["-c", 'echo $$ > "$0"; exec sleep 600', pidfile],
+			},
+			signal: stop.signal,
+		});
+		// sh creates the file before echo fills it: an empty read would be pid 0, always alive.
+		const written = () =>
+			existsSync(pidfile) ? readFileSync(pidfile, "utf8").trim() : "";
+		for (let i = 0; i < 400 && !written(); i++) await Bun.sleep(5);
+		const pid = Number(written());
+		stop.abort();
+		const conn = await starting;
+		const alive = () => {
+			try {
+				process.kill(pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+		for (let i = 0; i < 200 && alive(); i++) await Bun.sleep(5);
+		rmSync(dir, { recursive: true, force: true });
+		expect(alive()).toBe(false);
+		expect(!conn.ok && conn.error.message).toBe(
+			"claude: stopped before it answered ACP initialize",
+		);
 	});
 
 	it("a rejected prompt surfaces as an error update, not a throw", async () => {
