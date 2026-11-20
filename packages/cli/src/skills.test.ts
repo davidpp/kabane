@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
 	chmodSync,
 	mkdirSync,
+	readdirSync,
 	mkdtempSync,
 	realpathSync,
 	rmSync,
@@ -10,7 +11,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -384,6 +385,21 @@ describe("base kabane's kabane skill", () => {
 	it("routes each task to one reference, every one of which it serves filled", () => {
 		const got = Skills.get(skills, "kabane", undefined, kabane);
 		if (!got.ok) throw got.error;
+		// Its files are imported one by one, so a file added to the directory and not to
+		// skills.ts would go unserved: the directory and what is served must match.
+		const shipped = readdirSync(join(import.meta.dir, "../skills/kabane"), {
+			recursive: true,
+			withFileTypes: true,
+		})
+			.filter((entry) => entry.isFile())
+			.map((entry) =>
+				relative(
+					join(import.meta.dir, "../skills/kabane"),
+					join(entry.parentPath, entry.name),
+				),
+			)
+			.sort();
+		expect(["SKILL.md", ...got.value.files].sort()).toEqual(shipped);
 		expect(got.value.files).toEqual([
 			"references/config.md",
 			"references/doctor.md",

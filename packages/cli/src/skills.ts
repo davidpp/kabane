@@ -124,17 +124,12 @@ export namespace Skills {
 		const found: Skill[] = [];
 		const refused: CopilotFiles.Refusal[] = [];
 		const skills: Skill[] = [];
+		// Its text is fixed at build time, and its tests hold its frontmatter.
 		if (base.ok)
 			skills.push({
 				...base.value.fields,
 				extension: BASE,
 				files: BASE_FILES,
-			});
-		else
-			refused.push({
-				name: BASE,
-				file: join(SKILLS, BASE),
-				reason: base.error.message,
 			});
 		for (const { name: extension, directory: root } of extensions) {
 			const stat = trySync(() => statSync(join(root, SKILLS)));
