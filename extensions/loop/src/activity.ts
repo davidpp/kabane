@@ -97,6 +97,7 @@ export namespace LoopActivity {
 		return {
 			...base(run),
 			steps: RunSteps.of(run, nodes, now, after),
+			facts: RunSteps.facts(run),
 			...(left.length > 0 ? { left } : {}),
 		};
 	};

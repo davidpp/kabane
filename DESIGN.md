@@ -342,6 +342,8 @@ against every glyph already here.
   it back to the run. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
   session's log in place of the stream with its name over it, and `esc` closes the log before it
   goes back to the tracker.
+  `g/G` and `⌃d/⌃u` scroll the stream. The `?` sheet lists what the card runs with after its
+  keys, under the card's name: label muted, value in the text color.
 - **Left for you:** on a finished card, a blank row and `left for you · n` as a Label under the
   map, then each issue it left: `○`, its id, how it was left in secondary, why muted. A line with
   no issue (the kept branch) is muted and has no glyph. The cursor walks on to them, and `enter`

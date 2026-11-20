@@ -13,6 +13,7 @@
 // banner. Either way a digit answers it in place, through `ActivitySource.answer`.
 import {
 	type ActivityCard,
+	type ActivityFact,
 	type ActivityLeft,
 	type ActivityStatus,
 	type ActivityStep,
@@ -48,6 +49,7 @@ export namespace BoardTabs {
 		actions?: readonly CardAction[];
 		steps?: readonly ActivityStep[];
 		left?: readonly ActivityLeft[];
+		facts?: readonly ActivityFact[];
 	};
 
 	// How a card's tab is being read, kept per card so a tab looks the same when the human comes
@@ -186,6 +188,7 @@ export namespace BoardTabs {
 			: {}),
 		...(card.steps && card.steps.length > 0 ? { steps: card.steps } : {}),
 		...(card.left && card.left.length > 0 ? { left: card.left } : {}),
+		...(card.facts && card.facts.length > 0 ? { facts: card.facts } : {}),
 	});
 
 	/** Whether what a finished card left for the human holds an issue: the tab's `?` waits on it. */

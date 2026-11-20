@@ -188,7 +188,7 @@ produces them and are imported directly by their readers:
 - **In `@kabane/extension`**, because an extension produces them and any client reads them: the
   activity types (`ActivityStatus`, `ActivityCard`, `CardAction`, `ActivityDiff`,
   `ActivityToolDetail`, `NoticeSeverity`, `ActivityEvent`, `ActivitySource`, and the card's map:
-  `ActivityStep`, `ActivityStepState`, `ActivitySession` and `ActivityLeft`), the dispatch types
+  `ActivityStep`, `ActivityStepState`, `ActivitySession`, `ActivityLeft` and `ActivityFact`), the dispatch types
   (`TriggerInput`, `TriggerDescriptor`, `DispatchTarget`, `Dispatcher`), the panel types
   (`PanelTone`, `PanelPart`, `PanelLine`), the header types (`Header`, `HeaderView`,
   `HeaderPart`), the job types (`JobRunState`, `JobRun`, `JobFacts`, `JobSource`), the settings field types `settings.ts` uses

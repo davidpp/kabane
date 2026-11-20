@@ -215,14 +215,17 @@ included: each a `name`, a `state` (`pending | running | done | failed | stopped
 `lane` that holds a session's events). Once over, it may list what it `left` for the human
 (`ActivityLeft[]`): an issue by `taskId` or `taskShortId` with `how` it was left and a one-line
 `reason`, or with neither id a line of its own (a branch kept for review). All of it is in the
-host's words; the board knows no step by name.
+host's words; the board knows no step by name. A card may also list the `facts` it runs with
+(`ActivityFact[]`, a `label` and a `value` each, such as `slots` `1/2`), which the `?` sheet on its
+tab lists after the keys, under the card's name.
 
 A card with steps has a map on its tab in place of the lane chips, under the header: one row per
 step, a running step opened to its sessions, finished ones folded. A cursor follows the newest
 live session, or the session a question waits on, until the human moves it with `j/k` or `↑↓`;
 `f` hands it back to the run. `h/l` fold and open the step under it, `enter` opens the session's
 events in place of the stream (`esc` closes them, a second `esc` goes to the tracker) and, on an
-issue the card left, opens that issue on the tracker. A click puts the cursor on a row and a
+issue the card left, opens that issue on the tracker (by `taskId`, else by a `taskShortId` the
+board holds). `g/G` and `⌃d/⌃u` scroll the stream under the map. A click puts the cursor on a row and a
 second click is `enter`. The question its sessions wait on sits under the map and names the
 session's lane. A finished card that left an issue keeps an accent `?` as its tab's glyph until
 its tab has been on screen. A card without steps keeps the lanes below.

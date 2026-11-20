@@ -28,6 +28,7 @@ export type {
 	ActivityCard,
 	ActivityDiff,
 	ActivityEvent,
+	ActivityFact,
 	ActivityLeft,
 	ActivityQuestion,
 	ActivitySession,

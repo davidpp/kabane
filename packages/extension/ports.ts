@@ -57,7 +57,12 @@ export type ActivityCard = {
 	// What the work left for the human once it is over: issues to look at, with how each was left
 	// and why. Absent or empty, nothing was left.
 	left?: readonly ActivityLeft[];
+	// What the work runs with, in words (its limits and settings, `slots` `1/2`), for where the
+	// human asks for more: the board lists them on the card tab's `?` sheet.
+	facts?: readonly ActivityFact[];
 };
+
+export type ActivityFact = { label: string; value: string };
 
 // Where a step or one of its sessions stands. `stopped` is over without finishing, as on a card.
 export type ActivityStepState =

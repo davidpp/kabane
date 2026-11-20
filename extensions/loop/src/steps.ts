@@ -7,6 +7,7 @@
 // works, so implement can be live again after it was done, beside another step.
 import type { Task } from "@kabane/core";
 import type {
+	ActivityFact,
 	ActivityLeft,
 	ActivitySession,
 	ActivityStep,
@@ -619,6 +620,45 @@ export namespace RunSteps {
 	/** What the run has spent where a harness priced its work, in the run's currency. */
 	export const spend = (run: RunStore.Run): number =>
 		Budget.spent(run.usage, run.config.budget.currency, run.claims).amount;
+
+	/**
+	 * What the run runs with, in words, for the board's `?` sheet: its slots and continuations as
+	 * used of their limits, its spend, who implements and verifies, how it reviews, its gates, its
+	 * lenses and how it lands.
+	 */
+	export const facts = (run: RunStore.Run): ActivityFact[] => {
+		const { config } = run;
+		const { budget } = config;
+		const live = RunStore.isLive(run.status)
+			? run.claims.filter((c) => c.endedAt === undefined).length
+			: 0;
+		const spent = spend(run);
+		const list = (names: readonly string[]): string =>
+			names.length > 0 ? names.join("·") : "none";
+		return [
+			{ label: "slots", value: `${live}/${RunStore.concurrency(run)}` },
+			{
+				label: "continuations",
+				value: `${run.continuationsUsed}/${budget.continuations}`,
+			},
+			{
+				label: "spend",
+				value:
+					budget.spend === undefined
+						? money(run, spent)
+						: `${money(run, spent)} of ${money(run, budget.spend)}`,
+			},
+			{
+				label: "implementer",
+				value: `${config.implementer}${config.model ? ` ${config.model}` : ""}`,
+			},
+			{ label: "verifier", value: config.verifier ?? config.implementer },
+			{ label: "review", value: config.review.mode },
+			{ label: "gates", value: list(Object.keys(config.gates)) },
+			{ label: "lenses", value: list(config.lenses) },
+			{ label: "land", value: config.land },
+		];
+	};
 
 	/** An amount in the run's currency: `$17.50` in dollars, `17.50 EUR` in any other. */
 	export const money = (run: RunStore.Run, amount: number): string => {
