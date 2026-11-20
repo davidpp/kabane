@@ -1,18 +1,17 @@
 # dispatch
 
-A kabane extension that gives a project two agent skills, and keeps them current:
+A kabane extension that gives your sessions two agent skills:
 
 - **dispatch**, which a coding session follows to turn an ask into kabane issues and into
   shipped work. The extension's setup-dispatch skill fills it for the project: `/setup-dispatch`
   on the board, or any session connected to kabane's MCP server.
 - **grill**, which walks you through the questions agents left open with `kabane_ask`, one at a
-  time. Ask the copilot to "grill me". The skill is the extension's `templates/grill/SKILL.md`;
-  ask the copilot to install it in a project and it copies it to `.agents/skills/grill/`, where
-  any coding session with the kabane MCP can follow it.
+  time. `kabane mcp` serves it, so ask the copilot, or any session connected to kabane's MCP
+  server, to "grill me". Nothing is copied into the project. A copy an earlier version installed
+  under `.agents/skills/grill/` is no longer checked; delete it to use the served skill.
 
-Base kabane works without it: with the extension not enabled, `kabane mcp` serves no
-setup-dispatch skill, and the copilot neither offers `/setup-dispatch` nor knows about these
-skills.
+Base kabane works without it: with the extension not enabled, `kabane mcp` serves neither
+skill, and the copilot does not offer `/setup-dispatch`.
 
 ## Install
 
@@ -113,8 +112,6 @@ With the extension enabled, `kabane doctor` reports, under the source `dispatch`
 | `dispatch-skill-behind` | route | the template changed since the skill was filled; the setup-dispatch skill re-fills it |
 | `dispatch-template-unavailable` | mention | the extension's own template cannot be read; reinstall it |
 | `dispatch-skill-unlinked` | mention | the project has `.claude/` but no `.claude/skills/dispatch` link, so Claude Code does not list the skill; `kabane doctor --fix dispatch/dispatch-skill-unlinked` adds the link. A link that leads anywhere but `.agents/skills/dispatch` is reported with no fix |
-| `grill-skill-unlinked` | mention | the same for a grill copy under `.agents/skills/grill` |
-| `grill-skill-behind` | mention | a copy of the grill skill differs; `kabane doctor --fix dispatch/grill-skill-behind` copies the template over it |
 
 Without the extension, a project skill that carries a `kabane-template` stamp is one finding of
 base kabane, `project/skill-unchecked`: the skill works as written, and doctor says it cannot

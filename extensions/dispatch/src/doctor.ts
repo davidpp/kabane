@@ -1,10 +1,8 @@
-// The skills this extension writes into a project, compared with the templates it ships: the
-// dispatch skill the setup-dispatch skill fills and a copy of the grill skill. Each finding says only what
-// the comparison showed; re-filling the dispatch skill stays the setup-dispatch skill's job, so doctor
-// routes there instead of writing it. The ids, severities and routes are the ones these checks had
+// The skill this extension writes into a project, the dispatch skill the setup-dispatch skill fills,
+// compared with the template it ships. Each finding says only what the comparison showed; re-filling
+// the skill stays the setup-dispatch skill's job, so doctor routes there instead of writing it. The ids, severities and routes are the ones these checks had
 // in base kabane, so a project's findings read the same once the extension is enabled.
 import {
-	copyFileSync,
 	existsSync,
 	lstatSync,
 	mkdirSync,
@@ -155,36 +153,6 @@ export namespace DispatchDoctor {
 		return findings;
 	};
 
-	const grillSkill = (root: string): Doctor.Finding[] => {
-		const template = join(Templates.dir("grill"), "SKILL.md");
-		const shipped = readFileSync(template);
-		// The .claude path is usually a symlink to the .agents copy: one file, compared once.
-		const copies = [
-			...new Set(
-				[".agents/skills/grill/SKILL.md", ".claude/skills/grill/SKILL.md"]
-					.map((path) => join(root, path))
-					.filter((path) => existsSync(path))
-					.map((path) => realpathSync(path)),
-			),
-		];
-		const behind = copies.filter((path) => !readFileSync(path).equals(shipped));
-		if (behind.length === 0) return [];
-		const shown = behind.map((path) => relative(root, path)).join(", ");
-		return [
-			{
-				id: "grill-skill-behind",
-				path: behind[0],
-				severity: "mention",
-				summary: `${shown} differs from the grill skill the dispatch extension ships. --fix dispatch/grill-skill-behind copies the template over it, replacing any edits of the project's own.`,
-				fix: async () =>
-					trySync(() => {
-						for (const path of behind) copyFileSync(template, path);
-						return `Copied the grill skill template to ${shown}`;
-					}),
-			},
-		];
-	};
-
 	/** The checks, with the frontmatter schema built on the host's zod. */
 	export const create = (host: Host): Doctor.Source["doctor"] => {
 		const stampOf = stampReader(host);
@@ -197,8 +165,6 @@ export namespace DispatchDoctor {
 			for (const [id, check] of [
 				["dispatch", () => dispatchSkill(root, stampOf)],
 				["dispatch-link", () => claudeLink(root, "dispatch")],
-				["grill", () => grillSkill(root)],
-				["grill-link", () => claudeLink(root, "grill")],
 			] as const) {
 				const found = trySync(check);
 				if (found.ok) findings.push(...found.value);

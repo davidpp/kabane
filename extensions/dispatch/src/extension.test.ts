@@ -5,7 +5,6 @@ import { afterEach, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
-	readFileSync,
 	readlinkSync,
 	realpathSync,
 	rmSync,
@@ -198,27 +197,6 @@ test("CRLF keeps the skill's stamp readable", () => {
 		join(root, ".agents/skills/dispatch/SKILL.md"),
 		skill(STAMP_ON_MAIN).replaceAll("\n", "\r\n"),
 	);
-	expect(ids()).toEqual([]);
-});
-
-test("an edited grill copy is reported and --fix dispatch/grill-skill-behind restores it", () => {
-	const { root, ids, kabane } = setup();
-	const template = readFileSync(join(EXTENSION, "templates/grill/SKILL.md"));
-	const path = join(root, ".agents/skills/grill/SKILL.md");
-	write(path, template.toString());
-	expect(ids()).toEqual(["grill-skill-unlinked:mention"]);
-	symlinkSync("../../.agents/skills/grill", join(root, ".claude/skills/grill"));
-	expect(ids()).toEqual([]);
-	writeFileSync(path, `${template}\nA project edit.\n`);
-	expect(ids()).toEqual(["grill-skill-behind:mention"]);
-	const unasked = JSON.parse(kabane("doctor", "--fix", "--json").stdout);
-	expect(unasked.fixes).toEqual([]);
-	const fixed = JSON.parse(
-		kabane("doctor", "--fix", "dispatch/grill-skill-behind", "--json").stdout,
-	);
-	expect(fixed.fixes).toHaveLength(1);
-	expect(fixed.fixes[0].result.ok).toBe(true);
-	expect(readFileSync(path).equals(template)).toBe(true);
 	expect(ids()).toEqual([]);
 });
 
