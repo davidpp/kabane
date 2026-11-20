@@ -7,7 +7,7 @@ import { err, ok, type Result } from "../packages/core/result";
 import {
 	inspectArchive,
 	integrity,
-	ReleaseFilenameSchema,
+	PackOutputSchema,
 	ReleaseManifestSchema,
 	sha256,
 	verifyReleaseFiles,
@@ -84,10 +84,7 @@ export const prepareRelease = async (
 			join(root, "packages/cli/dist"),
 		);
 		if (!packed.ok) return packed;
-		const pack = z
-			.array(z.object({ filename: ReleaseFilenameSchema }))
-			.length(1)
-			.safeParse(JSON.parse(packed.value));
+		const pack = PackOutputSchema.safeParse(JSON.parse(packed.value));
 		const first = pack.success ? pack.data[0] : undefined;
 		if (!first) return err(new Error("Invalid pack result."));
 		const archive = join(output, first.filename);

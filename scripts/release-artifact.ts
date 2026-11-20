@@ -22,6 +22,23 @@ export const ReleaseVersionSchema = z
 export const ReleaseFilenameSchema = z
 	.string()
 	.regex(/^kabane-\d+\.\d+\.\d+(?:-beta\.\d+)?\.tgz$/);
+const PackedSchema = z.object({
+	filename: ReleaseFilenameSchema,
+	size: z.number().int().positive(),
+});
+/**
+ * What `npm pack --json` prints for the one package packed: npm 11 prints an array of
+ * results, npm 12 an object keyed by package name. The release job runs npm 12, a
+ * maintainer's machine may run either.
+ */
+export const PackOutputSchema = z
+	.union([
+		z.array(PackedSchema),
+		z
+			.record(z.string(), PackedSchema)
+			.transform((byName) => Object.values(byName)),
+	])
+	.refine((packed) => packed.length === 1, "Expected exactly one archive.");
 export const PublishManifestSchema = z
 	.object({
 		name: z.literal("kabane"),

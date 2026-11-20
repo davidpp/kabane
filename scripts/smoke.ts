@@ -30,7 +30,7 @@ import { TaskCommentSchema, TaskWorkLogSchema } from "../packages/core/schemas";
 import { build, DIST } from "./build";
 import {
 	inspectArchive,
-	ReleaseFilenameSchema,
+	PackOutputSchema,
 	verifyReleaseFiles,
 } from "./release-artifact";
 
@@ -95,15 +95,7 @@ const pack = (): string => {
 		["npm", "pack", "--json", "--pack-destination", WORK],
 		DIST,
 	);
-	const parsed = z
-		.array(
-			z.object({
-				filename: ReleaseFilenameSchema,
-				size: z.number().int().positive(),
-			}),
-		)
-		.length(1)
-		.safeParse(JSON.parse(ran.stdout));
+	const parsed = PackOutputSchema.safeParse(JSON.parse(ran.stdout));
 	const packed = parsed.success ? parsed.data[0] : undefined;
 	if (!packed) return fail("npm pack printed no valid tarball", ran);
 	pass(`packed ${packed.filename}, ${(packed.size / 1024).toFixed(0)} kB`);
