@@ -151,6 +151,35 @@ const RUNNING: BoardTabs.Tabs = {
 	queue: [FREEFORM],
 };
 
+// The same card drawn as a map: its live step opened to the session the cursor follows.
+const MAPPED: BoardTabs.Tabs = {
+	...TABS,
+	active: LOOP,
+	queue: [],
+	cards: new Map([
+		[
+			LOOP,
+			{
+				label: "loop",
+				finished: false,
+				taskId: "p",
+				lanes: ["claude:MILL-3"],
+				liveLanes: ["claude:MILL-3"],
+				steps: [
+					{ name: "gates", state: "done" },
+					{
+						name: "implement",
+						state: "running",
+						sessions: [
+							{ name: "MILL-3", state: "running", lane: "claude:MILL-3" },
+						],
+					},
+				],
+			},
+		],
+	]),
+};
+
 const LOOSE: BoardTabs.Tabs = {
 	...BoardTabs.NONE,
 	loose: new Map([
@@ -298,6 +327,10 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		state({
 			view: { type: "events", cardId: LOOP, fromView: "board" },
 			tabs: RUNNING,
+		}),
+		state({
+			view: { type: "events", cardId: LOOP, fromView: "board" },
+			tabs: MAPPED,
 		}),
 	],
 	prompt: [

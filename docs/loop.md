@@ -56,9 +56,28 @@ permission requests also appear on the issue's timeline; its work log links each
 with a `session:` URI. Runs created before the question journal existed still load, but
 questions stored in the old tracker session tables are not offered by the loop.
 
-On the board, a run's tab says what the run is doing: working its subtasks, then, once they
-are done, its closing gates, each lens's review, the fixer, the rechecks and the landing.
-When it says `waiting on`, each subtask it names says why, for example `JCAB-64 (someday)`.
+On the board, a run's tab opens on its run row and its map. The run row names the issue and
+says what the run is doing in words: `● recheck · 2 of 5 done · 2 live · 40m28s · $17.50` while
+it runs, `? docs-recheck waits on you` when a session asks you something, and
+`✓ completed · 6 findings left for you · 46m52s` once it is over. Continuations show there once
+the run has used one.
+
+The map under it has one row per step, in the order the run takes them: implement (its
+subtasks), the gates, triage, the lenses' review, the fixer, the rechecks of its diff and the
+landing, each with its result and how long it took. A step that is not configured is left out,
+and a step still to come is listed with `○`. The step under way opens to one row per session; a
+lens triage skipped is listed as done with its reason. A cursor follows the newest live session,
+or the one that asks you something, until you move it with `j/k`; `f` makes it follow again.
+`h/l` fold and open a step, and `enter` on a session shows its own events under the map in
+place of every session's; `esc` goes back. A question waits under the map, naming the session
+that asked, and its digits answer it.
+
+Once the run is over, the map lists what it left for you: each finding still open, reopened by a
+lens's recheck or filed by one, and the branch when it did not land. `enter` on a finding opens
+it. The run's tab keeps an orange `?` until you have looked at that list.
+
+When the run row says `waiting on`, each subtask it names says why, for example
+`JCAB-64 (someday)`.
 The run never claims a subtask you parked (`someday`, `waiting`) or took (`in_progress`),
 and it does not finish while one is open: set it back to `next` for the run to take it, or
 close it. `kabane loop skip` only keeps the run from claiming a subtask; a skipped subtask

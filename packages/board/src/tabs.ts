@@ -11,7 +11,14 @@
 // walks it: a question owned by a tabbed card lands on that card's tab, pinned under
 // its header, any other on its task's detail view with the question pinned over the brief as a
 // banner. Either way a digit answers it in place, through `ActivitySource.answer`.
-import { type ActivityCard, type CardAction } from "@kabane/extension";
+import {
+	type ActivityCard,
+	type ActivityFact,
+	type ActivityLeft,
+	type ActivityStatus,
+	type ActivityStep,
+	type CardAction,
+} from "@kabane/extension";
 import type { BoardActivity } from "./activity";
 import { ElicitationForm } from "./elicitation-form";
 import { BoardJobs } from "./jobs";
@@ -29,6 +36,10 @@ export namespace BoardTabs {
 	// route on.
 	export type TabCard = {
 		label: string;
+		// The card's status as last polled, which the bar's glyph reads: the event view on the tab
+		// polls every second, so the glyph stops spinning with the run row.
+		status?: ActivityStatus;
+		stale?: boolean;
 		finished: boolean;
 		taskId?: string;
 		taskShortId?: string;
@@ -36,11 +47,22 @@ export namespace BoardTabs {
 		laneNoun?: string;
 		liveLanes?: readonly string[];
 		actions?: readonly CardAction[];
+		steps?: readonly ActivityStep[];
+		left?: readonly ActivityLeft[];
+		facts?: readonly ActivityFact[];
 	};
 
 	// How a card's tab is being read, kept per card so a tab looks the same when the human comes
 	// back to it: the lane on screen (null is every lane), and whether its header is expanded (`e`).
-	export type CardView = { lane: string | null; expanded: boolean };
+	// A card with steps adds its map's cursor (a row key, RunMap), whether the cursor follows the
+	// run, which it does until the human moves it, and the steps the human opened or folded.
+	export type CardView = {
+		lane: string | null;
+		expanded: boolean;
+		cursor?: string;
+		follow?: boolean;
+		folds?: ReadonlyMap<string, boolean>;
+	};
 
 	export type Tabs = {
 		// Card ids with a tab, in the order they opened.
@@ -68,6 +90,9 @@ export namespace BoardTabs {
 		picked: ReadonlyMap<string, readonly number[]>;
 		// Each card tab's own reading state, by card id.
 		views: ReadonlyMap<string, CardView>;
+		// Finished cards whose left-for-you list has been on screen: until then the tab keeps the
+		// accent `?`.
+		seen: ReadonlySet<string>;
 		// The Jobs tab's rows; it is in the bar while there is one.
 		jobs: BoardJobs.Jobs;
 	};
@@ -96,6 +121,7 @@ export namespace BoardTabs {
 		answered: new Map(),
 		picked: new Map(),
 		views: new Map(),
+		seen: new Set<string>(),
 		jobs: BoardJobs.NONE,
 	};
 
@@ -149,6 +175,8 @@ export namespace BoardTabs {
 
 	const tabCard = (card: ActivityCard): TabCard => ({
 		label: card.label,
+		status: card.status,
+		...(card.stale ? { stale: true } : {}),
 		finished: !isInFlight(card),
 		...(card.taskId ? { taskId: card.taskId } : {}),
 		...(card.taskShortId ? { taskShortId: card.taskShortId } : {}),
@@ -158,7 +186,28 @@ export namespace BoardTabs {
 		...(card.actions && card.actions.length > 0
 			? { actions: card.actions }
 			: {}),
+		...(card.steps && card.steps.length > 0 ? { steps: card.steps } : {}),
+		...(card.left && card.left.length > 0 ? { left: card.left } : {}),
+		...(card.facts && card.facts.length > 0 ? { facts: card.facts } : {}),
 	});
+
+	/** Whether what a finished card left for the human holds an issue: the tab's `?` waits on it. */
+	export const leavesIssues = (card: TabCard | undefined): boolean =>
+		card?.finished === true &&
+		(card.left ?? []).some(
+			(item) => item.taskId !== undefined || item.taskShortId !== undefined,
+		);
+
+	/** The finished card's tab still owes the human a look at what it left. */
+	export const unseen = (tabs: Tabs, id: string): boolean =>
+		leavesIssues(tabs.cards.get(id)) && !tabs.seen.has(id);
+
+	// The tab on screen shows its card's left-for-you list under its map, so it counts as seen.
+	const seeing = (tabs: Tabs): Tabs => {
+		const id = tabs.active;
+		if (id === null || !unseen(tabs, id)) return tabs;
+		return { ...tabs, seen: new Set(tabs.seen).add(id) };
+	};
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
 	const fingerprint = (tabs: Tabs): string =>
@@ -211,7 +260,7 @@ export namespace BoardTabs {
 			),
 		};
 		if (fingerprint(next) === fingerprint(tabs)) return state;
-		const moved = { ...state, tabs: next };
+		const moved = { ...state, tabs: seeing(next) };
 		return next.active !== null &&
 			next.active !== JOBS &&
 			!next.open.includes(next.active)
@@ -230,7 +279,7 @@ export namespace BoardTabs {
 		const next = { ...tabs, cards };
 		return fingerprint(next) === fingerprint(tabs)
 			? state
-			: { ...state, tabs: next };
+			: { ...state, tabs: seeing(next) };
 	};
 
 	// Leaving the tracker drops a banner whose question is settled, so the task reads as itself when
@@ -296,8 +345,32 @@ export namespace BoardTabs {
 			...state,
 			focus: "board",
 			view: { type: "events", cardId: id, fromView: "board" },
-			tabs: { ...tabs, active: id, tracker },
+			tabs: seeing({ ...tabs, active: id, tracker }),
 		};
+	};
+
+	/**
+	 * An issue on the tracker by its id or its short id, as `o` opens its card's task; one the board
+	 * does not hold says so.
+	 */
+	export const openIssue = (
+		state: State,
+		issue: { taskId?: string; taskShortId?: string },
+	): Step => {
+		const taskId =
+			issue.taskId ??
+			(issue.taskShortId
+				? taskIdOfShortId(state, issue.taskShortId)
+				: undefined);
+		return taskId
+			? {
+					state: { ...show(state, null), view: { type: "detail", taskId } },
+					effect: NOTHING,
+				}
+			: notice(
+					state,
+					`${issue.taskShortId ?? "that issue"} is not on the board`,
+				);
 	};
 
 	// `{` `}`: the previous or next tab, the tracker included, wrapping.

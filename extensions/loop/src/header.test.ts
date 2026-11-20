@@ -62,29 +62,6 @@ const run = (
 	};
 };
 
-describe("LoopHeader.meters", () => {
-	it("context from the live sessions and continuations used, without a time limit", () => {
-		expect(LoopHeader.meters(run())).toEqual([
-			{ label: "context", share: 0.25, text: "25%" },
-			{ label: "continuations", share: 1 / 3, text: "1/3" },
-		]);
-	});
-
-	it("spend only when the run has a spend budget, summed over every session", () => {
-		const [spend] = LoopHeader.meters(run({}, { spend: 10 }));
-		expect(spend).toEqual({ label: "spend", share: 0.15, text: "1.50/10 USD" });
-	});
-});
-
-describe("LoopHeader.cells", () => {
-	it("shows anything used as one cell at least, and never overflows", () => {
-		expect(LoopHeader.cells(0)).toEqual({ filled: 0, empty: 10 });
-		expect(LoopHeader.cells(0.01)).toEqual({ filled: 1, empty: 9 });
-		expect(LoopHeader.cells(0.55)).toEqual({ filled: 6, empty: 4 });
-		expect(LoopHeader.cells(3)).toEqual({ filled: 10, empty: 0 });
-	});
-});
-
 describe("LoopHeader.state", () => {
 	it("a stopped run says it stopped and why, without reading as failed", () => {
 		const stopped = run({
@@ -114,101 +91,18 @@ describe("LoopHeader.state", () => {
 			LoopHeader.state(run({ stall: { mark: "m", unchanged: 2 } }), null, NOW)
 				.text,
 		).toBe("● no progress across 2 of 3 attempts");
-		expect(LoopHeader.state(run(), null, NOW).text).toBe("● running");
+		// Running is work in flight, in the working hue, named by the step it is on.
+		expect(LoopHeader.state(run(), null, NOW)).toEqual({
+			text: "● implement",
+			tone: "working",
+			bold: true,
+		});
 	});
 
 	it("a paused run says so before anything else about its health", () => {
 		const paused = run({ steering: { paused: true, skipped: [], next: [] } });
 		expect(LoopHeader.state(paused, null, NOW).text).toBe(
 			"⏸ paused · 1 session finishing · p resumes",
-		);
-	});
-});
-
-describe("LoopHeader.steps", () => {
-	const text = (r: RunStore.Run): string =>
-		LoopHeader.steps(r, null)
-			.map((part) => part.text)
-			.join("");
-	const gated = (gateRuns: RunStore.Run["gateRuns"]): RunStore.Run => {
-		const config = LoopConfig.Schema.safeParse({
-			gates: { test: "bun test", lint: "bun run check" },
-		});
-		if (!config.success) throw config.error;
-		return run({ config: config.data, gateRuns, worktree: "/wt" });
-	};
-	const result = (name: string, ok: boolean) => ({
-		name,
-		command: name,
-		ok,
-		exit: ok ? 0 : 1,
-		ms: 1000,
-		tail: "",
-	});
-
-	it("shows the gates only for a run that has some, by their last pass", () => {
-		expect(text(run())).toBe("● implement ×2 sessions");
-		expect(text(gated([]))).toBe(
-			"● implement ×2 sessions  ›  ○ gates test·lint",
-		);
-		expect(
-			text(
-				gated([
-					{
-						at: "2026-10-10T12:05:00.000Z",
-						results: [result("test", true), result("lint", true)],
-						ok: true,
-						tree: "t",
-						checkpoint: "abc123",
-					},
-					{
-						at: "2026-10-10T12:20:00.000Z",
-						results: [result("test", false)],
-						ok: false,
-						tree: "t2",
-					},
-				]),
-			),
-		).toBe("● implement ×2 sessions  ›  ✗ gates test red · 1 checkpoint");
-	});
-
-	it("counts the lenses' sessions apart from the work, and shows a recheck once one runs", () => {
-		const config = LoopConfig.Schema.safeParse({ lenses: ["functional"] });
-		if (!config.success) throw config.error;
-		const onParent = (extra: Partial<RunStore.Claim>): RunStore.Claim => ({
-			taskId: "01PARENT",
-			shortId: "KAB-1",
-			harness: "claude",
-			lane: "review",
-			sessionId: `s-${JSON.stringify(extra)}`,
-			startedAt: "2026-10-10T12:20:00.000Z",
-			endedAt: "2026-10-10T12:21:00.000Z",
-			outcome: "done",
-			continuations: 0,
-			...extra,
-		});
-		const base = run({ status: "running", config: config.data });
-		const rechecking = run({
-			config: config.data,
-			claims: [
-				...base.claims.map((c) => ({ ...c, endedAt: c.startedAt })),
-				onParent({ lenses: ["functional"] }),
-				onParent({ fixer: true, head: "abc123", findings: [] }),
-				onParent({
-					recheck: "functional",
-					endedAt: undefined,
-					outcome: undefined,
-				}),
-			],
-		});
-		const parent = { id: "01PARENT", shortId: "KAB-1" } as Task;
-		const plan = { parent, nodes: [], outside: new Map() };
-		expect(
-			LoopHeader.steps(rechecking, plan)
-				.map((part) => part.text)
-				.join(""),
-		).toBe(
-			"○ implement ×2 sessions  ›  ✓ lenses functional  ›  ✓ fixer 0/0 closed  ›  ● recheck functional",
 		);
 	});
 });
@@ -263,36 +157,44 @@ describe("LoopHeader.state past the subtasks", () => {
 	const text = (r: RunStore.Run, p: LoopPlan.Plan | null = allDone): string =>
 		LoopHeader.state(r, p, NOW).text;
 
-	it("names the closing gates while they run, and the gates step shows them running", () => {
-		const gating = run({
-			claims: ended,
-			gating: ["KAB-1"],
-			config: configured({ gates: { test: "bun test" } }),
-			gateRuns: [green],
-		});
-		expect(LoopHeader.state(gating, allDone, NOW)).toEqual({
-			text: "● closing gates for KAB-1",
-			tone: "working",
-			bold: true,
-		});
+	it("names the step under way: the gates, a review, the fixer, a recheck, the landing", () => {
+		const gates = configured({ gates: { test: "bun test" } });
 		expect(
-			LoopHeader.steps(gating, allDone)
-				.map((part) => part.text)
-				.join(""),
-		).toBe("○ implement ×2 sessions  ›  ◐ gates running for KAB-1");
-	});
-
-	it("shows a subtask's pass running in the gates step while its session is still the run's", () => {
-		const gating = run({
-			gating: ["KAB-2"],
-			config: configured({ gates: { test: "bun test" } }),
-		});
-		expect(text(gating, plan(child("KAB-2", "in_progress")))).toBe("● running");
+			text(
+				run({
+					claims: ended,
+					gating: ["KAB-1"],
+					config: gates,
+					gateRuns: [green],
+				}),
+			),
+		).toBe("● gates");
+		const lenses = configured({ lenses: ["quality"] });
 		expect(
-			LoopHeader.steps(gating, null)
-				.map((part) => part.text)
-				.join(""),
-		).toBe("● implement ×2 sessions  ›  ◐ gates running for KAB-2");
+			text(
+				run({
+					config: lenses,
+					claims: [...ended, onParent({ lenses: ["quality"] })],
+				}),
+			),
+		).toBe("● review");
+		expect(
+			text(
+				run({
+					config: lenses,
+					claims: [...ended, onParent({ fixer: true, findings: ["a", "b"] })],
+				}),
+			),
+		).toBe("● fixer");
+		expect(
+			text(
+				run({
+					claims: [...ended],
+					landingFrom: "abc",
+					config: configured({ land: "pr" }),
+				}),
+			),
+		).toBe("● land");
 	});
 
 	it("never shows a pass running for a run whose runner is gone", () => {
@@ -302,54 +204,23 @@ describe("LoopHeader.state past the subtasks", () => {
 			gating: ["KAB-1"],
 			config: configured({ gates: { test: "bun test" } }),
 		});
-		expect(
-			LoopHeader.steps(dead, null)
-				.map((part) => part.text)
-				.join(""),
-		).toBe("✗ implement ×2 sessions  ›  ○ gates test");
+		expect(text(dead)).toBe("✗ runner-died · r restarts");
 	});
 
-	it("names the lenses reviewing, the fixer, and the lenses rechecking", () => {
-		expect(
-			text(run({ claims: [...ended, onParent({ lenses: ["quality"] })] })),
-		).toBe("● quality lens reviewing");
+	it("between two steps it names the next one, never that it waits on nothing", () => {
 		expect(
 			text(
-				run({
-					claims: [
-						...ended,
-						onParent({ lenses: ["quality"] }),
-						onParent({ lenses: ["docs"] }),
-					],
-				}),
+				run({ claims: ended, config: configured({ gates: { t: "true" } }) }),
 			),
-		).toBe("● quality, docs lenses reviewing");
-		expect(
-			text(
-				run({
-					claims: [...ended, onParent({ fixer: true, findings: ["a", "b"] })],
-				}),
-			),
-		).toBe("● fixer on 2 findings");
-		expect(
-			text(run({ claims: [...ended, onParent({ recheck: "functional" })] })),
-		).toBe("● functional lens rechecking the fixer's diff");
+		).toBe("● gates");
 	});
 
-	it("says landing once every step before it is done, and while a landing is under way", () => {
-		const landing = run({
-			claims: ended,
-			config: configured({ land: "pr" }),
-			gateRuns: [green],
+	it("names the session a question waits on before anything else", () => {
+		expect(LoopHeader.state(run(), allDone, NOW, "docs-recheck")).toEqual({
+			text: "? docs-recheck waits on you",
+			tone: "accent",
+			bold: true,
 		});
-		expect(text(landing)).toBe("● landing");
-		expect(text({ ...landing, gating: ["KAB-1"], landingFrom: "abc" })).toBe(
-			"● landing",
-		);
-	});
-
-	it("says it is closing the parent between two steps, never that it waits on nothing", () => {
-		expect(text(run({ claims: ended }))).toBe("● closing KAB-1");
 	});
 
 	it("names what holds the run, and the way out when only a human can release it", () => {
@@ -382,62 +253,79 @@ describe("LoopHeader.state past the subtasks", () => {
 });
 
 describe("LoopHeader.lines", () => {
-	it("keeps the compact rows and the meters as toned character cells", () => {
-		const rows = LoopHeader.lines(run(), null, NOW, 80, false);
-		expect(rows.map((row) => row.map((part) => part.text).join(""))).toEqual([
-			"KAB-1     ● running",
-			"● implement ×2 sessions   1/1 slots · claude",
-			"context ▰▰▰▱▱▱▱▱▱▱ 25%   continuations ▰▰▰▱▱▱▱▱▱▱ 1/3",
+	const textOf = (rows: readonly (readonly { text: string }[])[]): string[] =>
+		rows.map((row) => row.map((part) => part.text).join(""));
+	const parent = {
+		id: "01PARENT",
+		shortId: "KAB-1",
+		title: "revise the brief",
+	} as Task;
+	const plan: LoopPlan.Plan = { parent, nodes: [], outside: new Map() };
+
+	it("is one row: the parent and title on the left, the state and its facts on the right", () => {
+		const rows = textOf(LoopHeader.lines(run(), plan, NOW, 90));
+		expect(rows).toEqual([
+			"KAB-1  revise the …  ● implement · 2 sessions · 1 live · 30m0s · $1.50 · 1/3 continuations",
 		]);
-		expect(rows[0]?.[0]).toEqual({
-			text: "KAB-1  ",
-			tone: "default",
-			bold: true,
+		expect(rows[0]?.length).toBe(90);
+	});
+
+	it("gives up the title, then the facts from the least needed, and keeps the state", () => {
+		expect(textOf(LoopHeader.lines(run(), plan, NOW, 40))).toEqual([
+			"KAB-1  ● implement · 2 sessions · 1 live",
+		]);
+		expect(textOf(LoopHeader.lines(run(), plan, NOW, 20))).toEqual([
+			"KAB-1  ● implement",
+		]);
+	});
+
+	it("says what an over run left in short when the long form does not fit", () => {
+		const parentOnly = { ...plan, nodes: [] };
+		const over = run({
+			status: "completed",
+			endedAt: "2026-10-10T12:30:00.000Z",
+			worktree: "/wt",
 		});
-		expect(rows[2]?.[2]).toEqual({ text: "▱▱▱▱▱▱▱", tone: "faint" });
-	});
-
-	it("expands sessions in lane order and gives a plan row its latest session's series", () => {
-		const parent = {
-			id: "01PARENT",
-			shortId: "KAB-1",
-			title: "parent",
-		} as Task;
-		const child = {
-			id: "01CHILD",
-			shortId: "KAB-2",
-			title: "child",
-			state: "done",
-		} as Task;
-		const plan: LoopPlan.Plan = {
-			parent,
-			nodes: [
-				{ task: child, blockedBy: [], finding: false, severity: undefined },
-			],
-			outside: new Map(),
+		const finding = {
+			task: {
+				id: "01F1",
+				shortId: "KAB-9",
+				title: "a finding",
+				state: "next",
+				tags: ["finding", "functional"],
+			} as Task,
+			blockedBy: [],
+			finding: true,
+			severity: undefined,
 		};
-		const rows = LoopHeader.lines(run(), plan, NOW, 80, true);
-		expect(
-			rows.slice(3).map((row) => row.map((part) => part.text).join("")),
-		).toEqual([
-			"sessions  1/1 slots in use",
-			" claude:KAB-2    ended",
-			" claude:KAB-2#2  → KAB-2",
-			"plan",
-			" ✓ KAB-2  child  claude:KAB-2#2",
-		]);
-		expect(rows[4]?.[0]).toEqual({ text: " claude:KAB-2    ", series: 0 });
-		expect(rows[5]?.[0]).toEqual({ text: " claude:KAB-2#2  ", series: 1 });
-		expect(rows[7]?.[2]).toEqual({ text: "child", tone: "secondary" });
-		expect(rows[7]?.[3]).toEqual({ text: "  claude:KAB-2#2", series: 1 });
+		const left = { ...parentOnly, nodes: [finding] };
+		expect(textOf(LoopHeader.lines(over, left, NOW, 60))[0]).toEndWith(
+			"✓ completed · 1 finding left for you · 30m0s · $1.50",
+		);
+		expect(textOf(LoopHeader.lines(over, left, NOW, 30))[0]).toBe(
+			"KAB-1   ✓ completed · 1 left",
+		);
 	});
 
-	it("preserves stopped and failed state text in the first returned line", () => {
+	it("spells the spend in the run's currency", () => {
+		const euros = run({}, { currency: "EUR" });
+		const priced = {
+			...euros,
+			usage: {
+				s1: { used: 900, size: 1000, cost: { amount: 17.5, currency: "EUR" } },
+			},
+		};
+		expect(textOf(LoopHeader.lines(priced, plan, NOW, 120))[0]).toContain(
+			"· 17.50 EUR",
+		);
+	});
+
+	it("preserves stopped and failed state text", () => {
 		for (const status of ["stopped", "failed"] as const) {
 			const current = run({ status, exit: { reason: "runner-died" } });
-			expect(
-				LoopHeader.lines(current, null, NOW, 20, false)[0]?.at(-1),
-			).toEqual(LoopHeader.state(current, null, NOW));
+			expect(LoopHeader.lines(current, null, NOW, 20)[0]).toContainEqual(
+				LoopHeader.state(current, null, NOW),
+			);
 		}
 	});
 });
@@ -481,9 +369,9 @@ it("reads the real run file and current tracker plan on each header call", async
 				.flat()
 				.map((part) => part.text)
 				.join(""),
-		).toContain("Header child");
-		const updated = await Planner.updateTask(home, child.value.id, {
-			title: "Updated child",
+		).toContain("Header parent");
+		const updated = await Planner.updateTask(home, parent.value.id, {
+			title: "Updated parent",
 		});
 		if (!updated.ok) throw updated.error;
 		const second = await header(card, { width: 100, expanded: true });
@@ -493,7 +381,7 @@ it("reads the real run file and current tracker plan on each header call", async
 				.flat()
 				.map((part) => part.text)
 				.join(""),
-		).toContain("Updated child");
+		).toContain("Updated parent");
 		rmSync(RunStore.paths(home, current.id).run);
 		expect((await header(card, { width: 100, expanded: false })).ok).toBe(
 			false,

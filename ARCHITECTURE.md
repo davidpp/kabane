@@ -187,7 +187,8 @@ produces them and are imported directly by their readers:
 
 - **In `@kabane/extension`**, because an extension produces them and any client reads them: the
   activity types (`ActivityStatus`, `ActivityCard`, `CardAction`, `ActivityDiff`,
-  `ActivityToolDetail`, `NoticeSeverity`, `ActivityEvent`, `ActivitySource`), the dispatch types
+  `ActivityToolDetail`, `NoticeSeverity`, `ActivityEvent`, `ActivitySource`, and the card's map:
+  `ActivityStep`, `ActivityStepState`, `ActivitySession`, `ActivityLeft` and `ActivityFact`), the dispatch types
   (`TriggerInput`, `TriggerDescriptor`, `DispatchTarget`, `Dispatcher`), the panel types
   (`PanelTone`, `PanelPart`, `PanelLine`), the header types (`Header`, `HeaderView`,
   `HeaderPart`), the job types (`JobRunState`, `JobRun`, `JobFacts`, `JobSource`), the settings field types `settings.ts` uses
@@ -249,17 +250,20 @@ its layout:
   one column of padding left and right, and it never shrinks when the tab runs out of rows.
   `view.width` preserves the headline budget: the pane width less the reserved scrollbar
   column and the two padding columns. The block itself stretches across the pane.
-- **Rows.** Each line is exactly one row, clipped rather than wrapped. This differs from
-  `PanelLine` in a trigger's preview, which wraps.
+- **Rows.** Each line is exactly one row, cut at `view.width` with a trailing `…` rather than
+  wrapped. This differs from `PanelLine` in a trigger's preview, which wraps.
 - **Tones.** `PanelTone` includes `faint` and `secondary` alongside the other semantic roles.
   The board maps those roles to its theme for both headers and trigger previews.
 - **Series.** A part that carries `series: n` takes the theme's n-th series color through
-  `Theme.seriesOf(theme, n)`, so a session keeps the color of its lane chip.
+  `Theme.seriesOf(theme, n)`, so a session keeps the color of its lane's tag.
 - **Polling and failure.** The board calls the header while the tab is open, once a second and
   immediately when expansion or width changes. It keeps the last good lines when a call fails,
   or shows a bare muted `loading…` before the first result.
 
-Meters stay text: the loop returns them as cells of characters.
+The loop's header is one row, the run's state in words. Where the run is (its steps and
+sessions) is card data, `ActivityCard.steps`, which the board draws as a map with a cursor: a
+header row has no cursor, no click and no fitting of its own, and a second client gets the steps
+without parsing toned text.
 
 ## Extension API v1
 

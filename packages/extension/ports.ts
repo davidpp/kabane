@@ -51,6 +51,57 @@ export type ActivityCard = {
 	// Keys the human can press on the card's tab, run through `ActivitySource.act`. The host lists
 	// what makes sense now (no `stop` on a card that is over).
 	actions?: readonly CardAction[];
+	// The work's steps in the order they run, the ones still to come included: the card's tab draws
+	// them as a map with a cursor in place of its lane chips. Absent, the tab keeps its stream.
+	steps?: readonly ActivityStep[];
+	// What the work left for the human once it is over: issues to look at, with how each was left
+	// and why. Absent or empty, nothing was left.
+	left?: readonly ActivityLeft[];
+	// What the work runs with, in words (its limits and settings, `slots` `1/2`), for where the
+	// human asks for more: the board lists them on the card tab's `?` sheet.
+	facts?: readonly ActivityFact[];
+};
+
+export type ActivityFact = { label: string; value: string };
+
+// Where a step or one of its sessions stands. `stopped` is over without finishing, as on a card.
+export type ActivityStepState =
+	| "pending"
+	| "running"
+	| "done"
+	| "failed"
+	| "stopped";
+
+// One step of a card's work. `result` is one line in the host's words, whole parts joined with
+// ` · ` so a narrow row can drop the tail ones. Time is `startedAt` while it runs (the client counts
+// it) and `durationMs` once it is over, so the card does not change every second.
+export type ActivityStep = {
+	name: string;
+	state: ActivityStepState;
+	result?: string;
+	startedAt?: string;
+	durationMs?: number;
+	// The sessions the step ran or will run, in order. `lane` names the card lane that holds a
+	// session's events; a session still to come has none.
+	sessions?: readonly ActivitySession[];
+};
+
+export type ActivitySession = {
+	name: string;
+	state: ActivityStepState;
+	lane?: string;
+	result?: string;
+	startedAt?: string;
+	durationMs?: number;
+};
+
+// One thing the work left for the human: an issue (`taskId` or `taskShortId`) or, with neither, a
+// line of its own. `how` is how it was left (`reopened by functional`), `reason` a one-line why.
+export type ActivityLeft = {
+	taskId?: string;
+	taskShortId?: string;
+	how: string;
+	reason?: string;
 };
 
 // The action `x` runs on a card's tab: the board reserves `x` for stopping, as on the copilot's

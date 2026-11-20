@@ -57,7 +57,16 @@ const run = (overrides: Partial<RunStore.Run> = {}): RunStore.Run => {
 
 describe("LoopActivity", () => {
 	it("a run is a tabbed card on its parent, with one lane per claim", () => {
-		expect(LoopActivity.card(run())).toEqual({
+		const { steps, facts, ...card } = LoopActivity.card(run());
+		expect(facts?.slice(0, 2)).toEqual([
+			{ label: "slots", value: "0/1" },
+			{ label: "continuations", value: "0/3" },
+		]);
+		expect(steps?.map((step) => `${step.state} ${step.name}`)).toEqual([
+			"stopped implement",
+			"pending land",
+		]);
+		expect(card).toEqual({
 			id: "KAB-1-abc",
 			kind: "loops",
 			label: "loop",

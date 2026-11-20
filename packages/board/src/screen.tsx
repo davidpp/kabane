@@ -35,7 +35,7 @@ import { JobPanel, JobsView } from "./jobs-view";
 import type { Keymap } from "./keymap";
 import { type LiftedReader, LiftedReaderSheet } from "./lifted-reader";
 import { BoardNav } from "./nav";
-import { HelpSheet } from "./overlay";
+import { HelpSheet, type HelpSheetProps } from "./overlay";
 import { Paging } from "./paging";
 import { PromptPanel } from "./prompt-field";
 import { SettingsOverlay } from "./settings-overlay";
@@ -253,6 +253,17 @@ const liftedOf = (
 		? DetailModel.lifted(records.value)
 		: [];
 
+// The facts of the card whose tab is on screen, for the `?` sheet, titled as its tab reads.
+const cardFacts = (state: BoardNav.BoardState): HelpSheetProps["facts"] => {
+	const id = state.tabs.active;
+	const card = id === null ? undefined : state.tabs.cards.get(id);
+	if (state.view.type !== "events" || !card?.facts) return undefined;
+	return {
+		title: [card.label, card.taskShortId].filter(Boolean).join(" "),
+		rows: card.facts,
+	};
+};
+
 // The dispatch overlay floats over WHICHEVER view it opened on (it's a separate state field, not a
 // view), so it renders inside the same full-screen wrapper it absolutely positions against. The `?`
 // sheet is the same kind of thing, anchored at the bottom instead of centred.
@@ -264,6 +275,7 @@ const Overlay = ({ state, keys, refs, input }: ViewProps): ReactNode => {
 				situation={keys.situation}
 				scrollRef={refs.help}
 				host={keys.host}
+				facts={cardFacts(state)}
 			/>
 		);
 	if (state.settings)
@@ -384,6 +396,15 @@ const EventsScreen = ({
 			header={tabs.active === cardId ? header : undefined}
 			expanded={CardTab.view(tabs, cardId).expanded}
 			toolDetails={state.view.toolDetails ?? false}
+			map={
+				tabs.active === cardId
+					? {
+							view: CardTab.view(tabs, cardId),
+							asking: CardTab.asking(tabs, cardId),
+							onRow: (key) => input.dispatchMouse({ type: "mapRow", key }),
+						}
+					: undefined
+			}
 			// On a card's own tab, the question its sessions wait on, answered in place.
 			banner={
 				<CardTabQuestion

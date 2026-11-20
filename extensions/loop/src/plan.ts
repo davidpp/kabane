@@ -132,6 +132,23 @@ export namespace LoopPlan {
 	};
 
 	/**
+	 * The parent's children as nodes, without their links: what a run's steps count from, at one
+	 * read where `load` takes one per child.
+	 */
+	export const children = async (
+		record: Host.Record,
+		parentId: string,
+	): Promise<Result<Node[]>> => {
+		const listed = await record.list({
+			parentTaskId: parentId,
+			includeClosed: true,
+			includeDeferred: true,
+			limit: CHILD_LIMIT,
+		});
+		return listed.ok ? ok(listed.value.map((task) => node(task, []))) : listed;
+	};
+
+	/**
 	 * Whether the plan is a single issue: the target is its own work node. Findings the lenses
 	 * filed under it do not make it a parent; a work child does, on the next read.
 	 */

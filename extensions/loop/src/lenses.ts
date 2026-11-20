@@ -229,7 +229,7 @@ export namespace Lenses {
 	const closedByFixer = (
 		config: Pick<LoopConfig.Config, "lenses" | "recheck">,
 		claims: readonly RunStore.Claim[],
-		plan: LoopPlan.Plan,
+		plan: Pick<LoopPlan.Plan, "nodes">,
 	): Map<string, Task[]> => {
 		const closed = new Map<string, Task[]>();
 		if (
@@ -259,7 +259,7 @@ export namespace Lenses {
 	export const rechecking = (
 		config: Pick<LoopConfig.Config, "lenses" | "recheck">,
 		claims: readonly RunStore.Claim[],
-		plan: LoopPlan.Plan,
+		plan: Pick<LoopPlan.Plan, "nodes">,
 	): Map<string, Task[]> => {
 		const due = closedByFixer(config, claims, plan);
 		const byId = new Map(plan.nodes.map((n) => [n.task.id, n.task]));
@@ -282,7 +282,7 @@ export namespace Lenses {
 	export const rechecks = (
 		config: Pick<LoopConfig.Config, "lenses" | "recheck">,
 		claims: readonly RunStore.Claim[],
-		plan: LoopPlan.Plan,
+		plan: Pick<LoopPlan.Plan, "nodes">,
 	): Status => {
 		const due = rechecking(config, claims, plan);
 		return status(

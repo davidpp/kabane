@@ -60,6 +60,10 @@ export namespace Keymap {
 		cardStop?: string;
 		/** The card on screen has lanes to walk. */
 		lanes?: boolean;
+		/** The card on screen has steps, drawn as a map with a cursor. */
+		map?: boolean;
+		/** The map's session log is open over the stream. */
+		log?: boolean;
 		/** The question on screen takes a typed answer (it offers none to pick, or allows one), so `enter` types it. */
 		freeform?: boolean;
 		/** The open prompt's action could go to another lane, which `tab` aims it at. */
@@ -170,6 +174,15 @@ export namespace Keymap {
 		label: "scroll · ⌃d/⌃u half page",
 		tier: "help",
 		keys: ["j", "k", "down", "up", "g", "G", "ctrl+d", "ctrl+u"],
+	};
+
+	// On a map `j/k` and the arrows move its cursor, so the stream under it scrolls on these alone.
+	const MAP_SCROLL: Binding = {
+		key: "g/G",
+		label: "scroll the stream · ⌃d/⌃u",
+		tier: "help",
+		keys: ["g", "G", "ctrl+d", "ctrl+u"],
+		when: (s) => s.map === true,
 	};
 
 	/** `?` itself: last in every footer where the sheet opens. */
@@ -599,6 +612,27 @@ export namespace Keymap {
 				PICK_ANSWER,
 				TYPE_ANSWER,
 				{
+					key: "↑↓",
+					label: "move",
+					tier: "footer",
+					keys: ["j", "k", "up", "down"],
+					when: (s) => s.map === true,
+				},
+				{
+					key: "enter",
+					label: "log",
+					tier: "footer",
+					keys: ["return"],
+					when: (s) => s.map === true && s.log !== true && s.freeform !== true,
+				},
+				{
+					key: "esc",
+					label: "close log",
+					tier: "footer",
+					keys: ["escape"],
+					when: (s) => s.log === true,
+				},
+				{
 					key: "x",
 					label: "stop",
 					tier: "footer",
@@ -621,13 +655,28 @@ export namespace Keymap {
 					when: (s) => s.lanes === true,
 				},
 				{
+					key: "h/l",
+					label: "fold · open a step",
+					tier: "help",
+					keys: ["h", "l", "left", "right"],
+					when: (s) => s.map === true,
+				},
+				{
+					key: "f",
+					label: "follow the run",
+					tier: "help",
+					keys: ["f"],
+					when: (s) => s.map === true,
+				},
+				{
 					key: "e",
 					label: "more",
 					tier: "footer",
 					keys: ["e"],
-					when: (s) => s.header === true,
+					when: (s) => s.header === true && s.map !== true,
 				},
-				SCROLL,
+				{ ...SCROLL, when: (s) => s.map !== true },
+				MAP_SCROLL,
 				{ ...TOOL_DETAILS, tier: "help" },
 				{ key: "esc q", label: "tracker", tier: "help", keys: ["escape", "q"] },
 			],
