@@ -15,7 +15,9 @@ import { err, ok } from "./result";
 
 import type { Result } from "@kabane/core";
 import { Loop } from "./commands";
+import { LoopPlan } from "./plan";
 import { parseQuestionBody } from "./question-body";
+import { RunSteps } from "./steps";
 import { RunStore } from "./store";
 
 const STOP_ACTION: StopAction = "stop";
@@ -80,7 +82,24 @@ export namespace LoopActivity {
 	/** The kind a run's card has: what the board's strip counts and the header is keyed by. */
 	export const KIND = "loops";
 
-	export const card = (run: RunStore.Run): ActivityCard => ({
+	/**
+	 * A run as a card. `nodes` are the parent's children as the tracker holds them now, which the
+	 * steps count findings and finished work from; without them the steps are what run.json says.
+	 */
+	export const card = (
+		run: RunStore.Run,
+		nodes: readonly LoopPlan.Node[] | null = null,
+		now: Date = new Date(),
+	): ActivityCard => {
+		const left = RunSteps.left(run, nodes);
+		return {
+			...base(run),
+			steps: RunSteps.of(run, nodes, now),
+			...(left.length > 0 ? { left } : {}),
+		};
+	};
+
+	const base = (run: RunStore.Run): ActivityCard => ({
 		id: run.id,
 		kind: KIND,
 		label: "loop",
@@ -225,82 +244,89 @@ export namespace LoopActivity {
 		basePath,
 		actor,
 		kabaneBin,
-	}: ActDeps & { actor: string }): ActivitySource => ({
-		// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
-		load: async () => {
-			const runs = RunStore.list(home);
-			if (!runs.ok) return runs;
-			return ok(listed(runs.value).map(card));
-		},
-		card: async (id) => {
-			const run = RunStore.read(home, id);
-			return run.ok ? ok(card(run.value)) : run;
-		},
-		events: async (id, afterSeq) => {
-			const events = RunStore.readEvents(home, id, afterSeq);
-			return events.ok
-				? ok(
-						events.value.map(
-							({ seq, at, type, summary, lane, callId, detail, data }) => {
-								const severity =
-									type === "notice"
-										? noticeSeverity(data?.severity)
-										: undefined;
-								return {
-									seq,
-									at,
-									type,
-									summary,
-									...(severity ? { severity } : {}),
-									...(lane ? { lane } : {}),
-									...(callId ? { callId } : {}),
-									...(detail ? { detail } : {}),
-								};
-							},
-						),
-					)
-				: events;
-		},
-		act: (id, actionId, input) =>
-			act({ home, basePath, host, kabaneBin }, id, actionId, input),
-		dismiss: async (id) => {
-			const dismissed = RunStore.dismiss(home, id, new Date());
-			return dismissed.ok ? ok(undefined) : dismissed;
-		},
-		questions: async () => {
-			const runs = RunStore.list(home);
-			if (!runs.ok) return runs;
-			const questions: ActivityQuestion[] = [];
-			for (const run of runs.value.filter((r) => RunStore.isLive(r.status))) {
-				const entries = RunStore.pendingQuestions(home, run);
-				if (!entries.ok) return entries;
-				for (const { question, claim } of entries.value) {
-					const parsed = parseQuestionBody(question.body);
-					questions.push({
-						id: question.id,
-						cardId: run.id,
-						lane: claim.lane,
-						taskId: claim.taskId,
-						taskShortId: claim.shortId,
-						question: parsed.question,
-						choices: parsed.choices,
-						multiSelect: parsed.multiSelect,
-						allowFreeform: parsed.allowFreeform,
-						...(parsed.permission ? { permission: true } : {}),
-						asker: claim.harness,
-						askedAt: question.createdAt,
-					});
+	}: ActDeps & { actor: string }): ActivitySource => {
+		// A run whose children cannot be read still gets its card, its steps from run.json alone.
+		const cardOf = async (run: RunStore.Run): Promise<ActivityCard> => {
+			const nodes = await LoopPlan.children(host.record, run.parentId);
+			return card(run, nodes.ok ? nodes.value : null);
+		};
+		return {
+			// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.
+			load: async () => {
+				const runs = RunStore.list(home);
+				if (!runs.ok) return runs;
+				return ok(await Promise.all(listed(runs.value).map(cardOf)));
+			},
+			card: async (id) => {
+				const run = RunStore.read(home, id);
+				return run.ok ? ok(await cardOf(run.value)) : run;
+			},
+			events: async (id, afterSeq) => {
+				const events = RunStore.readEvents(home, id, afterSeq);
+				return events.ok
+					? ok(
+							events.value.map(
+								({ seq, at, type, summary, lane, callId, detail, data }) => {
+									const severity =
+										type === "notice"
+											? noticeSeverity(data?.severity)
+											: undefined;
+									return {
+										seq,
+										at,
+										type,
+										summary,
+										...(severity ? { severity } : {}),
+										...(lane ? { lane } : {}),
+										...(callId ? { callId } : {}),
+										...(detail ? { detail } : {}),
+									};
+								},
+							),
+						)
+					: events;
+			},
+			act: (id, actionId, input) =>
+				act({ home, basePath, host, kabaneBin }, id, actionId, input),
+			dismiss: async (id) => {
+				const dismissed = RunStore.dismiss(home, id, new Date());
+				return dismissed.ok ? ok(undefined) : dismissed;
+			},
+			questions: async () => {
+				const runs = RunStore.list(home);
+				if (!runs.ok) return runs;
+				const questions: ActivityQuestion[] = [];
+				for (const run of runs.value.filter((r) => RunStore.isLive(r.status))) {
+					const entries = RunStore.pendingQuestions(home, run);
+					if (!entries.ok) return entries;
+					for (const { question, claim } of entries.value) {
+						const parsed = parseQuestionBody(question.body);
+						questions.push({
+							id: question.id,
+							cardId: run.id,
+							lane: claim.lane,
+							taskId: claim.taskId,
+							taskShortId: claim.shortId,
+							question: parsed.question,
+							choices: parsed.choices,
+							multiSelect: parsed.multiSelect,
+							allowFreeform: parsed.allowFreeform,
+							...(parsed.permission ? { permission: true } : {}),
+							asker: claim.harness,
+							askedAt: question.createdAt,
+						});
+					}
 				}
-			}
-			return ok(questions);
-		},
-		answer: async (id, text) => {
-			const answered = await Loop.answer(
-				{ home, basePath, host, actor },
-				id,
-				text,
-			);
-			return answered.ok ? ok(`answered ${answered.value.answer}`) : answered;
-		},
-	});
+				return ok(questions);
+			},
+			answer: async (id, text) => {
+				const answered = await Loop.answer(
+					{ home, basePath, host, actor },
+					id,
+					text,
+				);
+				return answered.ok ? ok(`answered ${answered.value.answer}`) : answered;
+			},
+		};
+	};
 }
