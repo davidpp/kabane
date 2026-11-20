@@ -619,4 +619,12 @@ export namespace RunSteps {
 	/** What the run has spent where a harness priced its work, in the run's currency. */
 	export const spend = (run: RunStore.Run): number =>
 		Budget.spent(run.usage, run.config.budget.currency, run.claims).amount;
+
+	/** An amount in the run's currency: `$17.50` in dollars, `17.50 EUR` in any other. */
+	export const money = (run: RunStore.Run, amount: number): string => {
+		const { currency } = run.config.budget;
+		return currency === "USD"
+			? `$${amount.toFixed(2)}`
+			: `${amount.toFixed(2)} ${currency}`;
+	};
 }

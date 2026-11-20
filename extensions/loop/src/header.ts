@@ -179,7 +179,7 @@ export namespace LoopHeader {
 				? [`${left} finding${left === 1 ? "" : "s"} left for you|${left} left`]
 				: []),
 			took(run, now),
-			...(spend > 0 ? [`$${spend.toFixed(2)}`] : []),
+			...(spend > 0 ? [RunSteps.money(run, spend)] : []),
 			...(run.continuationsUsed > 0
 				? [`${run.continuationsUsed}/${continuations} continuations`]
 				: []),

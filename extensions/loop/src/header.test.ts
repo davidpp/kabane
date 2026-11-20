@@ -307,6 +307,19 @@ describe("LoopHeader.lines", () => {
 		);
 	});
 
+	it("spells the spend in the run's currency", () => {
+		const euros = run({}, { currency: "EUR" });
+		const priced = {
+			...euros,
+			usage: {
+				s1: { used: 900, size: 1000, cost: { amount: 17.5, currency: "EUR" } },
+			},
+		};
+		expect(textOf(LoopHeader.lines(priced, plan, NOW, 120))[0]).toContain(
+			"· 17.50 EUR",
+		);
+	});
+
 	it("preserves stopped and failed state text", () => {
 		for (const status of ["stopped", "failed"] as const) {
 			const current = run({ status, exit: { reason: "runner-died" } });
