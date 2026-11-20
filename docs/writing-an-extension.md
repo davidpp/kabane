@@ -328,7 +328,11 @@ as a skill in the [Agent Skills](https://agentskills.io) format: `skills/<name>/
 any files it reads beside it, such as `skills/<name>/references/init.md`. Nothing is installed in
 a harness. `kabane mcp` serves every enabled extension's skills to whatever session it is
 connected to, the board's copilot or a plain Claude Code, Codex or Gemini session, through two
-tools, beside kabane's own `kabane` skill. A skill of yours named `kabane` is refused:
+tools, beside kabane's own `kabane` skill. Earlier builds read such steps from
+`copilot/procedures/<name>.md` and gave them to the copilot; kabane no longer reads that
+directory, and says nothing about one left behind, so move each file's text to
+`skills/<name>/SKILL.md` and point any shortcut that named it at the skill. A skill of yours
+named `kabane` is refused:
 
 - `kabane_skillList` returns each skill's `name`, `description` and the extension that ships it.
 - `kabane_skillGet { name, file? }` returns `SKILL.md`, or the file under the skill's directory
