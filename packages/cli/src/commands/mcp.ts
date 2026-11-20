@@ -179,10 +179,7 @@ export const mcp: Command = {
 			},
 			{ name: "kabane", version },
 			[...hostTools, ...skills, ...contributions.value.tools],
-			[
-				...(skills.length > 0 ? [Skills.INSTRUCTIONS] : []),
-				...contributions.value.instructions,
-			],
+			[Skills.INSTRUCTIONS, ...contributions.value.instructions],
 		);
 		if (!served.ok) return failure(served.error);
 		return success({ served: true }, "");

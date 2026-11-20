@@ -16,6 +16,7 @@ import {
 	payloadMetrics,
 } from "./issue-corpus-harness";
 import { configTools } from "./src/config-tools";
+import { Skills } from "./src/skills";
 
 const summarySchema = z
 	.object({
@@ -80,7 +81,8 @@ describe.concurrent("concise actual entry points", () => {
 						configTools(tracker.home, { projectDir: tracker.cwd }).length +
 						(questionsModule.tools?.length ?? 0) +
 						(handoffModule.tools?.length ?? 0) +
-						(checklistModule.tools?.length ?? 0),
+						(checklistModule.tools?.length ?? 0) +
+						Skills.tools([], "kabane").length,
 				);
 				for (const name of [
 					"kabane_list",

@@ -60,7 +60,7 @@ describe("Skills.read", () => {
 			"skills/loose.md": "a file, not a skill",
 		});
 		const { skills, refused } = Skills.read([notes]);
-		expect(skills).toEqual([
+		expect(skills.slice(1)).toEqual([
 			{
 				name: "keep-notes",
 				description: "Use when the human asks to keep notes.",
@@ -116,7 +116,7 @@ describe("Skills.read", () => {
 			"skills/go/SKILL.md": skill("go", "Two's.", "Go."),
 		});
 		const { skills, refused } = Skills.read([one, two]);
-		expect(skills.map(({ name }) => name)).toEqual(["stay"]);
+		expect(skills.map(({ name }) => name)).toEqual(["kabane", "stay"]);
 		expect(refused.map(({ name, reason }) => [name, reason])).toEqual([
 			[
 				"one",
@@ -129,10 +129,28 @@ describe("Skills.read", () => {
 		]);
 	});
 
-	it("serves no tools when no extension ships a skill", () => {
-		expect(Skills.tools([extension("bare", { "x.md": "" })], "kabane")).toEqual(
-			[],
-		);
+	it("serves base kabane's skill with no extension, and refuses an extension's skill named like it", () => {
+		expect(
+			Skills.tools([extension("bare", { "x.md": "" })], "kabane").map(
+				({ name }) => name,
+			),
+		).toEqual(["kabane_skillList", "kabane_skillGet"]);
+		const { skills, refused } = Skills.read([
+			extension("mimic", {
+				"skills/kabane/SKILL.md": skill("kabane", "Not base.", "Body"),
+			}),
+		]);
+		expect(skills.map(({ name, extension }) => [name, extension])).toEqual([
+			["kabane", "kabane"],
+		]);
+		expect(refused).toEqual([
+			{
+				name: "mimic",
+				file: "skills/kabane",
+				reason:
+					"skills/kabane: kabane itself ships a skill named kabane, so this one is not served; rename it",
+			},
+		]);
 	});
 });
 
@@ -257,6 +275,11 @@ it("kabane mcp lists and serves an enabled extension's skill over stdio", async 
 		expect(JSON.parse((await text("kabane_skillList", {})).text)).toEqual({
 			skills: [
 				{
+					name: "kabane",
+					description: expect.stringContaining("Base kabane's own how-to"),
+					extension: "kabane",
+				},
+				{
 					name: "keep-notes",
 					description: "Use when the human asks to keep notes.",
 					extension: "notes",
@@ -314,4 +337,103 @@ it("the loop's loop-run skill sets up and starts a run with the kabane this serv
 		"The run's sessions change the code, not you, and a question one of them asks is the human's to answer.",
 	])
 		expect(text).toContain(line);
+});
+
+describe("base kabane's kabane skill", () => {
+	const { skills } = Skills.read([]);
+	const kabane = "KABANE";
+	const file = (path?: string): string => {
+		const got = Skills.get(skills, "kabane", path, kabane);
+		if (!got.ok) throw got.error;
+		return got.value.text;
+	};
+
+	it("routes each task to one reference, every one of which it serves filled", () => {
+		const got = Skills.get(skills, "kabane", undefined, kabane);
+		if (!got.ok) throw got.error;
+		expect(got.value.files).toEqual([
+			"references/config.md",
+			"references/doctor.md",
+			"references/linking.md",
+		]);
+		for (const reference of got.value.files) {
+			expect(got.value.text).toContain(`\`${reference}\``);
+			expect(file(reference)).not.toContain("{{");
+		}
+		expect(got.value.text).toContain("Run kabane in your shell as `KABANE`");
+		const missing = Skills.get(skills, "kabane", "references/none.md", kabane);
+		expect(missing.ok ? undefined : missing.error.message).toBe(
+			"references/none.md is not a file of the skill kabane; ask for SKILL.md or one of the files it lists",
+		);
+	});
+
+	it("puts the substance in the task's own description and identity on the link", () => {
+		const linking = file("references/linking.md");
+		expect(linking).toContain("kabane_edit");
+		expect(linking).toContain("kabane_upstream_link");
+		expect(linking).toContain(
+			"Never put the external issue's body on the link",
+		);
+	});
+
+	it("changes config through the tools, by layer, applying a named change and waiting on a suggested one", () => {
+		const config = file("references/config.md");
+		expect(config).toContain("kabane_configGet");
+		expect(config).toContain("kabane_configSet");
+		expect(config).toContain("layer: local");
+		expect(config).toContain("Never pass layer: shared");
+		expect(config).toContain("When kabane_configSet returns shadowedBy");
+		expect(config).toContain("When the human names the setting and its value");
+		expect(config).toContain("When the change is your own suggestion");
+		expect(config).toContain("whose readOnly or protected flag is true");
+		expect(config).toContain("`KABANE --help`");
+	});
+
+	it("enables an installed extension by keeping the list, passing it whole and reopening the board", () => {
+		const enable = file("references/config.md")
+			.split("\n\n")
+			.find((paragraph) =>
+				paragraph.startsWith("To enable an installed extension"),
+			);
+		expect(enable).toContain("INSTALLED EXTENSIONS");
+		expect(enable).toContain(
+			"the options kabane_configGet reports for the key extensions",
+		);
+		expect(enable).toContain("preserve every existing entry in the new list");
+		expect(enable).toContain("full comma-separated list");
+		expect(enable).toContain("key extensions");
+		expect(enable).toContain("say what it adds from its description");
+		expect(enable).toContain("enabling it starts none");
+		expect(enable).toContain("remind the human to reopen the board");
+	});
+
+	it("doctor reads the report once, fixes only auto findings unasked and never the MCP entries", () => {
+		const doctor = file("references/doctor.md");
+		expect(doctor).toContain("run `KABANE doctor --json` once");
+		expect(doctor).toContain(
+			"Run `KABANE doctor --fix` once, without asking first",
+		);
+		expect(doctor).toContain(
+			"Run `KABANE doctor --fix <source>/<id>` only after an explicit yes",
+		);
+		expect(doctor).toContain(
+			"Never run the fix of a kabane/mcp-entry-stale-<harness> finding",
+		);
+		expect(doctor).toContain(
+			"`kabane doctor --fix kabane/mcp-entry-stale-<harness>`",
+		);
+		expect(doctor).toContain(
+			"never run a fix as a side effect of another request",
+		);
+		// A route to any skill, an extension's included, keeps that skill's rules on asking.
+		expect(doctor).toContain("offer to run that skill");
+		expect(doctor).toContain("write waits for a yes");
+	});
+
+	it("names no extension", () => {
+		const got = Skills.get(skills, "kabane", undefined, kabane);
+		if (!got.ok) throw got.error;
+		for (const path of [undefined, ...got.value.files])
+			expect(file(path)).not.toMatch(/dispatch|grill|\bloop\b|recipes/i);
+	});
 });

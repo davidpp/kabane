@@ -1,9 +1,10 @@
 /**
- * The skills enabled directory extensions ship as `skills/<name>/SKILL.md` plus the files beside
- * it, in the Agent Skills format, which `kabane mcp` serves through `kabane_skillList` and
- * `kabane_skillGet` (wiki/adr/0004). A file convention of this host, as `copilot/` is: the
- * extension contract has no field for it. A skill that cannot be served is refused on its own,
- * with one line naming the extension and the skill, and the rest are served.
+ * The skills `kabane mcp` serves through `kabane_skillList` and `kabane_skillGet` (wiki/adr/0004):
+ * base kabane's own `kabane` skill, and those enabled directory extensions ship as
+ * `skills/<name>/SKILL.md` plus the files beside it, in the Agent Skills format. A file convention
+ * of this host, as `copilot/` is: the extension contract has no field for it. A skill that cannot
+ * be served is refused on its own, with one line naming the extension and the skill, and the rest
+ * are served.
  */
 import {
 	lstatSync,
@@ -23,6 +24,11 @@ import {
 	trySync,
 } from "@cabane/core";
 import { z } from "zod";
+import BASE_ENTRY from "../skills/kabane/SKILL.md" with { type: "text" };
+// Imported as text, not read from beside the source: a compiled kabane has no source tree.
+import BASE_CONFIG from "../skills/kabane/references/config.md" with { type: "text" };
+import BASE_DOCTOR from "../skills/kabane/references/doctor.md" with { type: "text" };
+import BASE_LINKING from "../skills/kabane/references/linking.md" with { type: "text" };
 import { CopilotFiles } from "./copilot-files";
 import type { Extensions } from "./extensions";
 
@@ -43,25 +49,50 @@ const Fields = z.object({
 });
 
 // Functions, not strings: a replacement string reads `$&` or `$$` in a path as a pattern.
-const fill = (text: string, extension: string, kabane: string): string =>
-	text
-		.replaceAll("{{extension}}", () => extension)
-		.replaceAll("{{kabane}}", () => kabane);
+// Base kabane's skill has no extension directory, so it leaves `{{extension}}` alone.
+const fill = (
+	text: string,
+	extension: string | undefined,
+	kabane: string,
+): string =>
+	(extension === undefined
+		? text
+		: text.replaceAll("{{extension}}", () => extension)
+	).replaceAll("{{kabane}}", () => kabane);
 
 const outside = (path: string): boolean =>
 	path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+
+// Base kabane's own skill, by its files' paths under the skill.
+const BASE_FILES: Readonly<Record<string, string>> = {
+	[ENTRY]: BASE_ENTRY,
+	"references/config.md": BASE_CONFIG,
+	"references/doctor.md": BASE_DOCTOR,
+	"references/linking.md": BASE_LINKING,
+};
+const BASE = "kabane";
 
 export namespace Skills {
 	export type Skill = {
 		name: string;
 		description: string;
-		/** The extension that ships it, by the name `extensions` takes. */
+		/** The extension that ships it, by the name `extensions` takes; `kabane` for base kabane's. */
 		extension: string;
-		/** The extension's directory, which `{{extension}}` stands for. */
-		root: string;
-		/** `<root>/skills/<name>`. */
-		directory: string;
-	};
+	} & (
+		| {
+				/** The extension's directory, which `{{extension}}` stands for. */
+				root: string;
+				/** `<root>/skills/<name>`. */
+				directory: string;
+		  }
+		| { files: Readonly<Record<string, string>> }
+	);
+
+	const base = CopilotFiles.frontmatter(
+		join(SKILLS, BASE, ENTRY),
+		BASE_ENTRY,
+		Fields,
+	);
 
 	type Read = { skills: Skill[]; refused: CopilotFiles.Refusal[] };
 
@@ -90,13 +121,27 @@ export namespace Skills {
 	};
 
 	/**
-	 * The skills of each directory extension, in the order given and by name within one. A name two
-	 * extensions ship is refused in both, because a session asks for it by name and could not tell
-	 * which one it gets.
+	 * Base kabane's skill, then the skills of each directory extension, in the order given and by
+	 * name within one. A name two extensions ship is refused in both, and one base kabane ships is
+	 * refused in the extension, because a session asks for it by name and could not tell which one
+	 * it gets.
 	 */
 	export const read = (extensions: readonly Extensions.Directory[]): Read => {
 		const found: Skill[] = [];
 		const refused: CopilotFiles.Refusal[] = [];
+		const skills: Skill[] = [];
+		if (base.ok)
+			skills.push({
+				...base.value.fields,
+				extension: BASE,
+				files: BASE_FILES,
+			});
+		else
+			refused.push({
+				name: BASE,
+				file: join(SKILLS, BASE),
+				reason: base.error.message,
+			});
 		for (const { name: extension, directory: root } of extensions) {
 			const stat = trySync(() => statSync(join(root, SKILLS)));
 			if (!stat.ok) continue;
@@ -132,13 +177,18 @@ export namespace Skills {
 					});
 			}
 		}
-		const skills: Skill[] = [];
 		for (const skill of found) {
 			const others = found.filter(
 				(other) =>
 					other.extension !== skill.extension && other.name === skill.name,
 			);
-			if (others.length === 0) skills.push(skill);
+			if (skill.name === BASE)
+				refused.push({
+					name: skill.extension,
+					file: join(SKILLS, skill.name),
+					reason: `${join(SKILLS, skill.name)}: kabane itself ships a skill named ${BASE}, so this one is not served; rename it`,
+				});
+			else if (others.length === 0) skills.push(skill);
 			else
 				refused.push({
 					name: skill.extension,
@@ -190,6 +240,19 @@ export namespace Skills {
 				`${asked} is not a file of the skill ${name}; ask for SKILL.md or one of the files it lists`,
 			),
 		);
+		if ("files" in skill) {
+			const text = skill.files[asked];
+			if (text === undefined) return refuse;
+			return ok({
+				name,
+				extension: skill.extension,
+				file: asked,
+				text: fill(text, undefined, kabane),
+				files: Object.keys(skill.files)
+					.filter((other) => other !== asked)
+					.sort(),
+			});
+		}
 		if (outside(relative(skill.directory, join(skill.directory, asked))))
 			return refuse;
 		const root = trySync(() => realpathSync(skill.directory));
@@ -212,51 +275,48 @@ export namespace Skills {
 
 	/**
 	 * `kabane_skillList` and `kabane_skillGet`, re-reading the extensions' skills on each call so an
-	 * edit is served without a restart. None when no extension ships a skill when the server starts.
+	 * edit is served without a restart.
 	 */
 	export const tools = (
 		extensions: readonly Extensions.Directory[],
 		kabane: string,
-	): ToolDef[] => {
-		if (read(extensions).skills.length === 0) return [];
-		return [
-			defineTool({
-				name: "kabane_skillList",
-				description:
-					"List the skills the enabled extensions ship: how-to for a task, such as setting something up, to fetch with kabane_skillGet when that task comes up or the human names it. Each has its name, a description of when to use it, and the extension that ships it.",
-				input: {},
-				kind: "read",
-				handler: async () =>
-					ok({
-						skills: read(extensions).skills.map(
-							({ name, description, extension }) => ({
-								name,
-								description,
-								extension,
-							}),
-						),
-					}),
-			}),
-			defineTool({
-				name: "kabane_skillGet",
-				description:
-					"Read a skill to follow it: its SKILL.md, or with file one of the other files it names, by its path under the skill. Returns text, with the kabane command to run in your shell and the extension's directory already filled in, and files, the skill's other files. A path outside the skill is refused.",
-				input: {
-					name: z.string().min(1),
-					file: z
-						.string()
-						.min(1)
-						.optional()
-						.describe("A path under the skill, as files lists it."),
-				},
-				kind: "read",
-				handler: async ({ name, file }) =>
-					get(read(extensions).skills, name, file, kabane),
-			}),
-		];
-	};
+	): ToolDef[] => [
+		defineTool({
+			name: "kabane_skillList",
+			description:
+				"List the skills kabane and its enabled extensions ship: how-to for a task, such as setting something up, to fetch with kabane_skillGet when that task comes up or the human names it. Each has its name, a description of when to use it, and the extension that ships it, kabane for kabane's own.",
+			input: {},
+			kind: "read",
+			handler: async () =>
+				ok({
+					skills: read(extensions).skills.map(
+						({ name, description, extension }) => ({
+							name,
+							description,
+							extension,
+						}),
+					),
+				}),
+		}),
+		defineTool({
+			name: "kabane_skillGet",
+			description:
+				"Read a skill to follow it: its SKILL.md, or with file one of the other files it names, by its path under the skill. Returns text, with the kabane command to run in your shell and the extension's directory already filled in, and files, the skill's other files. A path outside the skill is refused.",
+			input: {
+				name: z.string().min(1),
+				file: z
+					.string()
+					.min(1)
+					.optional()
+					.describe("A path under the skill, as files lists it."),
+			},
+			kind: "read",
+			handler: async ({ name, file }) =>
+				get(read(extensions).skills, name, file, kabane),
+		}),
+	];
 
-	/** The server instructions' line naming the tools, when they are served. */
+	/** The server instructions' line naming the tools. */
 	export const INSTRUCTIONS =
-		"The enabled extensions ship skills, how-to for kabane tasks such as setup or going through an issue's open questions. When the human asks for a kabane task, call kabane_skillList first, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
+		"kabane and its enabled extensions ship skills, how-to for kabane tasks such as linking an issue to Linear or GitHub, changing kabane's settings, checking it with doctor, setup, or going through an issue's open questions. When the human asks for a kabane task, call kabane_skillList first, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
 }

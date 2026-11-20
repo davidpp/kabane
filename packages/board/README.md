@@ -452,8 +452,10 @@ It can also:
 
 The copilot manages the tracker and setup; the loop's coding sessions make the code changes.
 
-Kabane's own instructions name no extension, and an extension adds no text to them. Its how-to
-ships as skills, `skills/<name>/SKILL.md`, which the copilot fetches from its `kabane-session`
+Kabane's own instructions name no extension, and an extension adds no text to them. They keep
+the copilot's write boundaries; kabane's own how-to (linking, config and help, doctor) is the
+`kabane` skill that `kabane mcp` serves, which `/linear`, `/github`, `/setup`, `/settings` and
+`/doctor` point at. An extension's how-to ships as skills, `skills/<name>/SKILL.md`, which the copilot fetches from its `kabane-session`
 server with `kabane_skillList` and `kabane_skillGet` when a task comes up, as any session
 connected to `kabane mcp` can. Outside the tracker the copilot writes only the files a skill it
 runs names. A refused skill is counted in the footer with the refused files, and `kabane doctor`

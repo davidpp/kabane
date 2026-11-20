@@ -318,9 +318,14 @@ it("loads the real loop directory with its per-home host and its skill", async (
 	]);
 	const skills = Skills.read(all.directories);
 	expect(skills.refused).toEqual([]);
-	expect(skills.skills.map((skill) => skill.name)).toEqual(["loop-run"]);
+	expect(skills.skills.map((skill) => skill.name)).toEqual([
+		"kabane",
+		"loop-run",
+	]);
 	const disabled = await Extensions.loadAll([], home);
-	expect(Skills.read(disabled.directories).skills).toEqual([]);
+	expect(
+		Skills.read(disabled.directories).skills.map((skill) => skill.name),
+	).toEqual(["kabane"]);
 	expect((await staged.host.record.list({})).ok).toBe(false);
 	const context = await openContext(home, home, parseArgs([]));
 	if (!context.ok) throw context.error;

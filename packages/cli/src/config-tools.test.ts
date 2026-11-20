@@ -128,7 +128,7 @@ it("manages device config through the real stdio MCP server", async () => {
 		// The copilot is told to leave alone any key these flags mark; they must be what the tool reports.
 		const flags = (flag: string) =>
 			rows.filter((row) => row[flag] === true).map((row) => row.key);
-		expect(CopilotInstructions.SKILLS).toContain(
+		expect(CopilotInstructions.BLOCK).toContain(
 			"whose readOnly or protected flag is true",
 		);
 		for (const row of rows) {

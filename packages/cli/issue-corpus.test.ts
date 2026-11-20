@@ -20,6 +20,7 @@ import {
 	payloadMetrics,
 } from "./issue-corpus-harness";
 import { configTools } from "./src/config-tools";
+import { Skills } from "./src/skills";
 
 const taskSchema = z
 	.object({
@@ -89,7 +90,8 @@ describe("retained issue corpus baseline", () => {
 						configTools(tracker.home, { projectDir: tracker.cwd }).length +
 						(questionsModule.tools?.length ?? 0) +
 						(handoffModule.tools?.length ?? 0) +
-						(checklistModule.tools?.length ?? 0),
+						(checklistModule.tools?.length ?? 0) +
+						Skills.tools([], "kabane").length,
 				);
 				let toolCalls = 0;
 				const call = async (name: string, args: Record<string, unknown>) => {
