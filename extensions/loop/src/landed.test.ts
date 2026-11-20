@@ -161,6 +161,25 @@ describe("Landed.hook", () => {
 		);
 	});
 
+	it("keeps out an outer pull request when this landing opened none", async () => {
+		const ctx = ctxFor(
+			`echo "pr=\${KABANE_PR-unset} land=$KABANE_LAND" > ran`,
+			{
+				landing: { at: new Date().toISOString(), ok: true, summary: "Merged." },
+			},
+		);
+		const outer = process.env.KABANE_PR;
+		process.env.KABANE_PR = "https://github.com/acme/widget/pull/3";
+		try {
+			await Landed.hook(ctx, "merge");
+		} finally {
+			if (outer === undefined) delete process.env.KABANE_PR;
+			else process.env.KABANE_PR = outer;
+		}
+
+		expect(readFileSync(marker(), "utf8").trim()).toBe("pr=unset land=merge");
+	});
+
 	it("writes a failing command as a warning, with its output redacted, and leaves the run as it was", async () => {
 		const ctx = ctxFor(
 			"echo 'rejected by https://bot:ghp_FAKE0123456789abcdefABCD@github.com/acme/widget.git' >&2; exit 4",

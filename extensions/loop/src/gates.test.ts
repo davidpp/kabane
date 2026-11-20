@@ -46,6 +46,39 @@ describe("Gates.run", () => {
 		expect(lines.at(-1)).toBe("500");
 	});
 
+	it("sets what env names and takes out what it leaves undefined", async () => {
+		const outer = process.env.KABANE_GATES_TEST;
+		process.env.KABANE_GATES_TEST = "inherited";
+		try {
+			const [set] = await Gates.run(
+				{ say: 'echo "${KABANE_GATES_TEST-unset}"' },
+				dir,
+				{ KABANE_GATES_TEST: "set" },
+				never,
+			);
+			const [removed] = await Gates.run(
+				{ say: 'echo "${KABANE_GATES_TEST-unset}"' },
+				dir,
+				{ KABANE_GATES_TEST: undefined },
+				never,
+			);
+			const [kept] = await Gates.run(
+				{ say: 'echo "${KABANE_GATES_TEST-unset}"' },
+				dir,
+				{},
+				never,
+			);
+			expect([set?.tail, removed?.tail, kept?.tail]).toEqual([
+				"set",
+				"unset",
+				"inherited",
+			]);
+		} finally {
+			if (outer === undefined) delete process.env.KABANE_GATES_TEST;
+			else process.env.KABANE_GATES_TEST = outer;
+		}
+	});
+
 	it("a stopping run kills the gate, which counts as not passed", async () => {
 		const stopping = new AbortController();
 		const running = Gates.run({ slow: "sleep 30" }, dir, {}, stopping.signal);

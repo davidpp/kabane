@@ -17,8 +17,11 @@ beforeAll(async () => {
 
 afterAll(() => rmSync(base, { recursive: true, force: true }));
 
+// Core stamps createdAt to the millisecond, so two tasks added back to back can share one; a
+// test that relies on creation order gives each its own.
 const node = async (
 	draft: Partial<TaskDraft> & { title: string },
+	createdAt?: string,
 ): Promise<LoopPlan.Node> => {
 	const created = await Planner.addTask(base, {
 		kind: "issue",
@@ -26,7 +29,10 @@ const node = async (
 		...draft,
 	});
 	if (!created.ok) throw created.error;
-	return LoopPlan.node(created.value, []);
+	return LoopPlan.node(
+		createdAt ? { ...created.value, createdAt } : created.value,
+		[],
+	);
 };
 
 const titles = (nodes: LoopPlan.Node[]): string[] =>
@@ -34,9 +40,9 @@ const titles = (nodes: LoopPlan.Node[]): string[] =>
 
 describe("Scheduler.pick", () => {
 	it("fills only the free slots, by priority and then plan order", async () => {
-		const first = await node({ title: "first" });
+		const first = await node({ title: "first" }, "2026-11-20T00:00:00.001Z");
 		const urgent = await node({ title: "urgent", priority: "urgent" });
-		const second = await node({ title: "second" });
+		const second = await node({ title: "second" }, "2026-11-20T00:00:00.002Z");
 		const low = await node({ title: "low", priority: "low" });
 		const ready = [low, second, first, urgent];
 

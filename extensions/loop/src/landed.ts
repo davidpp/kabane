@@ -12,31 +12,32 @@ import { RunStore } from "./store";
 
 export namespace Landed {
 	// Every variable the command can be told of a landing, set or not for this one.
-	const CONTEXT = [
-		"KABANE_RUN_ID",
-		"KABANE_PARENT",
-		"KABANE_LAND",
-		"KABANE_BRANCH",
-		"KABANE_BASE",
-		"KABANE_WORKTREE",
-		"KABANE_PR",
-		"KABANE_MERGED",
-	] as const;
+	type Context =
+		| "KABANE_RUN_ID"
+		| "KABANE_PARENT"
+		| "KABANE_LAND"
+		| "KABANE_BRANCH"
+		| "KABANE_BASE"
+		| "KABANE_WORKTREE"
+		| "KABANE_PR"
+		| "KABANE_MERGED";
 
-	// What the command is told of the landing, as environment variables.
+	// What the command is told of the landing, as environment variables. A variable this landing
+	// does not set is undefined, so the gate takes it out of the runner's environment: it would
+	// otherwise come through from an outer landing (a runner an onLanded hook started).
 	const env = (
 		run: RunStore.Run,
 		mode: Land.Mode,
-	): Partial<Record<(typeof CONTEXT)[number], string>> => ({
+	): Record<Context, string | undefined> => ({
 		KABANE_RUN_ID: run.id,
 		KABANE_PARENT: run.parentShortId,
 		KABANE_LAND: mode,
 		KABANE_BRANCH: RunStore.branchOf(run),
 		// A run made from a detached HEAD has no base branch; its commit is the base then.
-		...(run.base ? { KABANE_BASE: run.base.branch ?? run.base.sha } : {}),
-		...(run.worktree ? { KABANE_WORKTREE: run.worktree } : {}),
-		...(run.pr ? { KABANE_PR: run.pr } : {}),
-		...(run.landing?.merged ? { KABANE_MERGED: run.landing.merged } : {}),
+		KABANE_BASE: run.base ? (run.base.branch ?? run.base.sha) : undefined,
+		KABANE_WORKTREE: run.worktree,
+		KABANE_PR: run.pr,
+		KABANE_MERGED: run.landing?.merged,
 	});
 
 	/**
@@ -57,18 +58,10 @@ export namespace Landed {
 			run.landing?.ok !== true
 		)
 			return;
-		const told = env(run, mode);
-		// The command's environment is the runner's with the landing's on top, so a variable this
-		// landing does not set would come through from an outer one (a runner an onLanded hook
-		// started): the shell unsets it before the command.
-		const unset = CONTEXT.filter((name) => told[name] === undefined);
 		const [ran] = await Gates.run(
-			{
-				onLanded:
-					unset.length > 0 ? `unset ${unset.join(" ")}\n${command}` : command,
-			},
+			{ onLanded: command },
 			run.projectDir,
-			told,
+			env(run, mode),
 			signal,
 		);
 		if (ran === undefined) return;
