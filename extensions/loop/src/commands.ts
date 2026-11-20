@@ -515,6 +515,8 @@ export namespace Loop {
 		subtasks: Routed[];
 		/** `harnessesUsed`: each harness the run would open a session on. */
 		harnesses: Harnesses.Id[];
+		/** With `land: pr`, the commits of the local base its pull request would carry (`Land.unpushedBase`). */
+		unpushedBase?: string;
 	};
 
 	const ROUTING_TAG = /^(tier|agent):/;
@@ -639,12 +641,17 @@ export namespace Loop {
 	 * The advisor's settings for a prepared run, from the plan lint (with the parent's past reopens),
 	 * the project's package.json scripts and its lockfile: what the board's run form and
 	 * `loop advise` both show. `messages` are lint's risks, most severe first, and anything that
-	 * could not be read, for the preview.
+	 * could not be read, for the preview. `unpushedBase` is what a `pr` landing from the project's
+	 * HEAD would publish beyond the run's work, whatever `land` is set to, since the form can change it.
 	 */
 	export const adviceOf = async (
-		deps: Pick<Deps, "host" | "home" | "basePath">,
+		deps: Pick<StartDeps, "host" | "home" | "basePath" | "git">,
 		{ plan, projectDir, projectRoot, config, isolated }: Prepared,
-	): Promise<{ advice: LoopAdvice.Recommendation[]; messages: string[] }> => {
+	): Promise<{
+		advice: LoopAdvice.Recommendation[];
+		messages: string[];
+		unpushedBase?: string;
+	}> => {
 		const messages: string[] = [];
 		const progressEntries = reopened(deps.home, plan.parent.id, messages);
 		const linted = await Lint.run({
@@ -666,7 +673,16 @@ export namespace Loop {
 			),
 			isolated,
 		});
-		return { advice, messages };
+		const git = deps.git ?? Worktree.git;
+		const head = await Worktree.head(projectDir, git);
+		const unpushed = head.ok
+			? await Land.unpushedBase(git, projectDir, head.value)
+			: undefined;
+		return {
+			advice,
+			messages,
+			...(unpushed === undefined ? {} : { unpushedBase: unpushed }),
+		};
 	};
 
 	/**
@@ -684,7 +700,7 @@ export namespace Loop {
 		const prepared = await prepare(deps, input);
 		if (!prepared.ok) return prepared;
 		const { plan, projectDir, config, isolated } = prepared.value;
-		const { advice } = await adviceOf(deps, prepared.value);
+		const { advice, unpushedBase } = await adviceOf(deps, prepared.value);
 		const git = deps.git ?? Worktree.git;
 		const subtasks = await Promise.all(
 			openWork(plan).map((n) => routedOf(config, projectDir, git, n.task)),
@@ -697,8 +713,23 @@ export namespace Loop {
 			advice,
 			subtasks,
 			harnesses: harnessesUsed(plan, config),
+			...(config.land === "pr" && unpushedBase !== undefined
+				? { unpushedBase }
+				: {}),
 		});
 	};
+
+	/**
+	 * For a run that lands as `pr`, the commits of the base it was cut from that the pull request
+	 * will carry beside its own work (`Land.unpushedBase`): what `kabane loop start` prints.
+	 */
+	export const unpushedBase = async (
+		run: RunStore.Run,
+		git: Worktree.Git = Worktree.git,
+	): Promise<string | undefined> =>
+		run.config.land === "pr" && run.base !== undefined
+			? Land.unpushedBase(git, run.projectDir, run.base)
+			: undefined;
 
 	/**
 	 * Write a run for `input.parent` and spawn its detached runner, then wait until the runner

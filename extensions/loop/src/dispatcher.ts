@@ -70,7 +70,10 @@ export namespace LoopDispatcher {
 				),
 			]);
 		const { projectRoot, config } = prepared.value;
-		const { advice, messages } = await Loop.adviceOf(deps, prepared.value);
+		const { advice, messages, unpushedBase } = await Loop.adviceOf(
+			deps,
+			prepared.value,
+		);
 		onAdvice?.(advice);
 		const gates = advice.find((r) => r.path === "gates")?.value ?? config.gates;
 		return ok([
@@ -86,7 +89,7 @@ export namespace LoopDispatcher {
 					preview: Briefing.preview(
 						prepared.value.plan,
 						gates,
-						messages,
+						unpushedBase === undefined ? messages : [unpushedBase, ...messages],
 						now,
 						advice,
 					),

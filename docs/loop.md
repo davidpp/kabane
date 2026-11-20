@@ -72,7 +72,12 @@ settings land it on completion, after rebasing it onto the latest of its base an
 the gates again when the rebase moved it:
 
 - `pr` pushes the branch and opens its pull request with your own git and gh. The parent
-  waits on that review.
+  waits on that review. The run's branch is cut from your local base, so commits that base
+  has and its remote lacks are pushed and are part of the pull request. `kabane loop advise`
+  and the board's run form preview name them before a run starts, and `kabane loop start`
+  names them as it starts one. They compare against your remote-tracking branch without fetching, so the count
+  is only as fresh as your last fetch. The landing names them again in its summary, and the
+  pull request's body lists them under "Not this run's work".
 - `merge` merges the branch into the base in your project checkout, as
   `git merge --no-ff`, and moves the parent to done. It refuses, changing nothing, while
   the checkout is not on the base or has uncommitted changes to tracked files; a merge
