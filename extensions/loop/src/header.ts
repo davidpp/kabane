@@ -176,7 +176,7 @@ export namespace LoopHeader {
 				: []),
 			// Over, what it left for the human matters more than how long it took.
 			...(left > 0
-				? [`${left} finding${left === 1 ? "" : "s"} left for you`]
+				? [`${left} finding${left === 1 ? "" : "s"} left for you|${left} left`]
 				: []),
 			took(run, now),
 			...(spend > 0 ? [`$${spend.toFixed(2)}`] : []),
@@ -187,11 +187,16 @@ export namespace LoopHeader {
 	};
 
 	// The facts the row keeps at `room`: whole ones, from the first, as many as fit.
+	// A fact may have a short form after `|`, which a row too narrow for the long one takes.
 	const fitting = (all: readonly string[], room: number): string => {
 		let text = "";
 		for (const fact of all) {
-			const next = `${text} · ${fact}`;
-			if (next.length > room) break;
+			const [long = fact, short] = fact.split("|");
+			const next = [long, short]
+				.filter((form) => form !== undefined)
+				.map((form) => `${text} · ${form}`)
+				.find((line) => line.length <= room);
+			if (next === undefined) break;
 			text = next;
 		}
 		return text;

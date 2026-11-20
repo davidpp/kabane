@@ -279,6 +279,34 @@ describe("LoopHeader.lines", () => {
 		]);
 	});
 
+	it("says what an over run left in short when the long form does not fit", () => {
+		const parentOnly = { ...plan, nodes: [] };
+		const over = run({
+			status: "completed",
+			endedAt: "2026-10-10T12:30:00.000Z",
+			worktree: "/wt",
+		});
+		const finding = {
+			task: {
+				id: "01F1",
+				shortId: "KAB-9",
+				title: "a finding",
+				state: "next",
+				tags: ["finding", "functional"],
+			} as Task,
+			blockedBy: [],
+			finding: true,
+			severity: undefined,
+		};
+		const left = { ...parentOnly, nodes: [finding] };
+		expect(textOf(LoopHeader.lines(over, left, NOW, 60))[0]).toEndWith(
+			"✓ completed · 1 finding left for you · 30m0s · $1.50",
+		);
+		expect(textOf(LoopHeader.lines(over, left, NOW, 30))[0]).toBe(
+			"KAB-1   ✓ completed · 1 left",
+		);
+	});
+
 	it("preserves stopped and failed state text", () => {
 		for (const status of ["stopped", "failed"] as const) {
 			const current = run({ status, exit: { reason: "runner-died" } });
