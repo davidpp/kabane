@@ -161,6 +161,20 @@ const npmEnv = {
 	npm_config_fund: "false",
 	npm_config_audit: "false",
 };
+test("npm pack's JSON is read in npm 11's array and npm 12's keyed shape, one kabane archive only", () => {
+	const archive = { filename: "kabane-1.2.3.tgz", size: 512 };
+	expect(PackOutputSchema.parse([archive])).toEqual([archive]);
+	expect(PackOutputSchema.parse({ kabane: archive })).toEqual([archive]);
+	for (const refused of [
+		[],
+		{},
+		[archive, archive],
+		{ kabane: archive, other: archive },
+		[{ ...archive, filename: "other-1.2.3.tgz" }],
+		{ kabane: { ...archive, size: 0 } },
+	])
+		expect(PackOutputSchema.safeParse(refused).success).toBe(false);
+});
 /** `npm pack` a package directory into a new directory and validate the archive it writes. */
 const packBuild = async (packageDir: string) => {
 	const dir = join(WORK, String(sequence++));
