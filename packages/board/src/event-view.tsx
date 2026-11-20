@@ -444,9 +444,11 @@ export const EventView = ({
 	);
 };
 
-// The map takes at most this share of the tab's rows, never fewer than the floor, and keeps its
-// cursor in sight within them.
-const MAP_SHARE = 0.5;
+// The share of the tab's rows the map takes at most, never fewer than MIN_MAP_ROWS, its cursor kept
+// in sight within them: half while the run goes; once it is over, what it left is the point of the
+// tab and the stream under it is history, so more.
+export const mapShare = (card: ActivityCard): number =>
+	isInFlight(card) ? 0.5 : 0.7;
 const MIN_MAP_ROWS = 8;
 
 // Every lane tags a card tab's stream; chips walk them only on a card without a map.
@@ -487,7 +489,7 @@ const CardMap = ({
 				view={map.view}
 				asking={map.asking}
 				width={width}
-				maxRows={Math.max(MIN_MAP_ROWS, Math.floor(height * MAP_SHARE))}
+				maxRows={Math.max(MIN_MAP_ROWS, Math.floor(height * mapShare(card)))}
 				spinnerFrame={spinnerFrame}
 				onRow={map.onRow}
 			/>

@@ -26,7 +26,7 @@ import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
 import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
-import { EventView } from "../event-view";
+import { EventView, mapShare } from "../event-view";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
@@ -913,7 +913,7 @@ const RunTab = ({
 				view={CardTab.view(onTab, card.id)}
 				asking={CardTab.asking(onTab, card.id)}
 				width={width - 1}
-				maxRows={Math.max(8, Math.floor(height * 0.5))}
+				maxRows={Math.max(8, Math.floor(height * mapShare(card)))}
 				spinnerFrame="⠋"
 			/>
 			<CardTabQuestion tabs={onTab} onAnswer={() => {}} />

@@ -349,8 +349,9 @@ against every glyph already here.
 - **Fit:** a result gives up whole ` · ` parts from its tail before it is cut with `…`. Under
   sixty columns the time column goes (a row with no result keeps its time), and the finished
   steps the cursor is not on share rows, as many names to a row as fit:
-  `✓ implement gates triage review`. The map takes at most half the tab's rows and keeps the
-  cursor in sight, counting the rows it leaves out as `… n more`.
+  `✓ implement gates triage review`. The map and its left-for-you list take at most half the tab's
+  rows while the work goes and seven tenths once it is over, and keep the cursor in sight,
+  counting the rows they leave out as `… n more`.
 - **Without steps:** a card that gives none keeps its stream with a chip per lane under the
   header, `all <noun> · live` first, `h/l` walking them, each in its series hue.
 

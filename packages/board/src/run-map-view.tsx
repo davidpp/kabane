@@ -28,7 +28,9 @@ const SESSION_INDENT = 2;
 const MIN_REASON_COLS = 12;
 
 type Cell = { text: string; fg: ColorInput; bold?: boolean };
-type Line = { key: string; target: string; cells: Cell[] };
+// One drawn row and the keys of the map rows it stands for: one, or several finished steps that
+// share it. A key holds `+` in a grouped session's lane, so keys are compared whole.
+type Line = { keys: readonly string[]; cells: Cell[] };
 
 const cut = (text: string, room: number): string =>
 	room <= 0
@@ -128,8 +130,7 @@ const itemLine = (
 		width - used - result.length - (wide ? timeCols + 1 : shownTime.length),
 	);
 	return {
-		key: row.key,
-		target: row.key,
+		keys: [row.key],
 		cells: [
 			{ text: " ".repeat(indent), fg: theme.defaultFg },
 			{ ...glyph, text: `${glyph.text} ` },
@@ -169,8 +170,7 @@ const mergedLines = (
 		} else groups.push({ names: [step.name], keys: [key] });
 	});
 	return groups.map((group) => ({
-		key: group.keys.join("+"),
-		target: group.keys[0] ?? "",
+		keys: group.keys,
 		cells: [
 			{ text: "✓ ", fg: theme.done },
 			{
@@ -196,8 +196,7 @@ const leftLine = (
 			width,
 		);
 		return {
-			key: row.key,
-			target: row.key,
+			keys: [row.key],
 			cells: [{ text: text.padEnd(width), fg: theme.muted }],
 		};
 	}
@@ -211,8 +210,7 @@ const leftLine = (
 	const reason = narrow ? "" : cut(item.reason ?? "", room - how.length - 2);
 	const rest = room - how.length - (reason ? reason.length + 2 : 0);
 	return {
-		key: row.key,
-		target: row.key,
+		keys: [row.key],
 		cells: [
 			{ text: "○ ", fg: theme.muted },
 			{ text: head, fg: theme.defaultFg },
@@ -306,26 +304,41 @@ const nameColsOf = (rows: readonly RunMap.Row[], width: number): number =>
 		Math.max(10, Math.floor(width * NAME_SHARE)),
 	);
 
-// The lines a window of `max` rows keeps around the cursor, with how many it left out each side.
+// What the map draws, in order: its lines, and before the left-for-you lines a blank row and their
+// heading.
+type Entry =
+	| { kind: "line"; line: Line }
+	| { kind: "gap" }
+	| { kind: "heading" };
+
+const entryKey = (entry: Entry): string =>
+	entry.kind === "line" ? entry.line.keys.join("\n") : entry.kind;
+
+// The entries a window of `max` rows keeps around the cursor, with how many it left out each side:
+// the steps and what was left share it, so a long list of findings never puts the cursor below the
+// screen.
 const windowed = (
-	lines: readonly Line[],
+	entries: readonly Entry[],
 	cursor: string | undefined,
 	max: number,
-): { shown: readonly Line[]; above: number; below: number } => {
-	if (lines.length <= max) return { shown: lines, above: 0, below: 0 };
+): { shown: readonly Entry[]; above: number; below: number } => {
+	if (entries.length <= max) return { shown: entries, above: 0, below: 0 };
 	const at = Math.max(
 		0,
-		lines.findIndex((line) => line.key.split("+").includes(cursor ?? "")),
+		entries.findIndex(
+			(entry) =>
+				entry.kind === "line" && entry.line.keys.includes(cursor ?? ""),
+		),
 	);
 	const room = Math.max(1, max - 2);
 	const start = Math.max(
 		0,
-		Math.min(lines.length - room, at - Math.floor(room / 2)),
+		Math.min(entries.length - room, at - Math.floor(room / 2)),
 	);
 	return {
-		shown: lines.slice(start, start + room),
+		shown: entries.slice(start, start + room),
 		above: start,
-		below: lines.length - start - room,
+		below: entries.length - start - room,
 	};
 };
 
@@ -345,7 +358,7 @@ const MapLine = ({
 		<text
 			bg={bg}
 			wrapMode="none"
-			onMouseDown={onRow ? () => onRow(line.target) : undefined}
+			onMouseDown={onRow ? () => onRow(line.keys[0] ?? "") : undefined}
 			style={{ height: 1, flexShrink: 0 }}
 		>
 			<span bg={bg} fg={selected ? theme.text : theme.muted}>
@@ -388,7 +401,7 @@ export const RunMapView = ({
 	view: RunMap.View;
 	asking: ReadonlySet<string>;
 	width: number;
-	// The rows the steps may take, the cursor kept in sight within them.
+	// The rows the steps and what was left may take, the cursor kept in sight within them.
 	maxRows: number;
 	spinnerFrame: string;
 	onRow?: (key: string) => void;
@@ -409,44 +422,46 @@ export const RunMapView = ({
 		theme,
 	};
 	const { steps, left } = mapLines(rows, layout);
-	const { shown, above, below } = windowed(steps, cursor, maxRows);
+	const entries: Entry[] = [
+		...steps.map((line): Entry => ({ kind: "line", line })),
+		...(left.length > 0
+			? [
+					{ kind: "gap" } as const,
+					{ kind: "heading" } as const,
+					...left.map((line): Entry => ({ kind: "line", line })),
+				]
+			: []),
+	];
+	const { shown, above, below } = windowed(entries, cursor, maxRows);
 	const issues = (card.left ?? []).filter(
 		(item) => item.taskId !== undefined || item.taskShortId !== undefined,
 	).length;
-	const selected = (line: Line): boolean =>
-		cursor !== undefined && line.key.split("+").includes(cursor);
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0 }}>
 			<More count={above} theme={theme} />
-			{shown.map((line) => (
-				<MapLine
-					key={line.key}
-					line={line}
-					selected={selected(line)}
-					theme={theme}
-					onRow={onRow}
-				/>
-			))}
-			<More count={below} theme={theme} />
-			{left.length > 0 ? (
-				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
-					<text style={{ height: 1, flexShrink: 0 }}>
+			{shown.map((entry) =>
+				entry.kind === "line" ? (
+					<MapLine
+						key={entryKey(entry)}
+						line={entry.line}
+						selected={cursor !== undefined && entry.line.keys.includes(cursor)}
+						theme={theme}
+						onRow={onRow}
+					/>
+				) : entry.kind === "gap" ? (
+					<text key="gap" style={{ height: 1, flexShrink: 0 }}>
+						{" "}
+					</text>
+				) : (
+					<text key="heading" style={{ height: 1, flexShrink: 0 }}>
 						<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
 							{" left for you"}
 						</span>
 						{issues > 0 ? <span fg={theme.muted}>{` · ${issues}`}</span> : null}
 					</text>
-					{left.map((line) => (
-						<MapLine
-							key={line.key}
-							line={line}
-							selected={selected(line)}
-							theme={theme}
-							onRow={onRow}
-						/>
-					))}
-				</box>
-			) : null}
+				),
+			)}
+			<More count={below} theme={theme} />
 		</box>
 	);
 };
