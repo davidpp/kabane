@@ -18,6 +18,7 @@ import { type Theme, useTheme } from "./theme";
 
 // From here the map has a time column and keeps each finished step on its own row.
 const WIDE_COLS = 60;
+const MAX_COLS = 100;
 const TIME_COLS = 7;
 // The name column never takes more than this share of the row, so a long session name leaves room
 // for what it did.
@@ -395,8 +396,9 @@ export const RunMapView = ({
 	const theme = useTheme();
 	const rows = RunMap.rows(card, view);
 	const cursor = RunMap.cursor(card, view, asking);
-	// The gutter's three cells come out of the row.
-	const inner = Math.max(20, width - 3);
+	// The gutter's three cells come out of the row, which stops at MAX_COLS so a wide pane keeps
+	// each result near its time.
+	const inner = Math.max(20, Math.min(width, MAX_COLS) - 3);
 	const layout: Layout = {
 		width: inner,
 		wide: width >= WIDE_COLS,
