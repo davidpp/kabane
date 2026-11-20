@@ -3,7 +3,8 @@
  *
  * An actor was `cabane://actor/...` until schema 12, a name kept from before the project was
  * called kabane, and is `kabane://actor/...` since (JCAB-607). Migration 12 renames core's
- * identity fields and `updated_by` in every op still in this device's log or parked; each data
+ * identity fields and `updated_by` in every op still in this device's log or parked, and types
+ * as `ai` every agent among them stored as `human` (JCAB-598:3); each data
  * module that stores actors appends its own migration for its table (`renameColumns`). Nothing
  * reads the old prefix afterwards: a process given one stops and points at `kabane doctor
  * --fix`, and an op pulled from a device still on schema 11 is not translated.
@@ -18,10 +19,15 @@ type Row = Record<string, unknown>;
 /** A JSON column's text with the actors it holds renamed; the same text when it holds none. */
 type Nested = (raw: string) => string;
 
-/** One table's identity fields: columns that hold an actor, and JSON columns that hold one inside. */
+/**
+ * One table's identity fields: columns that hold an actor, JSON columns that hold one inside,
+ * and the column beside an actor column that says whether it is a human or an AI.
+ */
 type Fields = {
 	columns: readonly string[];
 	nested?: Readonly<Record<string, Nested>>;
+	/** Actor column → its type column. */
+	types?: Readonly<Record<string, string>>;
 };
 
 export namespace ActorScheme {
@@ -38,6 +44,25 @@ export namespace ActorScheme {
 
 	const isRow = (value: unknown): value is Row =>
 		typeof value === "object" && value !== null && !Array.isArray(value);
+
+	/** Whether a stored text may hold an actor this migration changes: an old one, or an agent. */
+	const mentions = (value: string): boolean =>
+		value.includes(LEGACY_PREFIX) || value.includes(ActorUri.AGENT);
+
+	/**
+	 * `object` with `typeKey` set to `ai` when `actorKey` names an agent and `typeKey` holds
+	 * anything else: a session that already wrote the new prefix stored its agent as `human`.
+	 * A type the object does not carry is not added.
+	 */
+	const typed = (object: Row, actorKey: string, typeKey: string): Row => {
+		const actor = object[actorKey];
+		return typeKey in object &&
+			object[typeKey] !== "ai" &&
+			typeof actor === "string" &&
+			actor.startsWith(ActorUri.AGENT)
+			? { ...object, [typeKey]: "ai" }
+			: object;
+	};
 
 	/** `raw` parsed, passed through `rename` and written back; `raw` when it is no JSON or nothing moved. */
 	const inJson =
@@ -60,10 +85,13 @@ export namespace ActorScheme {
 			? { ...object, [key]: current(object[key]) }
 			: object;
 
-	/** `task_work_log.refs`: a JSON array of work refs, each `addedBy` renamed. */
+	/** `task_work_log.refs`: a JSON array of work refs, each `addedBy` renamed and typed. */
 	const refs: Nested = inJson((value) => {
 		if (!Array.isArray(value)) return value;
-		const renamed = value.map((ref: unknown) => renamedKey(ref, "addedBy"));
+		const renamed = value.map((ref: unknown) => {
+			const named = renamedKey(ref, "addedBy");
+			return isRow(named) ? typed(named, "addedBy", "addedByType") : named;
+		});
 		return renamed.some((ref, i) => ref !== value[i]) ? renamed : value;
 	});
 
@@ -79,9 +107,11 @@ export namespace ActorScheme {
 			const value = row[column];
 			if (isLegacy(value)) renamed = { ...renamed, [column]: current(value) };
 		}
+		for (const [actor, type] of Object.entries(fields.types ?? {}))
+			renamed = typed(renamed, actor, type);
 		for (const [column, nested] of Object.entries(fields.nested ?? {})) {
 			const value = row[column];
-			if (typeof value !== "string" || !value.includes(LEGACY_PREFIX)) continue;
+			if (typeof value !== "string" || !mentions(value)) continue;
 			const next = nested(value);
 			if (next !== value) renamed = { ...renamed, [column]: next };
 		}
@@ -98,12 +128,12 @@ export namespace ActorScheme {
 		table: string | undefined,
 		fields: Fields,
 	): void => {
-		// The filters also catch a snapshot that only mentions the old prefix in its text;
-		// `inRow` returns that one as it is.
+		// The filters also catch a snapshot that only mentions a prefix in its text; `inRow`
+		// returns that one as it is.
 		const filter = (column: string) =>
-			`instr(${column}, ?) > 0${table === undefined ? "" : " AND tbl = ?"}`;
-		const params =
-			table === undefined ? [LEGACY_PREFIX] : [LEGACY_PREFIX, table];
+			`(instr(${column}, ?) > 0 OR instr(${column}, ?) > 0)${table === undefined ? "" : " AND tbl = ?"}`;
+		const needles = [LEGACY_PREFIX, ActorUri.AGENT];
+		const params = table === undefined ? needles : [...needles, table];
 
 		const ops = db
 			.query<{ seq: number; payload: string }, string[]>(
@@ -156,12 +186,19 @@ export namespace ActorScheme {
 					LEGACY_PREFIX,
 				],
 			);
+		for (const [actor, type] of Object.entries(fields.types ?? {}))
+			db.run(
+				`UPDATE ${table} SET ${type} = 'ai'
+				  WHERE substr(${actor}, 1, ?) = ? AND ${type} IS NOT 'ai'`,
+				[ActorUri.AGENT.length, ActorUri.AGENT],
+			);
 		for (const [column, nested] of Object.entries(fields.nested ?? {})) {
 			const rows = db
-				.query<{ id: string; value: string }, [string]>(
-					`SELECT id, ${column} AS value FROM ${table} WHERE instr(${column}, ?) > 0`,
+				.query<{ id: string; value: string }, [string, string]>(
+					`SELECT id, ${column} AS value FROM ${table}
+					  WHERE instr(${column}, ?) > 0 OR instr(${column}, ?) > 0`,
 				)
-				.all(LEGACY_PREFIX);
+				.all(LEGACY_PREFIX, ActorUri.AGENT);
 			for (const row of rows) {
 				const value = nested(row.value);
 				if (value !== row.value)
@@ -188,7 +225,8 @@ export namespace ActorScheme {
 	/**
 	 * Migration 12: core's identity fields, in its rows and in their logged snapshots, and
 	 * `updated_by` in every logged or parked op of any table, the writer sync carries for every
-	 * one. A module's other identity columns are its own migration's. No row's version or clock
+	 * one. An agent typed `human` beside its actor becomes `ai`, in rows and snapshots alike. A
+	 * module's other identity columns are its own migration's. No row's version or clock
 	 * moves and nothing is captured: each device renames its own rows, and the same row renamed
 	 * on two devices is the same row.
 	 */
@@ -197,8 +235,14 @@ export namespace ActorScheme {
 			columns: ["discovered_by", "reviewed_by", "updated_by"],
 			nested: { verification },
 		});
-		rename(db, TABLES.comments, { columns: ["author", "updated_by"] });
-		rename(db, TABLES.context_refs, { columns: ["added_by", "updated_by"] });
+		rename(db, TABLES.comments, {
+			columns: ["author", "updated_by"],
+			types: { author: "author_type" },
+		});
+		rename(db, TABLES.context_refs, {
+			columns: ["added_by", "updated_by"],
+			types: { added_by: "added_by_type" },
+		});
 		rename(db, TABLES.work_log, {
 			columns: ["updated_by"],
 			nested: { refs },

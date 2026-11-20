@@ -876,20 +876,24 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 						: Object.fromEntries(
 								Object.entries(row).map(([key, value]) => [
 									key,
-									typeof value !== "string"
-										? value
-										: key === "updated_by" ||
-											  (tbl !== "ext_requests" &&
-													(key === "author" || key.endsWith("_by")))
-											? renamed(value)
-											: key === "refs"
-												? value.replaceAll(
-														CLAUDE,
-														"kabane://actor/agent/claude",
-													)
-												: key === "verification"
-													? verified(value)
-													: value,
+									// The context ref was written by an agent with no type.
+									key === "added_by_type" &&
+									String(row.added_by).includes("actor/agent/")
+										? "ai"
+										: typeof value !== "string"
+											? value
+											: key === "updated_by" ||
+												  (tbl !== "ext_requests" &&
+														(key === "author" || key.endsWith("_by")))
+												? renamed(value)
+												: key === "refs"
+													? value.replaceAll(
+															CLAUDE,
+															"kabane://actor/agent/claude",
+														)
+													: key === "verification"
+														? verified(value)
+														: value,
 								]),
 							),
 			})),
@@ -926,6 +930,123 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				},
 				updatedBy: "kabane://actor/human/ada",
 			},
+		]);
+
+		// A second boot is a read of the version table.
+		await mustInit(base);
+		expect(await rows()).toEqual(after);
+	});
+
+	it("types as ai every agent stored as human, in rows and logged ops, and leaves humans, prose and versions alone", async () => {
+		base = freshBase("actor-types");
+		const CODEX = "kabane://actor/agent/codex";
+		await withDb((db) => {
+			must(Migrate.run(db, Migrations.LIST.slice(0, 11)));
+			must(Oplog.initDevice(db, "device-a"));
+		});
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		// A session on schema 11 that already wrote the new prefix, stored as a human.
+		for (const [author, content] of [
+			[CODEX, `${CODEX} wrote this`],
+			[CLAUDE, "an old-prefix agent"],
+			[ADA, "a human"],
+		] as const)
+			must(
+				await Planner.addComment(base, {
+					taskId: task.id,
+					author,
+					authorType: "human",
+					content,
+				}),
+			);
+		must(
+			await Planner.addWorkLog(base, {
+				taskId: task.id,
+				refs: [{ uri: "commit:abc" }],
+				addedBy: CODEX,
+				addedByType: "human",
+			}),
+		);
+		must(
+			await Planner.addContextRef(base, {
+				taskId: task.id,
+				uri: "file:README.md",
+				kind: "doc",
+				addedBy: CODEX,
+				addedByType: "human",
+			}),
+		);
+		const rows = () =>
+			withDb((db) => ({
+				comments: db
+					.query<Record<string, unknown>, []>(
+						`SELECT author, author_type, content, version FROM ${TABLES.comments} ORDER BY id`,
+					)
+					.all(),
+				refs: db
+					.query<{ refs: string }, []>(`SELECT refs FROM ${TABLES.work_log}`)
+					.all()
+					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
+				context: db
+					.query<Record<string, unknown>, []>(
+						`SELECT added_by, added_by_type FROM ${TABLES.context_refs}`,
+					)
+					.all(),
+				ops: db
+					.query<{ tbl: string; payload: string }, [string]>(
+						`SELECT tbl, payload FROM ${TABLES.sync_oplog} WHERE tbl != ? ORDER BY seq`,
+					)
+					.all(TABLES.tasks)
+					.map((op) => ({
+						tbl: op.tbl,
+						row: JSON.parse(op.payload) as Record<string, unknown>,
+					})),
+			}));
+
+		await mustInit(base);
+		const after = await rows();
+		expect(after.comments).toEqual([
+			{
+				author: CODEX,
+				author_type: "ai",
+				content: `${CODEX} wrote this`,
+				version: 1,
+			},
+			{
+				author: "kabane://actor/agent/claude",
+				author_type: "ai",
+				content: "an old-prefix agent",
+				version: 1,
+			},
+			{
+				author: "kabane://actor/human/ada",
+				author_type: "human",
+				content: "a human",
+				version: 1,
+			},
+		]);
+		expect(after.refs[0]?.[0]).toMatchObject({
+			addedBy: CODEX,
+			addedByType: "ai",
+		});
+		expect(after.context).toEqual([{ added_by: CODEX, added_by_type: "ai" }]);
+		// The log's snapshots say what the rows say.
+		expect(
+			after.ops.map(({ tbl, row }) =>
+				tbl === TABLES.comments
+					? [row.author, row.author_type]
+					: tbl === TABLES.context_refs
+						? [row.added_by, row.added_by_type]
+						: (JSON.parse(String(row.refs)) as Record<string, unknown>[]).map(
+								(ref) => [ref.addedBy, ref.addedByType],
+							),
+			),
+		).toEqual([
+			[CODEX, "ai"],
+			["kabane://actor/agent/claude", "ai"],
+			["kabane://actor/human/ada", "human"],
+			[[CODEX, "ai"]],
+			[CODEX, "ai"],
 		]);
 
 		// A second boot is a read of the version table.
