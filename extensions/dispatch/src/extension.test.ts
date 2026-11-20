@@ -114,7 +114,7 @@ test("a project kabane filled before the move has no findings, and none outside 
 	expect(kabane("doctor").stdout).not.toContain("dispatch/");
 });
 
-test("a missing dispatch skill routes to /setup-dispatch", () => {
+test("a missing dispatch skill routes to the setup-dispatch skill", () => {
 	const { root, findings } = setup();
 	rmSync(join(root, ".agents"), { recursive: true });
 	rmSync(join(root, ".claude"), { recursive: true });
@@ -123,7 +123,8 @@ test("a missing dispatch skill routes to /setup-dispatch", () => {
 			source: "dispatch",
 			id: "dispatch-skill-missing",
 			severity: "suggest",
-			route: "/setup-dispatch writes one",
+			route:
+				"the setup-dispatch skill (/setup-dispatch on the board) writes one",
 		}),
 	);
 });

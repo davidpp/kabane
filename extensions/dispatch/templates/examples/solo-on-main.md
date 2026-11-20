@@ -3,7 +3,7 @@
 Someone works alone on the project, with one coding harness, and merges finished branches into
 main on their own machine. No team tracker, no goals. This is the base skill with no overlay.
 
-The `## This project` section `/setup-dispatch` writes for it:
+The `## This project` section the setup-dispatch skill writes for it:
 
 ```markdown
 - Team record: none (asked)

@@ -191,9 +191,10 @@ its transcript. Typing `/` in the prompt lists the shortcuts: `/triage`, `/refin
 `/settings`, `/doctor`, and those of the extensions you enabled. Each one
 expands into editable text, so you can read what will be sent before sending it.
 
-The [dispatch extension](../extensions/dispatch/README.md) adds `/setup-dispatch`, which writes
-a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks into
-kabane issues. It asks you the few setup questions your project's files leave open, such as
+The [dispatch extension](../extensions/dispatch/README.md) adds the setup-dispatch skill, which
+writes a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks
+into kabane issues. `/setup-dispatch` runs it on the board; any session connected to kabane's MCP
+server can run it too, by asking for the dispatch setup. It asks you the few setup questions your project's files leave open, such as
 whether a team tracker holds the requests, and records the answers in the skill. It also adds the grill skill: ask the copilot to "grill me" and it walks you
 through the questions agents left open, one at a time. Without it, the copilot offers neither. A skill an
 earlier kabane wrote keeps working without the extension; `kabane doctor` then says it cannot
@@ -397,7 +398,7 @@ repair.
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
 setting rather than a broken one, and `route` names the procedure that repairs it, such as
-the dispatch extension's `/setup-dispatch`. Findings are not errors, and the command succeeds when it has some.
+the dispatch extension's setup-dispatch skill. Findings are not errors, and the command succeeds when it has some.
 
 In the board, `/doctor` has the copilot run the same report and act on it: it applies the
 `auto` fixes without asking, tells you each `mention` and `suggest` and waits for your yes,
@@ -671,10 +672,11 @@ routes it:
 
 ```text
 route:
-  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from dispatch@aee0f7efee11, keeping the project's own edits, and shows the diff before writing. → /setup-dispatch
+  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. The setup-dispatch skill re-fills it from dispatch@aee0f7efee11, keeping the project's own edits, and shows the diff before writing. → the setup-dispatch skill (/setup-dispatch on the board)
 ```
 
-Type `/setup-dispatch` in the copilot when you want the current template.
+Type `/setup-dispatch` in the copilot, or ask any session connected to kabane to refresh the
+dispatch skill, when you want the current template.
 
 If you do not want the loop, empty the list instead, and the line goes away. `""` turns off
 every extension:

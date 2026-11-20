@@ -28,7 +28,7 @@ Objects, and the `cabane://actor/...` URIs stored in every row.
 Kabane bundles no extension. Three live in `extensions/`, each built and installed on its own:
 the [loop](docs/loop.md) runs issues through coding harnesses on your machine,
 [dispatch](extensions/dispatch/README.md) gives your projects the dispatch and grill skills and
-the copilot's `/setup-dispatch`, and [recipes](docs/recipes.md) runs prompt recipes from your
+the setup-dispatch skill that writes them, and [recipes](docs/recipes.md) runs prompt recipes from your
 project in background terminals with `kabane run`. [`docs/extensions.md`](docs/extensions.md) installs and enables
 them, and [`docs/writing-an-extension.md`](docs/writing-an-extension.md) walks through writing
 your own.
@@ -145,8 +145,8 @@ each under the prompt that started it — and `x` there stops a running one.
 Typing `/` first lists the shortcuts (`/triage`, `/refine`, `/split`, `/duplicates`,
 `/reparent`, `/check-plan`, `/linear`, `/github`, `/setup`, `/settings`, `/doctor`), which expand into the window so you read what will be sent.
 An enabled extension adds its own: the [dispatch extension](extensions/dispatch/README.md) adds
-`/setup-dispatch`, which writes a project's dispatch skill for coding sessions to turn asks into
-issues here.
+`/setup-dispatch`, which runs its setup-dispatch skill to write a project's dispatch skill for
+coding sessions to turn asks into issues here.
 
 Every write the copilot makes goes through `kabane mcp` into this device's database, stamped
 `cabane://actor/agent/<harness>`, and the board reloads as each one lands. The harness is

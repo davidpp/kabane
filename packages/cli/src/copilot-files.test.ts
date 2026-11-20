@@ -303,13 +303,10 @@ it("the dispatch extension's procedures and shortcut reach the copilot once when
 	expect(on.names).toEqual(["dispatch"]);
 	const count = (text: string) => on.prompt.split(text).length - 1;
 	expect(count("EXTENSION dispatch.")).toBe(1);
-	expect(count("SETTING UP A DISPATCH SKILL.")).toBe(1);
 	expect(count("GRILLING.")).toBe(1);
 	expect(on.prompt).not.toContain("{{extension}}");
 	const installed = realpathSync(join(home, "extensions/dispatch"));
-	expect(on.prompt).toContain(`at ${installed}/templates/dispatch:`);
 	expect(on.prompt).toContain(`at ${installed}/templates/grill/SKILL.md:`);
-	expect(on.prompt).toContain("`kabane dispatch stamp`");
 	expect(on.shortcuts.filter((name) => name === "setup-dispatch")).toEqual([
 		"setup-dispatch",
 	]);

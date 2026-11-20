@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/** Build a directory extension with its copilot files and templates included. */
+/** Build a directory extension with its skills, copilot files and templates included. */
 import {
 	cpSync,
 	existsSync,
