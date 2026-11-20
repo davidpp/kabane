@@ -26,7 +26,10 @@ const glyphOf = (
 	onScreen: boolean,
 	spinnerFrame: string,
 	theme: Theme.Tokens,
+	unseen: boolean,
 ): Part => {
+	// A finished card that left issues for the human keeps the accent until its tab was on screen.
+	if (unseen) return { text: "?", fg: theme.accent };
 	switch (card.status) {
 		case "running":
 		case "pending":
@@ -60,6 +63,7 @@ const tabParts = (
 		waiting: number;
 		spinnerFrame: string;
 		theme: Theme.Tokens;
+		unseen: boolean;
 	},
 ): Part[] => {
 	const { theme, onScreen } = opts;
@@ -67,7 +71,10 @@ const tabParts = (
 	return [
 		{ text: ` ${index} `, fg: theme.muted },
 		...(card
-			? [glyphOf(card, onScreen, opts.spinnerFrame, theme), { text: " ", fg }]
+			? [
+					glyphOf(card, onScreen, opts.spinnerFrame, theme, opts.unseen),
+					{ text: " ", fg },
+				]
 			: []),
 		{ text: name, fg, bold: onScreen },
 		...(opts.waiting > 0
@@ -137,9 +144,20 @@ export const TabBar = ({
 		.flatMap((id) => {
 			if (id === null || id === BoardTabs.JOBS)
 				return [{ id, card: null as ActivityCard | null }];
-			// A tab whose card the poll has not brought yet is skipped.
+			// A tab whose card the poll has not brought yet is skipped. Its state is the one the tab's
+			// own poll saw last, which is ahead of the board's.
 			const card = cards.find((one) => one.id === id);
-			return card ? [{ id, card }] : [];
+			const status = tabs.cards.get(id)?.status;
+			return card
+				? [
+						{
+							id,
+							card: status
+								? { ...card, status, stale: tabs.cards.get(id)?.stale }
+								: card,
+						},
+					]
+				: [];
 		})
 		.map(({ id, card }, index) => {
 			const onScreen = id === tabs.active;
@@ -163,6 +181,8 @@ export const TabBar = ({
 					waiting,
 					spinnerFrame,
 					theme,
+					unseen:
+						id !== null && id !== BoardTabs.JOBS && BoardTabs.unseen(tabs, id),
 				}),
 			};
 		});
@@ -233,7 +253,8 @@ type QuestionBannerProps = {
 };
 
 /**
- * A session question on a raised surface: who asks about which task, the question, and its numbered
+ * A session question on a raised surface: who asks (the session, by its lane, and its harness)
+ * about which task, the question, and its numbered
  * answers while it waits; what was answered once it is; and the way back to the card's tab. The
  * digits and a click answer it wherever it is pinned.
  */
@@ -282,7 +303,7 @@ const QuestionBanner = ({
 				>
 					{closed ? "closed" : answered ? "✓ answered" : "waiting on you"}
 				</span>
-				{` · ${question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`}
+				{` · ${question.lane ? `${question.lane} (${question.agent})` : question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`}
 				{more > 0 ? <span fg={theme.accent}>{` · +${more} more`}</span> : null}
 			</text>
 			<text bg={bg} fg={theme.text}>

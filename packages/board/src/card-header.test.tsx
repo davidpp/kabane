@@ -10,7 +10,7 @@ import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
 describe("CardHeader", () => {
-	test("lays out one padded, clipped row per line at forty columns", async () => {
+	test("lays out one padded row per line, cut with an ellipsis, at forty columns", async () => {
 		let view: HeaderView | undefined;
 		const header: Header = async (_card, given) => {
 			view = given;
@@ -36,10 +36,10 @@ describe("CardHeader", () => {
 			expect(view).toEqual({ width: 37, expanded: true });
 			const rows = frame.split("\n");
 			expect(rows[0]?.startsWith(" default muted faint secondary")).toBe(true);
-			expect(rows[3]).toBe(" A long header line that is clipped at  ");
+			expect(rows[3]).toBe(" A long header line that is clipped a…  ");
 			expect(rows[6]?.trim()).toBe("");
-			expect(rows[4]).toBe(" ● implement ×3 sessions  ›  ✗ gates li ");
-			expect(rows[5]).toBe(" spend ▰▰▰▰▰▰▰▰▰▱ 8.50/10 USD   context ");
+			expect(rows[4]).toBe(" ● implement ×3 sessions  ›  ✗ gates …  ");
+			expect(rows[5]).toBe(" spend ▰▰▰▰▰▰▰▰▰▱ 8.50/10 USD   conte…  ");
 			const spans = r.captureSpans().lines[3]?.spans ?? [];
 			expect(spans.reduce((n, span) => n + span.text.length, 0)).toBe(40);
 			expect(spans.at(-1)?.bg.toInts()).toEqual(

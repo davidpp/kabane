@@ -4,12 +4,19 @@
 // shown in its place on the board, because its height is the terminal's business (a third of it for
 // an ask) and reads wrong on its own.
 import { ok } from "@kabane/core";
+import type {
+	ActivityCard,
+	ActivityLeft,
+	ActivityStep,
+	HeaderPart,
+} from "@kabane/extension";
 import type { QuestionView } from "@kabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import { createRef, type ReactNode, useEffect, useRef } from "react";
 import { Board } from "../board";
 import { CardHeader } from "../card-header";
+import { CardTab } from "../card-tab";
 import { BoardChecklist } from "../checklist";
 import { CopilotLog } from "../copilot-log";
 import { CopilotPane, type CopilotPaneProps } from "../copilot-prompt";
@@ -23,12 +30,13 @@ import { EventView } from "../event-view";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
-import type { BoardNav } from "../nav";
+import { BoardNav } from "../nav";
 import {
 	type CopilotElicitation,
 	type CopilotUpdate,
 	noActivity,
 } from "../ports";
+import { RunMapView } from "../run-map-view";
 import { SettingsOverlay } from "../settings-overlay";
 import { SettingsView } from "../settings-view";
 import { SPINNER_IDLE } from "../spinner";
@@ -680,6 +688,288 @@ const JobsStory = (): ReactNode => (
 );
 
 const [WIKI_JOB] = Fixtures.JOBS;
+
+// The top of a loop run's tab with its map: the tab bar, the run row, the map and what needs the
+// human, from a made-up review run shaped like a real one (five rechecks after the fixer). The
+// stream under them is the event view's and is not drawn here.
+const DONE: ActivityStep[] = [
+	{
+		name: "implement",
+		state: "done",
+		result: "1 of 1 done",
+		durationMs: 122_000,
+	},
+	{
+		name: "gates",
+		state: "done",
+		result: "check·test·build · 3 passes",
+		durationMs: 12_000,
+	},
+	{
+		name: "triage",
+		state: "done",
+		result: "2 review sessions",
+		durationMs: 14_000,
+	},
+	{
+		name: "review",
+		state: "done",
+		result: "21 findings filed",
+		durationMs: 429_000,
+		sessions: [
+			{
+				name: "functional+quality+architecture",
+				state: "done",
+				lane: "functional+quality+architecture-lens",
+				result: "14 findings filed",
+				durationMs: 358_000,
+			},
+			{
+				name: "docs+design",
+				state: "done",
+				lane: "docs+design-lens",
+				result: "7 findings filed",
+				durationMs: 429_000,
+			},
+		],
+	},
+	{ name: "fixer", state: "done", result: "21 settled", durationMs: 1_618_000 },
+];
+
+const minutesAgo = (minutes: number): string =>
+	new Date(Date.now() - minutes * 60_000).toISOString();
+
+const RECHECK_LIVE: ActivityStep = {
+	name: "recheck",
+	state: "running",
+	result: "2 of 5 done · 2 live",
+	startedAt: minutesAgo(4),
+	sessions: [
+		{
+			name: "functional",
+			state: "done",
+			lane: "functional-recheck",
+			result: "4 confirmed · 1 reopened",
+			durationMs: 191_000,
+		},
+		{
+			name: "quality",
+			state: "done",
+			lane: "quality-recheck",
+			result: "5 confirmed · 1 reopened",
+			durationMs: 125_000,
+		},
+		{
+			name: "docs",
+			state: "running",
+			lane: "docs-recheck",
+			result: "5 findings",
+			startedAt: minutesAgo(1),
+		},
+		{
+			name: "architecture",
+			state: "running",
+			lane: "architecture-recheck",
+			result: "3 findings",
+			startedAt: minutesAgo(1),
+		},
+		{
+			name: "design",
+			state: "pending",
+			result: "2 findings · waits for a slot",
+		},
+	],
+};
+
+const LIVE: ActivityCard = {
+	id: "loop:r5",
+	kind: "loops",
+	label: "loop",
+	status: "running",
+	taskShortId: "PROJ-5",
+	startedAt: minutesAgo(40),
+	detail: [],
+	hasEvents: true,
+	tab: true,
+	lanes: (RECHECK_LIVE.sessions ?? []).flatMap((s) => (s.lane ? [s.lane] : [])),
+	liveLanes: ["architecture-recheck", "docs-recheck"],
+	steps: [
+		...DONE,
+		RECHECK_LIVE,
+		{
+			name: "land",
+			state: "pending",
+			result: "none: the branch stays for review",
+		},
+	],
+};
+
+const FINISHED: ActivityCard = {
+	...LIVE,
+	status: "completed",
+	liveLanes: undefined,
+	steps: [
+		...DONE,
+		{
+			name: "recheck",
+			state: "done",
+			result: "18 confirmed · 3 reopened · 3 filed",
+			durationMs: 635_000,
+		},
+		{ name: "land", state: "done", result: "none: kept for review" },
+	],
+	left: [
+		["PROJ-22", "reopened by functional", "a stale cursor survives a resize"],
+		["PROJ-27", "reopened by quality", "the retry loop swallows its error"],
+		["PROJ-38", "reopened by docs", "the README names a removed flag"],
+		["PROJ-42", "filed by architecture", "the store reaches past its port"],
+		["PROJ-43", "filed by docs", "the guide skips the new setting"],
+		["PROJ-44", "filed by design", "the empty state has no hint"],
+	]
+		.map(([id = "", how = "", reason = ""]): ActivityLeft => ({
+			taskId: `01${id}`,
+			taskShortId: id,
+			how,
+			reason,
+		}))
+		.concat({ how: "branch proj-5-reader", reason: "land: none" }),
+};
+
+const ASKED: BoardTabs.Question = {
+	id: "q1",
+	cardId: LIVE.id,
+	lane: "docs-recheck",
+	taskShortId: "PROJ-5",
+	question: "Run `bun run docs:check` in the worktree?",
+	choices: ["Allow once", "Reject"],
+	multiSelect: false,
+	allowFreeform: false,
+	permission: true,
+	agent: "codex",
+	askedAt: minutesAgo(1),
+};
+
+// The run row as the loop lays it out at `width`: the parent on the left, the state on the right.
+const runRow = (
+	width: number,
+	state: HeaderPart,
+	facts: readonly string[],
+): HeaderPart[] => {
+	const title = "slice 1: the reader keeps its place";
+	let rest = "";
+	for (const fact of facts) {
+		const next = `${rest} · ${fact}`;
+		if (6 + 2 + state.text.length + next.length > width) break;
+		rest = next;
+	}
+	const right = state.text.length + rest.length;
+	const room = width - 6 - 4 - right;
+	const shown =
+		room < 8
+			? ""
+			: title.length <= room
+				? title
+				: `${title.slice(0, room - 1)}…`;
+	return [
+		{ text: "PROJ-5", tone: "default", bold: true },
+		...(shown ? [{ text: `  ${shown}`, tone: "secondary" as const }] : []),
+		{
+			text: " ".repeat(Math.max(2, width - 8 - shown.length - right)),
+			tone: "muted",
+		},
+		state,
+		{ text: rest, tone: "muted" },
+	];
+};
+
+const RunTab = ({
+	card,
+	queue = [],
+	state,
+	facts,
+}: {
+	card: ActivityCard;
+	queue?: readonly BoardTabs.Question[];
+	state: HeaderPart;
+	facts: readonly string[];
+}): ReactNode => {
+	const { width, height } = useTerminalDimensions();
+	const { tabs } = BoardTabs.withActivity(
+		BoardNav.init([], { scoped: false }),
+		[card],
+		queue,
+	);
+	const onTab = { ...tabs, active: card.id };
+	return (
+		<box style={{ flexDirection: "column", flexGrow: 1 }}>
+			<TabBar tabs={onTab} cards={[card]} spinnerFrame="⠋" />
+			<CardHeader
+				header={async (_card, view) => ok([runRow(view.width, state, facts)])}
+				card={card}
+				width={width - 1}
+				expanded={false}
+			/>
+			<RunMapView
+				card={card}
+				view={CardTab.view(onTab, card.id)}
+				asking={CardTab.asking(onTab, card.id)}
+				width={width - 1}
+				maxRows={Math.max(8, Math.floor(height * 0.5))}
+				spinnerFrame="⠋"
+			/>
+			<CardTabQuestion tabs={onTab} onAnswer={() => {}} />
+		</box>
+	);
+};
+
+const RUN_MAP_STORIES: readonly Story[] = [
+	{
+		name: "run-map-live",
+		about:
+			"a run mid-recheck: the live step open, the cursor on the newest live session",
+		width: 100,
+		height: 30,
+		render: () => (
+			<RunTab
+				card={LIVE}
+				state={{ text: "● recheck", tone: "working", bold: true }}
+				facts={["2 of 5 done", "2/2 live", "40m28s", "$17.50"]}
+			/>
+		),
+	},
+	{
+		name: "run-map-question",
+		about:
+			"a session waits on the human: its row and the run row say so, the question names it",
+		width: 100,
+		height: 30,
+		render: () => (
+			<RunTab
+				card={LIVE}
+				queue={[ASKED]}
+				state={{
+					text: "? docs-recheck waits on you",
+					tone: "accent",
+					bold: true,
+				}}
+				facts={["recheck 2 of 5 done", "2/2 live", "40m28s", "$17.50"]}
+			/>
+		),
+	},
+	{
+		name: "run-map-finished",
+		about: "a finished run: every step folded, and what it left for the human",
+		width: 100,
+		height: 30,
+		render: () => (
+			<RunTab
+				card={FINISHED}
+				state={{ text: "✓ completed", tone: "done", bold: true }}
+				facts={["6 findings left for you", "46m52s", "$17.50"]}
+			/>
+		),
+	},
+];
 
 export const STORIES: readonly Story[] = [
 	{
@@ -1473,6 +1763,7 @@ export const STORIES: readonly Story[] = [
 			/>
 		),
 	},
+	...RUN_MAP_STORIES,
 ];
 
 export const storyNamed = (name: string): Story | undefined =>

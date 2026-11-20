@@ -13,6 +13,7 @@ import {
 	type ActivityDiff,
 	type ActivityEvent,
 	type ActivitySource,
+	type ActivityStep,
 	type Header,
 	type NoticeSeverity,
 } from "@kabane/extension";
@@ -47,6 +48,8 @@ import {
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
+import type { RunMap } from "./run-map";
+import { RunMapView } from "./run-map-view";
 import { useSpinnerFrame } from "./spinner";
 import { Theme, useMarkdownStyle, useTheme } from "./theme";
 import { ToolRows } from "./tool-rows";
@@ -246,6 +249,14 @@ export type EventViewProps = {
 	// The view's `t`: every tool row open, the ones still to come too. A click opens or closes one
 	// row against it, and pressing `t` again starts every row afresh.
 	toolDetails?: boolean;
+	// A card with steps, on its own tab only: the map's cursor and folds, the lanes its questions wait
+	// on, and a click on a row by its key. The map stands in for the lane chips, and the question
+	// sits under it.
+	map?: {
+		view: RunMap.View;
+		asking: ReadonlySet<string>;
+		onRow?: (key: string) => void;
+	};
 };
 
 const TRANSCRIPT_KEYS: Keymap.Live = { context: "transcript", situation: {} };
@@ -347,9 +358,10 @@ export const EventView = ({
 	header,
 	expanded = false,
 	toolDetails,
+	map,
 }: EventViewProps): ReactNode => {
 	const { card, events } = useCardEvents(cardId, source, initialCard, onCard);
-	const { width } = useTerminalDimensions();
+	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
 
@@ -363,7 +375,7 @@ export const EventView = ({
 
 	const hints = Keymap.footer(keys.context, keys.situation, keys.host);
 	const contentWidth = Math.max(MIN_ENTRY_COLS, width - RESERVED_COLS);
-	const lanes = tabbed ? (card.lanes ?? []) : [];
+	const { stream: streamLanes, chips: lanes } = tabLanes(card, tabbed, map);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -379,7 +391,15 @@ export const EventView = ({
 			) : (
 				<TitleRow card={card} resolveShortId={resolveShortId} />
 			)}
-			{banner}
+			<CardMap
+				card={card}
+				map={map}
+				lane={lane}
+				banner={banner}
+				width={width - 1}
+				height={height}
+				spinnerFrame={spinnerFrame}
+			/>
 			{plan.length > 0 ? (
 				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
 					<PlanBlock
@@ -400,9 +420,9 @@ export const EventView = ({
 			) : null}
 			<Stream
 				card={card}
-				events={laneEvents(events, lanes.length > 0 ? lane : null)}
+				events={laneEvents(events, streamLanes.length > 0 ? lane : null)}
 				// Tags only where lines from several lanes interleave: the all-lanes stream.
-				lanes={lane === null ? lanes : []}
+				lanes={lane === null ? streamLanes : []}
 				width={width}
 				scrollRef={scrollRef}
 				tabbed={tabbed}
@@ -420,6 +440,80 @@ export const EventView = ({
 			) : (
 				<StatusBar hints={hints} />
 			)}
+		</box>
+	);
+};
+
+// The map takes at most this share of the tab's rows, never fewer than the floor, and keeps its
+// cursor in sight within them.
+const MAP_SHARE = 0.5;
+const MIN_MAP_ROWS = 8;
+
+// Every lane tags a card tab's stream; chips walk them only on a card without a map.
+const tabLanes = (
+	card: ActivityCard,
+	tabbed: boolean,
+	map: EventViewProps["map"],
+): { stream: readonly string[]; chips: readonly string[] } => {
+	const stream = tabbed ? (card.lanes ?? []) : [];
+	return { stream, chips: map && (card.steps?.length ?? 0) > 0 ? [] : stream };
+};
+
+// Under the header: the map of a card with steps, then what waits on the human, then whose log is
+// open in place of the stream. A card without steps gets the banner alone.
+const CardMap = ({
+	card,
+	map,
+	lane,
+	banner,
+	width,
+	height,
+	spinnerFrame,
+}: {
+	card: ActivityCard;
+	map: EventViewProps["map"];
+	lane: string | null;
+	banner: ReactNode;
+	width: number;
+	height: number;
+	spinnerFrame: string;
+}): ReactNode => {
+	const steps = card.steps ?? [];
+	if (!map || steps.length === 0) return banner;
+	return (
+		<>
+			<RunMapView
+				card={card}
+				view={map.view}
+				asking={map.asking}
+				width={width}
+				maxRows={Math.max(MIN_MAP_ROWS, Math.floor(height * MAP_SHARE))}
+				spinnerFrame={spinnerFrame}
+				onRow={map.onRow}
+			/>
+			{banner}
+			{lane === null ? null : <LogLabel name={sessionName(steps, lane)} />}
+		</>
+	);
+};
+
+// The session a lane holds, by the name its map row gives it.
+const sessionName = (steps: readonly ActivityStep[], lane: string): string =>
+	steps
+		.flatMap((step) => step.sessions ?? [])
+		.find((session) => session.lane === lane)?.name ?? lane;
+
+// Over the stream while a map's session log is open: whose log it is, and the way back.
+const LogLabel = ({ name }: { name: string }): ReactNode => {
+	const theme = useTheme();
+	return (
+		<box style={{ flexShrink: 0, marginTop: 1 }}>
+			<text wrapMode="none">
+				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+					{name}
+				</span>
+				<span fg={theme.muted}>{" · log · esc back to the stream"}</span>
+			</text>
 		</box>
 	);
 };

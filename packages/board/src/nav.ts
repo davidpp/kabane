@@ -437,6 +437,8 @@ export namespace BoardNav {
 		| { type: "answer"; index: number }
 		// A lane chip on a card's tab (0 is every lane).
 		| { type: "lane"; index: number }
+		// A row of the map on a card's tab, by its key (RunMap).
+		| { type: "mapRow"; key: string }
 		// A field of the trigger form, by its place in the trigger's inputs.
 		| { type: "formField"; index: number }
 		// A row of the settings view, by its place in the view's rows.
@@ -1872,7 +1874,8 @@ export namespace BoardNav {
 			const own =
 				tabs.active === null
 					? null
-					: (BoardTabs.reduceCardTabKey(state, tabs.active, key) ??
+					: (CardTab.closeLog(state, tabs.active, key) ??
+						BoardTabs.reduceCardTabKey(state, tabs.active, key) ??
 						(BoardTabs.cardQuestion(tabs)
 							? null
 							: BoardTabs.reduceNumberKey(state, key)) ??
@@ -2135,6 +2138,8 @@ export namespace BoardNav {
 			...overlaySituation(state),
 			...BoardTabs.situation(state),
 			lanes: card.lanes,
+			map: card.map,
+			log: card.log,
 		};
 	};
 
@@ -2320,6 +2325,8 @@ export namespace BoardNav {
 				: { state, effect: NONE };
 		if (isTabClick(action)) return BoardTabs.reduceMouse(state, action);
 		if (action.type === "lane") return CardTab.reduceLane(state, action.index);
+		if (action.type === "mapRow")
+			return CardTab.reduceMapRow(state, action.key);
 		// A hint the decision hands on goes where its key would: `esc back` to the view's `esc`.
 		if (action.type === "decisionKey")
 			return (

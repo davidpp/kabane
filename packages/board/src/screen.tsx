@@ -384,6 +384,15 @@ const EventsScreen = ({
 			header={tabs.active === cardId ? header : undefined}
 			expanded={CardTab.view(tabs, cardId).expanded}
 			toolDetails={state.view.toolDetails ?? false}
+			map={
+				tabs.active === cardId
+					? {
+							view: CardTab.view(tabs, cardId),
+							asking: CardTab.asking(tabs, cardId),
+							onRow: (key) => input.dispatchMouse({ type: "mapRow", key }),
+						}
+					: undefined
+			}
 			// On a card's own tab, the question its sessions wait on, answered in place.
 			banner={
 				<CardTabQuestion
