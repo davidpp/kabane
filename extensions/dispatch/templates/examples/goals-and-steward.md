@@ -5,7 +5,7 @@ slice, between sessions. Work runs on two harnesses, each reviewing the other's 
 through pull requests with auto-merge, and research is run apart from the dispatching session.
 Kabane's own repository is set up this way.
 
-The `## This project` section `/setup-dispatch` writes for it:
+The `## This project` section the setup-dispatch skill writes for it:
 
 ```markdown
 - Team record: none (asked)

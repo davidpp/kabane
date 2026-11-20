@@ -1,6 +1,6 @@
 # Filling the dispatch template
 
-The board copilot reads this file on `/setup-dispatch`. It is never copied into the project.
+The setup-dispatch skill reads this file. It is never copied into the project.
 Replace every `{{NAME}}` in `SKILL.md` and `references/` with what the project itself says, so the
 written skill contains no `{{` at all. `references/lenses/` holds none: copy its files as they
 are. "The project" means the files in the repo. A personal
@@ -15,7 +15,7 @@ constraints), point at it instead of copying it: "the gate in CLAUDE.md". Every 
 that file anyway, and a copy in the skill drifts away from it the first time either one is
 edited. Copy a value only when the project leaves it unstated and the fallback below fills it.
 
-- `{{TEMPLATE_STAMP}}`: the exact value kabane gives in the procedure, as DISPATCH TEMPLATE STAMP;
+- `{{TEMPLATE_STAMP}}`: what `kabane dispatch stamp` prints, as the setup-dispatch skill runs it;
   never computed by hand. It tells a later kabane which template the skill was filled from.
 - `{{PROJECT}}`: the project's name, from its package manifest or its instructions file.
 - `{{ISSUE_PREFIX}}`: the prefix of this scope's issue ids as the board context block shows them

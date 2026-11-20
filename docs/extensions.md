@@ -10,12 +10,12 @@ This repository has three:
 | Extension | What it adds |
 |---|---|
 | `loop` | `kabane loop`, which drives an issue or a parent issue's subtasks through coding harnesses on your machine; `a` on the board to start a run, with a tab per run; the copilot's procedures to start and advise a run; the `kabane_loop_advise` MCP tool; `loop.*` settings; doctor checks under `loop`. See [loop.md](loop.md). |
-| `dispatch` | The dispatch and grill skills for your projects; `/setup-dispatch` in the copilot, which writes a project's dispatch skill; `kabane dispatch stamp`; doctor checks under `dispatch`. See [its README](../extensions/dispatch/README.md). |
+| `dispatch` | The dispatch and grill skills for your projects; the setup-dispatch skill, which writes a project's dispatch skill, served to any session by `kabane mcp` and run on the board with `/setup-dispatch`; `kabane dispatch stamp`; doctor checks under `dispatch`. See [its README](../extensions/dispatch/README.md). |
 | `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop those runs; `kabane job` to run a recipe on a schedule, with `kabane job tick` for launchd or cron; on the board, a card for each run that works on an issue, with its state and the command that attaches to it, and `a` on an issue to start a recipe; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
 
 `a` on the board lists what the enabled extensions can start on an issue: a loop run, the
 project's recipes that target an issue, or both. Without the loop and recipes it does nothing.
-Without dispatch, the copilot neither offers `/setup-dispatch` nor knows the grill skill. Without
+Without dispatch, kabane serves no setup-dispatch skill, and the copilot neither offers `/setup-dispatch` nor knows the grill skill. Without
 recipes, kabane has no `run` or `runs`, and the board shows no run cards.
 
 ## Build them from a kabane checkout
@@ -92,12 +92,12 @@ no loop settings and no dispatch skill yet:
 ```text
 suggest:
   loop/model-unpinned: loop.model is unset, so every loop session runs on claude's own default model, which for Claude Code is whichever model was last picked interactively. → propose loop.model (a tier is best) and the loop.tiers mapping it needs; the human picks the models; write it with kabane_configSet in the global layer unless they say this project only
-  dispatch/dispatch-skill-missing: No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch. → /setup-dispatch writes one
+  dispatch/dispatch-skill-missing: No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch. → the setup-dispatch skill (/setup-dispatch on the board) writes one
 ```
 
 The loop needs a coding harness installed and logged in before it starts a run;
-[loop.md](loop.md) goes on from here. For dispatch, type `/setup-dispatch` in the copilot
-([its README](../extensions/dispatch/README.md#setting-up-the-dispatch-skill)).
+[loop.md](loop.md) goes on from here. For dispatch, type `/setup-dispatch` in the copilot, or ask
+any session connected to kabane to set up dispatch ([its README](../extensions/dispatch/README.md#setting-up-the-dispatch-skill)).
 
 ## Run an extension from the checkout instead
 

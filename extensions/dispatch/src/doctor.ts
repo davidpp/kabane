@@ -1,6 +1,6 @@
 // The skills this extension writes into a project, compared with the templates it ships: the
-// dispatch skill /setup-dispatch fills and a copy of the grill skill. Each finding says only what
-// the comparison showed; re-filling the dispatch skill stays /setup-dispatch's job, so doctor
+// dispatch skill the setup-dispatch skill fills and a copy of the grill skill. Each finding says only what
+// the comparison showed; re-filling the dispatch skill stays the setup-dispatch skill's job, so doctor
 // routes there instead of writing it. The ids, severities and routes are the ones these checks had
 // in base kabane, so a project's findings read the same once the extension is enabled.
 import {
@@ -19,7 +19,7 @@ import { ok, trySync } from "./result";
 import { Templates } from "./templates";
 
 export namespace DispatchDoctor {
-	const SETUP = "/setup-dispatch";
+	const SETUP = "the setup-dispatch skill (/setup-dispatch on the board)";
 
 	/** `metadata.kabane-template` from a skill's YAML frontmatter, if it has one. */
 	type StampOf = (skill: string) => string | undefined;
@@ -33,7 +33,7 @@ export namespace DispatchDoctor {
 	/**
 	 * Codex, Pi, opencode and Gemini read .agents/skills; Claude Code reads only .claude/skills.
 	 * A project with a .claude/ directory uses Claude Code, so a skill under .agents/skills with no
-	 * .claude/skills link is one its Claude sessions never list. The procedures create that link
+	 * .claude/skills link is one its Claude sessions never list. Setup creates that link
 	 * only when .claude/ exists, and this checks the same condition.
 	 */
 	const claudeLink = (root: string, name: string): Doctor.Finding[] => {
@@ -120,7 +120,7 @@ export namespace DispatchDoctor {
 				path: claudeDir,
 				severity: "route",
 				summary:
-					".claude/skills/dispatch is a directory, so Codex, Pi and Gemini do not read it; the skill belongs in .agents/skills/dispatch with .claude/skills/dispatch as a symlink to it. /setup-dispatch offers the move and waits for a yes.",
+					".claude/skills/dispatch is a directory, so Codex, Pi and Gemini do not read it; the skill belongs in .agents/skills/dispatch with .claude/skills/dispatch as a symlink to it. The setup-dispatch skill offers the move and waits for a yes.",
 				route: SETUP,
 			});
 		const shown = relative(root, path);
@@ -141,7 +141,7 @@ export namespace DispatchDoctor {
 				id: "dispatch-skill-unstamped",
 				path,
 				severity: "route",
-				summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from ${current.value}, keeping the project's own edits, and shows the diff before writing.`,
+				summary: `${shown} has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. The setup-dispatch skill re-fills it from ${current.value}, keeping the project's own edits, and shows the diff before writing.`,
 				route: SETUP,
 			});
 		else if (stamp !== current.value)
@@ -149,7 +149,7 @@ export namespace DispatchDoctor {
 				id: "dispatch-skill-behind",
 				path,
 				severity: "route",
-				summary: `${shown} was filled from ${stamp}; the template is now ${current.value}. /setup-dispatch re-fills it, keeping the project's own edits, and shows the diff before writing.`,
+				summary: `${shown} was filled from ${stamp}; the template is now ${current.value}. The setup-dispatch skill re-fills it, keeping the project's own edits, and shows the diff before writing.`,
 				route: SETUP,
 			});
 		return findings;

@@ -1,4 +1,4 @@
 ---
-hint: write this project's dispatch skill
+hint: write or refresh this project's dispatch skill
 ---
-Set up a dispatch skill for this project: read its CLAUDE.md/AGENTS.md, gate commands and agents, ask me what they leave open, then write .agents/skills/dispatch/ from the dispatch extension's template and show me what you wrote.
+Run the setup-dispatch skill: fetch it with kabane_skillGet (name setup-dispatch) and follow it, starting with its menu for this project.

@@ -295,7 +295,7 @@ finding for a project with no dispatch skill (`extensions/dispatch/src/doctor.ts
 
 ```text
 suggest:
-  dispatch/dispatch-skill-missing: No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch. → /setup-dispatch writes one
+  dispatch/dispatch-skill-missing: No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch. → the setup-dispatch skill (/setup-dispatch on the board) writes one
 ```
 
 The severities, fixes and reserved ids are in
@@ -311,9 +311,9 @@ prompt. The dispatch extension's `/setup-dispatch` is
 
 ```markdown
 ---
-hint: write this project's dispatch skill
+hint: write or refresh this project's dispatch skill
 ---
-Set up a dispatch skill for this project: read its CLAUDE.md/AGENTS.md, gate commands and agents, then write .agents/skills/dispatch/ from the dispatch extension's template and show me what you wrote.
+Run the setup-dispatch skill: fetch it with kabane_skillGet (name setup-dispatch) and follow it, starting with its menu for this project.
 ```
 
 `{{extension}}` in a file becomes the extension directory's absolute path, so a procedure can
