@@ -4,7 +4,7 @@
 		{
 			"id": 1,
 			"prompt": "Set up dispatch for this project.",
-			"expected_output": "In a repo with no .agents/skills/dispatch or .claude/skills/dispatch, the session fetches setup-dispatch with kabane_skillGet and shows its menu led by init, saying the project has no dispatch skill, then the full options table. It writes nothing and runs no option until the human picks one.",
+			"expected_output": "In a repo with no .agents/skills/dispatch or .claude/skills/dispatch, the session fetches setup-dispatch with kabane_skillGet and shows its menu led by init, saying the project has no dispatch skill, then the full options table. Where the choice prompt caps its options (Claude Code takes four), it offers init and the next options by name, no two merged into one, and names the rest in the question as answers the human can type. It writes nothing and runs no option until the human picks one.",
 			"files": []
 		},
 		{
