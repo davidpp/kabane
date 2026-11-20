@@ -197,7 +197,8 @@ into kabane issues. `/setup-dispatch` runs it on the board; any session connecte
 server can run it too, by asking for the dispatch setup. It asks you the few setup questions your project's files leave open, such as
 whether a team tracker holds the requests, and records the answers in the skill. It also serves the grill skill: ask the copilot, or any session
 connected to kabane's MCP server, to "grill me" and it walks you through the questions agents left
-open, one at a time. Without it, the copilot offers neither. A skill an
+open, one at a time. Without it, `kabane mcp` serves neither skill, and the copilot does not offer
+`/setup-dispatch`. A skill an
 earlier kabane wrote keeps working without the extension; `kabane doctor` then says it cannot
 tell whether that skill is current. [Extensions](extensions.md) says how to install it.
 
