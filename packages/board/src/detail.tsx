@@ -36,8 +36,10 @@ import { ErrorBoundary } from "./error-boundary";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
+import { isInFlight } from "./ports";
 import { Segments } from "./segments";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
+import { STILL, stillMark } from "./still";
 import { type Theme, useMarkdownStyle, useTheme } from "./theme";
 
 // Columns the header block's padding takes, and those the scrollbox's bar and a safety margin hold
@@ -51,16 +53,20 @@ const CONTENT_INSET = 1;
 export const PROSE_MEASURE = 80;
 
 // The one-line status under the header for the task's first in-flight card:
-// `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. A paused card
-// reads `⏸ research · paused` then its detail, which is where a waiting run's attach command is. When
+// `⠋ loop · implement · iteration 3 · $0.42` — the card's label then every detail line. A still card
+// reads `⏸ research · paused` (or `◌ research · no status reported`) then its detail, which is where
+// a run's attach command is. When
 // `spinnerFrame` is provided (threaded from app.tsx), it animates; falls back to SPINNER_IDLE for
 // tests and static contexts. Exported pure so the text contract is assertable without a renderer.
 export const cardStatusLine = (
 	card: ActivityCard,
 	spinnerFrame?: string,
 ): string => {
-	if (card.status === "paused")
-		return [`⏸ ${card.label}`, "paused", ...card.detail].join(" · ");
+	const still = stillMark(card.status);
+	if (still)
+		return [`${still.glyph} ${card.label}`, still.word, ...card.detail].join(
+			" · ",
+		);
 	const glyph = card.stale ? SPINNER_IDLE : (spinnerFrame ?? RUNNING_ECHO);
 	return [`${glyph} ${card.label}`, ...card.detail].join(" · ");
 };
@@ -76,7 +82,8 @@ export const cardStatusGlyph = (
 		case "pending":
 			return spinnerFrame ?? RUNNING_ECHO;
 		case "paused":
-			return "⏸";
+		case "unreported":
+			return STILL[status].glyph;
 		case "completed":
 			return "•";
 		case "stopped":
@@ -101,6 +108,7 @@ const cardGlyphColor = (
 		case "failed":
 			return theme.failed;
 		case "paused":
+		case "unreported":
 		case "stopped":
 			return theme.muted;
 	}
@@ -518,10 +526,7 @@ const DetailHeader = ({
 	const headerRoom = Math.max(0, room - HEADER_PADDING);
 	const shortId = task?.shortId ?? taskId.slice(0, 8);
 	const header = [shortId, task?.title].filter(Boolean).join(" · ");
-	const headline = cards?.find(
-		(c) =>
-			c.status === "running" || c.status === "pending" || c.status === "paused",
-	);
+	const headline = cards?.find(isInFlight);
 	const trail = loaded ? DetailModel.trail(loaded) : [];
 	return (
 		<box
@@ -555,7 +560,13 @@ const DetailHeader = ({
 			{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
 			{headline ? (
 				<box style={{ flexDirection: "row", flexShrink: 0 }}>
-					<text fg={headline.stale ? theme.muted : theme.working}>
+					<text
+						fg={
+							headline.stale || stillMark(headline.status)
+								? theme.muted
+								: theme.working
+						}
+					>
 						{cardStatusLine(headline, spinnerFrame)}
 					</text>
 				</box>

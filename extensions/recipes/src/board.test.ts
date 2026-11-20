@@ -199,7 +199,7 @@ describe("RecipeActivity", () => {
 			return [state, card.status, card.actions?.map((a) => a.id) ?? []];
 		});
 		expect(statuses).toEqual([
-			["live", "paused", ["stop"]],
+			["live", "unreported", ["stop"]],
 			["running", "running", ["stop"]],
 			["waiting", "paused", ["stop"]],
 			["idle", "completed", ["stop"]],

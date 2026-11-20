@@ -530,19 +530,23 @@ test("Board counts a row's checklist beside its decisions, in the done hue once 
 });
 
 // Pure badge/strip contracts — no renderer needed.
-test("cardBadge renders running/paused/stale variants with a constant-width glyph", () => {
+test("cardBadge renders running/paused/stale variants with a constant-width glyph, a still or stale one muted", () => {
 	expect(cardBadge(activeLoop(), "⠹")).toEqual({
 		text: " · ⠹ loop · implement 3",
 		muted: false,
 	});
 	expect(cardBadge(activeLoop({ status: "paused" }), "⠹")).toEqual({
 		text: " · ⏸ loop · paused · implement 3",
-		muted: false,
+		muted: true,
 	});
 	// A paused card with no detail stops at `paused`.
 	expect(
 		cardBadge(activeLoop({ status: "paused", detail: [] }), "⠹").text,
 	).toBe(" · ⏸ loop · paused");
+	expect(cardBadge(activeLoop({ status: "unreported" }), "⠹")).toEqual({
+		text: " · ◌ loop · no status reported · implement 3",
+		muted: true,
+	});
 	// Stale running: static idle glyph (no animation frame) and muted color.
 	const stale = cardBadge(activeLoop({ stale: true }), "⠹");
 	expect(stale.muted).toBe(true);
@@ -567,12 +571,14 @@ test("activityStrip counts cards by kind (singular for one), omits zero parts, a
 					activeLoop({ taskShortId: "MILL-43" }),
 					activeLoop({ id: "r1", kind: "runs", label: "scout", taskId: "t9" }),
 					activeLoop({ id: "r2", kind: "runs", status: "completed" }),
+					// In flight with no status reported: counted, though it draws no spinner.
+					activeLoop({ id: "r3", kind: "runs", status: "unreported" }),
 				],
 				[question("t1")],
 			),
 			"⠹",
 		),
-	).toBe(" · ⠹ 2 loops · 1 run · 1 input");
+	).toBe(" · ⠹ 2 loops · 2 runs · 1 input");
 	expect(activityStrip(activityWith([], [question("t1")]), "⠹")).toBe(
 		" · 1 input",
 	);

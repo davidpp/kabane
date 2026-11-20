@@ -18,6 +18,7 @@ import type {
 	SettingField,
 } from "@cabane/extension";
 import type { BoardContext } from "./context";
+import { stillMark } from "./still";
 
 // The one event type the view draws as a rule rather than as a row: what was ASKED, which opens a
 // turn and so separates it from the one before. Shared vocabulary — a host whose cards run more than
@@ -258,4 +259,4 @@ export const noAnnouncer: Announcer = {
 export const isInFlight = (card: ActivityCard): boolean =>
 	card.status === "pending" ||
 	card.status === "running" ||
-	card.status === "paused";
+	stillMark(card.status) !== undefined;

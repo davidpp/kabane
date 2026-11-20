@@ -26,12 +26,12 @@ export namespace RecipeActivity {
 	// As the loop's source: every run in flight, and the newest finished ones up to this many in all.
 	const RECENT_RUNS = 10;
 
-	// `waiting` is a harness stopped on the human, and `live` a program that has reported nothing:
-	// paused is the in-flight status the board draws without a spinner or a claim of work, and the
-	// detail's first word says which. `idle` is a turn over with the terminal still there; the
-	// board draws both it and `ended` as finished, and the detail says which.
+	// `waiting` is a harness stopped on the human: paused. `live` is a program that has reported
+	// nothing, which may well be working (a harness that does not speak OSC 7501): unreported, drawn
+	// in flight without a spinner and without a pause (JCAB-534). `idle` is a turn over with the
+	// terminal still there; the board draws both it and `ended` as finished, and the detail says which.
 	const STATUS: Readonly<Record<Runs.State, ActivityStatus>> = {
-		live: "paused",
+		live: "unreported",
 		running: "running",
 		waiting: "paused",
 		idle: "completed",

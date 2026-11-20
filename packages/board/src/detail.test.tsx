@@ -210,6 +210,34 @@ test("Detail shows a loop status line for a task with an active loop", async () 
 	}
 });
 
+test("Detail draws a working card's status line in the working hue and a still one's muted", async () => {
+	const task = await seed({ state: "in_progress" });
+	const hueOf = async (status: ActivityCard["status"]) => {
+		const card = loopCard({ taskShortId: task.shortId ?? "MILL-1", status });
+		const { renderOnce, captureCharFrame, captureSpans, destroy } = await mount(
+			task,
+			{ cards: [card] },
+		);
+		try {
+			await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("loop · "),
+			);
+			return captureSpans()
+				.lines.flatMap((line) => line.spans)
+				.find((span) => span.text.includes("loop · "))
+				?.fg.toInts()
+				.slice(0, 3);
+		} finally {
+			destroy();
+		}
+	};
+	const rgb = (hex: string) =>
+		[1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+	expect(await hueOf("running")).toEqual(rgb(Theme.DARK.working));
+	expect(await hueOf("paused")).toEqual(rgb(Theme.DARK.muted));
+	expect(await hueOf("unreported")).toEqual(rgb(Theme.DARK.muted));
+});
+
 test("Detail pins a waiting question above the tabs, with no answer hint for a command that does not exist", async () => {
 	const task = await seed({ state: "in_progress" });
 	const questions: BoardActivity.AwaitingQuestion[] = [
@@ -598,6 +626,10 @@ test("cardStatusLine covers paused and stale-agnostic running text", () => {
 	expect(cardStatusLine({ ...running, status: "paused", detail: [] })).toBe(
 		"⏸ loop · paused",
 	);
+	// Unreported claims neither work nor a pause: the host cannot say which.
+	expect(cardStatusLine({ ...running, status: "unreported" })).toBe(
+		"◌ loop · no status reported · verify · iteration 2 · $1.50",
+	);
 });
 
 test("cardStatusLine uses spinnerFrame when provided and the card is not stale", () => {
@@ -618,6 +650,7 @@ test("cardStatusGlyph returns animated frame for running/pending, • for comple
 	expect(cardStatusGlyph("completed")).toBe("•");
 	expect(cardStatusGlyph("failed")).toBe("✗");
 	expect(cardStatusGlyph("paused")).toBe("⏸");
+	expect(cardStatusGlyph("unreported")).toBe("◌");
 });
 
 test("formatElapsed formats durations correctly", () => {
