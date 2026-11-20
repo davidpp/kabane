@@ -34,7 +34,7 @@ The menu leads with what the project shows:
 2. Otherwise run `{{kabane}} doctor --json` and read the findings under the source `dispatch`. `dispatch-skill-behind` or `dispatch-skill-unstamped`: lead with `refresh`, quoting the stamp the skill carries and the template's. `dispatch-skill-location`: lead with `refresh`, which offers the move.
 3. Nothing to lead with: show the answers the skill's `## This project` section records, one line each, so the human sees which one to change.
 
-Then the full options table. Ask through your harness's own choice prompt whenever it has one, the lead option first, and in plain text, ending your turn on it, only where it has none.
+Then the full options table. Ask through your harness's own choice prompt whenever it has one, the lead option first, and in plain text, ending your turn on it, only where it has none. When the prompt holds fewer options than the table has, offer the lead option, then the table's options from the top, skipping the lead, as many as fit, each one option by its own name; never merge two into one choice. Name the ones left out in the question's text, and only those, saying the human can type any of them as their answer.
 
 ## Reading the project
 

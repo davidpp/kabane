@@ -99,6 +99,10 @@ describe("the setup-dispatch skill", () => {
 		expect(routing).toContain(
 			"`dispatch-skill-behind` or `dispatch-skill-unstamped`: lead with `refresh`",
 		);
+		expect(routing).toContain("never merge two into one choice");
+		expect(routing).toContain(
+			"Name the ones left out in the question's text, and only those, saying the human can type any of them as their answer",
+		);
 	});
 
 	it("a single question's option is a refresh that asks it again, or init on a project with no skill", () => {
