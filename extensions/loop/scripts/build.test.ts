@@ -33,7 +33,7 @@ const build = (into: string, root?: string) => {
 	return { code: run.exitCode, stderr: run.stderr.toString() };
 };
 
-it("builds a relocatable loop with its client, procedures and working shipped lenses", async () => {
+it("builds a relocatable loop with its client, skills and working shipped lenses", async () => {
 	const work = mkdtempSync(join(tmpdir(), "loop-build-"));
 	try {
 		const output = join(work, "output");
@@ -65,8 +65,7 @@ it("builds a relocatable loop with its client, procedures and working shipped le
 		expect(manifest.kabane).toEqual({ extension: "./index.js", api: 1 });
 		expect(manifest.dependencies).toBeUndefined();
 		for (const file of [
-			"copilot/procedures/setup-run.md",
-			"copilot/procedures/start-run.md",
+			"skills/loop-run/SKILL.md",
 			"lenses/functional.md",
 			"lenses/quality.md",
 		])
@@ -142,8 +141,7 @@ it("carries a modules entry into the built manifest, at the built path kabane im
 			mkdirSync(dirname(join(source, file)), { recursive: true });
 			writeFileSync(join(source, file), text);
 		}
-		for (const directory of ["copilot", "lenses"])
-			mkdirSync(join(source, directory));
+		mkdirSync(join(source, "lenses"));
 		const home = join(work, "home");
 		const installed = join(home, "extensions/sample");
 		expect(build(installed, source)).toEqual({

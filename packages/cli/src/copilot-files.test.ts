@@ -264,67 +264,12 @@ describe("CopilotFiles.read", () => {
 		);
 	});
 
-	it("the loop's own files load whole, once, under a heading naming the loop", () => {
-		const read = CopilotFiles.read([{ name: "loop", directory: LOOP }]);
-		expect(read.refused).toEqual([]);
-		expect(read.shortcuts).toEqual([]);
-		const titles = read.procedures.flatMap((c) =>
-			c.procedures.map((p) => p.title),
-		);
-		expect(titles.sort()).toEqual([
-			"SETTING UP A LOOP RUN",
-			"STARTING A LOOP RUN",
-		]);
-		const prompt = CopilotInstructions.systemPrompt(
-			{
-				configPath: "config.json",
-				extensions: [{ name: "loop" }],
-				procedures: read.procedures,
-				shortcuts: read.shortcuts,
-			},
-			"kabane",
-		);
-		expect(prompt.split("EXTENSION loop.").length).toBe(2);
-		expect(prompt.split("STARTING A LOOP RUN.").length).toBe(2);
-		expect(prompt).not.toContain("{{extension}}");
-		expect(prompt).toContain(`The loop extension, installed at ${LOOP},`);
-		// What the procedure lets the copilot do, and what it must not do on its own idea.
-		expect(prompt).toContain("`kabane loop start <id>`");
-		expect(prompt).toContain(
-			'When the human tells you to run an issue ("run JCAB-79 with codex"), that is the go-ahead',
-		);
-		expect(prompt).toContain(
-			"When a run is your own suggestion, name the issue and the harness and wait for a yes",
-		);
-		expect(prompt).toContain(
-			"pass only what the human asked for: the loop's settings (kabane_configGet key loop) supply the rest",
-		);
-		expect(prompt).toContain(
-			"report its message as it is and do not retry with other flags",
-		);
-		expect(prompt).toContain("report the run id it prints");
-		expect(prompt).toContain("`kabane loop status <runId>`");
-		expect(prompt).toContain("`kabane loop stop <runId>`");
-		expect(prompt).toContain(
-			"The run's sessions change the code, not you, and a question one of them asks is the human's to answer.",
-		);
-		// Setting one up reads the advice first, proposes, and waits for a yes before it writes.
-		expect(prompt).toContain("kabane loop advise <id>");
-		expect(prompt).toContain("It starts nothing");
-		expect(prompt).toContain(
-			"an agent:<name> tag only for an agent the harness already has",
-		);
-		expect(prompt).toContain(
-			"Your proposal is your own suggestion: wait for a yes",
-		);
-		expect(prompt).toContain("keeping each subtask's other tags");
-		expect(prompt).toContain("start the run as STARTING A LOOP RUN says");
-		expect(prompt).toContain(
-			"Never change the implementer or the verifier unless asked",
-		);
-		expect(prompt.indexOf("EXTENSION loop.")).toBeGreaterThan(
-			prompt.indexOf("KABANE ON THIS MACHINE."),
-		);
+	it("the loop ships no procedures or shortcuts: its how-to is a skill", () => {
+		expect(CopilotFiles.read([{ name: "loop", directory: LOOP }])).toEqual({
+			procedures: [],
+			shortcuts: [],
+			refused: [],
+		});
 	});
 });
 
