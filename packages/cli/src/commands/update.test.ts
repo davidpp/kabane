@@ -70,11 +70,16 @@ beforeAll(async () => {
 		{ cwd: DIST },
 	);
 	expect(packed.exitCode).toBe(0);
-	const parsed = z
-		.array(z.object({ filename: z.string() }))
-		.safeParse(JSON.parse(packed.stdout.toString()));
-	if (!parsed.success || !parsed.data[0]) return;
-	archive = join(WORK, parsed.data[0].filename);
+	// npm 11 prints an array of results, npm 12 an object keyed by package name.
+	const Packed = z.object({ filename: z.string() });
+	const [first] = z
+		.union([
+			z.array(Packed),
+			z.record(z.string(), Packed).transform((byName) => Object.values(byName)),
+		])
+		.parse(JSON.parse(packed.stdout.toString()));
+	if (!first) throw new Error("npm pack printed no archive");
+	archive = join(WORK, first.filename);
 	betaArchive = repack(archive, BETA);
 }, 120_000);
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));

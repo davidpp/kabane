@@ -10,11 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { z } from "zod";
 import { DIST } from "./build";
 import {
 	inspectArchive,
 	integrity,
+	PackOutputSchema,
 	type ReleaseManifest,
 	sha256,
 	verifyReleaseFiles,
@@ -170,9 +170,7 @@ const packBuild = async (packageDir: string) => {
 		{ cwd: packageDir, env: npmEnv, stdout: "pipe", stderr: "pipe" },
 	);
 	if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
-	const [first] = z
-		.array(z.object({ filename: z.string() }))
-		.parse(JSON.parse(packed.stdout.toString()));
+	const [first] = PackOutputSchema.parse(JSON.parse(packed.stdout.toString()));
 	if (!first) throw new Error("npm pack printed no tarball");
 	return inspectArchive(join(dir, first.filename), join(dir, "unpacked"), [
 		join(import.meta.dir, ".."),
