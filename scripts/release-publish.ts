@@ -13,6 +13,7 @@ import {
 } from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 import {
+	npmViewSchema,
 	readArtifactFile,
 	type ReleaseManifest,
 	sha256,
@@ -282,7 +283,9 @@ const parseDistTag = (
 	const text = reply.value.stdout.trim();
 	if (!text) return ok(null);
 	try {
-		const parsed = ChannelVersionSchema.safeParse(JSON.parse(text));
+		const parsed = npmViewSchema(ChannelVersionSchema).safeParse(
+			JSON.parse(text),
+		);
 		return parsed.success ? ok(parsed.data) : failure("Invalid registry beta.");
 	} catch {
 		return failure("Invalid registry JSON.");
@@ -413,7 +416,9 @@ const readRegistryState = async (
 	const betaTag = parseDistTag(beta);
 	if (!betaTag.ok) return betaTag;
 	try {
-		const latestVersion = Stable.safeParse(JSON.parse(latest.value.stdout));
+		const latestVersion = npmViewSchema(Stable).safeParse(
+			JSON.parse(latest.value.stdout),
+		);
 		if (!latestVersion.success)
 			return failure("Invalid stable registry latest.");
 		const tags = { latest: latestVersion.data, beta: betaTag.value };
@@ -426,7 +431,7 @@ const readRegistryState = async (
 				? ok({ existingIntegrity: null, ...tags })
 				: failure("Registry error is not proven version absence.");
 		}
-		const parsed = NpmRecord.safeParse(raw);
+		const parsed = npmViewSchema(NpmRecord).safeParse(raw);
 		if (
 			!parsed.success ||
 			parsed.data.version !== record.version ||

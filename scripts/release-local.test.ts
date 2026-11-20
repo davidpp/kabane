@@ -47,6 +47,8 @@ const State = z.object({
 	prerelease: z.boolean(),
 	latestFlag: z.string(),
 	baseline: z.string(),
+	/** npm 11 prints a `view` result bare, npm 12 wraps it in a one-element array. */
+	npmView: z.enum(["bare", "array"]),
 	listingMode: z.enum([
 		"normal",
 		"stale",
@@ -71,7 +73,7 @@ const selectedVersion = JSON.parse(readFileSync(join(root, "packages/cli/package
 const directory = join(root, ".releases", selectedVersion);
 const record = () => JSON.parse(readFileSync(join(directory, "manifest.json"), "utf8"));
 if (tool === "npm") {
-  if (args[0] === "--version") console.log("11.19.0");
+  if (args[0] === "--version") console.log(state.npmView === "array" ? "12.2.0" : "11.19.0");
   else if (args[0] === "pack") {
     const packed = Bun.spawnSync([process.env.LOCAL_RELEASE_REAL_NPM, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
     process.stdout.write(packed.stdout); process.stderr.write(packed.stderr); process.exit(packed.exitCode);
@@ -79,11 +81,13 @@ if (tool === "npm") {
     if (!state.authenticated) process.exit(1);
     console.log("fixture-maintainer");
   } else if (args[0] === "view") {
-    if (args[2] === "dist-tags.latest") console.log(JSON.stringify(state.latest));
-    else if (args[2] === "dist-tags.beta") { if (state.beta) console.log(JSON.stringify(state.beta)); }
-    else if (args[1] === "kabane@0.1.0") console.log(JSON.stringify({ name: "kabane", version: "0.1.0", ...(state.baseline ? { gitHead: state.baseline } : {}) }));
+    // An E404 and an absent dist-tag print the same under both shapes.
+    const found = value => console.log(JSON.stringify(state.npmView === "array" ? [value] : value));
+    if (args[2] === "dist-tags.latest") found(state.latest);
+    else if (args[2] === "dist-tags.beta") { if (state.beta) found(state.beta); }
+    else if (args[1] === "kabane@0.1.0") found({ name: "kabane", version: "0.1.0", ...(state.baseline ? { gitHead: state.baseline } : {}) });
     else if (!state.published || args[1] !== "kabane@" + state.version) { console.log(JSON.stringify({ error: { code: "E404" } })); process.exit(1); }
-    else console.log(JSON.stringify({ name: "kabane", version: state.version, dist: { integrity: state.integrity } }));
+    else found({ name: "kabane", version: state.version, dist: { integrity: state.integrity } });
   } else if (args[0] === "publish") {
     if (!state.authenticated || !args.includes("--ignore-scripts") || args[1] !== join(directory, "kabane-" + selectedVersion + ".tgz")) process.exit(1);
     if (process.env.NPM_CONFIG_USERCONFIG !== join(root, ".test-state/home/.npmrc")) process.exit(1);
@@ -184,6 +188,7 @@ const createFixture = (injectWait = false) => {
 		prerelease: false,
 		latestFlag: "",
 		baseline: "",
+		npmView: "bare",
 		listingMode: "normal",
 	};
 	writeFileSync(statePath, JSON.stringify(initial));
@@ -352,89 +357,95 @@ process.exitCode = result.ok ? 0 : 1;`,
 	};
 };
 
+const NPM_VIEW_SHAPES = ["bare", "array"] as const;
+
 // Publication/auth/GitHub are controlled tools; Git commits/tags/pushes and npm pack are real.
 // Gates and installed smoke are stage sentinels here, not evidence that the full project passed them.
 // Every case builds its own fixture repository and waits on real processes, so cases run concurrently.
-test.concurrent("actual local command prepares once, pauses for authentication and resumes identical bytes", async () => {
-	const fixture = createFixture();
-	const prepared = await fixture.run("prepare");
-	if (prepared.ok && prepared.value.code !== 0)
-		console.log(prepared.value.stdout);
-	expect(prepared.ok && prepared.value.code).toBe(0);
-	expect(prepared.ok && prepared.value.stdout).toContain("npm login");
-	expect(fixture.state().writes).toEqual(["enable-immutable"]);
-	expect(fixture.git("status", "--porcelain")).toBe("");
-	expect(fixture.git("rev-parse", "v0.1.1^{commit}")).toBe(
-		fixture.git("rev-parse", "HEAD"),
-	);
-	expect(fixture.git("ls-remote", "origin", "refs/tags/v0.1.1^{}")).toContain(
-		fixture.git("rev-parse", "HEAD"),
-	);
-	const archive = join(fixture.directory, "kabane-0.1.1.tgz");
-	const before = sha256(readFileSync(archive)),
-		events = fixture.events();
-	const again = await fixture.run("prepare");
-	expect(again.ok && again.value.code).toBe(0);
-	expect(fixture.events()).toBe(events);
-	const unauthenticated = await fixture.run("publish");
-	expect(unauthenticated.ok && unauthenticated.value.code).toBe(1);
-	expect(fixture.state().writes).toEqual(["enable-immutable"]);
-	fixture.change({ authenticated: true });
-	const published = await fixture.run("publish");
-	expect(published.ok && published.value.code).toBe(0);
-	expect(fixture.state().writes).toEqual([
-		"enable-immutable",
-		"draft",
-		"publish",
-		"finalize",
-	]);
-	expect(fixture.events()).toBe(events);
-	expect(sha256(readFileSync(archive))).toBe(before);
-	const completed = await fixture.run("publish");
-	expect(completed.ok && completed.value.code).toBe(0);
-	expect(
-		fixture.state().writes.filter((write) => write === "publish"),
-	).toHaveLength(1);
-	expect(readFileSync(fixture.tracker, "utf8")).toBe(
-		"invalid tracker sentinel",
-	);
-}, 60_000);
+for (const npmView of NPM_VIEW_SHAPES)
+	test.concurrent(`actual local command prepares once, pauses for authentication and resumes identical bytes (npm view ${npmView})`, async () => {
+		const fixture = createFixture();
+		fixture.change({ npmView });
+		const prepared = await fixture.run("prepare");
+		if (prepared.ok && prepared.value.code !== 0)
+			console.log(prepared.value.stdout);
+		expect(prepared.ok && prepared.value.code).toBe(0);
+		expect(prepared.ok && prepared.value.stdout).toContain("npm login");
+		expect(fixture.state().writes).toEqual(["enable-immutable"]);
+		expect(fixture.git("status", "--porcelain")).toBe("");
+		expect(fixture.git("rev-parse", "v0.1.1^{commit}")).toBe(
+			fixture.git("rev-parse", "HEAD"),
+		);
+		expect(fixture.git("ls-remote", "origin", "refs/tags/v0.1.1^{}")).toContain(
+			fixture.git("rev-parse", "HEAD"),
+		);
+		const archive = join(fixture.directory, "kabane-0.1.1.tgz");
+		const before = sha256(readFileSync(archive)),
+			events = fixture.events();
+		const again = await fixture.run("prepare");
+		expect(again.ok && again.value.code).toBe(0);
+		expect(fixture.events()).toBe(events);
+		const unauthenticated = await fixture.run("publish");
+		expect(unauthenticated.ok && unauthenticated.value.code).toBe(1);
+		expect(fixture.state().writes).toEqual(["enable-immutable"]);
+		fixture.change({ authenticated: true });
+		const published = await fixture.run("publish");
+		expect(published.ok && published.value.code).toBe(0);
+		expect(fixture.state().writes).toEqual([
+			"enable-immutable",
+			"draft",
+			"publish",
+			"finalize",
+		]);
+		expect(fixture.events()).toBe(events);
+		expect(sha256(readFileSync(archive))).toBe(before);
+		const completed = await fixture.run("publish");
+		expect(completed.ok && completed.value.code).toBe(0);
+		expect(
+			fixture.state().writes.filter((write) => write === "publish"),
+		).toHaveLength(1);
+		expect(readFileSync(fixture.tracker, "utf8")).toBe(
+			"invalid tracker sentinel",
+		);
+	}, 60_000);
 
-test.concurrent("default auto uses the complete release range, pins the handoff and selects a fresh next release only after completion", async () => {
-	const fixture = createFixture();
-	fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
-	for (let index = 0; index < 14; index++)
-		fixture.git("commit", "--allow-empty", "-m", `docs: note ${index}`);
-	const prepared = await fixture.command("prepare");
-	expect(prepared.value.code).toBe(0);
-	const directory = join(fixture.root, ".releases/0.2.0");
-	const archive = readFileSync(join(directory, "kabane-0.2.0.tgz"));
-	const events = fixture.events();
-	expect(fixture.git("rev-parse", "v0.2.0^{commit}")).toBe(
-		fixture.git("rev-parse", "HEAD"),
-	);
-	expect((await fixture.command("prepare")).value.code).toBe(0);
-	expect((await fixture.command("publish")).value.code).toBe(1);
-	expect((await fixture.command("prepare", "--bump", "patch")).value.code).toBe(
-		1,
-	);
-	fixture.change({ authenticated: true, failFinalize: true });
-	expect((await fixture.command("publish")).value.code).toBe(1);
-	fixture.change({ failFinalize: false });
-	expect((await fixture.command("publish")).value.code).toBe(0);
-	expect((await fixture.command("publish")).value.code).toBe(0);
-	expect(fixture.events()).toBe(events);
-	expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
-	expect(
-		fixture.state().writes.filter((write) => write === "publish"),
-	).toHaveLength(1);
-	fixture.git("commit", "--allow-empty", "-m", "fix: repair next release");
-	expect((await fixture.command("prepare")).value.code).toBe(0);
-	expect(
-		existsSync(join(fixture.root, ".releases/0.2.1/verified.sha256")),
-	).toBe(true);
-	expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
-}, 60_000);
+for (const npmView of NPM_VIEW_SHAPES)
+	test.concurrent(`default auto uses the complete release range, pins the handoff and selects a fresh next release only after completion (npm view ${npmView})`, async () => {
+		const fixture = createFixture();
+		fixture.change({ npmView });
+		fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
+		for (let index = 0; index < 14; index++)
+			fixture.git("commit", "--allow-empty", "-m", `docs: note ${index}`);
+		const prepared = await fixture.command("prepare");
+		expect(prepared.value.code).toBe(0);
+		const directory = join(fixture.root, ".releases/0.2.0");
+		const archive = readFileSync(join(directory, "kabane-0.2.0.tgz"));
+		const events = fixture.events();
+		expect(fixture.git("rev-parse", "v0.2.0^{commit}")).toBe(
+			fixture.git("rev-parse", "HEAD"),
+		);
+		expect((await fixture.command("prepare")).value.code).toBe(0);
+		expect((await fixture.command("publish")).value.code).toBe(1);
+		expect(
+			(await fixture.command("prepare", "--bump", "patch")).value.code,
+		).toBe(1);
+		fixture.change({ authenticated: true, failFinalize: true });
+		expect((await fixture.command("publish")).value.code).toBe(1);
+		fixture.change({ failFinalize: false });
+		expect((await fixture.command("publish")).value.code).toBe(0);
+		expect((await fixture.command("publish")).value.code).toBe(0);
+		expect(fixture.events()).toBe(events);
+		expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
+		expect(
+			fixture.state().writes.filter((write) => write === "publish"),
+		).toHaveLength(1);
+		fixture.git("commit", "--allow-empty", "-m", "fix: repair next release");
+		expect((await fixture.command("prepare")).value.code).toBe(0);
+		expect(
+			existsSync(join(fixture.root, ".releases/0.2.1/verified.sha256")),
+		).toBe(true);
+		expect(readFileSync(join(directory, "kabane-0.2.0.tgz"))).toEqual(archive);
+	}, 60_000);
 
 for (const { bump, version } of [
 	{ bump: "patch", version: "0.1.1" },
@@ -764,63 +775,65 @@ test.concurrent("stale source, conflicting remote assets and an existing local l
 	).toHaveLength(1);
 }, 60_000);
 
-test.concurrent("an explicit beta publishes on npm beta as a GitHub prerelease; auto still bases stable on npm latest", async () => {
-	expect(
-		parseLocalReleaseArgs(["prepare", "--version", "0.2.0-beta.0"]).ok,
-	).toBe(true);
-	const fixture = createFixture();
-	fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
-	const prepared = await fixture.command(
-		"prepare",
-		"--version",
-		"0.2.0-beta.0",
-	);
-	if (prepared.value.code !== 0) console.log(prepared.value.stdout);
-	expect(prepared.value.code).toBe(0);
-	expect(fixture.git("rev-parse", "v0.2.0-beta.0^{commit}")).toBe(
-		fixture.git("rev-parse", "HEAD"),
-	);
-	expect(
-		existsSync(
-			join(fixture.root, ".releases/0.2.0-beta.0/kabane-0.2.0-beta.0.tgz"),
-		),
-	).toBe(true);
-	fixture.change({ authenticated: true });
-	expect((await fixture.command("publish")).value.code).toBe(0);
-	expect(fixture.state()).toMatchObject({
-		latest: "0.1.0",
-		beta: "0.2.0-beta.0",
-		prerelease: true,
-		latestFlag: "--latest=false",
-		writes: ["enable-immutable", "draft", "publish", "finalize"],
-	});
-	expect((await fixture.command("publish")).value.code).toBe(0);
-	// A beta never repeats or goes backwards.
-	for (const version of ["0.2.0-beta.0", "0.1.1-beta.0"])
+for (const npmView of NPM_VIEW_SHAPES)
+	test.concurrent(`an explicit beta publishes on npm beta as a GitHub prerelease; auto still bases stable on npm latest (npm view ${npmView})`, async () => {
 		expect(
-			(await fixture.command("prepare", "--version", version)).value.code,
-		).toBe(1);
-	// The next release is a new GitHub record; npm keeps both dist-tags.
-	fixture.change({
-		published: false,
-		integrity: "",
-		release: false,
-		draft: false,
-		prerelease: false,
-		assets: [],
-	});
-	expect((await fixture.command("prepare")).value.code).toBe(0);
-	expect(
-		existsSync(join(fixture.root, ".releases/0.2.0/verified.sha256")),
-	).toBe(true);
-	expect((await fixture.command("publish")).value.code).toBe(0);
-	expect(fixture.state()).toMatchObject({
-		latest: "0.2.0",
-		beta: "0.2.0-beta.0",
-		prerelease: false,
-		latestFlag: "--latest",
-	});
-}, 60_000);
+			parseLocalReleaseArgs(["prepare", "--version", "0.2.0-beta.0"]).ok,
+		).toBe(true);
+		const fixture = createFixture();
+		fixture.change({ npmView });
+		fixture.git("commit", "--allow-empty", "-m", "feat(cli): add command");
+		const prepared = await fixture.command(
+			"prepare",
+			"--version",
+			"0.2.0-beta.0",
+		);
+		if (prepared.value.code !== 0) console.log(prepared.value.stdout);
+		expect(prepared.value.code).toBe(0);
+		expect(fixture.git("rev-parse", "v0.2.0-beta.0^{commit}")).toBe(
+			fixture.git("rev-parse", "HEAD"),
+		);
+		expect(
+			existsSync(
+				join(fixture.root, ".releases/0.2.0-beta.0/kabane-0.2.0-beta.0.tgz"),
+			),
+		).toBe(true);
+		fixture.change({ authenticated: true });
+		expect((await fixture.command("publish")).value.code).toBe(0);
+		expect(fixture.state()).toMatchObject({
+			latest: "0.1.0",
+			beta: "0.2.0-beta.0",
+			prerelease: true,
+			latestFlag: "--latest=false",
+			writes: ["enable-immutable", "draft", "publish", "finalize"],
+		});
+		expect((await fixture.command("publish")).value.code).toBe(0);
+		// A beta never repeats or goes backwards.
+		for (const version of ["0.2.0-beta.0", "0.1.1-beta.0"])
+			expect(
+				(await fixture.command("prepare", "--version", version)).value.code,
+			).toBe(1);
+		// The next release is a new GitHub record; npm keeps both dist-tags.
+		fixture.change({
+			published: false,
+			integrity: "",
+			release: false,
+			draft: false,
+			prerelease: false,
+			assets: [],
+		});
+		expect((await fixture.command("prepare")).value.code).toBe(0);
+		expect(
+			existsSync(join(fixture.root, ".releases/0.2.0/verified.sha256")),
+		).toBe(true);
+		expect((await fixture.command("publish")).value.code).toBe(0);
+		expect(fixture.state()).toMatchObject({
+			latest: "0.2.0",
+			beta: "0.2.0-beta.0",
+			prerelease: false,
+			latestFlag: "--latest",
+		});
+	}, 60_000);
 
 for (const failure of ["none", "access", "schema", "json"] as const)
 	test.concurrent(`immutability readback fails closed on ${failure} and retains the preparation phase`, async () => {

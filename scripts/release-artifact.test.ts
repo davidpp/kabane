@@ -10,10 +10,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
+import { z } from "zod";
 import { DIST } from "./build";
 import {
 	inspectArchive,
 	integrity,
+	npmViewSchema,
 	PackOutputSchema,
 	type ReleaseManifest,
 	sha256,
@@ -174,6 +176,19 @@ test("npm pack's JSON is read in npm 11's array and npm 12's keyed shape, one ka
 		{ kabane: { ...archive, size: 0 } },
 	])
 		expect(PackOutputSchema.safeParse(refused).success).toBe(false);
+});
+test("npm view's JSON is read bare (npm 11) or wrapped in one array (npm 12), never a longer array", () => {
+	const Version = npmViewSchema(z.string());
+	expect(Version.parse("4.6.7")).toBe("4.6.7");
+	expect(Version.parse(["4.6.7"])).toBe("4.6.7");
+	const Release = npmViewSchema(z.object({ version: z.string() }));
+	expect(Release.parse({ version: "4.6.7" })).toEqual({ version: "4.6.7" });
+	expect(Release.parse([{ version: "4.6.7" }])).toEqual({ version: "4.6.7" });
+	for (const refused of [[], ["4.6.7", "4.6.8"], [["4.6.7"]]])
+		expect(Version.safeParse(refused).success).toBe(false);
+	expect(
+		Release.safeParse([{ version: "4.6.7" }, { version: "4.6.8" }]).success,
+	).toBe(false);
 });
 /** `npm pack` a package directory into a new directory and validate the archive it writes. */
 const packBuild = async (packageDir: string) => {
