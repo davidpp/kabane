@@ -170,6 +170,6 @@ imports `bun:test`, and 18 open scratch databases through `bun:sqlite` and
 - **No `workers.dev`, no preview URLs.** Cloudflare Access on the custom domain is the
   only front door. `bindings.d.ts` is hand-written so secrets, which never appear
   in `wrangler.jsonc`, are not silently dropped from `Env`.
-- **Keep a push batch well under 8 MB.** The batch crosses as one bound parameter and
+- **Keep a push batch under ~1.5 MB.** The batch crosses as one bound parameter and
   parameter values are capped at 8 MB. One op over 8 MB poisons every retry that
   includes it; the device-side quarantine exists for exactly that.
