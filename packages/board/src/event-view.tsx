@@ -463,7 +463,7 @@ const PermissionDock = ({
 // The events, and how the card ended. A card's tab is a live stream: pinned to the newest line until
 // the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
 // its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
-// closed until clicked, and a run of reads and searches one row for the lot (ToolRows).
+// closed until clicked, and a run of calls with nothing said between them one row (ToolRows).
 const Stream = ({
 	card,
 	events,
