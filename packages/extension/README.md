@@ -37,8 +37,8 @@ The runner assigns `source` from its registered source name; a check cannot supp
 Duplicate IDs under one source become a mention with no repair, retaining both diagnostics.
 Each finding has a stable kebab-case `id`, unique within its source, a `summary`,
 and a severity. Kabane files its own findings about an extension under that extension's source,
-so `extension-refused`, `check-failed`, `package-description` and every id starting with
-`copilot-file-` are reserved; an extension's own check must not use them.
+so `extension-refused`, `check-failed`, `package-description`, `skills`, and every id starting
+with `copilot-file-` or `skill-` are reserved; an extension's own check must not use them.
 The severities:
 
 - `auto`: a mechanical repair, eligible for `fix: true`.
