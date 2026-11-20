@@ -42,6 +42,7 @@ import {
 import { CopilotFiles } from "../copilot-files";
 import { Extensions } from "../extensions";
 import { Self } from "../self";
+import { Skills } from "../skills";
 import { UpdateNotice } from "../update-notice";
 import { BoardControl } from "./board-control";
 
@@ -287,8 +288,10 @@ export const boardDeps = async (
 	const scope = await boardScope(args, ctx, issue);
 	const overrides = copilotOverrides(ctx);
 	// Read before the announcer is built, so a refused file is announced like a refused extension.
+	// A skill the copilot's MCP server will not serve is announced here too: the board is where the
+	// human looks.
 	const contributed = CopilotFiles.read(directories);
-	const files = contributed.refused;
+	const files = [...contributed.refused, ...Skills.read(directories).refused];
 	return {
 		...(await extensionPorts(extensions, ctx, refusals)),
 		...(ctx.config.updates?.check === false &&
@@ -338,7 +341,6 @@ export const boardDeps = async (
 			setup: {
 				configPath: configPath(ctx.home),
 				extensions: await CopilotFiles.installed(ctx.home),
-				procedures: contributed.procedures,
 				shortcuts: contributed.shortcuts,
 			},
 		}),

@@ -14,6 +14,8 @@ import { configTools } from "../config-tools";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { Extensions } from "../extensions";
 import { serveStdio } from "../mcp-stdio";
+import { Self } from "../self";
+import { Skills } from "../skills";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
 
 const McpContribution = z.object({
@@ -44,7 +46,13 @@ const McpContribution = z.object({
 export const extensionMcp = async (
 	ctx: Extension.Ctx,
 	hostTools: readonly ToolDef[],
-): Promise<Result<{ tools: ToolDef[]; instructions: string[] }>> => {
+): Promise<
+	Result<{
+		tools: ToolDef[];
+		instructions: string[];
+		directories: Extensions.Directory[];
+	}>
+> => {
 	const enabled = Extensions.enabled(ctx.home);
 	if (!enabled.ok) return enabled;
 	const loaded = await Extensions.loadAll(enabled.value, ctx.home);
@@ -116,7 +124,7 @@ export const extensionMcp = async (
 		}
 		if (parsed.data.instructions) instructions.push(parsed.data.instructions);
 	}
-	return ok({ tools, instructions });
+	return ok({ tools, instructions, directories: loaded.directories });
 };
 
 /**
@@ -154,6 +162,12 @@ export const mcp: Command = {
 		];
 		const contributions = await extensionMcp(ctx.value, hostTools);
 		if (!contributions.ok) return failure(contributions.error);
+		const { directories } = contributions.value;
+		Extensions.report(Skills.read(directories).refused);
+		const skills = Skills.tools(
+			directories,
+			Skills.command(bare.home, Self.current() ?? "kabane"),
+		);
 		const served = await serveStdio(
 			{
 				basePath: ctx.value.store,
@@ -164,8 +178,8 @@ export const mcp: Command = {
 				scopeRequired: false,
 			},
 			{ name: "kabane", version },
-			[...hostTools, ...contributions.value.tools],
-			contributions.value.instructions,
+			[...hostTools, ...skills, ...contributions.value.tools],
+			[Skills.INSTRUCTIONS, ...contributions.value.instructions],
 		);
 		if (!served.ok) return failure(served.error);
 		return success({ served: true }, "");

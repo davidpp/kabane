@@ -1,0 +1,23 @@
+{
+	"skill_name": "setup-dispatch",
+	"evals": [
+		{
+			"id": 1,
+			"prompt": "Set up dispatch for this project.",
+			"expected_output": "In a repo with no .agents/skills/dispatch or .claude/skills/dispatch, the session fetches setup-dispatch with kabane_skillGet and shows its menu led by init, saying the project has no dispatch skill, then the full options table. Where the choice prompt caps its options (Claude Code takes four), it offers init and the next options by name, no two merged into one, and names the rest in the question as answers the human can type. It writes nothing and runs no option until the human picks one.",
+			"files": []
+		},
+		{
+			"id": 2,
+			"prompt": "We use Linear for our team's issues; set up dispatch for this repo.",
+			"expected_output": "The session routes to upstream (or init, when the project has no dispatch skill) and asks the Team record question with all three choices as PLACEHOLDERS.md words them: none, GitHub Issues and Linear, Linear first as the one the request names. No choice is dropped, merged or reworded.",
+			"files": []
+		},
+		{
+			"id": 3,
+			"prompt": "/setup-dispatch",
+			"expected_output": "In a repo whose .agents/skills/dispatch/SKILL.md carries an older metadata.kabane-template than `kabane dispatch stamp` prints, the menu leads with refresh, quoting both stamps. Picking refresh keeps the answers in ## This project, takes the new stamp from kabane dispatch stamp, shows the diff, and writes nothing without an explicit yes.",
+			"files": []
+		}
+	]
+}

@@ -44,10 +44,10 @@ URIs reach the issue through `host.record.log`. Old run stores with no question 
 load.
 
 The loop builds on its own with `bun run --cwd extensions/loop build`. Its `dist/` is a
-directory extension with its harness client, copilot procedures and lenses included. Plan lint
-lives in `src/lint/`; `src/advice.ts` and `src/commands.ts` use it. The copilot's loop
-procedures are files in `copilot/procedures/`, which the host reads when the loop loads from a
-directory (`packages/board/README.md`, the copilot's instructions).
+directory extension with its harness client, skills and lenses included. Plan lint
+lives in `src/lint/`; `src/advice.ts` and `src/commands.ts` use it. Setting up and starting a
+run is the `loop-run` skill in `skills/loop-run/SKILL.md`, which `kabane mcp` serves to any
+session through `kabane_skillGet` when the loop loads from a directory (wiki/adr/0004).
 
 Read before writing: `src/extension.ts`, `src/store.ts`, and the entry point you are changing
 in `src/commands.ts` with its test.

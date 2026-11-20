@@ -31,8 +31,9 @@ const install = (home: string, name: string, files: Record<string, string>) => {
 test("doctor lists every refused copilot file under its extension, one finding per file", () => {
 	const home = join(ROOT, "home");
 	const notes = install(home, "notes", {
-		"copilot/procedures/ok.md": "---\ntitle: KEEPING NOTES\n---\nKeep them.\n",
+		// A leftover procedure is not read, so it is no finding.
 		"copilot/procedures/bare.md": "No frontmatter.\n",
+		"copilot/shortcuts/bare.md": "No frontmatter.\n",
 		"copilot/shortcuts/split.md": "---\nhint: mine\n---\nSplit my way.\n",
 		"copilot/shortcuts/Odd Name.md": "---\nhint: odd\n---\nOne.\nTwo.\n",
 	});
@@ -79,15 +80,6 @@ test("doctor lists every refused copilot file under its extension, one finding p
 	expect(files).toEqual([
 		{
 			source: "notes",
-			id: "copilot-file-procedures-bare",
-			severity: "mention",
-			fixable: false,
-			path: join(notes, "copilot/procedures/bare.md"),
-			summary:
-				"Extension notes: copilot/procedures/bare.md has no frontmatter between --- lines; add one",
-		},
-		{
-			source: "notes",
 			id: expect.stringMatching(
 				/^copilot-file-shortcuts-odd-name-[0-9a-f]{1,8}$/,
 			),
@@ -96,6 +88,15 @@ test("doctor lists every refused copilot file under its extension, one finding p
 			path: join(notes, "copilot/shortcuts/Odd Name.md"),
 			summary:
 				"Extension notes: copilot/shortcuts/Odd Name.md: its body must be one line, the template dropped into the prompt",
+		},
+		{
+			source: "notes",
+			id: "copilot-file-shortcuts-bare",
+			severity: "mention",
+			fixable: false,
+			path: join(notes, "copilot/shortcuts/bare.md"),
+			summary:
+				"Extension notes: copilot/shortcuts/bare.md has no frontmatter between --- lines; add one",
 		},
 		{
 			source: "notes",
@@ -190,4 +191,69 @@ test("doctor reports a dropped description of an enabled extension, and says not
 	expect(report.findings.some((finding) => finding.source === "long")).toBe(
 		false,
 	);
+});
+
+test("doctor lists every skill kabane mcp does not serve under its extension", () => {
+	const home = join(ROOT, "skills");
+	const skill = (name: string) =>
+		`---\nname: ${name}\ndescription: Use it.\n---\nBody.\n`;
+	const notes = install(home, "notes", {
+		"skills/keep/SKILL.md": skill("keep"),
+		"skills/misnamed/SKILL.md": skill("other"),
+		"skills/go/SKILL.md": skill("go"),
+	});
+	const other = install(home, "other", {
+		"skills/go/SKILL.md": skill("go"),
+	});
+	writeFileSync(
+		join(home, "config.json"),
+		JSON.stringify({
+			actor: "cabane://actor/human/test",
+			deviceId: "test",
+			extensions: ["notes", "other"],
+		}),
+	);
+	const run = Bun.spawnSync(
+		[
+			process.execPath,
+			resolve(import.meta.dir, "../../index.ts"),
+			"doctor",
+			"--json",
+		],
+		{
+			cwd: home,
+			env: { ...process.env, KABANE_HOME: home, KABANE_HARNESSES: "" },
+		},
+	);
+	expect(run.exitCode).toBe(0);
+	const report: {
+		findings: { source: string; id: string; path?: string; summary: string }[];
+	} = JSON.parse(run.stdout.toString());
+	expect(
+		report.findings
+			.filter((finding) => finding.id.startsWith("skill"))
+			.map(({ source, id, path, summary }) => ({ source, id, path, summary })),
+	).toEqual([
+		{
+			source: "notes",
+			id: "skill-misnamed",
+			path: join(notes, "skills/misnamed"),
+			summary:
+				"Extension notes: skills/misnamed/SKILL.md: its name other is not its directory's; name both alike",
+		},
+		{
+			source: "notes",
+			id: "skill-go",
+			path: join(notes, "skills/go"),
+			summary:
+				"Extension notes: skills/go: other also ships a skill named go, so neither is served; rename one",
+		},
+		{
+			source: "other",
+			id: "skill-go",
+			path: join(other, "skills/go"),
+			summary:
+				"Extension other: skills/go: notes also ships a skill named go, so neither is served; rename one",
+		},
+	]);
 });

@@ -191,15 +191,23 @@ its transcript. Typing `/` in the prompt lists the shortcuts: `/triage`, `/refin
 `/settings`, `/doctor`, and those of the extensions you enabled. Each one
 expands into editable text, so you can read what will be sent before sending it.
 
-The [dispatch extension](../extensions/dispatch/README.md) adds `/setup-dispatch`, which writes
-a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks into
-kabane issues. It asks you the few setup questions your project's files leave open, such as
-whether a team tracker holds the requests, and records the answers in the skill. It also adds the grill skill: ask the copilot to "grill me" and it walks you
-through the questions agents left open, one at a time. Without it, the copilot offers neither. A skill an
+The [dispatch extension](../extensions/dispatch/README.md) adds the setup-dispatch skill, which
+writes a dispatch skill under `.agents/skills/dispatch/` that lets your coding sessions turn asks
+into kabane issues. `/setup-dispatch` runs it on the board; any session connected to kabane's MCP
+server can run it too, by asking for the dispatch setup. It asks you the few setup questions your project's files leave open, such as
+whether a team tracker holds the requests, and records the answers in the skill. It also serves the grill skill: ask the copilot, or any session
+connected to kabane's MCP server, to "grill me" and it walks you through the questions agents left
+open, one at a time. Without it, `kabane mcp` serves neither skill, and the copilot does not offer
+`/setup-dispatch`. A skill an
 earlier kabane wrote keeps working without the extension; `kabane doctor` then says it cannot
 tell whether that skill is current. [Extensions](extensions.md) says how to install it.
 
 `/doctor` checks that what kabane wrote is current: see [Keeping kabane current](#keeping-kabane-current).
+
+`/linear`, `/github`, `/setup`, `/settings` and `/doctor` follow kabane's own `kabane` skill,
+which kabane's MCP server serves to any session connected to it. Outside the board, ask a
+session to "link this issue to Linear ENG-1" or "check that kabane is current" and it fetches
+the same skill.
 
 The copilot has three requirements of its own. Setup does not check any of them:
 
@@ -391,17 +399,17 @@ require restoring that backup. Reporting findings does not apply their offered r
 
 The source identifies the check owner: `kabane` for settings and MCP, `project` for
 project files, and an extension name such as `loop` or `dispatch`. For example,
-`kabane doctor --fix dispatch/grill-skill-behind` applies the dispatch extension's offered
+`kabane doctor --fix dispatch/dispatch-skill-unlinked` applies the dispatch extension's offered
 repair.
 
 Each finding has a severity that says what to do with it, not how bad it is: `auto` needs no
 decision, `mention` is worth knowing and has a fix you can choose to run, `suggest` is a better
-setting rather than a broken one, and `route` names the procedure that repairs it, such as
-the dispatch extension's `/setup-dispatch`. Findings are not errors, and the command succeeds when it has some.
+setting rather than a broken one, and `route` names the skill that repairs it, such as
+the dispatch extension's setup-dispatch skill. Findings are not errors, and the command succeeds when it has some.
 
 In the board, `/doctor` has the copilot run the same report and act on it: it applies the
 `auto` fixes without asking, tells you each `mention` and `suggest` and waits for your yes,
-and offers the procedure a `route` names. It never rewrites a harness's MCP entry itself; it
+and offers the skill a `route` names. It never rewrites a harness's MCP entry itself; it
 gives you the `kabane doctor --fix` command to run.
 
 Scripts reading `kabane mcp install --json` must accept `reports[].status: "stale"`
@@ -593,7 +601,9 @@ In 1.0.0-beta.0 the loop came inside kabane, and `"extensions": ["loop"]` in `co
 it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Kabane now
 bundles neither: the loop and the [dispatch extension](../extensions/dispatch/README.md), which
 holds the dispatch and grill skills and `/setup-dispatch`, are directories you build and install
-yourself. Updating kabane does not install them.
+yourself. Updating kabane does not install them. The grill skill is now served by `kabane mcp`
+rather than copied into a project: a copy under a project's `.agents/skills/grill/` is no longer
+checked and drifts from the served one, so delete it.
 
 With `loop` still in `extensions` and nothing installed, the record commands (`kabane list`,
 `kabane add` and the others) work as before and say nothing about it. `kabane --help`,
@@ -671,10 +681,11 @@ routes it:
 
 ```text
 route:
-  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. /setup-dispatch re-fills it from dispatch@aee0f7efee11, keeping the project's own edits, and shows the diff before writing. → /setup-dispatch
+  dispatch/dispatch-skill-unstamped: .agents/skills/dispatch/SKILL.md has no kabane-template in its frontmatter metadata, so which template it was filled from is unknown. The setup-dispatch skill re-fills it from dispatch@aee0f7efee11, keeping the project's own edits, and shows the diff before writing. → the setup-dispatch skill (/setup-dispatch on the board)
 ```
 
-Type `/setup-dispatch` in the copilot when you want the current template.
+Type `/setup-dispatch` in the copilot, or ask any session connected to kabane to refresh the
+dispatch skill, when you want the current template.
 
 If you do not want the loop, empty the list instead, and the line goes away. `""` turns off
 every extension:

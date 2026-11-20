@@ -4,7 +4,7 @@ A shared repository whose team tracks requests in GitHub Issues and merges throu
 requests. One person on the team uses kabane for their own breakdown of the work. The team sees
 the issue and the pull request; the waves, checklists and research behind them stay in kabane.
 
-The `## This project` section `/setup-dispatch` writes for it:
+The `## This project` section the setup-dispatch skill writes for it:
 
 ```markdown
 - Team record: GitHub Issues, through `gh`; a pull request closes one with `Fixes #<n>` (.github/ISSUE_TEMPLATE/)

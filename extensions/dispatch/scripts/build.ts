@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
-/** Build a directory extension with its copilot files and templates included. */
-import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+/** Build a directory extension with its skills, copilot files and templates included. */
+import {
+	cpSync,
+	existsSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -65,6 +71,9 @@ export const build = async (
 	);
 	for (const directory of ["copilot", "templates"])
 		cpSync(join(root, directory), join(into, directory), { recursive: true });
+	// What kabane mcp serves to any session; an extension that ships none has no skills/.
+	if (existsSync(join(root, "skills")))
+		cpSync(join(root, "skills"), join(into, "skills"), { recursive: true });
 	return result;
 };
 

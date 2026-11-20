@@ -1,17 +1,20 @@
 # @cabane/dispatch (extensions/dispatch)
 
-The dispatch extension: the dispatch and grill skill templates, the copilot procedures that fill
-a project's dispatch skill from them and grill the human through open questions, the
-`/setup-dispatch` shortcut, `kabane dispatch stamp`, and the `kabane doctor` checks that say a
+The dispatch extension: the dispatch skill template, the setup-dispatch skill that fills a
+project's dispatch skill from it, the grill skill that walks the human through open questions,
+the `/setup-dispatch` shortcut that runs the setup skill on the board, `kabane dispatch stamp`, and the `kabane doctor` checks that say a
 project's copy is behind. `README.md` is what a user reads.
 
 | Where | What it holds |
 |---|---|
 | `src/extension.ts` | the `(host) => Extension` factory: the `dispatch` command (`stamp`) and the doctor checks |
 | `src/templates.ts` | `Templates.hashDir` and `Templates.stamp`, read from this directory's `templates/` |
-| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `-unlinked`, `dispatch-template-unavailable`, `grill-skill-behind`, `-unlinked` |
-| `copilot/procedures/*.md`, `copilot/shortcuts/*.md` | the copilot's text, `{{extension}}` filled by the host |
-| `templates/dispatch/**`, `templates/grill/SKILL.md` | what a procedure tells the copilot to copy into a project |
+| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `-unlinked`, `dispatch-template-unavailable` |
+| `skills/grill/SKILL.md` | the grill skill `kabane mcp` serves; it needs no filling, and nothing copies it into a project |
+| `skills/setup-dispatch/` | the router skill `kabane mcp` serves: `SKILL.md` with the options table and the menu, one `references/<option>.md` per option; `{{extension}}` and `{{kabane}}` filled by the host |
+| `copilot/shortcuts/*.md` | the board's `/setup-dispatch`, `{{extension}}` filled by the host |
+| `templates/dispatch/**` | what the setup-dispatch skill tells a session to copy into a project |
+| `evals/setup-dispatch/evals.json` | skill-creator's test prompts for the setup skill, run by hand against a real session |
 
 ## It takes types from kabane and no value
 
@@ -20,8 +23,8 @@ runtime dependency. Scope detection, zod, outcomes and the result helpers arrive
 factory binds the result helpers through `src/result.ts` before anything else runs. Core and the
 contract are development dependencies for types and for the tests' own result helpers.
 
-A procedure file computes nothing: the stamp a filled skill records is `kabane dispatch stamp`'s
-output, which `setup-dispatch.md` tells the copilot to run. The stamp is sha256 over the
+A skill or shortcut file computes nothing: the stamp a filled skill records is
+`kabane dispatch stamp`'s output, which the setup-dispatch skill runs as `{{kabane}}`. The stamp is sha256 over the
 template's relative paths and bytes, `PLACEHOLDERS.md` excluded, so a skill base kabane stamped
 before the template moved here still compares equal. Any change to `templates/dispatch/` other
 than `PLACEHOLDERS.md` makes every filled skill behind: that is the point of the stamp.
@@ -42,8 +45,10 @@ bun run sandbox dispatch stamp
 bun run sandbox doctor                       # in the sandbox repo: dispatch/dispatch-skill-missing
 ```
 
-Filling a skill with `/setup-dispatch` needs a real copilot harness; the scripted agent does
-not prove it, so list it as a manual check.
+Filling a skill with the setup-dispatch skill needs a real harness, on the board through
+`/setup-dispatch` or in a plain session connected to the sandbox's `kabane mcp`; the scripted
+agent does not prove it, so list it as a manual check. A change to the setup skill's text
+re-runs the prompts in `evals/setup-dispatch/evals.json` on a real session.
 
 ## Mistakes that are easy to make here
 

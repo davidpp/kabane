@@ -212,14 +212,16 @@ and renders `BoardContext` into every prompt. `mailbox.ts` lives beside it. The 
 `BoardCopilot` from `@cabane/board`; acp has no dependency on the board.
 
 Of `instructions.ts`, the prose lives in the board as `packages/board/src/copilot-instructions.ts`
-(`BLOCK`, `SKILLS`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
+(`BLOCK`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
 `CopilotInstructions` with two names the board reads: `actorUri` and `SERVER_NAME`. The loop keeps
-its own copies (`extensions/loop/src/session-identity.ts`). The dispatch and grill templates
-belong to the dispatch extension, which reads them from its own directory. The path kabane runs
+its own copies (`extensions/loop/src/session-identity.ts`). The dispatch template and the grill
+skill belong to the dispatch extension, which reads them from its own directory. The path kabane runs
 as is required in `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the
 board never imports `Self`, which lives in the CLI host. The CLI imports
-`@cabane/board/copilot-instructions` in `copilot-files.ts` to refuse an extension's procedure
-titled like one of base kabane's headings and a shortcut named like one of its shortcuts. The
+`@cabane/board/copilot-instructions` in `copilot-files.ts` to refuse a package.json description
+that contains one of base kabane's headings and a shortcut named like one of its shortcuts, and
+in `skills.ts` for `shellWord`, so `{{kabane}}` quotes the executable and home as the copilot's
+instructions do. The
 copilot tests use the ACP SDK's in-process agent, so the board declares the SDK as a development
 dependency.
 
@@ -494,7 +496,7 @@ modules do not declare, so an extension writes only its own tables and changes t
 `updateTask`. Raw SQL on `tx.db` against another package's table is not stopped by the kit;
 review holds that.
 
-## An extension contributes through six optional fields on `Extension`, a modules entry and copilot files
+## An extension contributes through six optional fields on `Extension`, a modules entry, skills and copilot files
 
 ```ts
 type Extension = {
@@ -528,8 +530,9 @@ type Extension = {
   their own that the manifest names (below). Their ops replicate and park like a first-party
   module's (the header of `packages/core/module.ts`), and the hub, which cannot register them,
   parks them.
-- **Copilot procedures, `/` shortcuts and templates** are files in the extension's directory
-  (below).
+- **Skills, copilot `/` shortcuts and templates** are files in the extension's directory
+  (below). Skills are how-to that `kabane mcp` serves to any session; nothing an extension ships
+  is appended to the copilot's instructions.
 
 ### Every process that opens the database registers the same modules
 
@@ -646,38 +649,63 @@ from the start of the log, which no device reads today, and the command says so 
 The alternatives, a read-only mode and refusing writes command by command, are in
 `wiki/extension-api.md`.
 
-### Procedures and shortcuts are markdown files, because the loop's need no code
+### How-to is a skill `kabane mcp` serves; the copilot's instructions carry only state, identity and boundaries
 
-Base kabane's procedures and shortcuts are constants in `packages/board/src/copilot-instructions.ts`,
-and they name no extension: the dispatch and grill procedures and `/setup-dispatch` are the
-dispatch extension's files. In API v1 an extension ships its own as files, as opencode ships
-commands (`.opencode/commands/<name>.md`), and `packages/cli/src/copilot-files.ts` reads them:
+An extension's how-to, such as setting up dispatch or a loop run, ships as skills in the Agent
+Skills format, in the extension's own directory. Why, and what was rejected, is
+[ADR 0004](wiki/adr/0004-extension-how-to-ships-as-skills-served-by-kabane-mcp.md). Like the
+copilot files below, this is a file convention the CLI host implements, not a field of the
+extension contract:
 
-- `copilot/procedures/<name>.md`: frontmatter `title`; the body is appended to the copilot's
-  instructions after base kabane's own, under a heading naming the extension. An extension cannot
-  replace or reorder base kabane's text.
+- `skills/<name>/SKILL.md`, with frontmatter `name` equal to the directory name and a required
+  `description`, plus any files under `skills/<name>/` such as `references/<option>.md`.
+- `kabane mcp` serves every enabled extension's skills through two tools: `kabane_skillList`
+  returns each skill's name, description and extension, and `kabane_skillGet { name, file? }`
+  returns `SKILL.md` or one file under the skill's directory, with the manifest of its other
+  files. A file outside the skill's directory is refused, and two enabled extensions shipping one
+  name are both refused. The tools are device-only: the hub loads no extensions.
+- On a get the host fills `{{extension}}`, the extension's directory, and `{{kabane}}`, the
+  executable and `KABANE_HOME` this server runs. Nothing else is substituted: a skill file
+  computes nothing. A value the host cannot know comes from a command the extension contributes,
+  which the skill tells the agent to run with `{{kabane}}`; the dispatch template's stamp is the
+  first (`kabane dispatch stamp`).
+- A skill states its own write boundary in its text, because it may run in a session that is not
+  the board's copilot.
+
+Skills do not trigger on their own by description: the server instructions name the tools, and
+the board's `/` shortcuts name the skill to fetch. The copilot's instructions
+(`packages/board/src/copilot-instructions.ts`) keep only what code alone knows: the per-prompt
+`kabane-board` block, `setup()`'s machine context, the copilot's identity and its write
+boundaries in `BLOCK`. Base kabane's own how-to (linking external issues, config and help,
+doctor) is the `kabane` skill, `packages/cli/skills/kabane/`, which names no extension. `kabane
+mcp` serves it first, always, with an extension's skill of that name refused; the CLI imports
+its files as text so a compiled kabane, which has no source tree, serves it too.
+
+### Copilot shortcuts are markdown files
+
+`packages/cli/src/copilot-files.ts` reads an extension's copilot shortcuts, as opencode ships
+commands (`.opencode/commands/<name>.md`):
+
 - `copilot/shortcuts/<name>.md`: frontmatter `hint`; the body, one line, is the template dropped
   into the prompt line as `/name`. A built-in name wins; two extensions with one name are both
-  refused with a diagnostic, because a human types it.
-- `templates/<name>/`: skill templates a procedure tells the copilot to copy into a project.
+  refused with a diagnostic, because a human types it. A shortcut stays a file: it is how a human
+  on the board reaches a skill.
+- `copilot/procedures/` is retired (ADR 0004): the host does not read it, so one left in a
+  third-party extension is ignored.
+- `templates/<name>/`: skill templates a skill tells the agent to copy into a
+  project.
 
 Extension commands use the same name rule: a command named like a built-in is refused with
 one line, while the rest of that extension loads. If two enabled extensions contribute the
 same command name, both contributions are refused with one line each. Help lists neither
 refused command.
 
-A procedure names a file of its own extension by the one placeholder the host fills:
-`{{extension}}`, replaced with the absolute path of the extension's directory before the text
-reaches the copilot, as in `{{extension}}/templates/dispatch` and
-`{{extension}}/templates/grill/SKILL.md`. The other computed text is the host's own block on how
-this machine runs kabane (`KABANE ON THIS MACHINE` in `copilot-instructions.ts`). Nothing else in a
-procedure is substituted: a procedure file computes nothing. When a procedure needs a computed
-value, its extension contributes a command that prints it, and the procedure tells the copilot to
-run that command with the kabane the host's block names and copy the output. The dispatch
-template's stamp is the first such value: `kabane dispatch stamp` prints it, and
-`setup-dispatch.md` tells the copilot to run it. A file has no field for
-harness mode, allow lists or MCP entries, so a procedure cannot carry a permission policy in its
-type, though its text can still ask for anything.
+A copilot file names a file of its own extension by `{{extension}}`, filled with the absolute path
+of the extension's directory before the text reaches the copilot, as in
+`{{extension}}/templates/dispatch`. The copilot learns how this machine runs kabane from the
+host's own block (`KABANE ON THIS MACHINE` in `copilot-instructions.ts`). A file has no field for
+harness mode, allow lists or MCP entries, so neither a skill nor a copilot file can carry a
+permission policy in its type, though its text can still ask for anything.
 
 ## An extension loads from `$KABANE_HOME/extensions/<name>/` when `extensions` names it
 
@@ -750,5 +778,6 @@ notice. The architecture lens is `.agents/skills/dispatch/references/lenses/arch
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts` and its tests |
 | `host` and its typed record wrappers | `host-record.test.ts`, the CLI host and directory-extension tests, and the isolated declaration typecheck |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` |
-| Procedures and shortcuts are files; `{{extension}}` is the only placeholder, and a computed value comes from a command | `packages/cli/src/copilot-files.ts` and its test; `kabane dispatch stamp` (`extensions/dispatch`) |
+| Skills are served by `kabane_skillList` and `kabane_skillGet` on devices only; `{{extension}}` and `{{kabane}}` are the only placeholders, a file outside the skill is refused, and a computed value comes from a command | `packages/cli/src/skills.ts` (the reader and the two tools) with `skills.test.ts`, and `packages/cli/src/commands/mcp.ts`, which serves them; `kabane dispatch stamp` (`extensions/dispatch`) |
+| Shortcuts are files; `{{extension}}` is their only placeholder | `packages/cli/src/copilot-files.ts` and its test |
 | Core reaches files through a port | `RuntimeConfig.fileReader`, defaulting to a pointer; the CLI reader and core assembly tests |

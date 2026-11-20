@@ -1,22 +1,23 @@
 # dispatch
 
-A kabane extension that gives a project two agent skills, and keeps them current:
+A kabane extension that gives your sessions two agent skills:
 
 - **dispatch**, which a coding session follows to turn an ask into kabane issues and into
-  shipped work. The board's copilot fills it for the project with `/setup-dispatch`.
+  shipped work. The extension's setup-dispatch skill fills it for the project: `/setup-dispatch`
+  on the board, or any session connected to kabane's MCP server.
 - **grill**, which walks you through the questions agents left open with `kabane_ask`, one at a
-  time. Ask the copilot to "grill me". The skill is the extension's `templates/grill/SKILL.md`;
-  ask the copilot to install it in a project and it copies it to `.agents/skills/grill/`, where
-  any coding session with the kabane MCP can follow it.
+  time. `kabane mcp` serves it, so ask the copilot, or any session connected to kabane's MCP
+  server, to "grill me". Nothing is copied into the project. A copy an earlier version installed
+  under `.agents/skills/grill/` is no longer checked; delete it to use the served skill.
 
-Base kabane works without it: with the extension not enabled, the copilot neither offers
-`/setup-dispatch` nor knows about these skills.
+Base kabane works without it: with the extension not enabled, `kabane mcp` serves neither
+skill, and the copilot does not offer `/setup-dispatch`.
 
 ## Install
 
 Build it from a kabane checkout and install it under `$KABANE_HOME/extensions/dispatch`, as
-[the extensions guide](../../docs/extensions.md) says. The build holds the templates and the
-copilot's files. `kabane dispatch stamp` answers once it is enabled.
+[the extensions guide](../../docs/extensions.md) says. The build holds the templates, the
+copilot's files and the two skills `kabane mcp` serves, setup-dispatch and grill. `kabane dispatch stamp` answers once it is enabled.
 
 A skill that `/setup-dispatch` wrote before this extension existed keeps working as written. One
 written by 1.0.0-beta.0 carries no `metadata.kabane-template`, and the template has changed
@@ -27,20 +28,36 @@ extension's template while the template's bytes are unchanged.
 
 ## Setting up the dispatch skill
 
-`/setup-dispatch` in the copilot reads the project's `CLAUDE.md`/`AGENTS.md`, its gate commands
-and `.claude/agents/`, asks you what those files leave open, then writes `.agents/skills/dispatch/`
-from this extension's template.
+The extension ships the setup as a skill, `skills/setup-dispatch/`, which `kabane mcp` serves
+through `kabane_skillList` and `kabane_skillGet`. Nothing is installed: on the board, type
+`/setup-dispatch`; in any other session connected to kabane (Claude Code, Codex, Pi), ask it to
+set up dispatch, or to run the setup-dispatch skill.
+
+Run with no option, it shows a menu that leads with what the project needs: `init` when the
+project has no dispatch skill, `refresh` when `kabane doctor` says the skill is behind the
+template or carries no stamp. It runs nothing until you pick. Name an option to skip the menu:
+
+| Option | What it does |
+|---|---|
+| `init` | writes a dispatch skill for a project that has none |
+| `refresh` | re-fills an existing skill from the current template, keeping its recorded answers and your edits |
+| `upstream`, `goals`, `harnesses`, `research` | asks that one question again, then refreshes the skill with the answer |
+
+The setup reads the project's `CLAUDE.md`/`AGENTS.md`, its gate commands and `.claude/agents/`,
+asks you what those files leave open, then writes `.agents/skills/dispatch/` from this
+extension's template.
 Codex, Pi, opencode and Gemini CLI read `.agents/skills/`; Claude Code reads only
-`.claude/skills/`, so the copilot links `.claude/skills/dispatch` to
+`.claude/skills/`, so the setup links `.claude/skills/dispatch` to
 `../../.agents/skills/dispatch` when the project already has a `.claude/` directory or you ask,
 and otherwise tells you the command that adds the link. On a project with no dispatch skill yet
 it writes the skill first, then shows you each file; deleting the directory undoes it. When
 `.agents/skills/dispatch/` exists, it shows the diff and writes nothing without your yes. A real
-`.claude/skills/dispatch/` directory keeps working; the copilot offers to move it and leave the
+`.claude/skills/dispatch/` directory keeps working; the setup offers to move it and leave the
 link.
 
 It settles six questions, and asks you only those the project's files do not answer, through
-your harness's choice prompt with the recommended answer first:
+your harness's choice prompt with the recommended answer first. Every choice a question lists is
+offered, whatever the files make likely:
 
 | Question | Recommended | When the answer is not the recommended one |
 |---|---|---|
@@ -52,7 +69,7 @@ your harness's choice prompt with the recommended answer first:
 | Tags: the descriptive tags issues carry | `bug`, `research`, `design` | |
 
 The answers, with the file that settled each one or `asked`, and the overlays copied are
-recorded in the skill's `## This project` section. A later `/setup-dispatch` reads them back
+recorded in the skill's `## This project` section. A later refresh reads them back
 from there and asks only what is missing; edit a line there to change an answer, and the next
 refresh copies or removes the overlay it selects. The template's
 [examples](templates/examples/) show that section for three setups: one person landing on main
@@ -64,7 +81,7 @@ the go-ahead to write: that rule is the one below.
 The written `SKILL.md` records which template it was filled from as `metadata.kabane-template`
 in its frontmatter, a value such as `dispatch@<12-character hash>`. `kabane dispatch stamp`
 prints the current one. Keep the line when you edit the skill, and do not replace it by hand:
-`/setup-dispatch` refreshes the skill while keeping the project's edits.
+the setup skill's `refresh` re-fills the skill while keeping the project's edits.
 
 Each harness lists the skill under its own name and calls it its own way. A session also picks
 it up unasked when an ask matches its description.
@@ -89,14 +106,12 @@ With the extension enabled, `kabane doctor` reports, under the source `dispatch`
 
 | Finding | Severity | Meaning |
 |---|---|---|
-| `dispatch-skill-missing` | suggest | no dispatch skill; `/setup-dispatch` writes one |
-| `dispatch-skill-location` | route | the skill is a real `.claude/skills/dispatch/` directory; `/setup-dispatch` offers the move |
-| `dispatch-skill-unstamped` | route | the skill has no `kabane-template`; `/setup-dispatch` re-fills it |
-| `dispatch-skill-behind` | route | the template changed since the skill was filled; `/setup-dispatch` re-fills it |
+| `dispatch-skill-missing` | suggest | no dispatch skill; the setup-dispatch skill writes one |
+| `dispatch-skill-location` | route | the skill is a real `.claude/skills/dispatch/` directory; the setup-dispatch skill offers the move |
+| `dispatch-skill-unstamped` | route | the skill has no `kabane-template`; the setup-dispatch skill re-fills it |
+| `dispatch-skill-behind` | route | the template changed since the skill was filled; the setup-dispatch skill re-fills it |
 | `dispatch-template-unavailable` | mention | the extension's own template cannot be read; reinstall it |
 | `dispatch-skill-unlinked` | mention | the project has `.claude/` but no `.claude/skills/dispatch` link, so Claude Code does not list the skill; `kabane doctor --fix dispatch/dispatch-skill-unlinked` adds the link. A link that leads anywhere but `.agents/skills/dispatch` is reported with no fix |
-| `grill-skill-unlinked` | mention | the same for a grill copy under `.agents/skills/grill` |
-| `grill-skill-behind` | mention | a copy of the grill skill differs; `kabane doctor --fix dispatch/grill-skill-behind` copies the template over it |
 
 Without the extension, a project skill that carries a `kabane-template` stamp is one finding of
 base kabane, `project/skill-unchecked`: the skill works as written, and doctor says it cannot

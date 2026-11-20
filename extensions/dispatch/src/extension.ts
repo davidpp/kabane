@@ -5,7 +5,10 @@ import { DispatchDoctor } from "./doctor";
 import { Kabane } from "./result";
 import { Templates } from "./templates";
 
-const USAGE = `kabane dispatch stamp   (prints the stamp a filled dispatch skill records: dispatch@<hash12> of the template this extension ships)`;
+const USAGE = `kabane dispatch stamp   (prints the stamp a filled dispatch skill records: dispatch@<hash12> of the template this extension ships)
+
+To set up dispatch in a project, follow the setup-dispatch skill: kabane_skillGet with name
+setup-dispatch, from a session connected to kabane mcp (/setup-dispatch on the board).`;
 
 export const dispatch = (host: Host): Extension => {
 	Kabane.bind(host);

@@ -13,7 +13,8 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/context.ts` | `MODULES`, `configureRuntime`, `openContext` (the `Ctx` a command gets), scope selection |
 | `src/config*.ts` | `config.json`, the settings layers, `kabane config`, and the device config tools only `kabane mcp` serves (`config-tools.ts`) |
 | `src/extensions.ts` | directory extensions: a main entry is imported when a command, the board or `kabane mcp` needs it, a modules entry by every process that opens the database |
-| `src/copilot-files.ts` | a directory extension's `copilot/procedures` and `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
+| `src/copilot-files.ts` | a directory extension's `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
+| `src/skills.ts` | base kabane's `kabane` skill (`skills/kabane/`, imported as text) and a directory extension's `skills/<name>/`, served by `kabane mcp` as `kabane_skillList` and `kabane_skillGet`, `{{extension}}` and `{{kabane}}` filled, unusable skills refused |
 | `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@cabane/board`, passing `Self.executable()`, then calls `startBoard` |
 | `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
 
@@ -42,7 +43,8 @@ The extension API is implemented here:
   `refused`. Help, commands and MCP report refusals on stderr; the board uses its announcer.
   `src/copilot-files.ts` reads the copilot files of `directories` for the board; a refused file
   is a line in the board's announcer and a `copilot-file-*` finding of `kabane doctor`
-  (`src/doctor/copilot-files.ts`). A disabled
+  (`src/doctor/copilot-files.ts`). `src/skills.ts` reads their `skills/` for `kabane mcp`; a
+  refused skill goes to stderr there, the board's announcer and a `skill-*` finding. A disabled
   directory is discovered without importing it, including during command lookup and config.
   The manifest API and the resolved entry path are checked before import, and the factory
   result is validated before its contributions are accepted.

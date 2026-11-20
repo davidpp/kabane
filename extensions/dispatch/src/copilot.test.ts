@@ -1,7 +1,8 @@
-// The copilot files and templates are prose, so what is testable about them is what the copilot and
-// a coding session depend on: the paths a procedure names exist in this directory, every
-// placeholder is documented, the stamp comes from a command, and the tool names a procedure is only
-// correct if it names. The host fills `{{extension}}`; here the files are read as they ship.
+// The skills, copilot files and templates are prose, so what is testable about them is what a
+// session and the projects it writes depend on: the paths they name exist in this directory, every
+// placeholder is documented, the stamp comes from a command, and the tool names they are only
+// correct if they name. The host fills `{{extension}}` and `{{kabane}}`; here the files are read
+// as they ship.
 import { describe, expect, it } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -12,10 +13,20 @@ const read = (path: string): string =>
 const body = (path: string): string => read(path).split("\n---\n")[1] ?? "";
 const flat = (text: string): string => text.replace(/\s+/g, " ");
 
-const SETUP = body("copilot/procedures/setup-dispatch.md");
-const GRILLING = body("copilot/procedures/grilling.md");
+const SETUP_DIR = "skills/setup-dispatch";
+const SETUP = body(`${SETUP_DIR}/SKILL.md`);
+const OPTIONS = [
+	"init",
+	"refresh",
+	"upstream",
+	"goals",
+	"harnesses",
+	"research",
+];
+const option = (name: string): string =>
+	read(`${SETUP_DIR}/references/${name}.md`);
 const template = (path: string): string => read(`templates/dispatch/${path}`);
-const grill = (): string => read("templates/grill/SKILL.md");
+const grill = (): string => read("skills/grill/SKILL.md");
 
 // What the copilot copies into a project, as opposed to PLACEHOLDERS.md, which it only reads.
 const SKILL_FILES = [
@@ -37,25 +48,82 @@ const OVERLAYS = [
 ].map(([, path]) => path ?? "");
 
 describe("the copilot files", () => {
-	it("are the two procedures and the one shortcut, titled as the copilot reads them", () => {
-		expect(readdirSync(join(EXTENSION, "copilot/procedures")).sort()).toEqual([
-			"grilling.md",
-			"setup-dispatch.md",
-		]);
-		expect(read("copilot/procedures/setup-dispatch.md")).toStartWith(
-			"---\ntitle: SETTING UP A DISPATCH SKILL\n---\n",
-		);
-		expect(read("copilot/procedures/grilling.md")).toStartWith(
-			"---\ntitle: GRILLING\n---\n",
-		);
+	it("are the one shortcut, and no procedure: how-to ships as served skills", () => {
+		expect(readdirSync(join(EXTENSION, "copilot"))).toEqual(["shortcuts"]);
 		expect(readdirSync(join(EXTENSION, "copilot/shortcuts"))).toEqual([
 			"setup-dispatch.md",
 		]);
+		expect(readdirSync(join(EXTENSION, "skills")).sort()).toEqual([
+			"grill",
+			"setup-dispatch",
+		]);
 	});
 
-	it("name only paths this directory ships, through {{extension}}", () => {
+	it("/setup-dispatch runs the served setup-dispatch skill from its menu", () => {
+		const shortcut = read("copilot/shortcuts/setup-dispatch.md");
+		expect(shortcut).toStartWith(
+			"---\nhint: write or refresh this project's dispatch skill\n---\n",
+		);
+		const line = shortcut.split("\n---\n")[1]?.trim() ?? "";
+		expect(line).not.toContain("\n");
+		expect(line).toContain("kabane_skillGet (name setup-dispatch)");
+		expect(line).toContain("its menu");
+	});
+});
+
+describe("the setup-dispatch skill", () => {
+	it("is named for its directory, says when to use it, and stays under 500 lines", () => {
+		const skill = read(`${SETUP_DIR}/SKILL.md`);
+		expect(skill).toStartWith("---\nname: setup-dispatch\ndescription: ");
+		expect(skill.split("\n").length).toBeLessThan(500);
+	});
+
+	it("routes each option to the one reference it ships", () => {
+		expect(
+			readdirSync(join(EXTENSION, SETUP_DIR, "references")).sort(),
+		).toEqual(OPTIONS.map((name) => `${name}.md`).sort());
+		for (const name of OPTIONS)
+			expect(SETUP).toMatch(
+				new RegExp(
+					`\\| \`${name}\` \\|[^\\n]*\\[references/${name}\\.md\\]\\(references/${name}\\.md\\) \\|`,
+				),
+			);
+		expect(SETUP).toContain("Read only the one the option needs");
+	});
+
+	it("with no option, leads its menu from what the project shows and never runs one unasked", () => {
+		const routing = flat(SETUP.split("## Routing")[1]?.split("\n## ")[0] ?? "");
+		expect(routing).toContain("Never run one before the human picks");
+		expect(routing).toContain("lead with `init`");
+		expect(routing).toContain("`{{kabane}} doctor --json`");
+		expect(routing).toContain(
+			"`dispatch-skill-behind` or `dispatch-skill-unstamped`: lead with `refresh`",
+		);
+		expect(routing).toContain("never merge two into one choice");
+		expect(routing).toContain(
+			"Name the ones left out in the question's text, and only those, saying the human can type any of them as their answer",
+		);
+	});
+
+	it("a single question's option is a refresh that asks it again, or init on a project with no skill", () => {
+		for (const name of ["upstream", "goals", "harnesses", "research"]) {
+			const text = flat(option(name));
+			expect(text).toContain("run [init.md](init.md)");
+			expect(text).toContain("Follow [refresh.md](refresh.md)");
+			expect(text).toContain("treat question");
+			expect(text).toContain("Ask it with every choice PLACEHOLDERS.md lists");
+		}
+	});
+
+	it("a refresh keeps the recorded answers, takes a fresh stamp and writes nothing without a yes", () => {
+		const text = flat(option("refresh"));
+		expect(text).toContain("Keep every answer `## This project` records");
+		expect(text).toContain("never keep the old stamp");
+		expect(text).toContain("Write nothing without an explicit yes");
+	});
+
+	it("names only paths this directory ships, through {{extension}}", () => {
 		expect(SETUP).toContain("{{extension}}/templates/dispatch:");
-		expect(GRILLING).toContain("{{extension}}/templates/grill/SKILL.md:");
 		expect(SETUP).toContain("{{extension}}/templates/examples/");
 		for (const path of [...SKILL_FILES, "PLACEHOLDERS.md"])
 			expect(existsSync(join(EXTENSION, "templates/dispatch", path))).toBe(
@@ -66,18 +134,12 @@ describe("the copilot files", () => {
 			"solo-on-main.md",
 			"team-with-prs.md",
 		]);
-		expect(existsSync(join(EXTENSION, "templates/grill/SKILL.md"))).toBe(true);
 	});
 
-	it("/setup-dispatch is the go-ahead to write a new skill; only an existing one waits for a yes", () => {
-		const shortcut = read("copilot/shortcuts/setup-dispatch.md");
-		expect(shortcut).toStartWith(
-			"---\nhint: write this project's dispatch skill\n---\n",
+	it("init is the go-ahead to write a new skill; only an existing one waits for a yes", () => {
+		expect(flat(option("init"))).toContain(
+			"Being asked to set the skill up is the go-ahead",
 		);
-		const line = shortcut.split("\n---\n")[1]?.trim() ?? "";
-		expect(line).not.toContain("\n");
-		expect(line).toContain("write .agents/skills/dispatch/");
-		expect(line).toContain("ask me what they leave open, then write");
 		expect(SETUP).toContain(
 			"write the files without asking, then show the content of each one",
 		);
@@ -86,6 +148,17 @@ describe("the copilot files", () => {
 		);
 		expect(existing).toContain("show the diff");
 		expect(existing).toContain("write nothing without an explicit yes");
+	});
+
+	it("offers every choice a question lists, as written, and never drops one", () => {
+		const asking = flat(SETUP);
+		expect(asking).toContain(
+			"Offer every choice the question lists, as PLACEHOLDERS.md words it",
+		);
+		expect(asking).toContain("Never drop, merge or reword a choice");
+		expect(placeholdersSection("Questions")).toContain(
+			"none, GitHub Issues, or\n   Linear",
+		);
 	});
 });
 
@@ -117,10 +190,9 @@ describe("setting up a dispatch skill", () => {
 		expect(SETUP).toContain("move or write nothing without an explicit yes");
 	});
 
-	it("takes the stamp from `kabane dispatch stamp`, run as the host's block says, and the frontmatter takes it", () => {
+	it("takes the stamp from `{{kabane}} dispatch stamp`, the kabane serving the skill, and the frontmatter takes it", () => {
 		expect(SETUP).toContain("{{TEMPLATE_STAMP}}");
-		expect(SETUP).toContain("kabane dispatch stamp");
-		expect(SETUP).toContain("KABANE ON THIS MACHINE");
+		expect(SETUP).toContain("`{{kabane}} dispatch stamp`");
 		expect(SETUP).toContain("copied exactly");
 		expect(SETUP).toContain("never invent a stamp");
 		const frontmatter = template("SKILL.md").split("\n---\n")[0];
@@ -166,22 +238,18 @@ describe("setting up a dispatch skill", () => {
 	it("settles PLACEHOLDERS.md's questions from the files and asks the rest before writing, through the choice prompt", () => {
 		expect(placeholdersSection("Questions")).not.toBe("");
 		expect(SETUP).toContain(
-			"settle the questions under ## Questions in PLACEHOLDERS.md",
+			"Settle the questions under ## Questions in PLACEHOLDERS.md",
 		);
 		expect(SETUP).toContain(
 			"Answer each one from the project's files where they settle it",
 		);
 		expect(SETUP).toContain("Write nothing until they are answered");
-		// grilling.md's wording, so the copilot asks the same way in both procedures.
 		const prompt =
 			"through your harness's own choice prompt whenever it has one, each question's choices as its options and the recommended one first, and in plain text, ending your turn on it, only where it has none";
 		expect(SETUP).toContain(prompt);
-		expect(GRILLING).toContain(
-			prompt.replace("each question's choices", "the choices"),
-		);
 		// The questions come after reading the project and before filling.
 		const order = [
-			"Read what it says about itself",
+			"Read what the project says about itself",
 			"## Questions",
 			"Fill every placeholder",
 		].map((step) => SETUP.indexOf(step));
@@ -209,6 +277,7 @@ describe("setting up a dispatch skill", () => {
 		expect(SETUP).toContain(
 			"The answers are about the project, not permission to write",
 		);
+		expect(SETUP).toContain("the write rule below still decides");
 	});
 
 	it("the template tracks work through kabane and nothing else", () => {
@@ -252,27 +321,23 @@ describe("setting up a dispatch skill", () => {
 	});
 });
 
-describe("grilling the human", () => {
-	it("the shipped skill needs no filling", () => {
+describe("the grill skill", () => {
+	it("is named for its directory, says when to use it, and needs no filling", () => {
 		expect(grill()).toStartWith("---\nname: grill\ndescription: ");
 		expect(grill()).not.toContain("{{");
+		expect(readdirSync(join(EXTENSION, "skills/grill"))).toEqual(["SKILL.md"]);
 	});
 
-	it("both read the questions, record through kabane_answer, and withdraw with a reason", () => {
-		for (const text of [GRILLING, grill()]) {
-			expect(text).toContain("kabane_questions");
-			expect(text).toContain("kabane_answer");
-			expect(text).toContain("withdraw: true");
-			expect(text).toMatch(/one (question )?at a time/i);
-		}
-		expect(GRILLING).toContain("Say when an issue moves to next");
+	it("reads the questions, records through kabane_answer, and withdraws with a reason", () => {
+		expect(grill()).toContain("kabane_questions");
+		expect(grill()).toContain("kabane_answer");
+		expect(grill()).toContain("withdraw: true");
+		expect(grill()).toMatch(/one question at a time/i);
 		expect(grill()).toContain("When its result says the issue moved to next");
 		expect(grill()).toContain("nextCursor");
 	});
 
 	it("re-reads the issue before recording, because a handle can shift under sync", () => {
-		expect(GRILLING).toContain("before recording, re-read that issue");
-		expect(GRILLING).toContain("with kabane_questions and its id");
 		expect(grill()).toContain(
 			"re-read that issue (`kabane_questions` with its `id`)",
 		);
@@ -282,51 +347,27 @@ describe("grilling the human", () => {
 	});
 
 	it("records the human's reply as relayed, so the decision is credited to them", () => {
-		expect(GRILLING).toContain(
-			"Record a choice with kabane_answer and relayed: true",
-		);
-		expect(GRILLING).toContain(
-			"withdraw: true, relayed: true and their reason",
-		);
 		expect(grill()).toContain("answer and `relayed: true`");
 		expect(grill()).toContain("`withdraw: true`, `relayed: true`");
 	});
 
 	it("reshapes a question the decision does not fit with replaces, never the nearest choice", () => {
-		expect(GRILLING).toContain("never squeeze");
-		expect(GRILLING).toContain("kabane_ask");
-		expect(GRILLING).toContain("replaces set to its handle");
 		expect(grill()).toContain("do not squeeze");
 		expect(grill()).toContain("kabane_ask");
 		expect(grill()).toContain("`replaces` set to its handle");
 	});
 
 	it("asks through the harness's choice prompt, with plain text only the fallback", () => {
-		expect(GRILLING).toContain("harness's own choice prompt");
-		expect(GRILLING).toContain("whenever it has one");
-		expect(GRILLING).toContain("recommended one first");
 		expect(grill()).toContain(
 			"Ask it through the harness's choice prompt whenever it\n   offers one",
 		);
+		expect(grill()).toContain("the recommended one\n   first");
 	});
 
 	it("never answers for the human, the recommendation included", () => {
-		expect(GRILLING).toContain("Only the human answers");
-		expect(GRILLING).toContain("never record an answer they did not give");
+		expect(grill()).toContain("Only the human answers");
 		expect(grill()).toContain(
 			"Never record an answer they did not give, the recommended one included",
 		);
-	});
-
-	it("installs into a project only on request, under the dispatch skill's rule", () => {
-		expect(GRILLING).toContain("When they ask you to install");
-		expect(GRILLING).toContain("copy SKILL.md unchanged");
-		expect(GRILLING).toContain(".agents/skills/grill/SKILL.md");
-		expect(GRILLING).toContain("when neither .agents/skills/grill/");
-		expect(GRILLING).toContain("real .claude/skills/grill/");
-		expect(GRILLING).toContain("request is the go-ahead");
-		expect(GRILLING).toContain("real .claude/skills/grill/");
-		expect(GRILLING).toContain("offer to move");
-		expect(GRILLING).toContain("waits for a yes");
 	});
 });

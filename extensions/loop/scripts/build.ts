@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
 /** Build a directory extension with its harness client and runtime files included. */
-import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -64,8 +70,10 @@ export const build = async (
 			"\t",
 		)}\n`,
 	);
-	for (const directory of ["copilot", "lenses"])
-		cpSync(join(root, directory), join(into, directory), { recursive: true });
+	cpSync(join(root, "lenses"), join(into, "lenses"), { recursive: true });
+	// What kabane mcp serves to any session; an extension that ships none has no skills/.
+	if (existsSync(join(root, "skills")))
+		cpSync(join(root, "skills"), join(into, "skills"), { recursive: true });
 	writeFileSync(
 		`${into}.metafile.json`,
 		JSON.stringify(result.metafile, null, 2),

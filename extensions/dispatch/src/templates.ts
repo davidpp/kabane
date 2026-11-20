@@ -18,7 +18,7 @@ export namespace Templates {
 	const ROOT = new URL("../templates/", import.meta.url);
 
 	/** The directory of the shipped template `name`, in this extension's directory. */
-	export const dir = (name: "dispatch" | "grill"): string =>
+	export const dir = (name: "dispatch"): string =>
 		fileURLToPath(new URL(name, ROOT));
 
 	/**

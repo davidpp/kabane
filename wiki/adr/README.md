@@ -37,3 +37,6 @@ reference), which puts the ADR in the implementer's brief.
   owns the record and the schedule, and points to other tools for the rest. Accepted.
 - [0003](0003-an-artifact-is-a-context-ref-of-kind-artifact.md): An output artifact is a
   context ref of kind `artifact`. Accepted.
+- [0004](0004-extension-how-to-ships-as-skills-served-by-kabane-mcp.md): An extension ships
+  how-to as skills that `kabane mcp` serves through two tools; the copilot's instructions carry
+  only state, identity and boundaries. Accepted.

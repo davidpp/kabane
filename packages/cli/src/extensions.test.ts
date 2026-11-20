@@ -14,10 +14,10 @@ import { z } from "zod";
 import { configPath } from "./config";
 import { ConfigSettings } from "./config-settings";
 import { openContext } from "./context";
-import { CopilotFiles } from "./copilot-files";
 import { Extensions } from "./extensions";
 import { hostFor } from "./host";
 import { run } from "./main";
+import { Skills } from "./skills";
 
 const homes: string[] = [];
 const makeHome = (config?: Record<string, unknown>): string => {
@@ -305,7 +305,7 @@ it("refuses an enabled loop without a directory and keeps other commands usable"
 	expect(help.text).not.toMatch(/^\s+loop\s/m);
 });
 
-it("loads the real loop directory with its per-home host and copilot files", async () => {
+it("loads the real loop directory with its per-home host and its skill", async () => {
 	const home = makeHome({ extensions: ["loop"] });
 	installLoop(home);
 	const staged = hostFor(home, "loop");
@@ -316,15 +316,16 @@ it("loads the real loop directory with its per-home host and copilot files", asy
 	expect(all.directories).toEqual([
 		{ name: "loop", directory: realpathSync(join(home, "extensions/loop")) },
 	]);
-	const copilot = CopilotFiles.read(all.directories);
-	expect(copilot.refused).toEqual([]);
-	expect(
-		copilot.procedures
-			.flatMap((entry) => entry.procedures)
-			.map((procedure) => procedure.title),
-	).toEqual(["SETTING UP A LOOP RUN", "STARTING A LOOP RUN"]);
+	const skills = Skills.read(all.directories);
+	expect(skills.refused).toEqual([]);
+	expect(skills.skills.map((skill) => skill.name)).toEqual([
+		"kabane",
+		"loop-run",
+	]);
 	const disabled = await Extensions.loadAll([], home);
-	expect(CopilotFiles.read(disabled.directories).procedures).toEqual([]);
+	expect(
+		Skills.read(disabled.directories).skills.map((skill) => skill.name),
+	).toEqual(["kabane"]);
 	expect((await staged.host.record.list({})).ok).toBe(false);
 	const context = await openContext(home, home, parseArgs([]));
 	if (!context.ok) throw context.error;

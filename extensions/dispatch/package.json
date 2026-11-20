@@ -1,7 +1,7 @@
 {
 	"name": "@cabane/dispatch",
 	"version": "0.1.0",
-	"description": "Writes a project's dispatch and grill skills from its own templates through the copilot's /setup-dispatch, and reports when a project's copy has fallen behind them.",
+	"description": "Serves the setup-dispatch and grill skills, writes a project's dispatch skill from its own template, and reports when a project's copy has fallen behind it.",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

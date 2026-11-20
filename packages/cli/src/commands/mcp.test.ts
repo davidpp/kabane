@@ -280,7 +280,7 @@ test("an extension cannot replace the core kabane_upstream_link tool", async () 
 	);
 	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
 	if (!contribution.ok) throw contribution.error;
-	expect(contribution.value).toEqual({ tools: [], instructions: [] });
+	expect(contribution.value).toMatchObject({ tools: [], instructions: [] });
 	expect(
 		KABANE_TOOLS.some((tool) => tool.name === "kabane_upstream_link"),
 	).toBe(true);
@@ -296,7 +296,7 @@ test.each([
 	installMcp("invalid", `return ${result};`);
 	const contribution = await extensionMcp(ctx, KABANE_TOOLS);
 	if (!contribution.ok) throw contribution.error;
-	expect(contribution.value).toEqual({ tools: [], instructions: [] });
+	expect(contribution.value).toMatchObject({ tools: [], instructions: [] });
 });
 
 test("reports MCP causes, invalid paths and the real foreign zod limit", async () => {

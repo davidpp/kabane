@@ -1,10 +1,11 @@
 /**
  * What an enabled directory extension adds to the board's copilot, read from markdown files in its
- * directory rather than from its code: `copilot/procedures/<name>.md` (frontmatter `title`) is
- * appended to the copilot's instructions, and `copilot/shortcuts/<name>.md` (frontmatter `hint`,
- * a one-line body) is offered as `/<name>`. `{{extension}}` in a body or a procedure's title
- * becomes the extension's directory and nothing else is substituted. A file that cannot be used is refused on its own,
- * with one line naming the extension and the file, and the rest loads.
+ * directory rather than from its code: `copilot/shortcuts/<name>.md` (frontmatter `hint`, a
+ * one-line body) is offered as `/<name>`. `{{extension}}` in a body becomes the extension's
+ * directory and nothing else is substituted. A file that cannot be used is refused on its own,
+ * with one line naming the extension and the file, and the rest loads. Its how-to is a skill
+ * (`skills.ts`), never text in the copilot's instructions, so a leftover `copilot/procedures/` is
+ * not read.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -14,23 +15,13 @@ import type { CopilotShortcut } from "@cabane/extension";
 import { z } from "zod";
 import { Extensions } from "./extensions";
 
-// Strict, so a file has no field for a harness mode, an allow list or an MCP entry: a procedure
+// Strict, so a file has no field for a harness mode, an allow list or an MCP entry: a shortcut
 // cannot carry a permission policy in its type.
-const ProcedureFields = z
-	.object({
-		title: z
-			.string()
-			.trim()
-			.min(1)
-			.refine((title) => !title.includes("\n"), "must be one line"),
-	})
-	.strict();
 const ShortcutFields = z.object({ hint: z.string().trim().min(1) }).strict();
 
-const PROCEDURES = join("copilot", "procedures");
 const SHORTCUTS = join("copilot", "shortcuts");
 const PLACEHOLDER = "{{extension}}";
-/** Far above any procedure kabane or the loop ships (the longest is under 5 KiB). */
+/** Far above any shortcut kabane or an extension ships, which is one line. */
 const MAX_BYTES = 16 * 1024;
 /** One sentence's worth; a longer description is dropped whole, never cut mid-word. */
 const MAX_DESCRIPTION = 200;
@@ -44,7 +35,6 @@ export namespace CopilotFiles {
 	export type Refusal = Extensions.Refusal & { file: string };
 
 	type Read = {
-		procedures: CopilotInstructions.Contribution[];
 		shortcuts: CopilotShortcut[];
 		refused: Refusal[];
 	};
@@ -68,24 +58,16 @@ export namespace CopilotFiles {
 		);
 	};
 
-	// The YAML between the file's opening `---` and the next, checked against `fields`, and the
-	// body after it with the placeholder filled. A byte-order mark and CRLF line ends are read as
-	// an editor meant them.
-	const parse = <T>(
-		dir: string,
+	/**
+	 * The YAML between a file's opening `---` and the next, checked against `fields`, and the body
+	 * after it, trimmed. A byte-order mark and CRLF line ends are read as an editor meant them.
+	 */
+	export const frontmatter = <T>(
 		file: string,
+		raw: string,
 		fields: z.ZodType<T>,
 	): Result<{ fields: T; body: string }> => {
-		if (basename(file) === ".md")
-			return err(new Error(`${file} has no name; name it <name>.md`));
-		const size = trySync(() => statSync(join(dir, file)).size);
-		if (size.ok && size.value > MAX_BYTES)
-			return err(
-				new Error(`${file} is over the 16 KiB a copilot file may hold`),
-			);
-		const raw = trySync(() => readFileSync(join(dir, file), "utf8"));
-		if (!raw.ok) return err(new Error(`${file} cannot be read`));
-		const text = raw.value.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+		const text = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 		const [first, ...rest] = text.split("\n");
 		const end = rest.findIndex((line) => line.trimEnd() === "---");
 		if (first?.trimEnd() !== "---" || end === -1)
@@ -116,14 +98,33 @@ export namespace CopilotFiles {
 				new Error(`${file}: invalid frontmatter (${where}${issue?.message})`),
 			);
 		}
-		const body = fill(
-			rest
+		return ok({
+			fields: parsed.data,
+			body: rest
 				.slice(end + 1)
 				.join("\n")
 				.trim(),
-			dir,
-		);
-		return ok({ fields: parsed.data, body });
+		});
+	};
+
+	// A copilot file's frontmatter and its body with the placeholder filled.
+	const parse = <T>(
+		dir: string,
+		file: string,
+		fields: z.ZodType<T>,
+	): Result<{ fields: T; body: string }> => {
+		if (basename(file) === ".md")
+			return err(new Error(`${file} has no name; name it <name>.md`));
+		const size = trySync(() => statSync(join(dir, file)).size);
+		if (size.ok && size.value > MAX_BYTES)
+			return err(
+				new Error(`${file} is over the 16 KiB a copilot file may hold`),
+			);
+		const raw = trySync(() => readFileSync(join(dir, file), "utf8"));
+		if (!raw.ok) return err(new Error(`${file} cannot be read`));
+		const read = frontmatter(file, raw.value, fields);
+		if (!read.ok) return read;
+		return ok({ fields: read.value.fields, body: fill(read.value.body, dir) });
 	};
 
 	/**
@@ -167,29 +168,6 @@ export namespace CopilotFiles {
 			}),
 		);
 
-	// A title that reads like one of base kabane's headings would let a file pass for its text.
-	const procedureOf = (
-		dir: string,
-		file: string,
-	): Result<CopilotInstructions.Procedure> => {
-		const read = parse(dir, file, ProcedureFields);
-		if (!read.ok) return read;
-		const title = fill(read.value.fields.title, dir);
-		if (
-			CopilotInstructions.HEADINGS.includes(
-				CopilotInstructions.asHeading(title),
-			)
-		)
-			return err(
-				new Error(
-					`${file}: the title ${title} is one of kabane's own procedures; rename it`,
-				),
-			);
-		if (read.value.body === "")
-			return err(new Error(`${file}: its body is empty`));
-		return ok({ title, body: read.value.body });
-	};
-
 	const shortcutOf = (dir: string, file: string): Result<CopilotShortcut> => {
 		const read = parse(dir, file, ShortcutFields);
 		if (!read.ok) return read;
@@ -227,12 +205,11 @@ export namespace CopilotFiles {
 	};
 
 	/**
-	 * The procedures and shortcuts of each directory extension, in the order given. A shortcut a
+	 * The shortcuts of each directory extension, in the order given. A shortcut a
 	 * built-in already names is refused, and so is every shortcut of a name two extensions use,
 	 * because a human types it and could not tell which one runs.
 	 */
 	export const read = (extensions: readonly Extensions.Directory[]): Read => {
-		const procedures: CopilotInstructions.Contribution[] = [];
 		const offered: {
 			owner: string;
 			file: string;
@@ -241,12 +218,6 @@ export namespace CopilotFiles {
 		const refused: Refusal[] = [];
 		const refuse = (refusal: Refusal) => refused.push(refusal);
 		for (const extension of extensions) {
-			const own = each(extension, PROCEDURES, procedureOf, refuse);
-			if (own.length > 0)
-				procedures.push({
-					extension: extension.name,
-					procedures: own.map(({ value }) => value),
-				});
 			for (const { file, value } of each(
 				extension,
 				SHORTCUTS,
@@ -275,6 +246,6 @@ export namespace CopilotFiles {
 				});
 			else shortcuts.push(shortcut);
 		}
-		return { procedures, shortcuts, refused };
+		return { shortcuts, refused };
 	};
 }

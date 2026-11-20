@@ -12,9 +12,10 @@ what the extension adds. Any of these, all optional:
 | `doctor` | checks that `kabane doctor` runs, reported under the extension's name |
 | `board` | an activity source, a dispatcher for `a`, and card headers on the board ([board README](../packages/board/README.md)) |
 
-Two more come from files rather than the factory: markdown files under `copilot/` give the
-board's copilot procedures and `/` shortcuts, and a second entry, `modules`, declares tables the
-extension keeps in the tracker's database.
+More come from files rather than the factory: skills under `skills/` are how-to that `kabane mcp`
+serves to any connected session, markdown files under `copilot/shortcuts/` give the board's
+copilot `/` shortcuts, and a second entry, `modules`, declares tables the extension keeps
+in the tracker's database.
 
 The walkthrough below builds the `notes` extension that kabane's own tests install
 (`packages/cli/src/extension-fixture.ts`): a `kabane notes` command that keeps notes on a task in
@@ -294,7 +295,7 @@ finding for a project with no dispatch skill (`extensions/dispatch/src/doctor.ts
 
 ```text
 suggest:
-  dispatch/dispatch-skill-missing: No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch. → /setup-dispatch writes one
+  dispatch/dispatch-skill-missing: No dispatch skill in .agents/skills/dispatch or .claude/skills/dispatch. → the setup-dispatch skill (/setup-dispatch on the board) writes one
 ```
 
 The severities, fixes and reserved ids are in
@@ -302,23 +303,63 @@ The severities, fixes and reserved ids are in
 
 ## Teach the board's copilot
 
-Markdown files in the extension's directory add to the copilot's instructions:
-`copilot/procedures/<name>.md`, with a `title` in its frontmatter, and
-`copilot/shortcuts/<name>.md`, with a `hint`, whose one-line body is what `/<name>` puts in the
-prompt. The dispatch extension's `/setup-dispatch` is
+The copilot's instructions take no text from an extension: what it should know how to do ships
+as a skill (below). What an extension adds to the board's copilot is `/` shortcuts:
+`copilot/shortcuts/<name>.md`, with a `hint` in its frontmatter, whose one-line body is what
+`/<name>` puts in the prompt. A shortcut is how a human on the board reaches a skill. The dispatch extension's `/setup-dispatch` is
 `extensions/dispatch/copilot/shortcuts/setup-dispatch.md`:
 
 ```markdown
 ---
-hint: write this project's dispatch skill
+hint: write or refresh this project's dispatch skill
 ---
-Set up a dispatch skill for this project: read its CLAUDE.md/AGENTS.md, gate commands and agents, then write .agents/skills/dispatch/ from the dispatch extension's template and show me what you wrote.
+Run the setup-dispatch skill: fetch it with kabane_skillGet (name setup-dispatch) and follow it, starting with its menu for this project.
 ```
 
-`{{extension}}` in a file becomes the extension directory's absolute path, so a procedure can
+`{{extension}}` in a file becomes the extension directory's absolute path, so a shortcut can
 point the copilot at a file the extension ships. The `description` in `package.json` is how the
 copilot describes the extension to you; keep it under 200 characters. What kabane refuses in
 these files is in the [board README](../packages/board/README.md), under its copilot.
+
+## Ship how-to as skills
+
+A task that needs steps rather than code, such as setting the extension up for a project, ships
+as a skill in the [Agent Skills](https://agentskills.io) format: `skills/<name>/SKILL.md`, with
+any files it reads beside it, such as `skills/<name>/references/init.md`. Nothing is installed in
+a harness. `kabane mcp` serves every enabled extension's skills to whatever session it is
+connected to, the board's copilot or a plain Claude Code, Codex or Gemini session, through two
+tools, beside kabane's own `kabane` skill. Earlier builds read such steps from
+`copilot/procedures/<name>.md` and gave them to the copilot; kabane no longer reads that
+directory, and says nothing about one left behind, so move each file's text to
+`skills/<name>/SKILL.md` and point any shortcut that named it at the skill. A skill of yours
+named `kabane` is refused:
+
+- `kabane_skillList` returns each skill's `name`, `description` and the extension that ships it.
+- `kabane_skillGet { name, file? }` returns `SKILL.md`, or the file under the skill's directory
+  that `file` names, and `files`, the skill's other files. A path that leads out of the skill's
+  directory, a link included, and a hidden file are refused.
+
+```markdown
+---
+name: notes-setup
+description: Use when the human asks to set up notes for this project.
+---
+Copy {{extension}}/templates/notes.md into the project, then run `{{kabane}} notes list <id>`.
+Write only that one file.
+```
+
+On a get, `{{extension}}` becomes the extension directory's absolute path, and `{{kabane}}` the
+command that runs the same kabane as the server, against the same home:
+`KABANE_HOME='<home>' '<executable>'`. A skill may run outside the board, so it states its own
+write boundary; the session's harness permissions apply on top. A session finds skills by asking
+for them: nothing triggers one by its description.
+
+The directory's name and the frontmatter's `name` must be the same, lowercase letters and digits
+joined by single hyphens, at most 64 characters, and `description`, at most 1,024 characters,
+says when to use it. Other frontmatter keys are the skill's own. A skill that breaks a rule is
+refused on its own, and so is a name two enabled extensions both ship, in both; the board's
+footer counts each refusal, and `kabane doctor` lists it as a `skill-<name>` finding of the
+extension. Edits are served on the next call, with no restart.
 
 ## Run it on the standalone binary
 
@@ -326,8 +367,8 @@ The binary loads TypeScript entries, and the walkthrough's `notes` runs on it un
 resolves no package from disk, though: an extension that imports one, as the loop imports
 kabane's workspace packages, has to be bundled with its dependencies inlined. The loop and
 dispatch each do that with a `scripts/build.ts` that calls `Bun.build` with `target: "bun"`,
-writes a `package.json` whose `extension` is `./index.js`, and copies the `copilot/` files and
-whatever else the extension reads at run time into `dist/`.
+writes a `package.json` whose `extension` is `./index.js`, and copies the `copilot/` and
+`skills/` files and whatever else the extension reads at run time into `dist/`.
 
 When an extension fails to load, kabane names it and the reason in one line, loads the others,
 and lists it in `kabane doctor` as `<name>/extension-refused`.
