@@ -17,7 +17,7 @@ skill, and the copilot does not offer `/setup-dispatch`.
 
 Build it from a kabane checkout and install it under `$KABANE_HOME/extensions/dispatch`, as
 [the extensions guide](../../docs/extensions.md) says. The build holds the templates, the
-copilot's files and the setup-dispatch skill. `kabane dispatch stamp` answers once it is enabled.
+copilot's files and the two skills `kabane mcp` serves, setup-dispatch and grill. `kabane dispatch stamp` answers once it is enabled.
 
 A skill that `/setup-dispatch` wrote before this extension existed keeps working as written. One
 written by 1.0.0-beta.0 carries no `metadata.kabane-template`, and the template has changed
