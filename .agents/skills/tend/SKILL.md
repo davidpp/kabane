@@ -9,6 +9,19 @@ Agents file issues faster than anyone reads them: findings from a review, follow
 
 You change the tracker only where the evidence is in front of you. Everything else is a proposal the human answers in one place. You implement nothing and start no run: the steward does that from what you mark.
 
+## What `next` means
+
+`next` is the dispatch queue: what the steward or the human's next dispatch should start soon. It is not "worth doing" and not "filed recently". Agents file into `next` by default, so it fills with everything; you keep it to what is about to run. An issue earns `next` only when one of these holds:
+
+- it is a goal, or a child of one that the goal's next slices need;
+- it is `ready` (below) and fits under the limit;
+- it blocks a release, or it broke something for real: a red gate on main, a regression someone hit;
+- the human asked for it: they set it `next`, or a comment or answer of theirs calls for it now.
+
+Everything else in `next` goes to `someday`, with a comment of one line saying why. That includes research, design, epics and `needs-brief` issues with no goal above them. `someday` is not a drop: the issue keeps its brief and tags and comes back when a goal or the human pulls it. Moving it is reversible, so you do it without asking.
+
+Keep `next` to about ten issues outside a goal's children. When more qualify, keep release blockers and what the human asked for, then the `ready` ones that are smallest or oldest, and move the rest to `someday` with their `ready` tag kept, so a later review can bring them back as the queue drains.
+
 ## Read
 
 1. `kabane_context` on the job, for its request, what the last review reported and the decisions page's link among its context refs. Then apply what the human answered on that page since the last review (see "The decisions page") before you judge any issue.
@@ -26,9 +39,9 @@ Take the first that applies.
 - **The same as another.** Link the newer to the older with `kabane_link` and type `duplicate`, and put the newer on the drop list.
 - **Overtaken.** A later decision, a goal's non-goal or a merged change makes it moot. Put it on the drop list with the reason.
 - **Part of a goal.** It serves a goal's outcome and is not yet under it: say so in the report. Moving it under the goal is the human's call, or the steward's when the goal's delegation allows.
-- **Small and ready.** One concern, one territory, a brief an implementer could work from as it stands, no open decision, nothing a goal's non-goals rule out, and not a change to `packages/core`, sync, stored data or the extension contract. Add the tag `ready` and set it `next`. A bug or a small improvement does not wait for a goal.
-- **Worth doing, not ready.** The brief is thin. Add the tag `needs-brief`. Do not rewrite it here.
-- **Parked.** A real idea for later. Make sure it is `someday`, and leave it.
+- **Small and ready.** One concern, one territory, a brief an implementer could work from as it stands, no open decision, nothing a goal's non-goals rule out, and not a change to `packages/core`, sync, stored data or the extension contract. Add the tag `ready`, and set it `next` when "What `next` means" leaves room. A bug or a small improvement does not wait for a goal.
+- **Worth doing, not ready.** The brief is thin. Add the tag `needs-brief` and set it `someday` unless it earns `next` for another reason. Do not rewrite it here.
+- **Parked.** Anything left in `next` that does not earn it under "What `next` means", and every real idea for later. Make sure it is `someday`, and leave it.
 
 When you cannot tell, leave the issue as it is and name it in the report. A wrong close costs more than an open issue.
 
@@ -56,7 +69,7 @@ One `kabane_comment` on the job, read on the board in under a minute:
 
 1. **Needs you.** The decisions page's link, the question handles you filed or replaced this time, and the manual checks, oldest first, each with its id and one line.
 2. **Start next.** At most five issues, in order, each with one line on why now. Prefer what unblocks a goal, then what is `ready`.
-3. **What I changed.** Closed with evidence, set back to `next`, tagged, linked: ids and a few words each.
+3. **What I changed.** Closed with evidence, set back to `next`, tagged, linked: ids and a few words each. Issues moved from `next` to `someday` go on one line of ids, grouped by reason. Then what `next` holds now.
 4. **Could not tell.** The issues you left alone that no answer from the human would settle, and what would.
 
 Ids and reasons, no totals and no percentages. When nothing changed since the last review and nothing needs the human, write nothing.

@@ -22,7 +22,7 @@ The goal's children are the work. A goal is finished when its exit evidence exis
 
 ## A queue
 
-The job's request may also name a queue: the issues carrying a tag, such as `ready`. A queue is small work that waits for no goal: a bug, a small improvement. Each issue in it is already a brief. Treat it as a child with no goal above it: start it as in step 3 without filing anything, reconcile and land it as in step 2, and close it when its pull request has merged. A queue has no exit evidence and never finishes. Goals come first: start queue work only when it does not touch the files a goal's slice in flight is changing. An issue in the queue whose brief turns out to be thin loses the tag and gets `needs-brief`, with a comment saying what is missing.
+The job's request may also name a queue: the issues carrying a tag, such as `ready`. Only the ones in state `next` are in it: the tend review keeps the overflow in `someday` with the tag kept. A queue is small work that waits for no goal: a bug, a small improvement. Each issue in it is already a brief. Treat it as a child with no goal above it: start it as in step 3 without filing anything, reconcile and land it as in step 2, and close it when its pull request has merged. A queue has no exit evidence and never finishes. Goals come first: start queue work only when it does not touch the files a goal's slice in flight is changing. An issue in the queue whose brief turns out to be thin loses the tag and gets `needs-brief`, with a comment saying what is missing.
 
 When a goal you were given lacks an outcome or exit evidence, do not invent them: ask on the goal (below) and work on the other goals meanwhile. When it has no delegation paragraph, the default at the end of this file applies.
 
