@@ -307,8 +307,10 @@ export namespace Migrations {
 			// An actor was `cabane://actor/...`, a name kept from before the project
 			// was called kabane; it is `kabane://actor/...` (JCAB-607). Core's identity
 			// columns and the ops still in this device's log are renamed here, each
-			// data module's own table by a migration of its own. An op pulled from a
-			// device still on schema 11 is not translated: its pull stops first.
+			// data module's own table by a migration of its own. A device still on
+			// schema 11 stops its own pull at the first op from this schema, but what it
+			// pushes meanwhile is applied here as it came, old prefix included: every
+			// device updates before the next sync (docs/getting-started.md).
 			name: "actor-scheme",
 			up: ActorScheme.migrate,
 		},

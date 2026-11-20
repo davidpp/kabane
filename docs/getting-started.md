@@ -612,8 +612,9 @@ kabane doctor --fix
 
 It migrates the database, rewrites `actor` in `config.json`, and re-registers each harness entry
 whose only difference is its old `--as` actor. Until you run it, every other command stops with
-a message that names it. Restart every running board, `kabane mcp` and harness session
-afterwards.
+a message that names it. Keep the old version's processes stopped until it has run: one still
+running writes the old prefix into the migrated database, where nothing renames it again. Then
+start them again, harness sessions included, so each `kabane mcp` starts with its new `--as`.
 
 - **What is kept.** Every task, comment, question, checklist item and log entry, with its
   author and time. The columns that name who wrote a row (authors, `updated_by` and the like)
@@ -624,9 +625,14 @@ afterwards.
   and every brief name the new prefix. A script that compares an author to a `cabane://actor/…`
   string has to change.
 - **The old prefix is refused.** `--as cabane://actor/…`, or a `config.json` actor under it,
-  stops the command with a pointer to `kabane doctor --fix`. A harness entry you wrote by hand
-  and that runs another command is reported as one that runs another kabane; change its `--as`
-  by hand.
+  stops the command with a pointer to `kabane doctor --fix`. A harness entry that also runs
+  another command, such as one `mise up` left on an older binary, is reported as
+  `mcp-entry-stale-<harness>` instead, which a bare `--fix` does not apply:
+  `kabane doctor --fix kabane/mcp-entry-stale-<harness>` re-registers it with the new actor.
+- **Extensions you installed from a clone.** Rebuild and reinstall each one
+  ([extensions.md](extensions.md), "Update an extension"): an older loop starts its sessions as
+  `cabane://actor/agent/<harness>`, which this version refuses, and an older recipes leaves its
+  tables under the old prefix. On a main build, `kabane update` rebuilds them for you.
 - **The recipes extension.** Its runs and jobs move when it is enabled. A device with it
   disabled keeps the old prefix in those tables until it is enabled again.
 - **Sync: every device before the next sync.** A device still on the old version stops pulling
