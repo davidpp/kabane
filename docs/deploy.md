@@ -3,8 +3,7 @@
 This is the optional Cloudflare hub, for syncing several machines; one machine on local
 SQLite needs none of it ([`getting-started.md`](getting-started.md)). You host it on your own
 Cloudflare account, on a domain you own, behind your own Cloudflare Access team. Nobody
-else's hub is involved. The project was called Cabane; [the README](../README.md) explains
-why the Worker and stored actor URIs retain that name.
+else's hub is involved. A hub deployed before 1.0.0 runs as `cabane-worker`; §5.9 moves it.
 
 **Verified locally:** 2026-09-07 against `wrangler dev` with the dev verifier (see the last
 section). Steps an agent must never perform are marked **MANUAL**: they touch Cloudflare,
@@ -27,8 +26,8 @@ What you end up with:
 ```
 laptop ──┐                       ┌── Claude Code  (service token, CLI or hub)
 desktop ─┼── <your-domain> ──────┼── Hermes       (service token)
-hermes ──┘   CabaneLog (oplog)   ├── Codex        (service token)
-             CabaneHub (device   ├── Claude.ai    (Managed OAuth)
+hermes ──┘   KabaneLog (oplog)   ├── Codex        (service token)
+             KabaneHub (device   ├── Claude.ai    (Managed OAuth)
              "cloud", MCP)       └── ChatGPT      (Managed OAuth)
 ```
 
@@ -83,8 +82,8 @@ bun run deploy --dry-run
 bun run deploy
 ```
 
-Expected: the deploy creates the Worker `cabane-worker`, applies migration tag `v1`
-(`CabaneLog` and `CabaneHub` as SQLite-backed Durable Object classes), and attaches the
+Expected: the deploy creates the Worker `kabane-worker`, applies migration tag `v1`
+(`KabaneLog` and `KabaneHub` as SQLite-backed Durable Object classes), and attaches the
 custom domain `<your-domain>`. `wrangler.jsonc` names no route or domain, so the script
 always passes `--domain`. Wrangler creates the DNS record for a custom domain; nothing to
 add by hand. No `workers.dev` URL and no preview URL are published
@@ -185,7 +184,7 @@ curl -s https://<your-domain>/health \
   -H "CF-Access-Client-Secret: <client secret>"
 ```
 
-Expected: `{"ok":true,"service":"cabane-worker","actor":"cabane://actor/agent/claude"}`
+Expected: `{"ok":true,"service":"kabane-worker","actor":"cabane://actor/agent/claude"}`
 with the actor matching the token you used. And the reject test:
 
 ```bash
@@ -679,7 +678,7 @@ So a release that adds a migration goes out in this order:
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.
 
-Data modules such as `@cabane/questions` carry their own schema versions. A device without
+Data modules such as `@kabane/questions` carry their own schema versions. A device without
 the module, or with an older module schema, parks those ops and continues pulling core data.
 `kabane sync status --json` reports `parkedOps` counts by module; `parkedFailed` and
 `parkedFailures` identify replay failures. Install/register the matching module version,
@@ -696,6 +695,28 @@ Migration 10 (scope URIs) renames every stored scope from `jake://scope/<id>` to
 log. The hub's log is not rewritten: an op in it from before the migration keeps the old
 scheme, and each updated device renames it as it pulls. The old scheme stays valid wherever a
 scope is given, so a client configured with a `jake://scope/…` URI keeps working.
+
+### 5.9 Move a hub deployed as `cabane-worker` — MANUAL
+
+Before 1.0.0 the Worker was `cabane-worker`, with the classes `CabaneLog` and `CabaneHub`.
+It is `kabane-worker` now, with `KabaneLog` and `KabaneHub`. A Worker with another name is
+another script with its own Durable Objects, so the new hub starts with an empty log and an
+empty cloud device: nothing carries over from the old one.
+
+1. Update every device first and run `kabane doctor --fix` on each
+   ([`getting-started.md`](getting-started.md), "Upgrading from 1.0.0-beta: actor URIs").
+2. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
+   `<your-domain>`. A hostname serves one Worker at a time.
+3. Deploy the new Worker as in 1.1 and 1.5, with the same values in your environment. The
+   script attaches `<your-domain>` to `kabane-worker` and uploads the same `SYNC_TOKEN`.
+4. The Access application from 1.3 protects the hostname, not the script, so it covers
+   `kabane-worker` as it is: same AUD, same policies, same service tokens. Check it with the
+   `/health` requests in 1.5.
+5. Each device's next sync finds a log shorter than the one it applied, logs
+   `sync log reset detected` and rewinds (§5.6). Run `kabane sync backfill` on the device
+   that holds everything; the others pull.
+6. Once nothing points at it, delete `cabane-worker` from the dashboard (**Settings →
+   Delete**). Its Durable Objects and their data go with it.
 
 ---
 

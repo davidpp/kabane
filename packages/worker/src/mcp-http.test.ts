@@ -2,12 +2,12 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { KABANE_TOOLS, Runtime, type ToolDef } from "@kabane/core";
 import { expect, it } from "vitest";
 import { DoDb } from "./db-do";
-import { type CabaneHub, HUB_BASE } from "./hub";
+import { type KabaneHub, HUB_BASE } from "./hub";
 import { handleHttpRequest } from "./mcp-http";
 
 it("answers 500 with the duplicate tool error before serving Streamable HTTP", async () => {
-	const hub = env.CABANE_HUB.getByName("http-tool-collision");
-	await runInDurableObject(hub, async (_instance: CabaneHub, ctx) => {
+	const hub = env.KABANE_HUB.getByName("http-tool-collision");
+	await runInDurableObject(hub, async (_instance: KabaneHub, ctx) => {
 		const core = KABANE_TOOLS[0];
 		if (!core) throw new Error("Missing core tools");
 		const tools: ToolDef[] = [];
@@ -25,7 +25,7 @@ it("answers 500 with the duplicate tool error before serving Streamable HTTP", a
 					actor: "cabane://actor/agent/test",
 					scopeRequired: true,
 				},
-				new Request("https://cabane.test/mcp", {
+				new Request("https://kabane.test/mcp", {
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",

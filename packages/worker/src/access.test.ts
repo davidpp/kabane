@@ -25,7 +25,7 @@ const ENV = {
 };
 
 const request = (token?: string): Request =>
-	new Request("https://cabane.test/mcp", {
+	new Request("https://kabane.test/mcp", {
 		headers: token ? { "Cf-Access-Jwt-Assertion": token } : {},
 	});
 

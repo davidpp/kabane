@@ -9,8 +9,8 @@
  */
 declare namespace Cloudflare {
 	interface Env {
-		CABANE_LOG: DurableObjectNamespace<import("./log").CabaneLog>;
-		CABANE_HUB: DurableObjectNamespace<import("./hub").CabaneHub>;
+		KABANE_LOG: DurableObjectNamespace<import("./log").KabaneLog>;
+		KABANE_HUB: DurableObjectNamespace<import("./hub").KabaneHub>;
 		/**
 		 * Bearer secret for the sync log routes — `wrangler secret put SYNC_TOKEN`.
 		 * Optional because an environment where nobody set it is a real state, and

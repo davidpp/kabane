@@ -1,7 +1,7 @@
 {
 	"name": "kabane-worker",
 	"version": "0.1.0",
-	"description": "Cabane hub: the sync log Durable Object and the cloud device serving MCP",
+	"description": "Kabane hub: the sync log Durable Object and the cloud device serving MCP",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

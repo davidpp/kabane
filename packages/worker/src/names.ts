@@ -5,11 +5,11 @@
  * user would be `getByName(userId)` and nothing else changes.
  */
 
-/** The `CabaneLog` instance every device syncs through. */
-export const SHARED_LOG = "cabane";
+/** The `KabaneLog` instance every device syncs through. */
+export const SHARED_LOG = "kabane";
 
-/** The `CabaneHub` instance serving MCP. */
-export const HUB_NAME = "cabane";
+/** The `KabaneHub` instance serving MCP. */
+export const HUB_NAME = "kabane";
 
 /** The hub's identity in the log, as a sync device. */
 export const HUB_DEVICE_ID = "cloud";
@@ -19,11 +19,11 @@ export const HUB_DEVICE_ID = "cloud";
  * verification and never trusted from outside: the object is only reachable
  * through the edge, which overwrites whatever a client sent.
  */
-export const ACTOR_HEADER = "X-Cabane-Actor";
+export const ACTOR_HEADER = "X-Kabane-Actor";
 
 /**
  * The kind of principal Access authenticated, `human` or `service`, set and
  * trusted the same way as `ACTOR_HEADER`. Only a human is credited with the
  * replies an agent relays.
  */
-export const PRINCIPAL_HEADER = "X-Cabane-Principal";
+export const PRINCIPAL_HEADER = "X-Kabane-Principal";

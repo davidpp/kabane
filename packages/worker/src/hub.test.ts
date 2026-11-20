@@ -14,7 +14,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { conformanceCases, Deadline, Migrate, Planner } from "@kabane/core";
 import { describe, expect, it } from "vitest";
 import { DoDb } from "./db-do";
-import { type CabaneHub, HUB_BASE, hubTimezone } from "./hub";
+import { type KabaneHub, HUB_BASE, hubTimezone } from "./hub";
 
 const unwrap = <T>(
 	result: { ok: true; value: T } | { ok: false; error: Error },
@@ -23,9 +23,9 @@ const unwrap = <T>(
 	return result.value;
 };
 
-const hub = (name: string) => env.CABANE_HUB.getByName(name);
+const hub = (name: string) => env.KABANE_HUB.getByName(name);
 
-describe("CabaneHub boot", () => {
+describe("KabaneHub boot", () => {
 	it("applies the core schema", async () => {
 		const h = hub("boot");
 		expect(unwrap(await h.boot())).toBeUndefined();
@@ -44,7 +44,7 @@ describe("CabaneHub boot", () => {
 
 describe("a migration's after step over Durable Object SQLite", () => {
 	it("rolls the migration back with it when it throws", async () => {
-		await runInDurableObject(hub("after"), async (_i: CabaneHub, ctx) => {
+		await runInDurableObject(hub("after"), async (_i: KabaneHub, ctx) => {
 			const ran = unwrap(
 				await DoDb.provider(ctx.storage).withDb(HUB_BASE, (db) => {
 					const result = Migrate.run(
@@ -107,7 +107,7 @@ describe("the hub's timezone", () => {
 describe("Db port conformance over Durable Object SQLite", () => {
 	for (const c of conformanceCases()) {
 		it(c.name, async () => {
-			await runInDurableObject(hub("conformance"), async (_i: CabaneHub, ctx) =>
+			await runInDurableObject(hub("conformance"), async (_i: KabaneHub, ctx) =>
 				c.run(DoDb.provider(ctx.storage)),
 			);
 		});
@@ -122,21 +122,21 @@ describe("storage over Durable Object SQLite", () => {
 		await runInDurableObject(h, async () => {
 			const parent = unwrap(
 				await Planner.addTask(HUB_BASE, {
-					title: "Extract the planner into Cabane",
+					title: "Extract the planner into Kabane",
 					description: "Db port over bun:sqlite and Durable Object SQLite",
 					kind: "issue",
-					scopeUri: "cabane",
+					scopeUri: "kabane",
 				}),
 			);
 			const child = unwrap(
 				await Planner.addTask(HUB_BASE, {
 					title: "Write the Durable Object adapter",
 					kind: "issue",
-					scopeUri: "cabane",
+					scopeUri: "kabane",
 					parentTaskId: parent.id,
 				}),
 			);
-			expect(parent.shortId).toMatch(/^JCAB-\d+$/);
+			expect(parent.shortId).toMatch(/^JKAB-\d+$/);
 
 			unwrap(
 				await Planner.addLink(HUB_BASE, {

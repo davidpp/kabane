@@ -1,5 +1,5 @@
 /**
- * HTTP edge for the Cabane hub.
+ * HTTP edge for the Kabane hub.
  *
  * EVERY ROUTE IS BEHIND ACCESS, health included (docs/auth.md). The assertion
  * is verified and mapped to a principal BEFORE any stub is obtained, so an
@@ -15,7 +15,7 @@
  * - `POST /mcp`  Streamable HTTP MCP on the hub, actor forwarded in a header
  *
  * The handler's whole job is auth, JSON, validation and routing. Ordering and
- * idempotency belong to `CabaneLog`; tools and sync belong to `CabaneHub`.
+ * idempotency belong to `KabaneLog`; tools and sync belong to `KabaneHub`.
  */
 
 import type { Result } from "@kabane/core";
@@ -52,7 +52,7 @@ const serveLog = async (
 	const body = await readBody(request);
 	if (!body.ok) return fail(400, `malformed JSON body: ${body.error.message}`);
 
-	const log = env.CABANE_LOG.getByName(SHARED_LOG);
+	const log = env.KABANE_LOG.getByName(SHARED_LOG);
 
 	if (pathname === "/push") {
 		const parsed = PushRequestSchema.safeParse(body.value);
@@ -79,7 +79,7 @@ const serveMcp = async (
 	headers.set(ACTOR_HEADER, principal.actor);
 	headers.set(PRINCIPAL_HEADER, principal.kind);
 	const forwarded = new Request(request, { headers });
-	return env.CABANE_HUB.getByName(HUB_NAME).fetch(forwarded);
+	return env.KABANE_HUB.getByName(HUB_NAME).fetch(forwarded);
 };
 
 export default {
@@ -95,7 +95,7 @@ export default {
 			if (request.method !== "GET") return fail(405, "method not allowed");
 			return Response.json({
 				ok: true,
-				service: "cabane-worker",
+				service: "kabane-worker",
 				actor: principal.value.actor,
 			});
 		}
@@ -110,5 +110,5 @@ export default {
 	},
 };
 
-export { CabaneHub } from "./hub";
-export { CabaneLog } from "./log";
+export { KabaneHub } from "./hub";
+export { KabaneLog } from "./log";

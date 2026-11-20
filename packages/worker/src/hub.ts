@@ -1,6 +1,6 @@
 /**
- * The cloud device: the Cabane core running on this object's SQLite, serving
- * MCP, and syncing with `CabaneLog` like any other device.
+ * The cloud device: the Kabane core running on this object's SQLite, serving
+ * MCP, and syncing with `KabaneLog` like any other device.
  *
  * WHAT MAKES IT A DEVICE. On boot it arms capture under the identity `cloud`
  * (`SyncDevice.arm`), so every MCP write lands in its oplog. After each write
@@ -9,12 +9,12 @@
  * through its stub, never HTTP.
  *
  * WHO IS WRITING. The edge verifies Access and forwards the actor URI in
- * `X-Cabane-Actor`. The runtime's actor port reads it from an
+ * `X-Kabane-Actor`. The runtime's actor port reads it from an
  * `AsyncLocalStorage` so concurrent requests inside one object cannot see each
  * other's identity; a plain field would leak across an `await`.
  *
  * `Runtime.configure` is a module-level singleton in the core. One isolate
- * hosts one hub (`HUB_NAME`), and `CabaneHub` is the only class that configures
+ * hosts one hub (`HUB_NAME`), and `KabaneHub` is the only class that configures
  * it, so the singleton is the right shape here rather than a limitation.
  *
  * A class, which the house style forbids: the platform requires extending
@@ -84,7 +84,7 @@ export const hubTimezone = (raw: string | undefined): Result<string> => {
 			);
 };
 
-export class CabaneHub extends DurableObject<Cloudflare.Env> {
+export class KabaneHub extends DurableObject<Cloudflare.Env> {
 	private readonly booted: Promise<Result<void>>;
 
 	constructor(ctx: DurableObjectState, env: Cloudflare.Env) {
@@ -147,9 +147,9 @@ export class CabaneHub extends DurableObject<Cloudflare.Env> {
 
 	private transport() {
 		return LogTransport.create(
-			this.env.CABANE_LOG.getByName(SHARED_LOG),
+			this.env.KABANE_LOG.getByName(SHARED_LOG),
 			HUB_DEVICE_ID,
-			"cabane hub",
+			"kabane hub",
 		);
 	}
 

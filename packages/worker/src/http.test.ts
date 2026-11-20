@@ -19,7 +19,7 @@ const call = (
 	const headers = withAccess(HUMAN, { "Content-Type": "application/json" });
 	if (token !== null) headers.set("Authorization", `Bearer ${token}`);
 
-	return SELF.fetch(`https://cabane.test${path}`, {
+	return SELF.fetch(`https://kabane.test${path}`, {
 		method,
 		headers,
 		body: method === "POST" ? JSON.stringify(body) : undefined,
@@ -65,7 +65,7 @@ describe("auth", () => {
 	});
 
 	it("rejects a non-Bearer scheme", async () => {
-		const res = await SELF.fetch("https://cabane.test/push", {
+		const res = await SELF.fetch("https://kabane.test/push", {
 			method: "POST",
 			headers: withAccess(HUMAN, { Authorization: `Basic ${TOKEN}` }),
 			body: "{}",
@@ -77,7 +77,7 @@ describe("auth", () => {
 	it("checks Access before the route and the body", async () => {
 		// Proves auth runs before anything can reach a stub: a request that is also
 		// unroutable and unparseable still answers 401, not 404 or 400.
-		const res = await SELF.fetch("https://cabane.test/nope", {
+		const res = await SELF.fetch("https://kabane.test/nope", {
 			method: "GET",
 			body: undefined,
 		});
@@ -86,7 +86,7 @@ describe("auth", () => {
 	});
 
 	it("checks the bearer before the body on a log route", async () => {
-		const res = await SELF.fetch("https://cabane.test/push", {
+		const res = await SELF.fetch("https://kabane.test/push", {
 			method: "POST",
 			headers: withAccess(HUMAN),
 			body: "{ not json",
@@ -112,7 +112,7 @@ describe("routing", () => {
 	});
 
 	it("400s a body that is not JSON", async () => {
-		const res = await SELF.fetch("https://cabane.test/push", {
+		const res = await SELF.fetch("https://kabane.test/push", {
 			method: "POST",
 			headers: withAccess(HUMAN, { Authorization: `Bearer ${TOKEN}` }),
 			body: "{ not json",

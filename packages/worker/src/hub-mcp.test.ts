@@ -5,7 +5,7 @@
  * with the Access assertion the edge maps to an actor.
  *
  * Sync round trip, both directions, without bun:sqlite (unavailable in the
- * Workers pool): a write at the hub is pushed to `CabaneLog` and shows up on
+ * Workers pool): a write at the hub is pushed to `KabaneLog` and shows up on
  * a device's `/pull`; an op pushed by a device is applied by the hub's alarm
  * and shows up in `kabane_list`. The device-side op is derived from one the
  * hub itself emitted, so the payload shape is exactly what a real device sends.
@@ -34,7 +34,7 @@ const rpc = async (
 	method: string,
 	params: Record<string, unknown> = {},
 ): Promise<{ status: number; body: JsonRpc }> => {
-	const res = await SELF.fetch("https://cabane.test/mcp", {
+	const res = await SELF.fetch("https://kabane.test/mcp", {
 		method: "POST",
 		headers: withAccess(token, {
 			"Content-Type": "application/json",
@@ -76,7 +76,7 @@ const log = (
 	body: unknown,
 	deviceToken: string = HERMES,
 ): Promise<Response> =>
-	SELF.fetch(`https://cabane.test${path}`, {
+	SELF.fetch(`https://kabane.test${path}`, {
 		method: "POST",
 		headers: withAccess(deviceToken, {
 			"Content-Type": "application/json",
@@ -96,13 +96,13 @@ type TaskLike = {
 
 describe("hub MCP over Streamable HTTP", () => {
 	it("refuses without an assertion, and refuses GET", async () => {
-		const noAuth = await SELF.fetch("https://cabane.test/mcp", {
+		const noAuth = await SELF.fetch("https://kabane.test/mcp", {
 			method: "POST",
 			body: "{}",
 		});
 		expect(noAuth.status).toBe(401);
 
-		const get = await SELF.fetch("https://cabane.test/mcp", {
+		const get = await SELF.fetch("https://kabane.test/mcp", {
 			headers: withAccess(HUMAN),
 		});
 		expect(get.status).toBe(405);
@@ -256,8 +256,8 @@ describe("hub MCP over Streamable HTTP", () => {
 
 		// A human-looking actor the edge did not authenticate as a human, as a
 		// service mapped to one would arrive: the hub credits no one.
-		const spoofed = await env.CABANE_HUB.getByName(HUB_NAME).fetch(
-			new Request("https://cabane.test/mcp", {
+		const spoofed = await env.KABANE_HUB.getByName(HUB_NAME).fetch(
+			new Request("https://kabane.test/mcp", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
@@ -304,7 +304,7 @@ describe("hub MCP over Streamable HTTP", () => {
 	it("stamps the Access identity as the actor: human and service", async () => {
 		const human = await callTool(HUMAN, "kabane_add", {
 			title: "Filed by David",
-			scopeUri: "cabane",
+			scopeUri: "kabane",
 		});
 		expect(human.isError).toBe(false);
 		expect((human.value as TaskLike).updatedBy).toBe(
@@ -316,12 +316,12 @@ describe("hub MCP over Streamable HTTP", () => {
 			kind: "issue",
 			state: "next",
 			assignee: "claude",
-			scopeUri: "cabane",
+			scopeUri: "kabane",
 		});
 		expect(service.isError).toBe(false);
 		const issue = service.value as TaskLike;
 		expect(issue.updatedBy).toBe("cabane://actor/agent/hermes");
-		expect(issue.shortId).toMatch(/^JCAB-\d+$/);
+		expect(issue.shortId).toMatch(/^JKAB-\d+$/);
 
 		const comment = await callTool(HERMES, "kabane_comment", {
 			id: issue.id,
@@ -362,7 +362,7 @@ describe("hub MCP over Streamable HTTP", () => {
 			const entry = await callTool(HERMES, "kabane_log", { id, ...args });
 			expect(entry.isError).toBe(false);
 		}
-		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		const hub = env.KABANE_HUB.getByName(HUB_NAME);
 		await hub.syncNow();
 		const before = await (
 			await log("/pull", { deviceId: "write-inputs", sinceSeq: 0, limit: 1000 })
@@ -559,7 +559,7 @@ describe("hub as sync device cloud", () => {
 		expect(created.updatedBy).toBe("cabane://actor/human/david");
 
 		// The post-write push runs in waitUntil; a direct pass makes it deterministic.
-		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		const hub = env.KABANE_HUB.getByName(HUB_NAME);
 		const pass = await hub.syncNow();
 		expect(pass.push.ok).toBe(true);
 
@@ -585,7 +585,7 @@ describe("hub as sync device cloud", () => {
 				scopeUri: "sync",
 			})
 		).value as TaskLike;
-		const hub = env.CABANE_HUB.getByName(HUB_NAME);
+		const hub = env.KABANE_HUB.getByName(HUB_NAME);
 		await hub.syncNow();
 
 		const page = await (

@@ -2,7 +2,7 @@ import { env, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { Migrations, SCHEMA_VERSION } from "./migrations";
 
-const log = (name: string) => env.CABANE_LOG.getByName(name);
+const log = (name: string) => env.KABANE_LOG.getByName(name);
 
 const seed = (name: string) =>
 	log(name).push({
