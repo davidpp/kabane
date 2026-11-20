@@ -19,11 +19,16 @@ import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
 import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
+import { EventView } from "../event-view";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import type { BoardNav } from "../nav";
-import type { CopilotElicitation } from "../ports";
+import {
+	type CopilotElicitation,
+	type CopilotUpdate,
+	noActivity,
+} from "../ports";
 import { SettingsOverlay } from "../settings-overlay";
 import { SettingsView } from "../settings-view";
 import { SPINNER_IDLE } from "../spinner";
@@ -210,6 +215,43 @@ const planLog = (): CopilotLog.Log => {
 	return updates.reduce(
 		CopilotLog.apply,
 		CopilotLog.start(null, "plan the token store", at),
+	);
+};
+
+const foldedTools = (): ReactNode => {
+	const at = (seconds: number) =>
+		new Date(Fixtures.JOBS_NOW + seconds * 1000).toISOString();
+	const updates: CopilotUpdate[] = [
+		{ type: "thought", summary: "\n\n**Checking 503 logs**", at: at(0) },
+		{ type: "tool_call", summary: "Read server.log", callId: "log", at: at(0) },
+		{
+			type: "tool_result",
+			summary: "Read server.log",
+			callId: "log",
+			at: at(2),
+		},
+		{ type: "tool_call", summary: "curl /health", callId: "probe", at: at(2) },
+		{
+			type: "tool_failed",
+			summary: "curl /health",
+			callId: "probe",
+			at: at(13),
+		},
+		{ type: "text", summary: "The health check timed out.", at: at(13) },
+		{ type: "done", summary: "", at: at(13) },
+	];
+	const log = updates.reduce(
+		CopilotLog.apply,
+		CopilotLog.start(null, "Check the failing requests.", at(0)),
+	);
+	return (
+		<EventView
+			cardId={CopilotLog.CARD_ID}
+			initialCard={log.current.card}
+			source={CopilotLog.source(noActivity, () => log)}
+			resolveShortId={() => undefined}
+			scrollRef={createRef<ScrollBoxRenderable>()}
+		/>
 	);
 };
 
@@ -640,6 +682,13 @@ const JobsStory = (): ReactNode => (
 const [WIKI_JOB] = Fixtures.JOBS;
 
 export const STORIES: readonly Story[] = [
+	{
+		name: "folded-tools",
+		about: "a thought and a mixed run of successful and failed tool calls",
+		width: 40,
+		height: 10,
+		render: foldedTools,
+	},
 	{
 		name: "jobs",
 		about:

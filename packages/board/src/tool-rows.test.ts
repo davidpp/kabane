@@ -1,5 +1,5 @@
 // How the log's tool events fold into rows: one per call whatever its events, a group for a run of
-// reads and searches, and the caps an opened row is held to.
+// consecutive calls, and the caps an opened row is held to.
 import { describe, expect, it } from "bun:test";
 import type { ActivityEvent } from "@cabane/extension";
 import { ToolRows } from "./tool-rows";
@@ -87,8 +87,7 @@ describe("ToolRows.rows", () => {
 			true,
 		);
 		expect(shape(rows)).toEqual([
-			["mcp__kabane__kabane_list", "unknown"],
-			["kabane_edit JREP-1", "completed"],
+			["group", ["mcp__kabane__kabane_list", "kabane_edit JREP-1"]],
 			["ok", "completed"],
 		]);
 	});
@@ -101,7 +100,7 @@ describe("ToolRows.rows", () => {
 		expect(shape(rows)).toEqual([["Terminal", "unknown"]]);
 	});
 
-	it("groups a run of reads and searches with nothing said between them, and only that", () => {
+	it("folds each run between messages and keeps the exploration label for reads and searches", () => {
 		const read = (path: string, callId: string) =>
 			ev({
 				type: "tool_call",
@@ -134,8 +133,7 @@ describe("ToolRows.rows", () => {
 		expect(shape(rows)).toEqual([
 			["group", ["Read a.ts", "Read b.ts", "grep -n foo"]],
 			"Found it.",
-			["Read c.ts", "running"],
-			["Edit c.ts", "running"],
+			["group", ["Read c.ts", "Edit c.ts"]],
 		]);
 		const [group] = rows;
 		if (group?.type !== "group") throw new Error("expected a group");
@@ -143,6 +141,47 @@ describe("ToolRows.rows", () => {
 		expect(ToolRows.groupLabel(group.group)).toBe(
 			"exploring · 2 reads, 1 search",
 		);
+	});
+
+	it("keeps a live run keyed as calls arrive, sums paired durations, and starts fresh after a thought", () => {
+		const events = [
+			ev({ type: "tool_call", summary: "Read a", callId: "r" }),
+			ev({ type: "tool_call", summary: "Build", callId: "b" }),
+			ev({
+				type: "tool_completed",
+				summary: "Read a",
+				callId: "r",
+				at: at(4000),
+			}),
+		];
+		const [live] = ToolRows.rows(events, true);
+		if (live?.type !== "group") throw new Error("expected group");
+		expect(ToolRows.groupStatus(live.group)).toBe("running");
+		expect(ToolRows.groupLabel(live.group)).toBe("2 tools · 4.0s");
+		const [finished, thought, next] = ToolRows.rows(
+			[
+				...events,
+				ev({
+					type: "tool_failed",
+					summary: "Build",
+					callId: "b",
+					at: at(9000),
+				}),
+				ev({ type: "tool_use", summary: "List", at: at(9000) }),
+				ev({ type: "tool_result", summary: "List", at: at(9000) }),
+				ev({ type: "thought", summary: "Retry?" }),
+				ev({ type: "tool_call", summary: "Retry", callId: "retry" }),
+			],
+			true,
+		);
+		if (finished?.type !== "group") throw new Error("expected group");
+		expect(finished.group.key).toBe(live.group.key);
+		expect(ToolRows.groupStatus(finished.group)).toBe("failed");
+		expect(ToolRows.groupLabel(finished.group)).toBe(
+			"3 tools · 1 failed · 13s",
+		);
+		expect(thought?.type).toBe("event");
+		expect(next?.type).toBe("call");
 	});
 
 	it("reads a call with no kind by its tool's name, and a kind over the name", () => {

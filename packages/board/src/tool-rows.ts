@@ -1,5 +1,5 @@
 // The event log's tool calls as rows: a call and its end fold into one row that knows how the call
-// went, and a run of reads and searches with nothing said between them folds into one group. Pure,
+// went, and a run of calls with nothing said between them folds into one group. Pure,
 // so the folding is asserted without a renderer; event-view.tsx draws what this returns.
 //
 // The caps follow opencode's util/collapse-tool-output.ts: a head cut by lines and by characters
@@ -22,6 +22,8 @@ export namespace ToolRows {
 		key: string;
 		at: string;
 		endedAt?: string;
+		// A result with neither an id nor a matching open call cannot count as another tool.
+		unmatchedResult?: true;
 		summary: string;
 		status: Status;
 		lane?: string;
@@ -93,12 +95,12 @@ export namespace ToolRows {
 				at: event.at,
 				summary: event.summary,
 				status: end ?? (idKey ? "running" : "unknown"),
-				...(end ? { endedAt: event.at } : {}),
 				...(event.lane !== undefined ? { lane: event.lane } : {}),
 				detail: event.detail ?? {},
 			};
 			if (idKey) byId.set(idKey, call);
-			else if (!end) unnamed.push(call);
+			else if (end) call.unmatchedResult = true;
+			else unnamed.push(call);
 			out.push({ type: "call", call });
 		}
 		if (!live)
@@ -107,7 +109,7 @@ export namespace ToolRows {
 		return grouped(out);
 	};
 
-	// A run of two or more exploring calls of one lane becomes a group, keyed by its first call so
+	// A run of two or more calls of one lane becomes a group, keyed by its first call so
 	// it keeps its open state as the run grows.
 	const grouped = (rows: readonly Row[]): Row[] => {
 		const out: Row[] = [];
@@ -128,7 +130,7 @@ export namespace ToolRows {
 		};
 		for (const row of rows) {
 			const call =
-				row.type === "call" && explores(row.call) !== null ? row.call : null;
+				row.type === "call" && !row.call.unmatchedResult ? row.call : null;
 			if (call && (run.length === 0 || run[0]?.lane === call.lane)) {
 				run.push(call);
 				continue;
@@ -180,12 +182,26 @@ export namespace ToolRows {
 				? "failed"
 				: "completed";
 
-	/** `exploring · 6 reads, 2 searches`, then `explored` once none is running. */
+	/** Keep the exploration vocabulary for an all-read/search/fetch run unless a failure needs counting. */
 	export const groupLabel = (group: Group): string => {
 		const counts = new Map<Noun, number>();
+		let failures = 0;
+		let total: number | undefined;
+		let allExplore = true;
 		for (const call of group.calls) {
 			const noun = explores(call);
 			if (noun) counts.set(noun, (counts.get(noun) ?? 0) + 1);
+			else allExplore = false;
+			if (call.status === "failed") failures++;
+			const ms = durationMs(call);
+			if (ms !== undefined) total = (total ?? 0) + ms;
+		}
+		if (failures || !allExplore) {
+			return [
+				`${group.calls.length} tools`,
+				...(failures ? [`${failures} failed`] : []),
+				...(total !== undefined ? [formatDuration(total)] : []),
+			].join(" · ");
 		}
 		const parts = (["read", "search", "fetch"] as const).flatMap((noun) => {
 			const count = counts.get(noun) ?? 0;
@@ -198,10 +214,18 @@ export namespace ToolRows {
 	};
 
 	/** How long a call that ended took: `0.4s` under ten seconds, then `12s`, `2m5s`. */
-	export const duration = (call: Call): string | undefined => {
+	const durationMs = (call: Call): number | undefined => {
 		if (call.endedAt === undefined) return undefined;
 		const ms = Date.parse(call.endedAt) - Date.parse(call.at);
-		if (!Number.isFinite(ms) || ms < 0) return undefined;
+		return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+	};
+
+	export const duration = (call: Call): string | undefined => {
+		const ms = durationMs(call);
+		return ms === undefined ? undefined : formatDuration(ms);
+	};
+
+	const formatDuration = (ms: number): string => {
 		const seconds = ms / 1000;
 		if (seconds < 10) return `${seconds.toFixed(1)}s`;
 		if (seconds < 60) return `${Math.floor(seconds)}s`;
