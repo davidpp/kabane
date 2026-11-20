@@ -258,5 +258,5 @@ export namespace Skills {
 
 	/** The server instructions' line naming the tools, when they are served. */
 	export const INSTRUCTIONS =
-		"The enabled extensions ship skills, how-to for tasks such as setup: kabane_skillList names them, and kabane_skillGet returns one to follow when its task comes up or the human asks for it.";
+		"The enabled extensions ship skills, how-to for kabane tasks such as setup or going through an issue's open questions. When the human asks for a kabane task, call kabane_skillList first, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
 }

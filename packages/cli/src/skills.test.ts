@@ -252,6 +252,8 @@ it("kabane mcp lists and serves an enabled extension's skill over stdio", async 
 		expect(names).toContain("kabane_skillList");
 		expect(names).toContain("kabane_skillGet");
 		expect(client.getInstructions()).toContain(Skills.INSTRUCTIONS);
+		// Base text: the line holds whatever extensions are enabled, so it names none.
+		expect(Skills.INSTRUCTIONS).not.toMatch(/dispatch|grill|loop/i);
 		expect(JSON.parse((await text("kabane_skillList", {})).text)).toEqual({
 			skills: [
 				{
