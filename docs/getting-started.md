@@ -640,8 +640,9 @@ start them again, harness sessions included, so each `kabane mcp` starts with it
   disabled keeps the old prefix in those tables until it is enabled again.
 - **Sync: every device before the next sync.** A device still on the old version stops pulling
   at an updated device's first change. What it pushes meanwhile carries the old prefix, and an
-  updated device stores it as it came, so update every device, and the hub, before syncing
-  again. A hub deployed as `cabane-worker` moves to `kabane-worker`
+  updated device stores it as it came. So stop writing, sync every device until nothing is left
+  to pull while all of them still run the old version, then update every device, and the hub,
+  before syncing again. A hub deployed as `cabane-worker` moves to `kabane-worker`
   ([deploy.md, 5.9](deploy.md#59-move-a-hub-deployed-as-cabane-worker--manual)).
 - **No going back.** The old version refuses a database this one has opened: `newer than this
   kabane knows`. Going back takes all three backups: the database, `config.json` and the

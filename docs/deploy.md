@@ -705,13 +705,16 @@ It is `kabane-worker` now, with `KabaneLog` and `KabaneHub`. A Worker with anoth
 another script with its own Durable Objects, so the new hub starts with an empty log and an
 empty cloud device: nothing carries over from the old one.
 
-1. Update every device first and run `kabane doctor --fix` on each
-   ([`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris)).
-2. Take a baseline from the old hub while it still serves `<your-domain>`. Stop writing
-   through it: pause Hermes and any other runtime with a service token, and leave the
-   Claude.ai and ChatGPT connectors alone until step 8. The hub pushes each of its writes to
-   its log as it makes it. On every device, stop the board, `kabane mcp` and loop runners,
-   and let a running `kabane sync` finish. Keep them stopped until step 8.
+1. Drain the old hub while every device still runs the build it has now, before any of them
+   updates. Migration 12 renames the actors a device holds when it runs, its own log
+   included; an op it pulls afterwards is applied as written. So a comment by
+   `cabane://actor/human/<name>` that no device has pulled yet would keep that author for
+   good once a device pulled it after updating, and no row count would show it.
+
+   Stop writing through the old hub: pause Hermes and any other runtime with a service token,
+   and leave the Claude.ai and ChatGPT connectors alone until step 8. The hub pushes each of
+   its writes to its log as it makes it. On every device, stop the board, `kabane mcp` and
+   loop runners, and let a running `kabane sync` finish. Keep them stopped until step 8.
 
    Define these in a bash or zsh shell on each device. They resolve the device's home once,
    from `KABANE_HOME` if you set it, so the SQL and the CLI below act on the same database.
@@ -739,7 +742,11 @@ empty cloud device: nothing carries over from the old one.
    ```
 
    Run `level` on every device, then once more on each, so every device holds every other
-   device's writes and the old hub's. On the device you will check from, record the baseline:
+   device's writes and the old hub's.
+2. Update every device and run `kabane doctor --fix` on each
+   ([`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris)).
+   Migration 12 renames what step 1 brought in and logs no op of its own, so nothing is left
+   to exchange with the old hub. On the device you will check from, record the baseline:
    `counts "$db" > "$home/hub-baseline.txt"`.
 3. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
    `<your-domain>`. A hostname serves one Worker at a time.
@@ -755,7 +762,7 @@ empty cloud device: nothing carries over from the old one.
    only when a push is acknowledged, but a device that already pushed everything has nothing
    pending, and `kabane sync backfill` re-sends only rows that never had a backfill op. A
    device that only pulls keeps its old position and reads nothing. On every device, one
-   after the other, in the shell from step 2:
+   after the other, in the shell from step 1:
 
    ```bash
    sqlite3 "$db" \
@@ -813,7 +820,7 @@ localhost.
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
 | 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `kabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
-| 5.9 move (2026-11-20) | two devices and a write made through the hub's MCP, against one `wrangler dev` log, then an empty one. The step 2 baseline counted four tasks and a checklist item. After steps 6 and 7, run in bash from this page's own blocks with localhost for the domain and a dev assertion for the service token, the check device matched it table for table and printed `the new hub holds the baseline`. Without step 2, the hub's write was lost, and a tasks-and-comments count still matched, 3 and 3. `counts` and `level` also run under zsh |
+| 5.9 move (2026-11-20) | two devices and a write made through the hub's MCP, against one `wrangler dev` log, then an empty one. The baseline counted four tasks and a checklist item. After steps 6 and 7, run in bash from this page's own blocks with localhost for the domain and a dev assertion for the service token, the check device matched it table for table and printed `the new hub holds the baseline`. Without the drain, the hub's write was lost, and a tasks-and-comments count still matched, 3 and 3. `counts` and `level` also run under zsh. Every device ran this build throughout, so the drain on the old build before the update (steps 1 and 2) was not run |
 
 Not verifiable without the real account, therefore **MANUAL** above: `bun run deploy`,
 the custom domain, the Access application and policies, service tokens, Managed
