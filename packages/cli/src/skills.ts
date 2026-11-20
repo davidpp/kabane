@@ -319,5 +319,5 @@ export namespace Skills {
 
 	/** The server instructions' line naming the tools. */
 	export const INSTRUCTIONS =
-		"kabane and its enabled extensions ship skills, how-to for kabane tasks such as linking an issue to Linear or GitHub, changing kabane's settings, checking it with doctor, setup, or going through an issue's open questions. When the human asks for a kabane task, call kabane_skillList first, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
+		"kabane and its enabled extensions ship skills, how-to for kabane tasks: setting up or configuring kabane or one of its extensions in a project, linking an issue to Linear or GitHub, changing kabane's settings, checking it with doctor, or going through an issue's open questions. When the human asks for a kabane task or names a kabane command or extension, call kabane_skillList before running kabane's help or reading its files, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
 }

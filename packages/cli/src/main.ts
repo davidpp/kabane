@@ -87,6 +87,9 @@ export const helpText = (
 		),
 		"",
 		"KABANE_HOME (default ~/.kabane) holds config.json and kabane.db.",
+		"How-to for kabane tasks (setting up kabane or an extension in a project, linking, settings,",
+		"doctor) ships as skills: a session connected to `kabane mcp` lists them with kabane_skillList",
+		"and follows one with kabane_skillGet.",
 	].join("\n");
 
 const HELP_USAGE = "kabane <command> [args]";
