@@ -183,7 +183,7 @@ describe("RunSteps", () => {
 		const steps = RunSteps.of(finished(), NODES, NOW);
 		expect(steps.map(row)).toEqual([
 			"done implement · 1 of 1 done",
-			"done gates · check·test·build · 3 passes",
+			"done gates · check·test·build · 3 passes · 36s gate time",
 			"done triage · 2 review sessions",
 			"done review · 8 findings filed",
 			// The three a recheck reopened were settled by the fixer all the same.
@@ -193,7 +193,7 @@ describe("RunSteps", () => {
 		]);
 		expect(steps.map((s) => s.durationMs)).toEqual([
 			122_000,
-			36_000,
+			undefined,
 			14_000,
 			429_000,
 			1_618_000,
@@ -291,7 +291,7 @@ describe("RunSteps", () => {
 		const steps = RunSteps.of(live, open, NOW);
 		expect(steps.map(row)).toEqual([
 			"done implement · 1 of 1 done",
-			"done gates · check·test·build · 2 passes",
+			"done gates · check·test·build · 2 passes · 24s gate time",
 			"done triage · 2 review sessions",
 			"done review · 8 findings filed",
 			"done fixer · 8 settled",
@@ -433,6 +433,46 @@ describe("RunSteps", () => {
 			"pending recheck",
 			"pending land",
 		]);
+	});
+});
+
+describe("RunSteps with concurrent gate passes", () => {
+	it("keeps a subtask's red pass when another subtask's pass ends green after it", () => {
+		const red = {
+			...pass("09:00:00"),
+			taskId: "01P41",
+			ok: false,
+			results: [
+				{
+					name: "test",
+					command: "bun test",
+					ok: false,
+					exit: 1,
+					ms: 30_000,
+					tail: "",
+				},
+			],
+		};
+		const green = { ...pass("09:00:01"), taskId: "01P42" };
+		const live = finished({
+			status: "running",
+			exit: undefined,
+			endedAt: undefined,
+			gateRuns: [red, green],
+		});
+		const gates = RunSteps.of(live, NODES, NOW).find((s) => s.name === "gates");
+		expect(`${gates?.state} · ${gates?.result}`).toBe(
+			"failed · test red for PROJ-41",
+		);
+		const retried = finished({
+			status: "running",
+			exit: undefined,
+			endedAt: undefined,
+			gateRuns: [red, green, { ...pass("09:05:00"), taskId: "01P41" }],
+		});
+		expect(
+			RunSteps.of(retried, NODES, NOW).find((s) => s.name === "gates")?.state,
+		).toBe("done");
 	});
 });
 

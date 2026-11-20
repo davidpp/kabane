@@ -702,8 +702,7 @@ const DONE: ActivityStep[] = [
 	{
 		name: "gates",
 		state: "done",
-		result: "check·test·build · 3 passes",
-		durationMs: 12_000,
+		result: "check·test·build · 3 passes · 12s gate time",
 	},
 	{
 		name: "triage",

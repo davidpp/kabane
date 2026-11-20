@@ -14,6 +14,7 @@ import type {
 } from "@kabane/extension";
 import { Budget } from "./budget";
 import { Fixer } from "./fixer";
+import { Gates } from "./gates";
 import { Lenses } from "./lenses";
 import { LoopPlan } from "./plan";
 import { Review } from "./review";
@@ -202,36 +203,46 @@ export namespace RunSteps {
 				state: overState(run),
 				result: `cut short for ${cut.join(", ")}`,
 			};
-		const last = run.gateRuns.at(-1);
-		const red = last?.results.find((r) => !r.ok);
+		// Passes for different subtasks run at once: each subject's latest pass says whether it is
+		// green, so one finishing green after another's red does not clear it.
+		const latest = new Map(
+			run.gateRuns.map((g) => [g.taskId ?? run.parentId, g]),
+		);
+		const red = [...latest.values()].find((g) => !g.ok);
+		const failed = red?.results.find((r) => !r.ok);
 		const passes = run.gateRuns.length;
+		// The passes' own times, summed: passes overlap and sit between the other steps, so no
+		// elapsed time for the step can be read off them.
 		const took = run.gateRuns
 			.flatMap((g) => g.results)
 			.reduce((sum, r) => sum + r.ms, 0);
 		const state: ActivityStepState =
 			gating.length > 0
 				? "running"
-				: !last
+				: passes === 0
 					? "pending"
-					: last.ok
-						? "done"
-						: "failed";
+					: red
+						? "failed"
+						: "done";
+		const subject = (taskId: string | undefined): string =>
+			taskId === undefined || taskId === run.parentId
+				? run.parentShortId
+				: (run.claims.find((c) => c.taskId === taskId)?.shortId ?? taskId);
 		const result =
 			gating.length > 0
 				? `running for ${gating.join(", ")}`
 				: red
-					? `${red.name} red`
+					? `${failed?.name ?? "a gate"} red for ${subject(red.taskId)}`
 					: [
 							names.join("·"),
-							...(passes > 0 ? [plural(passes, "pass", "passes")] : []),
+							...(passes > 0
+								? [
+										plural(passes, "pass", "passes"),
+										`${Gates.took(took)} gate time`,
+									]
+								: []),
 						].join(" · ");
-		return {
-			name: "gates",
-			state,
-			result,
-			// While a pass runs its time is unknown: the passes before it would read as its own.
-			...(passes > 0 && state !== "running" ? { durationMs: took } : {}),
-		};
+		return { name: "gates", state, result };
 	};
 
 	const triage = (run: RunStore.Run, now: Date): ActivityStep | null => {
