@@ -436,6 +436,20 @@ describe("RunSteps", () => {
 	});
 });
 
+describe("RunSteps after the branch was pruned", () => {
+	it("no longer leaves the branch to the human, and the landing says it went", () => {
+		const after = { removed: true };
+		expect(
+			RunSteps.left(finished(), NODES, after).some((item) =>
+				item.how.startsWith("branch"),
+			),
+		).toBe(false);
+		expect(RunSteps.of(finished(), NODES, NOW, after).at(-1)?.result).toBe(
+			"none: kept for review, since merged and removed",
+		);
+	});
+});
+
 describe("RunSteps with concurrent gate passes", () => {
 	it("keeps a subtask's red pass when another subtask's pass ends green after it", () => {
 		const red = {

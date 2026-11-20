@@ -13,6 +13,7 @@ import {
 } from "@kabane/extension";
 import { err, ok } from "./result";
 
+import { existsSync } from "node:fs";
 import type { Result } from "@kabane/core";
 import { Loop } from "./commands";
 import { LoopPlan } from "./plan";
@@ -90,11 +91,12 @@ export namespace LoopActivity {
 		run: RunStore.Run,
 		nodes: readonly LoopPlan.Node[] | null = null,
 		now: Date = new Date(),
+		after: RunSteps.After = {},
 	): ActivityCard => {
-		const left = RunSteps.left(run, nodes);
+		const left = RunSteps.left(run, nodes, after);
 		return {
 			...base(run),
-			steps: RunSteps.of(run, nodes, now),
+			steps: RunSteps.of(run, nodes, now, after),
 			...(left.length > 0 ? { left } : {}),
 		};
 	};
@@ -248,7 +250,12 @@ export namespace LoopActivity {
 		// A run whose children cannot be read still gets its card, its steps from run.json alone.
 		const cardOf = async (run: RunStore.Run): Promise<ActivityCard> => {
 			const nodes = await LoopPlan.children(host.record, run.parentId);
-			return card(run, nodes.ok ? nodes.value : null);
+			// An over run's worktree gone means its branch went with it (`kabane loop prune`).
+			const removed =
+				!RunStore.isLive(run.status) &&
+				run.worktree !== undefined &&
+				!existsSync(run.worktree);
+			return card(run, nodes.ok ? nodes.value : null, new Date(), { removed });
 		};
 		return {
 			// A run whose tab the human closed is not listed again; `kabane loop status` still shows it.

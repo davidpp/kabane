@@ -506,7 +506,13 @@ export namespace RunSteps {
 		merge: "merge: merges into the base",
 	};
 
-	const land = (run: RunStore.Run): ActivityStep => {
+	/**
+	 * What became of an over run's branch after the run: `removed` once its worktree and branch are
+	 * gone (`kabane loop prune` removes both once the branch merged), which run.json does not record.
+	 */
+	export type After = { removed?: boolean };
+
+	const land = (run: RunStore.Run, after: After): ActivityStep => {
 		const how = run.config.land;
 		if (run.landingFrom !== undefined)
 			return RunStore.isLive(run.status)
@@ -519,7 +525,13 @@ export namespace RunSteps {
 				result: `${how}: ${run.landing.summary}`,
 			};
 		if (run.status === "completed" && how === "none")
-			return { name: "land", state: "done", result: "none: kept for review" };
+			return {
+				name: "land",
+				state: "done",
+				result: after.removed
+					? "none: kept for review, since merged and removed"
+					: "none: kept for review",
+			};
 		return { name: "land", state: "pending", result: LANDING[how] ?? how };
 	};
 
@@ -528,6 +540,7 @@ export namespace RunSteps {
 		run: RunStore.Run,
 		nodes: Nodes | null,
 		now: Date,
+		after: After = {},
 	): ActivityStep[] => {
 		const fixed = fixer(run, nodes, now);
 		return [
@@ -537,7 +550,7 @@ export namespace RunSteps {
 			review(run, nodes, now),
 			fixed,
 			recheck(run, nodes, fixed, now),
-			land(run),
+			land(run, after),
 		].filter((step): step is ActivityStep => step !== null);
 	};
 
@@ -552,11 +565,13 @@ export namespace RunSteps {
 
 	/**
 	 * What an over run left for the human: every finding still open, reopened by a recheck or filed
-	 * by a lens, then its branch when it did not land, and its pull request when it opened one.
+	 * by a lens, then its branch when it did not land and is still there, and its pull request when
+	 * it opened one.
 	 */
 	export const left = (
 		run: RunStore.Run,
 		nodes: Nodes | null,
+		after: After = {},
 	): ActivityLeft[] => {
 		if (RunStore.isLive(run.status)) return [];
 		const reopenedBy = new Map<string, string>();
@@ -580,7 +595,7 @@ export namespace RunSteps {
 				};
 			});
 		const branch: ActivityLeft[] =
-			run.worktree !== undefined && run.landing?.ok !== true
+			run.worktree !== undefined && run.landing?.ok !== true && !after.removed
 				? [
 						{
 							how: `branch ${RunStore.branchOf(run)}`,
