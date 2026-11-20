@@ -463,7 +463,7 @@ const PermissionDock = ({
 // The events, and how the card ended. A card's tab is a live stream: pinned to the newest line until
 // the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
 // its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
-// closed until clicked, and a run of reads and searches one row for the lot (ToolRows).
+// closed until clicked, and a run of calls with nothing said between them one row (ToolRows).
 const Stream = ({
 	card,
 	events,
@@ -777,14 +777,17 @@ const EventRow = ({
 			<text fg={glyphFg} style={{ flexShrink: 0 }}>
 				{`${glyph} `}
 			</text>
-			{event.type === "text" ? (
-				<AgentText text={event.summary} />
-			) : (
-				<text
+			{event.type === "text" || event.type === "thought" ? (
+				<AgentText
+					text={
+						event.type === "thought"
+							? event.summary.replace(/^(?:[^\S\n]*\n)+/, "")
+							: event.summary.trim()
+					}
 					fg={textFg}
-					attributes={event.type === "thought" ? TextAttributes.ITALIC : 0}
-					style={{ flexGrow: 1, flexShrink: 1 }}
-				>
+				/>
+			) : (
+				<text fg={textFg} style={{ flexGrow: 1, flexShrink: 1 }}>
 					{event.summary}
 				</text>
 			)}
@@ -796,12 +799,18 @@ const EventRow = ({
 // quotes on a surface, prose on the terminal's foreground stopping at the measure. Not `streaming`:
 // both hosts write a message once it is whole, so there is no trailing block still arriving. A parse
 // that throws falls back to the text as it came.
-const AgentText = ({ text }: { text: string }): ReactNode => {
+const AgentText = ({
+	text,
+	fg,
+}: {
+	text: string;
+	fg: ColorInput;
+}): ReactNode => {
 	const theme = useTheme();
 	const syntaxStyle = useMarkdownStyle();
 	const renderBlock = useMemo(() => blockOnSurface(theme), [theme]);
 	const fallback = (
-		<text fg={theme.defaultFg} style={{ flexGrow: 1, flexShrink: 1 }}>
+		<text fg={fg} style={{ flexGrow: 1, flexShrink: 1 }}>
 			{text}
 		</text>
 	);
@@ -809,9 +818,9 @@ const AgentText = ({ text }: { text: string }): ReactNode => {
 		<box style={{ flexGrow: 1, flexShrink: 1, minWidth: 0 }}>
 			<ErrorBoundary fallback={fallback}>
 				<markdown
-					content={text.trim()}
+					content={text}
 					syntaxStyle={syntaxStyle}
-					fg={theme.defaultFg}
+					fg={fg}
 					renderBlock={renderBlock}
 					style={{ maxWidth: PROSE_MEASURE }}
 				/>
@@ -870,7 +879,7 @@ const ToolCallRow = ({
 	return (
 		<box style={{ flexDirection: "column", flexShrink: 0 }}>
 			<box
-				style={{ flexDirection: "row", flexShrink: 0, paddingLeft: indent }}
+				style={{ flexDirection: "row", flexShrink: 0 }}
 				onMouseUp={(event) => onToggle(event.currentTarget)}
 			>
 				{tag ? (
@@ -878,7 +887,8 @@ const ToolCallRow = ({
 						{`${tag.text} `}
 					</text>
 				) : null}
-				<text fg={fg} style={{ flexShrink: 0 }}>
+				{/* The indent comes after the tag, so the tag column lines up with every other row. */}
+				<text fg={fg} style={{ flexShrink: 0, marginLeft: indent }}>
 					{`${glyph} `}
 				</text>
 				<text
@@ -905,9 +915,7 @@ const ToolCallRow = ({
 	);
 };
 
-// A run of reads and searches as one row: the spinner while one runs, then the caret that says it
-// opens. opencode's exploring group (routes/session/group-view.tsx), its `✱`/`→` swapped for the
-// board's own caret (DESIGN.md: `▸`/`▾` mark expandability).
+// A running group spins. Once idle, its caret shows whether the calls are visible.
 const ToolGroupRow = ({
 	group,
 	tag,
