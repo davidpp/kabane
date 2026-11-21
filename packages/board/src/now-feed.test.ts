@@ -155,6 +155,12 @@ it("traces the steps, then the run's milestones from the whole run, not what a s
 			merged,
 			event(6, "A", "text"),
 			run(7, undefined, "done", "land · none"),
+			run(
+				7,
+				undefined,
+				"warning",
+				"gates not run for KAB-2: its worktree is gone",
+			),
 			end,
 			pruned,
 		],
@@ -163,6 +169,12 @@ it("traces the steps, then the run's milestones from the whole run, not what a s
 		{ type: "done", durationMs: 1200, summary: "implement" },
 		{ type: "done", durationMs: undefined, summary: "gates · ok · 2 passes" },
 		merged,
+		run(
+			7,
+			undefined,
+			"warning",
+			"gates not run for KAB-2: its worktree is gone",
+		),
 		end,
 		pruned,
 	]);

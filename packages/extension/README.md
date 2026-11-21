@@ -71,7 +71,8 @@ whose log includes the event. The flag also includes it in the card's activity b
 sessions and, once the card is over, in its run trace after the card's `steps`. The trace keeps
 the run's own milestones, from the whole run (a subtask merged, a warning, the run's end), and
 leaves out what a step's row already states: an event whose `summary` opens with a step's `name`
-and a space (`gates · …`, `gates for …`), and an event another event `includes`. A producer
+and a space (`gates · …`, `gates for …`), unless its `type` is `warning` or `error`, and an
+event another event `includes`. A producer
 names an event after the step that states it, so the trace does not say it twice.
 
 When a row incorporates earlier events in its summary or detail, `includes` lists their

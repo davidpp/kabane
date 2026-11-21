@@ -96,7 +96,8 @@ export const nowLines = (
 // A finished card's trace: the steps it reached, then the run's own events, from the whole run,
 // that say something no step's row does (a subtask merged, a warning, the end). An event whose
 // summary opens with a step's name is that step's (`gates · …`), and one another event `includes`
-// was said by that one (a claim, by its session's start): their steps' rows already state them.
+// was said by that one (a claim, by its session's start): their steps' rows already state them. A
+// warning or an error stays whatever its words open with.
 export const trace = (
 	card: ActivityCard,
 	events: readonly ActivityEvent[],
@@ -113,6 +114,8 @@ export const trace = (
 	}
 	const included = new Set(events.flatMap((e) => e.includes ?? []));
 	const stepOwns = (e: ActivityEvent): boolean =>
+		e.type !== "warning" &&
+		e.type !== "error" &&
 		steps.some(
 			(step) =>
 				e.summary === step.name || e.summary.startsWith(`${step.name} `),
