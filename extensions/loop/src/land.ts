@@ -184,7 +184,7 @@ export namespace Land {
 				base,
 				branch,
 				onto: onto.value,
-				said: `The branch is on ${target}`,
+				said: `Already up to date with ${target}, no rebase needed`,
 			});
 		RunState.save(ctx, { ...ctx.run, landingFrom: from.value });
 		const rebased = await Worktree.rebase(dir, onto.value, git);

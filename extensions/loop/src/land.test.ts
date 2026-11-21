@@ -204,7 +204,7 @@ describe("Land.land onto the base", () => {
 		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(true);
-		expect(landing.summary).toContain("The branch is on origin/main");
+		expect(landing.summary).toContain("Already up to date with origin/main");
 		expect(landing.rebased).toBeUndefined();
 		expect(head(ctx.run.worktree ?? "")).toBe(tip);
 		expect(ctx.run.gateRuns).toEqual([]);
@@ -417,7 +417,12 @@ describe("Land.land to a pull request", () => {
 		const landing = await landed(ctx);
 
 		expect(landing.ok).toBe(true);
-		expect(landing.summary).toContain(`pull request ${PR_URL} is open.`);
+		expect(landing.summary).toStartWith(
+			"Already up to date with origin/main (",
+		);
+		expect(landing.summary).toContain(
+			`, no rebase needed; pull request ${PR_URL} is open.`,
+		);
 		expect(landing.summary).not.toContain("also carries");
 		expect(remoteTip()).toBe(head(ctx.run.worktree ?? ""));
 		expect(ctx.run.pushed).toBe(remoteTip());
