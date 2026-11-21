@@ -189,12 +189,7 @@ describe("SetupScreen at 120 and 40 columns", () => {
 			try {
 				const frame = await until((f) => f.includes(WELCOME_LEAD));
 				expectWhole(frame, WELCOME_LINES);
-				expectWhole(frame, [
-					"on the board, press A for the copilot:",
-					'ask "how do I…" or change settings.',
-					"or use kabane config in a terminal.",
-					"enter set up · esc quit",
-				]);
+				expectWhole(frame, ["enter set up · esc quit"]);
 			} finally {
 				destroy();
 			}
@@ -647,7 +642,7 @@ describe("the wordmark", () => {
 });
 
 describe("SetupScreen surfaces", () => {
-	it("the welcome is one raised panel under a wordmark, its estimate muted", async () => {
+	it("the welcome is one raised panel under a wordmark, its tip muted", async () => {
 		const { until, captureSpans, destroy } = await mount(DEFAULTS, {
 			width: 40,
 		});
@@ -661,8 +656,8 @@ describe("SetupScreen surfaces", () => {
 			expect(lead && ints(lead.bg)).toEqual(rgb(Theme.DARK.surface.raised));
 			expect(lead && ints(lead.fg)).toEqual(rgb(Theme.DARK.text));
 			expect(lead ? lead.attributes & TextAttributes.BOLD : 0).toBeTruthy();
-			const estimate = spanWith(spans, "which agents get kabane.");
-			expect(estimate && ints(estimate.fg)).toEqual(rgb(Theme.DARK.muted));
+			const tip = spanWith(spans, "it change a setting.");
+			expect(tip && ints(tip.fg)).toEqual(rgb(Theme.DARK.muted));
 		} finally {
 			destroy();
 		}
