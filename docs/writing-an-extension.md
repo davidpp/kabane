@@ -207,9 +207,9 @@ The notes live in `kabane.db`, in the `extension_notes` table the migration crea
 
 ## Check it with TypeScript
 
-`kabane/extension` is the extension contract's types, published in the `kabane` npm package. The
-`1.0.0-beta.0` package on npm does not have them yet; until a release does, build kabane from a
-checkout (`bun run build` at its root) and add that build as a dev dependency:
+`kabane/extension` is the extension contract's types. Releases ship no npm package, so build
+kabane from a checkout of the tag you run (`bun run build` at its root) and add that build as a
+dev dependency:
 
 ```bash
 bun add -d /path/to/kabane/packages/cli/dist typescript@7.0.2 @types/bun@1.4.0

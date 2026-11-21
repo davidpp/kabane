@@ -40,3 +40,5 @@ reference), which puts the ADR in the implementer's brief.
 - [0004](0004-extension-how-to-ships-as-skills-served-by-kabane-mcp.md): An extension ships
   how-to as skills that `kabane mcp` serves through two tools; the copilot's instructions carry
   only state, identity and boundaries. Accepted.
+- [0005](0005-releases-ship-on-github-not-npm.md): Releases ship on GitHub only, from one
+  dispatch; nothing is published to npm. Accepted.
