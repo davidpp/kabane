@@ -106,7 +106,7 @@
     },
     "packages/cli": {
       "name": "kabane",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "bin": {
         "kabane": "./index.ts",
       },

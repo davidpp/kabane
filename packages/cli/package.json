@@ -1,7 +1,7 @@
 {
 	"name": "kabane",
 	"private": true,
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Local-first issue tracker and kanban for humans and AI agent runtimes",
 	"keywords": [
 		"kanban",
