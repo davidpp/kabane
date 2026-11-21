@@ -146,3 +146,28 @@ describe("Self.lasting", () => {
 		});
 	});
 });
+
+describe("a binary in Homebrew's keg", () => {
+	const KEG = "/opt/homebrew/Cellar/kabane/1.0.0/libexec/kabane";
+	const LINK = "/opt/homebrew/bin/kabane";
+	const host = { ...BINARY, execPath: KEG };
+
+	it("is named by Homebrew's link to it, which an upgrade keeps", () => {
+		const real = (path: string) => (path === LINK ? KEG : undefined);
+		expect(Self.executable(host, real)).toBe(LINK);
+		expect(Self.lasting(host, () => true, real)).toEqual({
+			command: LINK,
+			args: [],
+		});
+	});
+
+	it("keeps its own path when the link is gone or names another kabane", () => {
+		expect(Self.executable(host, () => undefined)).toBe(KEG);
+		expect(
+			Self.executable(
+				host,
+				() => "/opt/homebrew/Cellar/kabane/1.1.0/libexec/kabane",
+			),
+		).toBe(KEG);
+	});
+});
