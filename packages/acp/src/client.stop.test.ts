@@ -48,7 +48,7 @@ const groupAlive = (pid: number): boolean => {
 };
 
 const launch = (
-	stage: "handshake" | "open",
+	stage: "handshake" | "open" | "deaf",
 	options: { signal?: AbortSignal; eof?: boolean } = {},
 ) => {
 	const dir = mkdtempSync(join(tmpdir(), "acp-stop-"));
@@ -119,6 +119,30 @@ describe("AcpClient stopping a harness that ignores stdin EOF and SIGTERM", () =
 		} finally {
 			kill.mockRestore();
 		}
+	}, 10_000);
+
+	it("close of a harness that stopped reading in the middle of a large prompt still settles", async () => {
+		const { dir, connecting, pids } = launch("deaf");
+		const conn = await connecting;
+		if (!conn.ok) throw conn.error;
+		const session = await AcpClient.newSession(conn.value, {
+			cwd: dir,
+			mcpServers: [],
+		});
+		if (!session.ok) throw session.error;
+		const [harness = 0, child = 0] = await pids();
+		const big = [{ type: "text" as const, text: "x".repeat(8 << 20) }];
+		void (async () => {
+			for await (const _ of AcpClient.prompt(session.value, big));
+		})().catch(() => {});
+		await Bun.sleep(200);
+
+		const closed = await Promise.race([
+			AcpClient.close(conn.value).then(() => "settled"),
+			Bun.sleep(6_000).then(() => "still waiting"),
+		]);
+		expect(closed).toBe("settled");
+		expect([running(harness), running(child)]).toEqual([false, false]);
 	}, 10_000);
 
 	it("close settles once the group is empty, after its SIGKILL, when the harness left a child behind", async () => {

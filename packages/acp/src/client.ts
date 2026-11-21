@@ -380,7 +380,9 @@ export namespace AcpClient {
 		graceMs: number,
 		sweep: () => Promise<void>,
 	): Promise<void> => {
-		await tryCatch(async () => {
+		// Not awaited: ending a pipe that still holds a write the harness stopped reading waits
+		// until the harness exits, and the grace has to run out regardless.
+		void tryCatch(async () => {
 			await proc.stdin.end();
 		});
 		await withTimeout(proc.exited, graceMs, "still running");
