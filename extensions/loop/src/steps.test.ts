@@ -438,7 +438,7 @@ describe("RunSteps", () => {
 
 describe("RunSteps after the branch was pruned", () => {
 	it("no longer leaves the branch to the human, and the landing says it went", () => {
-		const after = { removed: true };
+		const after = { worktree: "pruned" } as const;
 		expect(
 			RunSteps.left(finished(), NODES, after).some((item) =>
 				item.how.startsWith("branch"),
@@ -446,6 +446,18 @@ describe("RunSteps after the branch was pruned", () => {
 		).toBe(false);
 		expect(RunSteps.of(finished(), NODES, NOW, after).at(-1)?.result).toBe(
 			"none: kept for review, since merged and removed",
+		);
+	});
+
+	it("says only that the worktree is missing when nothing recorded a prune, and still leaves the branch", () => {
+		const after = { worktree: "missing" } as const;
+		expect(
+			RunSteps.left(finished(), NODES, after).find((item) =>
+				item.how.startsWith("branch"),
+			)?.reason,
+		).toEndWith("worktree missing");
+		expect(RunSteps.of(finished(), NODES, NOW, after).at(-1)?.result).toBe(
+			"none: kept for review · worktree missing",
 		);
 	});
 });
@@ -585,5 +597,64 @@ describe("LoopActivity.card", () => {
 			NOW,
 		);
 		expect("left" in landed).toBe(false);
+	});
+});
+
+describe("RunSteps' spend fact", () => {
+	const spendOf = (run: RunStore.Run) =>
+		RunSteps.facts(run).find((fact) => fact.label === "spend")?.value;
+	const priced = (amount: number) => ({
+		used: 1,
+		size: 10,
+		cost: { amount, currency: "USD" },
+	});
+
+	it("names the harnesses whose sessions priced nothing beside what the others spent", () => {
+		expect(spendOf(finished())).toBe("$17.50 (codex unpriced)");
+	});
+
+	it("tells a spend nobody priced from a measured zero", () => {
+		expect(spendOf(finished({ usage: {} }))).toBe(
+			"unknown (codex·claude unpriced)",
+		);
+		const claims = finished().claims.filter((c) => c.harness === "claude");
+		expect(
+			spendOf(
+				finished({
+					claims,
+					usage: Object.fromEntries(
+						claims.map((c) => [c.sessionId, priced(0)]),
+					),
+				}),
+			),
+		).toBe("$0.00");
+		expect(spendOf(finished({ claims: [], usage: {} }))).toBe("$0.00");
+	});
+
+	it("waits for a live session to report before calling it unpriced", () => {
+		const live = (claims: unknown[], usage = {}) =>
+			finished({
+				status: "running",
+				endedAt: undefined,
+				exit: undefined,
+				claims,
+				usage,
+			});
+		const going = claim("next", "09:00:00", undefined, { harness: "claude" });
+		expect(spendOf(live([going]))).toBe("unknown");
+		const ended = claim("fixer", "08:43:41", "09:10:39", { harness: "claude" });
+		expect(spendOf(live([ended, going], { "s-fixer": priced(3.1) }))).toBe(
+			"$3.10",
+		);
+	});
+
+	it("keeps the limit after the amount", () => {
+		const limited = finished({
+			config: {
+				...RUN_JSON.config,
+				budget: { ...RUN_JSON.config.budget, spend: 20 },
+			},
+		});
+		expect(spendOf(limited)).toBe("$17.50 of $20.00 (codex unpriced)");
 	});
 });

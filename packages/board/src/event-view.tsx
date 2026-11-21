@@ -44,7 +44,7 @@ import { eventStyle } from "./event-style";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import { NowFeed } from "./now-feed";
+import { type HueMemory, NowFeed } from "./now-feed";
 import { clicks, PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
@@ -193,12 +193,15 @@ export type EventViewProps = {
 	// row against it, and pressing `t` again starts every row afresh.
 	toolDetails?: boolean;
 	// A card with steps, on its own tab only: the map's cursor and folds, the lanes its questions wait
-	// on, and a click on a row by its key. The map stands in for the lane chips, and the question
-	// sits under it.
+	// on, the lane of the one the tab shows, which the cursor follows, and a click on a row by its key.
+	// The map stands in for the lane chips, and the question sits under it.
 	map?: {
 		view: RunMap.View;
 		asking: ReadonlySet<string>;
+		asked?: string;
 		onRow?: (key: string) => void;
+		// The map's window has shown what the card left for the human.
+		onLeftShown?: () => void;
 	};
 };
 
@@ -317,6 +320,8 @@ export const EventView = ({
 	// Each session log's opened rows and place, by lane, kept while the arrangement around it changes
 	// (crossing SPLIT_COLS remounts it). One view per card, so per card.
 	const logs = useRef<LogMemory>(new Map()).current;
+	// The live sessions' hues in "now", kept as the arrangement remounts it (NowFeed).
+	const hues = useRef<HueMemory>(new Map()).current;
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
@@ -364,6 +369,7 @@ export const EventView = ({
 					scrollRef={scrollRef}
 					toolDetails={toolDetails}
 					logs={logs}
+					hues={hues}
 				/>
 			) : (
 				<>
@@ -451,6 +457,7 @@ type CockpitProps = {
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	toolDetails: boolean | undefined;
 	logs: LogMemory;
+	hues: HueMemory;
 };
 
 // The rows the regions share: what the footer leaves them, and never more, so the footer stays.
@@ -544,10 +551,12 @@ const StackedCockpit = (props: CockpitProps): ReactNode => {
 				card={card}
 				view={map.view}
 				asking={map.asking}
+				asked={map.asked}
 				width={width - 1}
 				maxRows={mapRows}
 				spinnerFrame={spinnerFrame}
 				onRow={map.onRow}
+				onLeftShown={map.onLeftShown}
 			/>
 			<BannerRoomContext.Provider
 				value={{
@@ -566,6 +575,7 @@ const StackedCockpit = (props: CockpitProps): ReactNode => {
 					width={width}
 					scrollRef={props.scrollRef}
 					spinnerFrame={spinnerFrame}
+					memory={props.hues}
 				/>
 			) : (
 				<SessionLog
@@ -593,7 +603,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 	const raised = theme.surface.raised;
 	const right = width - Cockpit.LEFT_COLS - 1;
 	const live = isInFlight(card);
-	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asking);
+	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asked);
 	const [leftRows, onLeftSize] = useLaidOutRows(height - CHROME_ROWS);
 	const now = (keys: boolean, rows?: number): ReactNode => (
 		<NowFeed
@@ -602,6 +612,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 			width={right}
 			scrollRef={keys ? props.scrollRef : ownRef}
 			spinnerFrame={spinnerFrame}
+			memory={props.hues}
 			{...(rows === undefined ? {} : { rows })}
 		/>
 	);
@@ -665,11 +676,13 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 					card={card}
 					view={map.view}
 					asking={map.asking}
+					asked={map.asked}
 					width={Cockpit.LEFT_COLS - 1}
 					maxRows={height}
 					spinnerFrame={spinnerFrame}
 					surface={raised}
 					onRow={map.onRow}
+					onLeftShown={map.onLeftShown}
 				/>
 				{/* Under the `map` heading, the rest of the column at most. */}
 				<BannerRoomContext.Provider

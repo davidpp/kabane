@@ -25,10 +25,10 @@ export namespace Cockpit {
 	export const logLane = (
 		card: RunMap.Card,
 		view: RunMap.View & { lane?: string | null },
-		asking?: ReadonlySet<string>,
+		asked?: string,
 	): string | undefined => {
 		if (view.lane) return view.lane;
-		const row = RunMap.at(card, view, asking);
+		const row = RunMap.at(card, view, asked);
 		return row?.type === "session" ? row.session.lane : undefined;
 	};
 

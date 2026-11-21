@@ -161,7 +161,7 @@ export namespace LoopHeader {
 		const left = RunSteps.left(run, plan?.nodes ?? null).filter(
 			(item) => item.taskId !== undefined,
 		).length;
-		const spend = RunSteps.spend(run);
+		const spend = RunSteps.spend(run).amount;
 		const { continuations } = run.config.budget;
 		return [
 			...(step && progress

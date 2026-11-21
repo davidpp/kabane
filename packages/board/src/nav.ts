@@ -2099,6 +2099,8 @@ export namespace BoardNav {
 			events: boolean;
 			header?: boolean;
 			lifted?: readonly string[];
+			// The card's tab is split in two columns (Cockpit.split).
+			split?: boolean;
 		},
 	): Keymap.Situation => {
 		const inHand =
@@ -2107,7 +2109,7 @@ export namespace BoardNav {
 				: state.view.type === "jobs"
 					? (state.tabs.jobs.selectedId ?? undefined)
 					: rowOf(visibleRows(state), state.selectedId)?.task.id;
-		const card = CardTab.situation(state);
+		const card = CardTab.situation(state, facts.split);
 		return {
 			selection:
 				state.view.type === "jobs"
@@ -2140,6 +2142,7 @@ export namespace BoardNav {
 			lanes: card.lanes,
 			map: card.map,
 			log: card.log,
+			...(card.enter ? { enter: card.enter } : {}),
 		};
 	};
 

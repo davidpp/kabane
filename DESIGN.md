@@ -176,8 +176,9 @@ which is why the `-light` ramp has grays of its own rather than reusing the dark
   chip and the tag on each of its lines in a card's stream. Cyan, magenta, yellow, violet, teal
   and pink, a step darker on a light terminal; none is a status hue or the accent, so a tag never
   reads as a state. In a map's `now` feed, only live sessions take a series slot, and a session
-  keeps its slot while others start and end (`Theme.liveHues`). Their short names carry identity
-  with colour off and past six concurrent sessions. A single session needs no tag. On a card with
+  keeps its slot while others start and end, even when the session whose slot it gave way to ends
+  (`Theme.liveSlots`); a freed slot goes to a session that starts later. Their short names carry
+  identity with colour off and past six concurrent sessions. A single session needs no tag. On a card with
   lane chips, a lane keeps its hue by its place in the card’s list.
 
 ### Named Rules
@@ -308,7 +309,7 @@ against every glyph already here.
 | `⊘` | the detail's trail: a blocker still open | accent |
 | `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
 | spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
-| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open; a running call spins the group glyph | muted, working |
+| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open, timed from its first start to its last end so calls side by side count once, in the log and in `now` alike; a running call spins the group glyph | muted, working |
 | `!` | transcript: a harness's notice by its severity, or a loop's warning; a warning in the accent, since the session is not running as asked, an error in the failed hue, information muted | accent, failed, muted |
 
 ### Footer
@@ -330,8 +331,9 @@ against every glyph already here.
 - **Motion:** only the tab on screen animates its spinner. A running card on another tab
   shows the still `●`. The glyph reads the state the tab's own poll last saw, so it stops the
   moment the run row says the run is over.
-- **Left for you:** a finished card that left issues for the human shows the accent `?` as its
-  glyph until its tab has been on screen.
+- **Left for you:** a finished card that left anything for the human (an issue, a kept branch)
+  shows the accent `?` as its glyph until its map has had a line of that list on screen; a short
+  pane that counts it under `… n more` has not shown it.
 
 ### Run map
 - **What:** a card tab whose card has steps opens on its map, under the run row: one row per
@@ -343,10 +345,14 @@ against every glyph already here.
   them), `✓` done, `○` to come, `✗` failed, `⏹` stopped, and the accent `?` on a session a
   question waits on and on its step, whose result then starts `asks you`.
 - **Cursor:** one row on selected under the Selection Rule, behind a `›`. It starts on and
-  follows the newest live session, or the session that asks, until the human moves it; `f` gives
-  it back to the run. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
+  follows the newest live session, or the session whose question the banner shows, until the human
+  moves it; `f` gives it back to the run, and so does `!`, which also closes a log `enter` opened.
+  Every session a question waits on keeps its `?`; the banner's alone has the cursor, the log and
+  an action aimed at a session. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
   session's log in place of the stream with its name over it, and `esc` closes the log before it
   goes back to the tracker.
+  The footer's `enter` says what it does on the cursor's row (`open issue`, `open` or `fold` a
+  step, `log`, or `pin log` in the split) and is gone where it does nothing.
   `g/G` and `⌃d/⌃u` scroll the stream. The `?` sheet lists what the card runs with after its
   keys, under the card's name: label muted, value in the text color.
 - **Left for you:** on a finished card, a blank row and `left for you · n` as a Label under the

@@ -112,33 +112,34 @@ export namespace Theme {
 		tokens.series[index % tokens.series.length] ?? tokens.secondary;
 
 	/**
-	 * The hue of each live lane. Only live sessions hold a series slot. A slot comes from the
-	 * lane's place in the card's `lanes`, so a session keeps its hue while others start and
-	 * end; a slot an older live session holds passes to the next free one. Beyond the palette
-	 * the name carries identity.
+	 * The series slot of each live lane, of `size`. Only live sessions hold one. A lane `held` gave a
+	 * slot keeps it while it lives, so a session keeps its hue while others start and end; a new one
+	 * takes the slot its place in the card's `lanes` gives, else the next free one, a slot an ended
+	 * session freed included. Past `size` live sessions a lane has none, and its name carries identity.
 	 */
-	export const liveHues = (
-		tokens: Tokens,
+	export const liveSlots = (
+		size: number,
 		lanes: readonly string[],
 		live: readonly string[],
-	): Map<string, string> => {
-		const hues = new Map<string, string>();
-		const taken = new Set<number>();
-		const size = tokens.series.length;
+		held: ReadonlyMap<string, number> = new Map(),
+	): Map<string, number> => {
+		const slots = new Map<string, number>();
+		for (const lane of live) {
+			const slot = held.get(lane);
+			if (slot !== undefined) slots.set(lane, slot);
+		}
+		const taken = new Set(slots.values());
 		for (const [index, lane] of lanes.entries()) {
-			if (!live.includes(lane)) continue;
+			if (!live.includes(lane) || slots.has(lane)) continue;
 			const slot = Array.from(
 				{ length: size },
 				(_, step) => (index + step) % size,
 			).find((candidate) => !taken.has(candidate));
-			if (slot !== undefined) taken.add(slot);
-			hues.set(
-				lane,
-				(slot !== undefined ? tokens.series[slot] : undefined) ??
-					tokens.secondary,
-			);
+			if (slot === undefined) continue;
+			taken.add(slot);
+			slots.set(lane, slot);
 		}
-		return hues;
+		return slots;
 	};
 
 	// The ANSI slots the ink reads: magenta, yellow, cyan. Never blue, green or red, the terminal's

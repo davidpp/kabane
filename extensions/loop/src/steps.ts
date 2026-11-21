@@ -508,10 +508,12 @@ export namespace RunSteps {
 	};
 
 	/**
-	 * What became of an over run's branch after the run: `removed` once its worktree and branch are
-	 * gone (`kabane loop prune` removes both once the branch merged), which run.json does not record.
+	 * What became of an over run's worktree after the run, which run.json does not record: `pruned`
+	 * when `kabane loop prune` removed it and its branch, which it does once the branch merged (its
+	 * `pruned` event says so), `missing` when the directory is gone with no such event, which says
+	 * nothing of the branch or its merge.
 	 */
-	export type After = { removed?: boolean };
+	export type After = { worktree?: "pruned" | "missing" };
 
 	const land = (run: RunStore.Run, after: After): ActivityStep => {
 		const how = run.config.land;
@@ -529,9 +531,12 @@ export namespace RunSteps {
 			return {
 				name: "land",
 				state: "done",
-				result: after.removed
-					? "none: kept for review, since merged and removed"
-					: "none: kept for review",
+				result:
+					after.worktree === "pruned"
+						? "none: kept for review, since merged and removed"
+						: after.worktree === "missing"
+							? "none: kept for review · worktree missing"
+							: "none: kept for review",
 			};
 		return { name: "land", state: "pending", result: LANDING[how] ?? how };
 	};
@@ -596,11 +601,17 @@ export namespace RunSteps {
 				};
 			});
 		const branch: ActivityLeft[] =
-			run.worktree !== undefined && run.landing?.ok !== true && !after.removed
+			run.worktree !== undefined &&
+			run.landing?.ok !== true &&
+			after.worktree !== "pruned"
 				? [
 						{
 							how: `branch ${RunStore.branchOf(run)}`,
-							reason: `land: ${run.config.land}${run.landing ? ` · ${run.landing.summary}` : ""}`,
+							reason: [
+								`land: ${run.config.land}`,
+								...(run.landing ? [run.landing.summary] : []),
+								...(after.worktree === "missing" ? ["worktree missing"] : []),
+							].join(" · "),
 						},
 					]
 				: [];
@@ -617,9 +628,43 @@ export namespace RunSteps {
 		steps.findLast((s) => s.state === "running") ??
 		steps.find((s) => s.state === "pending");
 
-	/** What the run has spent where a harness priced its work, in the run's currency. */
-	export const spend = (run: RunStore.Run): number =>
-		Budget.spent(run.usage, run.config.budget.currency, run.claims).amount;
+	/**
+	 * What the run has spent where a harness priced its work, in the run's currency; whether any
+	 * session priced it, so an unknown spend is not read as a measured zero; and the harnesses of its
+	 * ended sessions that priced none of theirs in it (no cost reported, or another currency). A
+	 * session still going may report its cost yet.
+	 */
+	export const spend = (
+		run: RunStore.Run,
+	): { amount: number; priced: boolean; unpriced: string[] } => {
+		const { currency } = run.config.budget;
+		const isPriced = (claim: RunStore.Claim): boolean =>
+			run.usage[claim.sessionId]?.cost?.currency === currency;
+		const over = (claim: RunStore.Claim): boolean =>
+			claim.endedAt !== undefined || !RunStore.isLive(run.status);
+		return {
+			amount: Budget.spent(run.usage, currency, run.claims).amount,
+			priced: run.claims.some(isPriced),
+			unpriced: [
+				...new Set(
+					run.claims
+						.filter((c) => over(c) && !isPriced(c))
+						.map((c) => c.harness),
+				),
+			],
+		};
+	};
+
+	// The spend fact: `$17.50`, `$17.50 (codex unpriced)`, or `unknown` while no session priced its
+	// work; a spend limit after the amount. Not `·` before the harnesses: the board joins facts with it.
+	const spendFact = (run: RunStore.Run): string => {
+		const { amount, priced, unpriced } = spend(run);
+		const limit = run.config.budget.spend;
+		const spent =
+			priced || run.claims.length === 0 ? money(run, amount) : "unknown";
+		const of = limit === undefined ? spent : `${spent} of ${money(run, limit)}`;
+		return unpriced.length > 0 ? `${of} (${unpriced.join("·")} unpriced)` : of;
+	};
 
 	/**
 	 * What the run runs with, in words, for the board's `?` sheet: its slots and continuations as
@@ -632,7 +677,6 @@ export namespace RunSteps {
 		const live = RunStore.isLive(run.status)
 			? run.claims.filter((c) => c.endedAt === undefined).length
 			: 0;
-		const spent = spend(run);
 		const list = (names: readonly string[]): string =>
 			names.length > 0 ? names.join("·") : "none";
 		return [
@@ -641,13 +685,7 @@ export namespace RunSteps {
 				label: "continuations",
 				value: `${run.continuationsUsed}/${budget.continuations}`,
 			},
-			{
-				label: "spend",
-				value:
-					budget.spend === undefined
-						? money(run, spent)
-						: `${money(run, spent)} of ${money(run, budget.spend)}`,
-			},
+			{ label: "spend", value: spendFact(run) },
 			{
 				label: "implementer",
 				value: `${config.implementer}${config.model ? ` ${config.model}` : ""}`,

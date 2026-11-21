@@ -221,18 +221,22 @@ tab lists after the keys, under the card's name, and which the split (below) sho
 
 A card with steps has a map on its tab in place of the lane chips, under the header: one row per
 step, a running step opened to its sessions, finished ones folded. A cursor follows the newest
-live session, or the session a question waits on, until the human moves it with `j/k` or `↑↓`;
-`f` hands it back to the run. `h/l` fold and open the step under it, `enter` on a session opens
+live session, or the session whose question the tab shows, until the human moves it with `j/k` or
+`↑↓`; `f` hands it back to the run, and so does `!`, which also closes a log `enter` opened. With
+two sessions asking, both rows show `?`, and the log and an action aimed at a session go to the
+one whose question is on screen. `h/l` fold and open the step under it, `enter` on a session opens
 its log and, on an issue the card left, opens that issue on the tracker (by `taskId`, else by a
 `taskShortId` the board holds). A click puts the cursor on a row and a second click is `enter`.
-The question its sessions wait on names the session's lane. A finished card that left an issue
-keeps an accent `?` as its tab's glyph until its tab has been on screen. A card without steps keeps
+The question its sessions wait on names the session's lane. A finished card that left anything
+(an issue, a kept branch) keeps an accent `?` as its tab's glyph until a line of that list has been
+in the map's window on its tab. A card without steps keeps
 the lanes below.
 
 The same regions and keys are arranged two ways (`src/cockpit.ts`):
 
 - **Stacked, under 160 columns:** the map, the question, then `now` (the live sessions' last
-  lines; once the card is over, the run trace). `enter` shows the session's log in place of `now`,
+  lines; once the card is over, the run trace: its steps, then the `run` events no step states,
+  by the rule in the `@kabane/extension` README). `enter` shows the session's log in place of `now`,
   and `esc` goes back to it before a second `esc` goes to the tracker.
 - **Split, from 160 columns:** a left column, 66 wide on the raised surface, with the map, the
   question and `run` (the card's `facts`, shown whole or not at all in the rows left). The right

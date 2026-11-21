@@ -64,6 +64,8 @@ export namespace Keymap {
 		map?: boolean;
 		/** The map's session log is open over the stream. */
 		log?: boolean;
+		/** What `enter` does on the map's cursor row (`open issue`, `fold`, `pin log`), when it does anything. */
+		enter?: string;
 		/** The question on screen takes a typed answer (it offers none to pick, or allows one), so `enter` types it. */
 		freeform?: boolean;
 		/** The open prompt's action could go to another lane, which `tab` aims it at. */
@@ -620,10 +622,11 @@ export namespace Keymap {
 				},
 				{
 					key: "enter",
-					label: "log",
+					label: "open",
 					tier: "footer",
 					keys: ["return"],
-					when: (s) => s.map === true && s.log !== true && s.freeform !== true,
+					when: (s) => s.enter !== undefined,
+					labelOf: (s) => s.enter ?? "open",
 				},
 				{
 					key: "esc",

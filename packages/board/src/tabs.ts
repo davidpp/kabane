@@ -90,8 +90,8 @@ export namespace BoardTabs {
 		picked: ReadonlyMap<string, readonly number[]>;
 		// Each card tab's own reading state, by card id.
 		views: ReadonlyMap<string, CardView>;
-		// Finished cards whose left-for-you list has been on screen: until then the tab keeps the
-		// accent `?`.
+		// Cards whose left-for-you list the map's window has shown: until then a finished one's tab
+		// keeps the accent `?`.
 		seen: ReadonlySet<string>;
 		// The Jobs tab's rows; it is in the bar while there is one.
 		jobs: BoardJobs.Jobs;
@@ -191,23 +191,24 @@ export namespace BoardTabs {
 		...(card.facts && card.facts.length > 0 ? { facts: card.facts } : {}),
 	});
 
-	/** Whether what a finished card left for the human holds an issue: the tab's `?` waits on it. */
-	export const leavesIssues = (card: TabCard | undefined): boolean =>
-		card?.finished === true &&
-		(card.left ?? []).some(
-			(item) => item.taskId !== undefined || item.taskShortId !== undefined,
+	/** The finished card's tab still owes the human a look at what it left: issues, a branch. */
+	export const unseen = (tabs: Tabs, id: string): boolean => {
+		const card = tabs.cards.get(id);
+		return (
+			card?.finished === true &&
+			(card.left?.length ?? 0) > 0 &&
+			!tabs.seen.has(id)
 		);
-
-	/** The finished card's tab still owes the human a look at what it left. */
-	export const unseen = (tabs: Tabs, id: string): boolean =>
-		leavesIssues(tabs.cards.get(id)) && !tabs.seen.has(id);
-
-	// The tab on screen shows its card's left-for-you list under its map, so it counts as seen.
-	const seeing = (tabs: Tabs): Tabs => {
-		const id = tabs.active;
-		if (id === null || !unseen(tabs, id)) return tabs;
-		return { ...tabs, seen: new Set(tabs.seen).add(id) };
 	};
+
+	/**
+	 * The map's window on the card's tab has shown its left-for-you list. The same state when it was
+	 * already seen, so a render that reports it again changes nothing.
+	 */
+	export const seeLeft = (state: State, id: string): State =>
+		state.tabs.seen.has(id)
+			? state
+			: withTabs(state, { seen: new Set(state.tabs.seen).add(id) });
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
 	const fingerprint = (tabs: Tabs): string =>
@@ -260,7 +261,7 @@ export namespace BoardTabs {
 			),
 		};
 		if (fingerprint(next) === fingerprint(tabs)) return state;
-		const moved = { ...state, tabs: seeing(next) };
+		const moved = { ...state, tabs: next };
 		return next.active !== null &&
 			next.active !== JOBS &&
 			!next.open.includes(next.active)
@@ -279,7 +280,7 @@ export namespace BoardTabs {
 		const next = { ...tabs, cards };
 		return fingerprint(next) === fingerprint(tabs)
 			? state
-			: { ...state, tabs: seeing(next) };
+			: { ...state, tabs: next };
 	};
 
 	// Leaving the tracker drops a banner whose question is settled, so the task reads as itself when
@@ -345,7 +346,7 @@ export namespace BoardTabs {
 			...state,
 			focus: "board",
 			view: { type: "events", cardId: id, fromView: "board" },
-			tabs: seeing({ ...tabs, active: id, tracker }),
+			tabs: { ...tabs, active: id, tracker },
 		};
 	};
 
@@ -410,6 +411,15 @@ export namespace BoardTabs {
 		};
 	};
 
+	// A map's cursor given back to the run, and its log unpinned, so the map, the log and an action
+	// aimed at a lane go to the session whose question `!` just landed on.
+	const following = (tabs: Tabs, id: string): Tabs["views"] => {
+		const view = tabs.views.get(id);
+		return view && tabs.cards.get(id)?.steps
+			? new Map(tabs.views).set(id, { ...view, follow: true, lane: null })
+			: tabs.views;
+	};
+
 	// `!`: the next question after the one in hand, oldest first, wrapping. The one on screen, alone in
 	// the queue, says so rather than landing where the human already is with nothing moved.
 	const nextQuestion = (state: State): Step => {
@@ -425,7 +435,10 @@ export namespace BoardTabs {
 			const landed =
 				owner === undefined
 					? pin(state, next)
-					: withTabs(show(state, owner), { landed: next.id });
+					: withTabs(show(state, owner), {
+							landed: next.id,
+							views: following(state.tabs, owner),
+						});
 			if (landed === state) {
 				skipped++;
 				continue;
@@ -540,6 +553,20 @@ export namespace BoardTabs {
 	const freeform = (question: Question, settled: boolean): boolean =>
 		!settled && (question.choices.length === 0 || question.allowFreeform);
 
+	// `enter` sends a multi-select's toggled answers while it still waits.
+	const sends = (tabs: Tabs, question: Question, settled: boolean): boolean =>
+		!settled && question.multiSelect && pickedOf(tabs, question).length > 0;
+
+	/** Whether `enter` goes to the question in hand: to send its picks, or to type an answer. */
+	export const takesEnter = (state: State): boolean => {
+		const asked = inHand(state);
+		return (
+			asked !== undefined &&
+			(sends(state.tabs, asked.question, asked.settled) ||
+				freeform(asked.question, asked.settled))
+		);
+	};
+
 	/** The choices toggled on a multi-select question, by index, in the order they were picked. */
 	export const pickedOf = (tabs: Tabs, question: Question): readonly number[] =>
 		tabs.picked.get(question.id) ?? [];
@@ -614,7 +641,7 @@ export namespace BoardTabs {
 		if (key.ctrl || key.meta) return null;
 		if (key.name === "return" || key.name === "enter") {
 			const picked = pickedOf(state.tabs, question);
-			if (!settled && question.multiSelect && picked.length > 0)
+			if (sends(state.tabs, question, settled))
 				return answerWith(state, question, pickedAnswer(question, picked));
 			return freeform(question, settled) ? typeAnswer(state, question) : null;
 		}
