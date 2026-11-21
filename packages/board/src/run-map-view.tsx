@@ -319,7 +319,7 @@ const entryKey = (entry: Entry): string =>
 
 // The entries a window of `max` rows keeps around the cursor, with how many it left out each side:
 // the steps and what was left share it, so a long list of findings never puts the cursor below the
-// screen.
+// screen. A side with nothing left out spends no row on its marker.
 const windowed = (
 	entries: readonly Entry[],
 	cursor: string | undefined,
@@ -334,15 +334,22 @@ const windowed = (
 				entry.kind === "line" && entry.line.keys.includes(cursor ?? ""),
 		),
 	);
-	const room = max >= 3 ? max - 2 : max;
-	const start = Math.max(
-		0,
-		Math.min(entries.length - room, at - Math.floor(room / 2)),
-	);
+	const startOf = (room: number): number =>
+		Math.max(0, Math.min(entries.length - room, at - Math.floor(room / 2)));
+	if (max < 3) {
+		const start = startOf(max);
+		return { shown: entries.slice(start, start + max), above: 0, below: 0 };
+	}
+	let room = max - 1;
+	let start = startOf(room);
+	if (start > 0 && start + room < entries.length) {
+		room = max - 2;
+		start = startOf(room);
+	}
 	return {
 		shown: entries.slice(start, start + room),
-		above: max >= 3 ? start : 0,
-		below: max >= 3 ? entries.length - start - room : 0,
+		above: start,
+		below: entries.length - start - room,
 	};
 };
 
@@ -447,8 +454,11 @@ export const RunMapView = ({
 		<box
 			style={{
 				flexDirection: "column",
-				height: Math.min(entries.length, maxRows),
+				// A basis, not a height: OpenTUI drops a box's shrink once its numeric height changes, and
+				// the map has to give way to the feed and the footer.
+				flexBasis: Math.min(entries.length, maxRows),
 				flexShrink: 1,
+				minHeight: 0,
 				overflow: "hidden",
 			}}
 			onSizeChange={function (this: BoxRenderable) {

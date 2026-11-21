@@ -10,6 +10,7 @@ import type {
 	ActivityCard,
 	ActivityEvent,
 	ActivitySource,
+	ActivityStep,
 } from "@kabane/extension";
 import {
 	type CapturedSpan,
@@ -17,7 +18,7 @@ import {
 	type ScrollBoxRenderable,
 	TextAttributes,
 } from "@opentui/core";
-import { act, createRef, useEffect, useState } from "react";
+import { act, createRef, type ReactNode, useEffect, useState } from "react";
 import { EventView, laneEvents, promptLines } from "./event-view";
 import type { BoardNav } from "./nav";
 import type { PlanEntry } from "./ports";
@@ -1038,4 +1039,103 @@ describe("an edit's diff", () => {
 			destroy();
 		}
 	});
+});
+
+// A finished run with more steps and findings than a short pane holds, its last step opened after
+// the tab is on screen, as `l` does: the map's rows change once it is laid out.
+const FINISHED: ActivityCard = {
+	id: "loop:r1",
+	kind: "loops",
+	label: "loop",
+	status: "completed",
+	startedAt: "2026-11-20T09:00:00.000Z",
+	finishedAt: "2026-11-20T09:30:00.000Z",
+	detail: [],
+	tab: true,
+	steps: [
+		...["implement", "gates", "triage", "review", "fixer", "land"].map(
+			(name): ActivityStep => ({ name, state: "done", result: "ok" }),
+		),
+		{
+			name: "recheck",
+			state: "done",
+			sessions: ["functional", "quality", "docs", "design"].map((name) => ({
+				name,
+				state: "done" as const,
+				lane: name,
+			})),
+		},
+	],
+	left: ["PROJ-1", "PROJ-2", "PROJ-3"].map((id) => ({
+		taskShortId: id,
+		how: "reopened",
+	})),
+};
+const TRACE: ActivityEvent[] = [
+	{
+		seq: 1,
+		at: "2026-11-20T09:30:00.000Z",
+		type: "progress",
+		summary: "completed: plan-done",
+		run: true,
+	},
+];
+
+const Opening = (): ReactNode => {
+	const [open, setOpen] = useState(false);
+	useEffect(() => {
+		const timer = setTimeout(() => setOpen(true), 50);
+		return () => clearTimeout(timer);
+	}, []);
+	return (
+		<EventView
+			cardId={FINISHED.id}
+			initialCard={FINISHED}
+			source={{
+				load: async () => ok([FINISHED]),
+				card: async () => ok(FINISHED),
+				events: async (_id, after) =>
+					ok(TRACE.filter((event) => event.seq > after)),
+			}}
+			resolveShortId={() => undefined}
+			scrollRef={createRef()}
+			tabbed
+			map={{
+				view: {
+					folds: new Map([["recheck", open]]),
+					cursor: "step:recheck",
+					follow: false,
+				},
+				asking: new Set(),
+			}}
+			keys={{ context: "cardTab", situation: { map: true } }}
+		/>
+	);
+};
+
+describe("a card tab's footer keeps the bottom row", () => {
+	for (const [width, height] of [
+		[100, 22],
+		[100, 16],
+		[160, 16],
+	] as const)
+		it(`with a step opened after mount, at ${width}×${height}`, async () => {
+			const { renderOnce, captureCharFrame, destroy } = await renderTest(
+				<Opening />,
+				{ width, height },
+			);
+			try {
+				const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+					f.includes("functional"),
+				);
+				const rows = frame.split("\n");
+				expect(rows[height - 1]).toContain("? help");
+				// "Now" keeps its title and at least five rows above it.
+				const title = rows.findIndex((row) => row.includes("run trace"));
+				expect(title).toBeGreaterThan(-1);
+				expect(title).toBeLessThanOrEqual(height - 1 - 1 - 5);
+			} finally {
+				destroy();
+			}
+		});
 });
