@@ -77,7 +77,8 @@ and `templates/` over the real executable (symlinks followed); any failure befor
 the old install as it was. For a positively verified hoisted Bun global registry install,
 `kabane update --check` reports a candidate (installation policy is unverified), and
 `kabane update` explicitly checks Bun policy and verifies an exact installation. A stable
-install follows npm `latest`; a beta install takes the higher of `beta` and `latest`. Updates
+install follows `latest` (npm's for a Bun install, GitHub's for a binary); a beta install takes
+the higher of `beta` and `latest`. Updates
 stay within major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin
 layouts refuse replacement. The board shows `kabane <version> is out` when that candidate
 exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads GitHub releases at most once a day and installs nothing;
