@@ -24,7 +24,9 @@
  *                                   the flag
  *
  * Without `--harnesses`, KABANE_HARNESSES is set empty and setup finds no agents: the harness
- * configs live under the real HOME, and a sandbox must never register itself there.
+ * configs live under the real HOME, and a sandbox must never register itself there. With or
+ * without it, KABANE_JOB_TICK=print makes the job tick's offer and its doctor fix print what they
+ * would install: launchd and crontab belong to the user's real session whatever HOME is.
  *
  * A sandbox config that leaves `updates.check` unsaid gets it false, so a sandbox never asks npm
  * for a release. To see the board's release notice, set it true in the sandbox and run with
@@ -104,6 +106,8 @@ const {
 	...inherited
 } = process.env;
 
+// KABANE_JOB_TICK=print with or without --harnesses: launchctl bootstrap and crontab act on the
+// user's real session whatever HOME says, so a sandbox's job tick is shown, never installed.
 const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv =>
 	harnesses
 		? {
@@ -111,8 +115,14 @@ const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv =>
 				HOME: SANDBOX,
 				CODEX_HOME: join(SANDBOX, ".codex"),
 				KABANE_HOME,
+				KABANE_JOB_TICK: "print",
 			}
-		: { ...process.env, KABANE_HOME, KABANE_HARNESSES: "" };
+		: {
+				...process.env,
+				KABANE_HOME,
+				KABANE_HARNESSES: "",
+				KABANE_JOB_TICK: "print",
+			};
 
 // Through the entry's own hashbang, as a linked kabane starts: the sandbox renders with the React
 // build a linked or installed kabane does.

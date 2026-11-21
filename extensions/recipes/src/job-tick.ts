@@ -160,12 +160,23 @@ export namespace JobTick {
 				);
 	};
 
+	/**
+	 * What `install` would do, which it says instead of doing it under `KABANE_JOB_TICK=print`: the
+	 * sandbox sets it, since launchctl and crontab act on the user's real session whatever HOME is.
+	 */
+	const preview = (platform: Platform, target: Target, home: string): string =>
+		platform === "darwin"
+			? `KABANE_JOB_TICK=print: would write ${agentPath(home)} and run launchctl bootstrap on it:\n${plist(target)}`
+			: `KABANE_JOB_TICK=print: would add this line to the crontab:\n${cronLine(target)}`;
+
 	/** Installs the tick for this user and starts it; what it did, as one line. */
 	export const install = (
 		platform: Platform,
 		target: Target,
 		home: string,
 	): Result<string> => {
+		if (process.env.KABANE_JOB_TICK === "print")
+			return ok(preview(platform, target, home));
 		if (platform === "darwin") {
 			const file = write(target, home);
 			if (!file.ok) return file;

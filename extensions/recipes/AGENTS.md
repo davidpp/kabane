@@ -190,10 +190,10 @@ hc label <terminal> kabane.sandbox=1        # at once
 bun run sandbox job tick                   # skips it while it is live
 ```
 
-Never answer yes to `job add`'s tick offer, or run `--fix recipes/job-tick-missing`, in a check:
-`launchctl bootstrap` and `crontab` act on your real session whatever `HOME` says, and the sandbox
-keeps your real `HOME` unless you pass `--harnesses`. `bun test extensions/recipes` writes the agent
-into a throwaway home; read the file it writes instead of loading it.
+The sandbox sets `KABANE_JOB_TICK=print`, so `job add`'s tick offer and `--fix
+recipes/job-tick-missing` print the plist or crontab line they would install and install nothing:
+`launchctl bootstrap` and `crontab` act on your real session whatever `HOME` says. Never unset it in
+a check. `extension.test.ts` installs through stand-in `launchctl` and `crontab` on PATH.
 
 The board in the sandbox, on your own tmux socket: start a run as above, then
 `tmux -L <yours> new-session -d -s board -x 100 -y 30 'bun run sandbox board'`; `enter` on the

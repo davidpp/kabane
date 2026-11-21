@@ -5,6 +5,7 @@ import { Database } from "bun:sqlite";
 // sessions, so a started run is checked in the sandbox (AGENTS.md, "Verify").
 import { afterEach, expect, test } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -66,7 +67,12 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 	skill(root, "research");
 	const kabane = (
 		args: string[],
-		options: { cwd?: string; path?: string; home?: string } = {},
+		options: {
+			cwd?: string;
+			path?: string;
+			home?: string;
+			env?: Record<string, string>;
+		} = {},
 	) => {
 		const result = Bun.spawnSync([process.execPath, CLI, ...args], {
 			cwd: options.cwd ?? root,
@@ -76,6 +82,7 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 				KABANE_HARNESSES: "",
 				...(options.path === undefined ? {} : { PATH: options.path }),
 				...(options.home === undefined ? {} : { HOME: options.home }),
+				...options.env,
 			},
 			stdin: "ignore",
 		});
@@ -661,4 +668,57 @@ test("with nothing ticking this machine, job add says how to install the tick an
 			fixable: true,
 		}),
 	]);
+});
+
+/**
+ * A user home and a PATH whose `launchctl` and `crontab` only record their calls, so a check that
+ * installs the tick never reaches the real launchd session or crontab, whatever HOME says.
+ */
+const tickTools = (home: string) => {
+	const user = join(home, "user");
+	const tools = join(home, "tools");
+	mkdirSync(user);
+	mkdirSync(tools);
+	const calls = join(tools, "calls");
+	writeFileSync(
+		join(tools, "launchctl"),
+		`#!/bin/sh\necho "launchctl $*" >> '${calls}'\n`,
+		{ mode: 0o755 },
+	);
+	writeFileSync(
+		join(tools, "crontab"),
+		`#!/bin/sh\necho "crontab $*" >> '${calls}'\nif [ "$1" = -l ]; then cat '${tools}/table' 2>/dev/null || { echo "no crontab for test" >&2; exit 1; }; else cat > '${tools}/table'; fi\n`,
+		{ mode: 0o755 },
+	);
+	const called = (): string[] =>
+		existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [];
+	return { user, path: `${tools}:${NO_HC}`, called };
+};
+
+const ADD_TIDY = [
+	"job",
+	"add",
+	"--title",
+	"Tidy",
+	"--schedule",
+	"0 9 * * *",
+	"--request",
+	"Tidy the inbox",
+];
+
+test("with KABANE_JOB_TICK=print, as the sandbox sets it, the tick's fix says what it would install and installs nothing", () => {
+	const { kabane, home } = setup();
+	const { user, path, called } = tickTools(home);
+	const options = { home: user, path, env: { KABANE_JOB_TICK: "print" } };
+	expect(kabane(ADD_TIDY, options).code).toBe(0);
+	const fixed = kabane(
+		["doctor", "--fix", "recipes/job-tick-missing"],
+		options,
+	);
+	expect(fixed.code).toBe(0);
+	expect(fixed.stdout).toContain("KABANE_JOB_TICK=print: would");
+	expect(fixed.stdout).toContain("job tick");
+	expect(called()).toEqual([]);
+	expect(existsSync(join(user, "Library/LaunchAgents"))).toBe(false);
+	expect(existsSync(join(home, "tools/table"))).toBe(false);
 });
