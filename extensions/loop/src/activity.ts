@@ -135,7 +135,7 @@ export namespace LoopActivity {
 		host: Host;
 		home: string;
 		basePath: string;
-		kabaneBin: string;
+		kabaneBin: () => string | null;
 	};
 
 	/**

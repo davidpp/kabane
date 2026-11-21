@@ -80,7 +80,11 @@ export const createHost = (home: string, name = "an extension"): StagedHost => {
 	const live = () => returned && building === 0 && active?.home === home;
 	const host: Host = {
 		api: 1,
-		kabane: { version, executable: Self.executable() },
+		kabane: {
+			version,
+			executable: Self.executable(),
+			current: () => Self.current(),
+		},
 		record: createHostRecord(registeredTools, () =>
 			live() ? active?.context() : undefined,
 		),

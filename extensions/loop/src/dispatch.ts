@@ -33,7 +33,11 @@ export namespace Dispatch {
 		host: Host;
 		/** KABANE_HOME, handed to the MCP server so it opens the same tracker. */
 		home: string;
-		kabaneBin: string;
+		/**
+		 * The `kabane` the session's MCP server runs, asked at each claim: null once the kabane the
+		 * runner started from is gone and none is on PATH.
+		 */
+		kabaneBin: () => string | null;
 		cwd: string;
 		scopeUri?: string;
 		runId: string;
@@ -206,12 +210,16 @@ export namespace Dispatch {
 
 	const firstLine = (text: string): string => text.split("\n")[0] ?? "";
 
+	/** Why a claim starts no session when `kabaneBin` finds no kabane to run. */
+	export const MOVED = "kabane was updated or moved: restart the run";
+
 	const mcpServer = (
+		command: string,
 		env: Env,
 		harness: Harnesses.Id,
 	): AcpClient.StdioServer => ({
 		name: SERVER_NAME,
-		command: env.kabaneBin,
+		command,
 		args: [
 			"mcp",
 			...(env.scopeUri ? ["--scope", env.scopeUri] : []),
@@ -450,6 +458,8 @@ export namespace Dispatch {
 			stopped: AbortSignal;
 		},
 	): Promise<Result<Opened & { ran: Ran }>> => {
+		const kabane = env.kabaneBin();
+		if (kabane === null) return err(new Error(MOVED));
 		const cli = Harnesses.installedCli(claim.harness);
 		if (!cli.ok) return cli;
 		const profile = loopProfile(env.runId, cli.value);
@@ -486,13 +496,10 @@ export namespace Dispatch {
 					pin,
 				);
 		for (const note of asked.notes) sink.emit("warning", note);
-		const started = await reopen(
-			claim,
-			env,
-			spawned.value,
-			sink,
-			asked.source === "agent" ? undefined : asked.model,
-		);
+		const started = await reopen(claim, env, spawned.value, sink, {
+			server: mcpServer(kabane, env, claim.harness),
+			model: asked.source === "agent" ? undefined : asked.model,
+		});
 		if (!started.ok) return started;
 		const { session } = started.value;
 		const ranAs = emitAgent(session, sink);
@@ -610,12 +617,15 @@ export namespace Dispatch {
 		env: Env,
 		connection: AcpClient.Connection,
 		sink: Sink,
-		model: string | undefined,
+		{
+			server,
+			model,
+		}: { server: AcpClient.StdioServer; model: string | undefined },
 	): Promise<Result<Opened>> => {
 		const agent = agentOf(claim);
 		const options = {
 			cwd: env.cwd,
-			mcpServers: [mcpServer(env, claim.harness)],
+			mcpServers: [server],
 			...(env.mode ? { mode: env.mode } : {}),
 			...(model === undefined ? {} : { model }),
 			...(agent === undefined ? {} : { agent }),

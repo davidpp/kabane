@@ -43,7 +43,7 @@ compiler erases it. The types are listed after the values.
 | `@kabane/core` `answersContext`, `isAnswerTo` | 1, 2 | matching an answer activity to its question | open | JCAB-316:7 |
 | `@kabane/core` `formatQuestionBody`, `parseQuestionBody` | 2, 1 | a session question's body | open | JCAB-316:7 |
 | `@kabane/core/scope` `detectScope` | 1 | a run's project scope (`commands.ts:310`, `:338`) | on host | `host.scope.detect` |
-| `@kabane/core/self` `Self` | 1 | `Self.executable` (`extension.ts:47`) | on host | `host.kabane.executable` |
+| `@kabane/core/self` `Self` | 1 | `Self.executable` (`extension.ts:47`) | on host | `host.kabane.executable`; `host.kabane.current`, asked at each spawn (JCAB-571) |
 | `@kabane/acp` `AcpClient` | 3 | sessions, prompts, permission and elicitation requests | own dependency | `@kabane/acp` |
 | `@kabane/acp` `Harnesses` | 7 | ids, modes, launch resolution, agent definitions | own dependency | `@kabane/acp` |
 | `@kabane/acp` `ToolCalls` | 1 | folding tool calls into a detail (`dispatch.ts`) | own dependency | `@kabane/acp` |

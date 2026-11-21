@@ -144,21 +144,23 @@ export namespace Self {
 		return shim !== undefined && exists(shim) ? { ...now, command: shim } : now;
 	};
 
+	// `executable` as it was when this process started. Asked again later, it would no longer name
+	// a package manager's link once an upgrade retargets it off this binary, only the binary the
+	// upgrade removed.
+	const started = executable();
+
 	/**
 	 * `executable` for a process that outlives an update, asked again each time it spawns kabane:
-	 * the path this process started from while it is still there, else `kabane` on PATH, else null.
-	 * Replacing the install deletes or moves the first and leaves the second, the newer kabane.
+	 * the path `recorded` when this process started while it is still there, else `kabane` on PATH,
+	 * else null. Replacing the install deletes or moves a binary or a checkout and leaves the
+	 * second, the newer kabane; a link Homebrew or mise keeps stays, and runs the newer one.
 	 */
 	export const current = (
-		host: Host = HOST,
+		recorded: string = started,
 		exists: (path: string) => boolean = isFile,
 		which: (name: string) => string | null = (name) => Bun.which(name),
-	): string | null => {
-		const recorded = executable(host);
-		return recorded !== "kabane" && exists(recorded)
-			? recorded
-			: which("kabane");
-	};
+	): string | null =>
+		recorded !== "kabane" && exists(recorded) ? recorded : which("kabane");
 
 	/**
 	 * The kabane to start once its install has taken a release: the link Homebrew or mise keeps,
@@ -173,6 +175,6 @@ export namespace Self {
 		const linked = compiled(host) ? linkTo(host.execPath) : undefined;
 		return linked !== undefined && exists(linked)
 			? linked
-			: current(host, exists, which);
+			: current(executable(host), exists, which);
 	};
 }

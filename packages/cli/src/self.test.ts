@@ -80,15 +80,16 @@ describe("Self.executable", () => {
 
 describe("Self.current", () => {
 	const onPath = () => "/home/me/.local/bin/kabane";
+	const recorded = Self.executable(SCRIPT);
 
 	it("is the path this process started from while it is still there", () => {
-		expect(Self.current(SCRIPT, () => true, onPath)).toBe(
+		expect(Self.current(recorded, () => true, onPath)).toBe(
 			"/home/me/.bun/bin/kabane",
 		);
 	});
 
 	it("is kabane on PATH once that path is gone", () => {
-		expect(Self.current(SCRIPT, () => false, onPath)).toBe(
+		expect(Self.current(recorded, () => false, onPath)).toBe(
 			"/home/me/.local/bin/kabane",
 		);
 	});
@@ -96,11 +97,30 @@ describe("Self.current", () => {
 	it("is null when neither is left", () => {
 		expect(
 			Self.current(
-				SCRIPT,
+				recorded,
 				() => false,
 				() => null,
 			),
 		).toBeNull();
+	});
+
+	it("keeps Homebrew's link after an upgrade retargets it and removes this binary's keg", () => {
+		const LINK = "/opt/homebrew/bin/kabane";
+		const keg = (version: string) =>
+			`/opt/homebrew/Cellar/kabane/${version}/libexec/kabane`;
+		const KEG: Self.Host = { ...BINARY, execPath: keg("1") };
+		// At start the link resolves to this binary, so it is the path recorded.
+		const atStart = Self.executable(KEG, (path) =>
+			path === LINK ? keg("1") : undefined,
+		);
+		expect(atStart).toBe(LINK);
+		// brew upgrade: the link now resolves to the 2 keg, the 1 keg is gone, PATH has no kabane.
+		const after = (path: string) => path === LINK || path === keg("2");
+		expect(Self.current(atStart, after, () => null)).toBe(LINK);
+		// Asked again now, executable no longer names the link, which is why current keeps the first.
+		expect(
+			Self.executable(KEG, (path) => (path === LINK ? keg("2") : undefined)),
+		).toBe(keg("1"));
 	});
 });
 

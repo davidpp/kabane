@@ -44,7 +44,7 @@ describe("Dispatch.Handle.inject", () => {
 				basePath: home,
 				host: testHost(home),
 				home,
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 				cwd: home,
 				tree: {
 					worktree: false,
@@ -114,7 +114,7 @@ it("keeps consecutive tool calls in the on-disk stream without duplicate progres
 			basePath: home,
 			host,
 			home,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			cwd: home,
 			tree: {
 				worktree: false,
@@ -176,4 +176,55 @@ it("keeps consecutive tool calls in the on-disk stream without duplicate progres
 		"tool_completed",
 	]);
 	expect(events.value.some((event) => event.type === "progress")).toBe(false);
+});
+
+it("starts no session when no kabane is left to run its MCP server, and says why", async () => {
+	const created = await Planner.addTask(home, {
+		title: "moved",
+		kind: "issue",
+		state: "next",
+	});
+	if (!created.ok) throw created.error;
+	const task = created.value;
+	const events: RunStore.EventDraft[] = [];
+	const handle = Dispatch.begin(
+		{
+			parent: task,
+			task,
+			harness: "claude",
+			sessionId: "s1",
+			lane: "claude:K-1",
+			work: { kind: "implement", gates: [], concurrent: false },
+		},
+		{
+			basePath: home,
+			host: testHost(home),
+			home,
+			kabaneBin: () => null,
+			cwd: home,
+			tree: {
+				worktree: false,
+				isolation: "shared",
+				land: "none",
+				dir: home,
+				branch: "",
+				runBranch: "",
+			},
+			runId: "run-1",
+			overrides: { command: "/nonexistent/harness" },
+		},
+		{
+			event: (e) => events.push(e),
+			opened: () => {},
+			usage: () => {},
+			continueTurn: () => false,
+			permission: async () => err(new Error("no harness runs in this test")),
+			elicitation: async () => err(new Error("no harness runs in this test")),
+		},
+	);
+	expect(await handle.done).toMatchObject({
+		outcome: "error",
+		detail: Dispatch.MOVED,
+	});
+	expect(events.map((e) => e.type)).not.toContain("launch");
 });

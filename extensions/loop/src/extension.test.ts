@@ -45,7 +45,7 @@ const RUNNER = [
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`import { testHost } from ${JSON.stringify(join(import.meta.dir, "test-host.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: () => "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -68,7 +68,7 @@ describe("kabane loop start", () => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			cwd: home,
 			actor: "kabane://actor/human/test",
 			mode: "auto" as const,
@@ -647,7 +647,7 @@ describe("kabane loop advise", () => {
 					home,
 					basePath: home,
 					host: testHost(home),
-					kabaneBin: "/nonexistent/kabane",
+					kabaneBin: () => "/nonexistent/kabane",
 					cwd: home,
 					settings: Settings.port(async () =>
 						ok([{ ...layer, label: "local" }]),

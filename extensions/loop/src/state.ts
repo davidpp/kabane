@@ -18,8 +18,8 @@ export namespace RunState {
 		/** The core base path (the database's directory). */
 		basePath: string;
 		host: Host;
-		/** The `kabane` executable each session's MCP server runs as. */
-		kabaneBin: string;
+		/** The `kabane` executable each session's MCP server runs as, asked at each claim. */
+		kabaneBin: () => string | null;
 		/** This process's pid, recorded so readers can tell a live run from an orphaned one. */
 		pid: number;
 		/**

@@ -114,7 +114,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
 			git,
@@ -516,7 +516,7 @@ describe("Runner final checks", () => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			git,
 			overrides: TestHarnesses.overrides({
@@ -602,7 +602,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 				pid: process.pid,
 				git,
 				overrides: TestHarnesses.overrides({
@@ -781,7 +781,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			git,
 			overrides: TestHarnesses.overrides({

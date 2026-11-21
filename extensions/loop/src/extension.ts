@@ -597,6 +597,11 @@ const list = (deps: Deps): Outcome => {
 		: deps.host.outcome.failure(runs.error);
 };
 
+// The kabane to spawn, asked each time: a runner or a board outlives the install it started from.
+// A host older than `current` gives only the path it started with.
+const kabaneOf = (host: Host) => (): string | null =>
+	host.kabane.current ? host.kabane.current() : host.kabane.executable;
+
 const command = (host: Host): Extension.Command => ({
 	name: "loop",
 	summary:
@@ -608,7 +613,7 @@ const command = (host: Host): Extension.Command => ({
 			home: ctx.home,
 			host,
 			basePath: ctx.store,
-			kabaneBin: host.kabane.executable,
+			kabaneBin: kabaneOf(host),
 			cwd: ctx.cwd,
 			actor: ctx.actor,
 			mode: ctx.harnessMode,
@@ -703,13 +708,13 @@ export const loop = (host: Host): Extension => {
 					host,
 					basePath: ctx.store,
 					actor: ctx.actor,
-					kabaneBin: host.kabane.executable,
+					kabaneBin: kabaneOf(host),
 				}),
 				dispatcher: LoopDispatcher.make({
 					home: ctx.home,
 					host,
 					basePath: ctx.store,
-					kabaneBin: host.kabane.executable,
+					kabaneBin: kabaneOf(host),
 					cwd: ctx.cwd,
 					settings: ctx.settings,
 				}),

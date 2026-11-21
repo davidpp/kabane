@@ -177,7 +177,7 @@ const retried = async (agent: { resume: boolean; used: number }) => {
 		home,
 		basePath: home,
 		host: testHost(home),
-		kabaneBin: "/nonexistent/kabane",
+		kabaneBin: () => "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: TestHarnesses.overrides({
 			gemini: { command: process.execPath, args: [join(home, "agent.mjs")] },
