@@ -62,6 +62,29 @@ describe("Cockpit", () => {
 		expect(Cockpit.nowCap(6)).toBe(5);
 	});
 
+	it("gives up a question's blank rows first, then its question's rows", () => {
+		const parts = { header: 2, question: 3, answers: 1 };
+		// Room for everything, and the map above has all it wants.
+		expect(Cockpit.bannerFit(parts, 20, 20)).toEqual({ gaps: 3, question: 3 });
+		// The map wants rows: the blank rows go before the map's.
+		expect(Cockpit.bannerFit(parts, 20, 7)).toEqual({ gaps: 1, question: 3 });
+		expect(Cockpit.bannerFit(parts, 6, 6)).toEqual({ gaps: 0, question: 3 });
+		// Then the question, down to one row; who asks and the answers stay.
+		expect(Cockpit.bannerFit(parts, 4, 4)).toEqual({ gaps: 0, question: 1 });
+		expect(Cockpit.bannerFit(parts, 2, 2)).toEqual({ gaps: 0, question: 1 });
+	});
+
+	it("counts wrapped rows", () => {
+		expect(Cockpit.wrapRows("waiting on you · docs asks", 40)).toBe(1);
+		expect(
+			Cockpit.wrapRows("? Run `bun run docs:check` in the worktree?", 38),
+		).toBe(2);
+		expect(Cockpit.wrapRows("one\ntwo", 40)).toBe(2);
+		expect(Cockpit.wrapRows("x".repeat(25), 10)).toBe(3);
+		expect(Cockpit.cellRows(["1 Allow once", " · 2 Reject"], 38)).toBe(1);
+		expect(Cockpit.cellRows(["1 Allow once", " · 2 Reject"], 15)).toBe(2);
+	});
+
 	it("packs whole facts into rows", () => {
 		const facts = [
 			{ label: "slots", value: "2/2" },
@@ -98,6 +121,50 @@ describe("the footer keeps the bottom rows", () => {
 				);
 				const rows = frame.split("\n");
 				expect(rows[height - 2]).toContain("tab to ask the copilot");
+				expect(rows[height - 1]).toContain("? help");
+			} finally {
+				destroy();
+			}
+		});
+});
+
+// "Now"'s rows under the title, read from its column: each one a tagged line of NOW_EVENTS.
+const nowEvents = (frame: string, from: number): number => {
+	const rows = frame.split("\n").map((row) => row.slice(from).trimStart());
+	const title = rows.findIndex((row) => row.startsWith("now"));
+	if (title === -1) return 0;
+	let count = 0;
+	for (const row of rows.slice(title + 1)) {
+		if (!/^(\d\d:\d\d )?(docs|arch) /.test(row)) break;
+		count++;
+	}
+	return count;
+};
+
+describe("a question on a short pane leaves now five rows", () => {
+	const live = STORIES.find((one) => one.name === "cockpit-live");
+	for (const [width, height] of [
+		[40, 16],
+		[159, 16],
+		[160, 18],
+		[200, 50],
+	] as const)
+		it(`at ${width}×${height}`, async () => {
+			if (!live) throw new Error("no cockpit-live story");
+			const { renderOnce, captureCharFrame, destroy } = await renderTest(
+				live.render(),
+				{ width, height },
+			);
+			try {
+				const from = width >= Cockpit.SPLIT_COLS ? Cockpit.LEFT_COLS : 0;
+				const frame = await pumpUntil(
+					renderOnce,
+					captureCharFrame,
+					(f) => nowEvents(f, from) >= Cockpit.NOW_MIN_ROWS,
+				);
+				const rows = frame.split("\n");
+				// The question is still there, its answers included.
+				expect(frame).toContain("1 Allow once");
 				expect(rows[height - 1]).toContain("? help");
 			} finally {
 				destroy();

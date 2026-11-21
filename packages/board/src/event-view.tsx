@@ -17,6 +17,7 @@ import {
 	type Header,
 } from "@kabane/extension";
 import {
+	type BoxRenderable,
 	type ColorInput,
 	RGBA,
 	type Renderable,
@@ -51,9 +52,10 @@ import {
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
-import type { RunMap } from "./run-map";
+import { RunMap } from "./run-map";
 import { RunMapView } from "./run-map-view";
 import { useSpinnerFrame } from "./spinner";
+import { BannerRoomContext } from "./tab-bar";
 import { Theme, useMarkdownStyle, useTheme } from "./theme";
 import { ToolRows } from "./tool-rows";
 
@@ -500,22 +502,49 @@ const SessionLog = ({
 	</box>
 );
 
-// The map, what waits on the human, then "now", or the log `enter` opened in its place.
+// The rows a box was laid out with, for what has to fit them by count rather than by flex: a
+// question's banner, which the layout cannot shrink in order (blank rows, then the question).
+const useLaidOutRows = (
+	guess: number,
+): [number, (this: BoxRenderable) => void] => {
+	const [rows, setRows] = useState(guess);
+	return [
+		rows,
+		function (this: BoxRenderable) {
+			setRows(this.height);
+		},
+	];
+};
+
+// The map, what waits on the human, then "now", or the log `enter` opened in its place. The map gives
+// way first; the question takes what "now" (or the log) leaves.
 const StackedCockpit = (props: CockpitProps): ReactNode => {
 	const { card, events, map, lane, banner, width, height, spinnerFrame } =
 		props;
+	const [rows, onSize] = useLaidOutRows(height - CHROME_ROWS);
+	const below = lane === null ? 2 + Cockpit.NOW_MIN_ROWS : LOG_MIN_ROWS;
+	const mapRows = Math.max(MIN_MAP_ROWS, Math.floor(height * mapShare(card)));
 	return (
-		<box style={{ flexDirection: "column", ...REGION }}>
+		<box style={{ flexDirection: "column", ...REGION }} onSizeChange={onSize}>
 			<RunMapView
 				card={card}
 				view={map.view}
 				asking={map.asking}
 				width={width - 1}
-				maxRows={Math.max(MIN_MAP_ROWS, Math.floor(height * mapShare(card)))}
+				maxRows={mapRows}
 				spinnerFrame={spinnerFrame}
 				onRow={map.onRow}
 			/>
-			{banner}
+			<BannerRoomContext.Provider
+				value={{
+					rows: rows - below,
+					spare:
+						rows - below - Math.min(mapRows, RunMap.height(card, map.view)),
+					width: width - 2,
+				}}
+			>
+				{banner}
+			</BannerRoomContext.Provider>
 			{lane === null ? (
 				<NowFeed
 					card={card}
@@ -545,6 +574,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 	const right = width - Cockpit.LEFT_COLS - 1;
 	const live = isInFlight(card);
 	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asking);
+	const [leftRows, onLeftSize] = useLaidOutRows(height - CHROME_ROWS);
 	const now = (rows?: number): ReactNode => (
 		<NowFeed
 			card={card}
@@ -594,6 +624,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 					backgroundColor: raised,
 					overflow: "hidden",
 				}}
+				onSizeChange={onLeftSize}
 			>
 				<text
 					bg={raised}
@@ -613,7 +644,16 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 					surface={raised}
 					onRow={map.onRow}
 				/>
-				{banner}
+				{/* Under the `map` heading, the rest of the column at most. */}
+				<BannerRoomContext.Provider
+					value={{
+						rows: leftRows - 1,
+						spare: leftRows - 1 - RunMap.height(card, map.view),
+						width: Cockpit.LEFT_COLS - 2,
+					}}
+				>
+					{banner}
+				</BannerRoomContext.Provider>
 				<RunFacts
 					facts={card.facts ?? []}
 					width={Cockpit.LEFT_COLS}

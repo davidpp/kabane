@@ -12,7 +12,8 @@
 import type { ActivityCard } from "@kabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
+import { Cockpit } from "./cockpit";
 import { BoardJobs } from "./jobs";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
 import { STILL } from "./still";
@@ -256,6 +257,92 @@ type QuestionBannerProps = {
 	more?: number;
 	// A click on an answer, by index.
 	onAnswer: (index: number) => void;
+	// The rows and columns it may take, where they run short (a card's tab).
+	room?: BannerRoom;
+};
+
+/**
+ * What a card tab's question may take: its rows (the blank row above it included), those of them
+ * left once the map above it has all it wants, and its width. The cockpit provides it; without it
+ * the banner takes the rows it needs.
+ */
+export type BannerRoom = { rows: number; spare: number; width: number };
+export const BannerRoomContext = createContext<BannerRoom | null>(null);
+
+// What `enter` does beside the choices: sends a multi-select's picks, types an answer the asker
+// allows besides them.
+const enterDoesOf = (question: BoardTabs.Question): string | null =>
+	question.multiSelect
+		? question.allowFreeform
+			? "send the picks, or type an answer"
+			: "send the picks"
+		: question.allowFreeform
+			? "type an answer"
+			: null;
+
+/**
+ * The banner's words, and how it fits its room: how many blank rows it keeps and, when the question
+ * is held to fewer rows than it needs, how many. Without a room, both blank rows and the whole
+ * question.
+ */
+const bannerLayout = (
+	{
+		question,
+		taskShortId,
+		answered,
+		answer,
+		back,
+		more = 0,
+	}: Pick<
+		QuestionBannerProps,
+		"question" | "taskShortId" | "answered" | "answer" | "back" | "more"
+	>,
+	room: BannerRoom | undefined,
+): {
+	closed: boolean;
+	status: string;
+	asker: string;
+	enterDoes: string | null;
+	freeform: boolean;
+	gaps: number;
+	held: number | undefined;
+} => {
+	const freeform = question.choices.length === 0;
+	// Settled without an answer from this board: answered elsewhere, or withdrawn by its asker. The
+	// board cannot tell which, so it says only that the question is closed.
+	const closed = answered && answer === undefined;
+	const enterDoes = enterDoesOf(question);
+	const asker = ` · ${question.lane ? `${question.lane} (${question.agent})` : question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`;
+	const status = closed ? "closed" : answered ? "✓ answered" : "waiting on you";
+	const words = { closed, status, asker, enterDoes, freeform };
+	if (!room) return { ...words, gaps: Cockpit.BANNER_GAPS, held: undefined };
+	const said = `${answered ? "" : "? "}${question.question}${answer ? `  → ${answer}` : ""}`;
+	const cells = [
+		...question.choices.map(
+			(choice, index) =>
+				`${index > 0 ? " · " : ""}${index + 1} ${question.multiSelect ? "[x] " : ""}${choice}`,
+		),
+		...(enterDoes ? [` · enter ${enterDoes}`] : []),
+	];
+	const answers = answered
+		? 0
+		: freeform
+			? 1
+			: Cockpit.cellRows(cells, room.width);
+	const parts = {
+		header: Cockpit.wrapRows(
+			`${status}${asker}${more > 0 ? ` · +${more} more` : ""}`,
+			room.width,
+		),
+		question: Cockpit.wrapRows(said, room.width),
+		answers: answers + (back ? 1 : 0),
+	};
+	const fit = Cockpit.bannerFit(parts, room.rows, room.spare);
+	return {
+		...words,
+		gaps: fit.gaps,
+		held: fit.question < parts.question ? fit.question : undefined,
+	};
 };
 
 /**
@@ -273,22 +360,19 @@ const QuestionBanner = ({
 	back,
 	more = 0,
 	onAnswer,
+	room,
 }: QuestionBannerProps): ReactNode => {
 	const theme = useTheme();
 	const bg = theme.surface.raised;
-	const freeform = question.choices.length === 0;
-	// Settled without an answer from this board: answered elsewhere, or withdrawn by its asker. The
-	// board cannot tell which, so it says only that the question is closed.
-	const closed = answered && answer === undefined;
-	// What `enter` does beside the choices: sends a multi-select's picks, types an answer the asker
-	// allows besides them.
-	const enterDoes = question.multiSelect
-		? question.allowFreeform
-			? "send the picks, or type an answer"
-			: "send the picks"
-		: question.allowFreeform
-			? "type an answer"
-			: null;
+	const { closed, status, asker, enterDoes, freeform, gaps, held } =
+		bannerLayout({ question, taskShortId, answered, answer, back, more }, room);
+	const questionText = (
+		<text bg={bg} fg={theme.text}>
+			{answered ? null : <span fg={theme.accent}>? </span>}
+			{question.question}
+			{answer ? <span fg={theme.done}>{`  → ${answer}`}</span> : null}
+		</text>
+	);
 	return (
 		<box
 			style={{
@@ -296,8 +380,10 @@ const QuestionBanner = ({
 				flexShrink: 0,
 				backgroundColor: bg,
 				// A blank row above and below, as the copilot's ask panel has: a surface, not a strip.
-				paddingTop: 1,
-				paddingBottom: 1,
+				// Held to a room, the bottom one goes first, then the unpainted one above, then the top.
+				...(room ? { marginTop: gaps >= 2 ? 1 : 0 } : {}),
+				paddingTop: gaps >= 1 ? 1 : 0,
+				paddingBottom: gaps >= 3 ? 1 : 0,
 				paddingLeft: 1,
 				paddingRight: 1,
 			}}
@@ -307,16 +393,18 @@ const QuestionBanner = ({
 					fg={closed ? theme.muted : answered ? theme.done : theme.accent}
 					attributes={TextAttributes.BOLD}
 				>
-					{closed ? "closed" : answered ? "✓ answered" : "waiting on you"}
+					{status}
 				</span>
-				{` · ${question.lane ? `${question.lane} (${question.agent})` : question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`}
+				{asker}
 				{more > 0 ? <span fg={theme.accent}>{` · +${more} more`}</span> : null}
 			</text>
-			<text bg={bg} fg={theme.text}>
-				{answered ? null : <span fg={theme.accent}>? </span>}
-				{question.question}
-				{answer ? <span fg={theme.done}>{`  → ${answer}`}</span> : null}
-			</text>
+			{held !== undefined ? (
+				<scrollbox style={{ height: held, flexShrink: 0 }}>
+					{questionText}
+				</scrollbox>
+			) : (
+				questionText
+			)}
 			{answered ? null : freeform ? (
 				// No answers to pick: `enter` opens the prompt to type one, here or over the task.
 				<text bg={bg} fg={theme.muted}>
@@ -379,12 +467,21 @@ export const CardTabQuestion = ({
 	tabs: BoardTabs.Tabs;
 	onAnswer: (index: number) => void;
 }): ReactNode => {
+	const room = useContext(BannerRoomContext);
 	const asked = BoardTabs.cardQuestion(tabs);
 	if (!asked) return null;
 	const answer = tabs.answered.get(asked.id);
 	return (
-		<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
+		// Under a room the banner keeps the blank row above it itself, as one of the rows it may give up.
+		<box
+			style={{
+				flexDirection: "column",
+				flexShrink: 0,
+				marginTop: room ? 0 : 1,
+			}}
+		>
 			<QuestionBanner
+				{...(room ? { room } : {})}
 				question={asked}
 				taskShortId={asked.taskShortId}
 				answered={answer !== undefined}

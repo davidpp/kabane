@@ -78,6 +78,15 @@ export namespace RunMap {
 	];
 
 	/**
+	 * The rows the map takes unwindowed, at most: one per row, and a blank row and a heading before
+	 * what was left. Merging finished steps on a narrow pane only lowers it.
+	 */
+	export const height = (card: Card, view: View): number => {
+		const all = rows(card, view);
+		return all.length + (all.some((row) => row.type === "left") ? 2 : 0);
+	};
+
+	/**
 	 * The row the run is at: the session a question waits on, else the live session that started
 	 * last, else nowhere. A session in a step the human folded gives its step's row.
 	 */

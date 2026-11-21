@@ -53,6 +53,73 @@ export namespace Cockpit {
 	export const nowCap = (rows: number): number =>
 		Math.max(NOW_MIN_ROWS, Math.min(NOW_MAX_ROWS, Math.floor(rows / 2)));
 
+	/** The rows `text` takes word-wrapped at `width`: a word too long for a row is broken. */
+	export const wrapRows = (text: string, width: number): number => {
+		const room = Math.max(1, width);
+		let rows = 0;
+		for (const line of text.split("\n")) {
+			let used = 0;
+			rows++;
+			for (const word of line.split(" ").filter(Boolean)) {
+				const need = used === 0 ? word.length : used + 1 + word.length;
+				if (need <= room) used = need;
+				else if (used === 0 || word.length > room) {
+					// A long word fills rows of its own; it starts a fresh row when one is in use.
+					if (used > 0) rows++;
+					rows += Math.ceil(word.length / room) - 1;
+					used = word.length % room || room;
+				} else {
+					rows++;
+					used = word.length;
+				}
+			}
+		}
+		return rows;
+	};
+
+	/** The rows a row of cells takes when it wraps whole cells at `width`. */
+	export const cellRows = (cells: readonly string[], width: number): number => {
+		let rows = cells.length > 0 ? 1 : 0;
+		let used = 0;
+		for (const cell of cells) {
+			if (used > 0 && used + cell.length > width) {
+				rows++;
+				used = 0;
+			}
+			used += cell.length;
+		}
+		return rows;
+	};
+
+	/** What a question's banner says, in rows at its width: who asks, the question, its answers. */
+	export type BannerRows = {
+		header: number;
+		question: number;
+		answers: number;
+	};
+
+	/** The blank rows a banner has room for: above it, its top and its bottom. */
+	export const BANNER_GAPS = 3;
+
+	/**
+	 * A banner held to `rows`, with `spare` of them left once the map above it has all it wants: its
+	 * blank rows go first (before the map's), then the question's rows, down to one, which then
+	 * scroll. Who asks and the answers are never given up.
+	 */
+	export const bannerFit = (
+		parts: BannerRows,
+		rows: number,
+		spare: number,
+	): { gaps: number; question: number } => {
+		const text = parts.header + parts.question + parts.answers;
+		const gaps = Math.max(0, Math.min(BANNER_GAPS, rows - text, spare - text));
+		const question =
+			rows - gaps >= text
+				? parts.question
+				: Math.max(1, rows - parts.header - parts.answers);
+		return { gaps, question };
+	};
+
 	/** Facts packed into rows of `width`, whole facts only, as many to a row as fit. */
 	export const factRows = (
 		facts: readonly ActivityFact[],
