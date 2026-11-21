@@ -1051,53 +1051,116 @@ describe("BoardCopilot", () => {
 	});
 });
 
-// Nobody but the client holds a harness still in its handshake, so a board quit then has to stop
-// it through the copilot: a real child that never answers, as an adapter stuck in an npx download
-// would be.
-describe("BoardCopilot close during the harness's handshake", () => {
-	const alive = (pid: number): boolean => {
-		try {
-			process.kill(pid, 0);
-			return true;
-		} catch {
-			return false;
-		}
+// Nobody but the copilot holds a harness it is still starting, so a board quit has to stop it
+// through `close`, and the host exits the moment `close` settles: the harness and the child it
+// started are checked right then, with nothing after it keeping this process alive. The harness is
+// a real child that ignores stdin EOF and SIGTERM, as an adapter stuck in an npx download or an
+// npx wrapper holding its adapter would (`packages/acp/scripts/stubborn-agent.ts`).
+describe("BoardCopilot close leaves no harness running", () => {
+	const AGENT = join(import.meta.dir, "../../acp/scripts/stubborn-agent.ts");
+
+	// Gone, or a zombie its new parent has yet to reap: either way it runs nothing.
+	const running = (pid: number): boolean => {
+		const stat = Bun.spawnSync(["ps", "-o", "stat=", "-p", String(pid)])
+			.stdout.toString()
+			.trim();
+		return stat !== "" && !stat.startsWith("Z");
 	};
 
-	it("kills the harness before close settles, and the turn ends as an error", async () => {
+	const stubborn = (stage: "handshake" | "session" | "open") => {
 		const dir = mkdtempSync(join(tmpdir(), "copilot-stop-"));
-		const pidfile = join(dir, "harness.pid");
+		const pidfile = join(dir, "harness.pids");
 		const copilot = BoardCopilot.create({
 			harness: "claude",
 			scopeDir: dir,
 			kabaneBin: () => BIN,
 			home: join(dir, ".kabane"),
 			setup: SETUP,
-			overrides: {
-				command: "sh",
-				args: ["-c", 'echo $$ > "$0"; exec sleep 600', pidfile],
-			},
+			overrides: { command: process.execPath, args: [AGENT, pidfile, stage] },
 		});
+		// The harness's pid and its child's, once the harness has started; the file is taken so
+		// the next start writes its own.
+		const started = async (): Promise<number[]> => {
+			for (let i = 0; i < 1000 && !existsSync(pidfile); i++) await Bun.sleep(5);
+			const pids = readFileSync(pidfile, "utf8").split(" ").map(Number);
+			rmSync(pidfile);
+			expect(pids.map(running)).toEqual([true, true]);
+			return pids;
+		};
+		const done = () => rmSync(dir, { recursive: true, force: true });
+		return { copilot, started, done };
+	};
+
+	it("quit before the harness answers initialize: it is dead when close settles, and the turn ends as an error", async () => {
+		const { copilot, started, done } = stubborn("handshake");
 		const turn = collectAll(copilot.run("go", context()));
-		// sh creates the file before echo fills it: an empty read would be pid 0, always alive.
-		const written = () =>
-			existsSync(pidfile) ? readFileSync(pidfile, "utf8").trim() : "";
-		for (let i = 0; i < 400 && !written(); i++) await Bun.sleep(5);
-		const pid = Number(written());
-		expect(alive(pid)).toBe(true);
+		const pids = await started();
 
 		await copilot.close();
-		// The host exits as soon as close settles, so the child has to be gone by then; only
-		// its reaping may lag the kill.
-		for (let i = 0; i < 20 && alive(pid); i++) await Bun.sleep(5);
+		expect(pids.map(running)).toEqual([false, false]);
 		const updates = await turn;
-		rmSync(dir, { recursive: true, force: true });
-		expect(alive(pid)).toBe(false);
+		done();
 		expect(types(updates)).toEqual(["error"]);
 		expect(updates[0]?.summary).toStartWith(
 			"claude: stopped before it answered ACP initialize",
 		);
-	});
+	}, 10_000);
+
+	it("quit while session/new is unanswered: the harness is dead when close settles", async () => {
+		const { copilot, started, done } = stubborn("session");
+		const turn = collectAll(copilot.run("go", context()));
+		const pids = await started();
+
+		await copilot.close();
+		expect(pids.map(running)).toEqual([false, false]);
+		expect(types(await turn)).toEqual(["error"]);
+		done();
+	}, 10_000);
+
+	it("quit with a session open: the harness is dead when close settles", async () => {
+		const { copilot, started, done } = stubborn("open");
+		const updates = await collect(copilot.run("go", context()));
+		expect(types(updates)).toContain("done");
+		const pids = await started();
+
+		await copilot.close();
+		expect(pids.map(running)).toEqual([false, false]);
+		done();
+	}, 10_000);
+
+	// The board does not wait on a cancel (`copilot-session.ts`), and a cancel re-enables the prompt
+	// while the start is still going, so neither test does.
+	it("quit right after a cancel during the start: the cancelled harness is dead when close settles", async () => {
+		const { copilot, started, done } = stubborn("session");
+		const turn = collectAll(copilot.run("go", context()));
+		const pids = await started();
+		void copilot.cancel();
+
+		await copilot.close();
+		expect(pids.map(running)).toEqual([false, false]);
+		expect(types(await turn)).toEqual(["error"]);
+		done();
+	}, 10_000);
+
+	it("a start cancelled and prompted past is stopped too, so quit leaves neither harness", async () => {
+		const { copilot, started, done } = stubborn("session");
+		const first = collectAll(copilot.run("go", context()));
+		const cancelled = await started();
+		void copilot.cancel();
+		const second = collectAll(copilot.run("again", context()));
+		const pids = await started();
+
+		await copilot.close();
+		expect([...cancelled, ...pids].map(running)).toEqual([
+			false,
+			false,
+			false,
+			false,
+		]);
+		expect(types(await first)).toEqual(["error"]);
+		expect(types(await second)).toEqual(["error"]);
+		done();
+	}, 10_000);
 
 	it("closes a connection whose session/new has not answered, and the next run starts afresh", async () => {
 		const seen = fresh();
@@ -1122,7 +1185,7 @@ describe("BoardCopilot close during the harness's handshake", () => {
 				const close = opened.value.close;
 				opened.value.close = () => {
 					closes += 1;
-					close();
+					return close();
 				};
 				return opened;
 			},

@@ -70,7 +70,7 @@ describe("AcpClient session modes on the real adapters", () => {
 						`${harness}: ${switched.value.model?.note} · ${switched.value.mode.note}`,
 					);
 				} finally {
-					AcpClient.close(conn.value);
+					await AcpClient.close(conn.value);
 					await conn.value.closed;
 				}
 			},

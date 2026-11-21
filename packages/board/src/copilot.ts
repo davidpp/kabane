@@ -58,8 +58,9 @@ export namespace BoardCopilot {
 	) => Promise<Result<AcpClient.Connection>>;
 
 	// The port, plus the teardown a port of three methods has no business carrying: the board's
-	// shutdown kills the harness process through this. It settles once a harness still in its
-	// handshake is stopped, which the host awaits before it exits.
+	// shutdown stops the harness process through this. It settles once every harness the copilot
+	// started has exited, whichever stage its start or session was at, which the host awaits
+	// before it exits.
 	export type Handle = Copilot & { close: () => Promise<void> };
 
 	// Tools that change tracker state. A completed call to one of these is what makes the board
@@ -410,10 +411,13 @@ export namespace BoardCopilot {
 	// What a session is opened with: the kabane its tool server runs and the instruction block.
 	type Launch = { bin: string; actor: string; instructions: string };
 
+	const stopped = (options: Options): Result<never> =>
+		err(new Error(`${options.harness}: closed before its session opened`));
+
 	// The session opened on the scope's directory, once `connecting` reaches the harness, with
 	// `kabane mcp` as its only tool server. A session that fails to open takes its connection down
-	// with it, and so does a stop that lands after the handshake answered but before the session
-	// is handed back, since nobody else holds that connection yet.
+	// with it. A stop is `createStarts`'s to carry out: it closes the connection, which ends a
+	// pending `session/new`, and the start then reports it was stopped.
 	const openSession = async (
 		options: Options,
 		connecting: Promise<Result<AcpClient.Connection>>,
@@ -423,14 +427,7 @@ export namespace BoardCopilot {
 		const opened = await connecting;
 		if (!opened.ok) return opened;
 		const connection = opened.value;
-		const drop = () => AcpClient.close(connection);
-		const stopped = () =>
-			err(new Error(`${options.harness}: closed before its session opened`));
-		if (signal.aborted) {
-			drop();
-			return stopped();
-		}
-		signal.addEventListener("abort", drop, { once: true });
+		if (signal.aborted) return stopped(options);
 		const started = await AcpClient.newSession(connection, {
 			cwd: options.scopeDir,
 			mcpServers: [mcpServer(options, launch.bin, launch.actor)],
@@ -440,52 +437,72 @@ export namespace BoardCopilot {
 			systemPromptAppend: launch.instructions,
 			...(options.mode ? { mode: options.mode } : {}),
 		});
-		signal.removeEventListener("abort", drop);
-		if (signal.aborted) return stopped();
+		if (signal.aborted) return stopped(options);
 		if (!started.ok) {
-			drop();
+			await AcpClient.close(connection);
 			return started;
 		}
 		return ok({ connection, session: started.value });
 	};
 
-	// Session starts, and the stop for the one in flight. Until the harness answers ACP
-	// `initialize`, nobody holds its process but the client, so `stop` aborts that start and
-	// waits for the connect to settle, which is when the client has killed it. It does not wait
-	// for `session/new`: the abort closes that connection, and the host is free to exit.
+	// Session starts, and the stop for those in flight. Until a session is handed back, nobody holds
+	// a start's harness but this, so a start that is let go of is halted: aborted, which kills a
+	// harness still in its handshake, or its connection closed once the handshake answered. A newer
+	// start lets go of the ones before it without waiting on them, so a start the human cancelled
+	// and prompted past is not left running; `stop` lets go of every start and settles once every
+	// harness halted so far has exited, a cancel's the board did not wait for included.
 	const createStarts = (options: Options) => {
-		let starting: {
+		type Start = {
 			stop: AbortController;
 			connecting: Promise<Result<AcpClient.Connection>>;
-		} | null = null;
+		};
+		const inFlight = new Set<Start>();
+		const halting = new Set<Promise<void>>();
+
+		const halt = async (start: Start): Promise<void> => {
+			start.stop.abort();
+			const connected = await start.connecting;
+			if (connected.ok) await AcpClient.close(connected.value);
+		};
+
+		const letGo = (): void => {
+			for (const start of inFlight) {
+				const halted: Promise<void> = halt(start).finally(() =>
+					halting.delete(halted),
+				);
+				halting.add(halted);
+			}
+			inFlight.clear();
+		};
+
+		const stop = async (): Promise<void> => {
+			letGo();
+			await Promise.all(halting);
+		};
 
 		const open = async (
 			launch: Launch,
 			handlers: Omit<Handlers, "signal">,
 		): Promise<Result<Opened>> => {
-			const stop = new AbortController();
-			const connecting = connector(options)({
-				...handlers,
-				signal: stop.signal,
-			});
-			const current = { stop, connecting };
-			starting = current;
+			letGo();
+			const stopping = new AbortController();
+			const start: Start = {
+				stop: stopping,
+				connecting: connector(options)({
+					...handlers,
+					signal: stopping.signal,
+				}),
+			};
+			inFlight.add(start);
 			const opened = await openSession(
 				options,
-				connecting,
-				stop.signal,
+				start.connecting,
+				stopping.signal,
 				launch,
 			);
-			if (starting === current) starting = null;
-			return opened;
-		};
-
-		const stop = async (): Promise<void> => {
-			const pending = starting;
-			starting = null;
-			if (!pending) return;
-			pending.stop.abort();
-			await pending.connecting;
+			inFlight.delete(start);
+			// A stop can land between the session opening and this line, and has closed it.
+			return opened.ok && stopping.signal.aborted ? stopped(options) : opened;
 		};
 
 		return { open, stop };
@@ -626,13 +643,13 @@ export namespace BoardCopilot {
 			// What `kabane mcp --as` stamps every write of this session with, so the board can glyph
 			// the rows this copilot changed rather than every row an agent ever touched.
 			actor,
-			// The port returns void: a cancel that fails has nothing left to tell the board, which
-			// has already ended the turn on its side. A turn blocked on a question it never got an
-			// answer to is cancelled the same way — letting go of the question first is what lets
-			// the harness notice.
+			// The port returns void: a failed cancel has nothing left to tell the board, which has
+			// ended the turn on its side. A turn blocked on a question is cancelled by letting go of
+			// the question, which is what lets the harness notice. A cancel before the session opened
+			// stops its start, harness and all, and the next prompt starts afresh.
 			cancel: async () => {
 				questions.unblockAll();
-				if (session) await AcpClient.cancel(session);
+				await (session ? AcpClient.cancel(session) : starts.stop());
 			},
 			answerPermission: questions.answerPermission,
 			answerElicitation: questions.answerElicitation,
@@ -641,10 +658,11 @@ export namespace BoardCopilot {
 			close: async () => {
 				questions.unblockAll();
 				await starts.stop();
-				if (connection) AcpClient.close(connection);
+				const held = connection;
 				connection = null;
 				session = null;
 				instructed = false;
+				if (held) await AcpClient.close(held);
 			},
 		};
 	};

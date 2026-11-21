@@ -39,10 +39,12 @@ instructions live in `@kabane/board` (see [the board README](../board/README.md#
   the log lines harnesses interleave with JSON-RPC on stdout.
 - `AcpClient` — `spawn(harness, cwd, { onPermission })` starts the process and runs
   `initialize` (30 s cap, stderr attached on failure; a `signal` aborted before the harness
-  answers kills it and fails the start); `newSession(conn, { cwd, mcpServers,
+  answers kills it and fails the start once it has exited); `newSession(conn, { cwd, mcpServers,
   systemPromptAppend?, mode? })` opens a session with stdio MCP servers in the mode
   `session.mode` reports; `prompt(session, blocks)` is a
-  lazy `AsyncIterable<Update>`; `cancel(session)`; `close(conn)` kills the process.
+  lazy `AsyncIterable<Update>`; `cancel(session)`; `close(conn)` closes the harness's stdin,
+  gives it 2 s to exit, then sends SIGTERM and SIGKILL to its process group (the harness runs in
+  its own, so an npx wrapper's adapter goes with it), and settles once it has exited.
   `steer(session, blocks)` puts text into the turn the session is running through the
   `_session/steering` extension method, for a harness whose `initialize` advertised
   `_meta.steering.supported` (`conn.steering`; both pinned adapters do, Gemini does not). It

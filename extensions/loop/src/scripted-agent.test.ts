@@ -124,7 +124,7 @@ it("commits once and closes its own issue through kabane MCP, given the loop's i
 			"seed",
 		]);
 	} finally {
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 		await conn.value.closed;
 	}
 }, 30_000);

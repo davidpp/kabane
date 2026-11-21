@@ -167,7 +167,8 @@ export namespace AcpClient {
 		closed: Promise<number | null>;
 		// What the harness wrote to stderr so far, for error reporting only.
 		stderr: () => string;
-		close: () => void;
+		// Settles once the harness has exited, its process group with it; see `stopProcess`.
+		close: () => Promise<void>;
 	};
 
 	export type Session = {
@@ -225,8 +226,8 @@ export namespace AcpClient {
 		// ask), as one line naming the form and the field, after the harness was answered `cancel`.
 		onElicitationRefused?: (reason: string) => void;
 		handshakeMs?: number;
-		// Aborted before the harness answers `initialize`, the start fails and a spawned harness is
-		// killed: nobody else holds it yet. Once connected, closing it is the caller's.
+		// Aborted before the harness answers `initialize`, the start fails once a spawned harness has
+		// been killed: nobody else holds it yet. Once connected, closing it is the caller's.
 		signal?: AbortSignal;
 	};
 
@@ -297,10 +298,14 @@ export namespace AcpClient {
 				stdout: "pipe",
 				stderr: "pipe",
 				env: { ...process.env, ...launch.env },
+				// Its own process group, so the fallback kill reaches what the harness started too.
+				detached: true,
 			}),
 		);
 		if (!spawned.ok) return spawned;
 		const proc = spawned.value;
+		let stopping: Promise<void> | undefined;
+		const stop = (graceMs: number) => (stopping ??= stopProcess(proc, graceMs));
 		const stderr = collectStderr(proc.stderr);
 		const stream = ndJsonStream(
 			Stdio.stdinSink(proc.stdin),
@@ -314,30 +319,52 @@ export namespace AcpClient {
 				return code;
 			}),
 			stderr: stderr.text,
-			close: () => void closeGracefully(proc),
+			close: () => stop(EXIT_GRACE_MS),
 			launch,
 		});
-		if (!connected.ok) proc.kill();
+		// A harness that never answered `initialize` holds no session worth shutting down well.
+		if (!connected.ok) await stop(0);
 		return connected;
 	};
 
 	const EXIT_GRACE_MS = 2_000;
+	const KILL_WAIT_MS = 500;
+
+	// False once no process is left in the group: signalling it throws ESRCH.
+	const signalGroup = (
+		pid: number,
+		signal: "SIGTERM" | "SIGKILL" | 0,
+	): boolean => {
+		try {
+			process.kill(-pid, signal);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+
+	const groupExited = async (pid: number, ms: number): Promise<void> => {
+		const until = Date.now() + ms;
+		while (signalGroup(pid, 0) && Date.now() < until) await Bun.sleep(10);
+	};
 
 	// An npx wrapper killed outright orphans the adapter's own child (the real `claude`
 	// process kept running after SIGTERM to the wrapper). Stdin EOF lets the adapter shut
-	// its child down; the kill is only for one that ignores it.
-	const closeGracefully = async (
+	// its child down; the kill is only for what ignores it, and goes to the harness's whole
+	// process group, SIGKILL after SIGTERM. The group is swept even when the harness exited by
+	// itself: a wrapper that dies can leave its child behind. Settles once the harness has exited.
+	const stopProcess = async (
 		proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
-	) => {
+		graceMs: number,
+	): Promise<void> => {
 		await tryCatch(async () => {
 			await proc.stdin.end();
 		});
-		const exited = await withTimeout(
-			proc.exited,
-			EXIT_GRACE_MS,
-			"still running",
-		);
-		if (!exited.ok) proc.kill();
+		await withTimeout(proc.exited, graceMs, "still running");
+		signalGroup(proc.pid, "SIGTERM");
+		await groupExited(proc.pid, KILL_WAIT_MS);
+		signalGroup(proc.pid, "SIGKILL");
+		await proc.exited;
 	};
 
 	type Process = Pick<Connection, "closed" | "stderr" | "close"> & {
@@ -349,7 +376,7 @@ export namespace AcpClient {
 	const NO_PROCESS: Process = {
 		closed: Promise.resolve(null),
 		stderr: () => "",
-		close: () => {},
+		close: async () => {},
 	};
 
 	// The transport can be a real ndjson stream or an in-process AgentApp (tests).
@@ -398,7 +425,7 @@ export namespace AcpClient {
 			stderr: process.stderr,
 			close: () => {
 				raw.close();
-				process.close();
+				return process.close();
 			},
 		};
 		const handshake = await withTimeout(
@@ -415,7 +442,8 @@ export namespace AcpClient {
 			`${harness}: no ACP initialize response`,
 		);
 		if (!handshake.ok) {
-			connection.close();
+			// The process is the spawner's to stop: nobody else holds it yet.
+			raw.close();
 			return err(await startFailure(handshake.error, connection, process));
 		}
 		connection.steering = advertisesSteering(handshake.value._meta);
@@ -1063,7 +1091,8 @@ export namespace AcpClient {
 		);
 	};
 
-	export const close = (connection: Connection): void => connection.close();
+	export const close = (connection: Connection): Promise<void> =>
+		connection.close();
 
 	const isAgentApp = (transport: Stream | AgentApp): transport is AgentApp =>
 		!("readable" in transport);

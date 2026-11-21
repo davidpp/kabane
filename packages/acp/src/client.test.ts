@@ -156,7 +156,7 @@ describe("AcpClient", () => {
 			dispatched: false,
 			cancelled: false,
 		});
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("puts the MCP server and, on claude only, the system prompt append on session/new", async () => {
@@ -174,12 +174,12 @@ describe("AcpClient", () => {
 			],
 			_meta: { systemPrompt: { append: "Be brief." } },
 		});
-		AcpClient.close(a.conn);
+		await AcpClient.close(a.conn);
 
 		const codex: Seen = { newSession: [], prompts: [], cancels: 0 };
 		const b = await openSession(scriptedAgent(codex), "codex");
 		expect(codex.newSession[0]).not.toHaveProperty("_meta");
-		AcpClient.close(b.conn);
+		await AcpClient.close(b.conn);
 	});
 
 	it("answers a permission request with the caller's option and never on its own", async () => {
@@ -207,7 +207,7 @@ describe("AcpClient", () => {
 			},
 		]);
 		expect(updates).toContainEqual({ type: "text", text: "chose:reject" });
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("a failed permission callback answers cancelled", async () => {
@@ -221,7 +221,7 @@ describe("AcpClient", () => {
 			AcpClient.prompt(session, [{ type: "text", text: "go" }]),
 		);
 		expect(updates).toContainEqual({ type: "text", text: "chose:cancelled" });
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("cancel before dispatch never sends session/cancel and the turn stops as cancelled", async () => {
@@ -234,7 +234,7 @@ describe("AcpClient", () => {
 		]);
 		expect(seen.cancels).toBe(0);
 		expect(seen.prompts).toHaveLength(0);
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("cancel during a dispatched turn sends session/cancel and the agent stops", async () => {
@@ -258,7 +258,7 @@ describe("AcpClient", () => {
 		}
 		expect(seen.cancels).toBe(1);
 		expect(rest.at(-1)).toEqual({ type: "stop", reason: "cancelled" });
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("steers only a harness that advertises it, asking an idle one for the text back", async () => {
@@ -293,7 +293,7 @@ describe("AcpClient", () => {
 				_meta: { steering: { idleBehavior: "promptRequired" } },
 			},
 		]);
-		AcpClient.close(yes.conn);
+		await AcpClient.close(yes.conn);
 
 		const no = await openSession(steerable(false));
 		expect(no.conn.steering).toBe(false);
@@ -302,7 +302,7 @@ describe("AcpClient", () => {
 		]);
 		expect(refused.ok).toBe(false);
 		expect(steered).toHaveLength(1);
-		AcpClient.close(no.conn);
+		await AcpClient.close(no.conn);
 	});
 
 	it("a handshake that never answers fails within the cap", async () => {
@@ -374,7 +374,7 @@ describe("AcpClient", () => {
 		// that it arrives as one error update and the iterator ends.
 		expect(updates).toHaveLength(1);
 		expect(updates[0]?.type).toBe("error");
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	// A harness that dies before it ever speaks ACP is the common first-run failure: not
@@ -417,7 +417,7 @@ describe("AcpClient", () => {
 	const deadNpx = (stderr: string) => ({
 		closed: Promise.resolve(1),
 		stderr: () => stderr,
-		close: () => {},
+		close: async () => {},
 		launch: {
 			command: "npx",
 			args: ["-y", "@agentclientprotocol/claude-agent-acp@0.99.1"],
@@ -702,7 +702,7 @@ describe("AcpClient session modes", () => {
 			{ type: "stop", reason: "end_turn" },
 		]);
 		expect(session.mode.current).toBe("plan");
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("selects nothing when the mode is default", async () => {
@@ -718,7 +718,7 @@ describe("AcpClient session modes", () => {
 			via: "set_mode",
 			note: "mode default: auto mode is off",
 		});
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("keeps a refused switch on the mode the session opened in, without failing it", async () => {
@@ -735,7 +735,7 @@ describe("AcpClient session modes", () => {
 		expect(session.mode.note).toStartWith(
 			"mode read-only: switching to agent failed: ",
 		);
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 });
 
@@ -844,7 +844,7 @@ describe("AcpClient session modes through a config option", () => {
 			via: "config_option",
 			note: "mode plan: moved there by claude",
 		});
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("reports where the harness landed instead of auto, and passes its notice on", async () => {
@@ -865,7 +865,7 @@ describe("AcpClient session modes through a config option", () => {
 			severity: "warning",
 			text: "Auto mode unavailable: The selected model does not support Auto mode.",
 		});
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("selects nothing when the mode is default", async () => {
@@ -877,7 +877,7 @@ describe("AcpClient session modes through a config option", () => {
 		);
 		expect(seen.setConfig).toEqual([]);
 		expect(session.mode.via).toBe("config_option");
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 });
 
@@ -983,7 +983,7 @@ describe("AcpClient session models", () => {
 		});
 		expect(session.mode.current).toBe("auto");
 		expect(session.configOptions[0]).toMatchObject({ currentValue: "opus" });
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 
 		// Left on haiku, the session has no auto mode to move to.
 		const unasked = await open(modelAgent({ setConfig: [] }));
@@ -991,7 +991,7 @@ describe("AcpClient session models", () => {
 		expect(unasked.session.mode.note).toBe(
 			"mode default: claude does not advertise its auto mode (auto)",
 		);
-		AcpClient.close(unasked.conn);
+		await AcpClient.close(unasked.conn);
 	});
 
 	it("selects the model on a resumed session too", async () => {
@@ -1011,7 +1011,7 @@ describe("AcpClient session models", () => {
 			applied: true,
 		});
 		expect(resumed.value.mode.current).toBe("auto");
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 	});
 
 	it("keeps the session's model, and says why, when it cannot take the one asked for", async () => {
@@ -1021,7 +1021,7 @@ describe("AcpClient session models", () => {
 		) => {
 			const seen = { setConfig: [] as unknown[] };
 			const { conn, session } = await open(modelAgent(seen, options), value);
-			AcpClient.close(conn);
+			await AcpClient.close(conn);
 			return { model: session.model, setConfig: seen.setConfig };
 		};
 		expect(await modelOf("sonnet")).toEqual({
@@ -1122,7 +1122,7 @@ describe("AcpClient.resumeSession", () => {
 			{ sessionId: "s-old", prompt: [{ type: "text", text: "continue" }] },
 			{ sessionId: "s-old", prompt: [{ type: "text", text: "and again" }] },
 		]);
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 	});
 
 	it("is an error for a harness that does not advertise resume, without asking it", async () => {
@@ -1137,7 +1137,7 @@ describe("AcpClient.resumeSession", () => {
 		const session = await AcpClient.resumeSession(conn.value, "s-old", options);
 		expect(session.ok).toBe(false);
 		expect(seen.resumed).toEqual([]);
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 	});
 
 	it("is an error when the harness refuses the id", async () => {
@@ -1152,7 +1152,7 @@ describe("AcpClient.resumeSession", () => {
 			options,
 		);
 		expect(session.ok).toBe(false);
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 	});
 });
 
@@ -1218,7 +1218,7 @@ describe("AcpClient named agents", () => {
 			...options,
 		});
 		if (!session.ok) throw session.error;
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 		return session.value;
 	};
 
@@ -1266,7 +1266,7 @@ describe("AcpClient named agents", () => {
 			},
 		]);
 		expect(resumed.value.agent).toMatchObject({ applied: true });
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 	});
 
 	it("says the session runs without the agent when the harness lacks it or has no way to select one", async () => {
@@ -1318,7 +1318,7 @@ describe("AcpClient.resumeOrStart", () => {
 		);
 		if (!conn.ok) throw conn.error;
 		const reopened = await AcpClient.resumeOrStart(conn.value, id, options);
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 		if (!reopened.ok) throw reopened.error;
 		return reopened.value;
 	};
@@ -1566,8 +1566,8 @@ describe("AcpClient elicitation", () => {
 			undefined,
 			{ form: {} },
 		]);
-		AcpClient.close(without.value.conn);
-		AcpClient.close(withHandler.value.conn);
+		await AcpClient.close(without.value.conn);
+		await AcpClient.close(withHandler.value.conn);
 	});
 
 	it("hands the handler the form verbatim and the harness the human's answer", async () => {
@@ -1615,7 +1615,7 @@ describe("AcpClient elicitation", () => {
 				],
 			},
 		]);
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("a failed handler answers cancel, and a URL request is cancelled without asking, saying why", async () => {
@@ -1661,8 +1661,8 @@ describe("AcpClient elicitation", () => {
 		expect(refused).toEqual([
 			'form "Sign in" answered cancel, never shown: unsupported elicitation mode: url',
 		]);
-		AcpClient.close(failed.value.conn);
-		AcpClient.close(url.value.conn);
+		await AcpClient.close(failed.value.conn);
+		await AcpClient.close(url.value.conn);
 	});
 
 	it("cancels a form that requires a field it cannot ask, and says which field and why", async () => {
@@ -1700,7 +1700,7 @@ describe("AcpClient elicitation", () => {
 		expect(refused).toEqual([
 			'form "Pick a theme" answered cancel, never shown: required field accent has a type kabane cannot ask: _color',
 		]);
-		AcpClient.close(opened.value.conn);
+		await AcpClient.close(opened.value.conn);
 	});
 });
 
@@ -1868,7 +1868,7 @@ describe("AcpClient withdrawn requests", () => {
 			JSON.stringify({ outcome: { outcome: "cancelled" } }),
 		);
 		expect(withdrawn?.aborted).toBe(true);
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 
 	it("answers a withdrawn form cancel and tells the handler it was withdrawn", async () => {
@@ -1891,6 +1891,6 @@ describe("AcpClient withdrawn requests", () => {
 		const { conn, session } = opened.value;
 		expect(await turnText(session)).toBe(JSON.stringify({ action: "cancel" }));
 		expect(withdrawn?.aborted).toBe(true);
-		AcpClient.close(conn);
+		await AcpClient.close(conn);
 	});
 });
