@@ -96,9 +96,10 @@ const SETUP_CONTEXT: Record<Phase["kind"], Keymap.ContextId> = {
 const footerFor = (
 	phase: Phase,
 	defaults: SetupPlan.Defaults,
+	step: SetupPlan.Step,
 ): readonly Keymap.Hint[] =>
 	Keymap.footer(SETUP_CONTEXT[phase.kind], {
-		harnesses: defaults.harnesses.length + defaults.extensions.length > 0,
+		harnesses: SetupPlan.fields(defaults, step).some((f) => f.kind !== "name"),
 	});
 
 // Each field's one-line purpose, dim under it. At 40 columns a note has 31 after the label column.
@@ -108,7 +109,9 @@ export const NO_AGENTS = "none found on PATH";
 export const NO_AGENTS_NOTE = "add later: kabane mcp install";
 export const AGENTS_OFF = "install off";
 export const AGENTS_OFF_NOTE = "KABANE_HARNESSES is set";
-export const EXTENSIONS_NOTE = "ticked ones are turned on";
+export const EXTENSIONS_NOTE = "checked ones are turned on";
+/** The enter panel's one line on the first step when extensions follow it. */
+export const NEXT_STEP_LINE = "next: the extensions to turn on";
 
 const agentCount = (count: number): string =>
 	`${count} agent${count === 1 ? "" : "s"}`;
@@ -263,7 +266,6 @@ export const SetupScreen = ({
 	};
 	const [phase, setPhase] = useState<Phase>({ kind: "welcome" });
 	const spinnerFrame = useSpinnerFrame(phase.kind === "working");
-	const theme = useTheme();
 
 	const working = (step: string): void => setPhase({ kind: "working", step });
 
@@ -282,6 +284,8 @@ export const SetupScreen = ({
 			setPhase({ kind: "form", error: planned.error.message });
 			return;
 		}
+		const next = SetupPlan.nextStep(current.current, defaults);
+		if (next) return update(next);
 		working("writing the config");
 		const saved = await save(planned.value);
 		if (!saved.ok) {
@@ -342,12 +346,7 @@ export const SetupScreen = ({
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			{/* The welcome's wordmark is its title; every later phase says where it is. */}
-			{phase.kind === "welcome" ? null : (
-				<text fg={theme.defaultFg}>
-					<span attributes={TextAttributes.BOLD}>kabane</span>
-					<span fg={theme.muted}> · setup</span>
-				</text>
-			)}
+			{phase.kind === "welcome" ? null : <Title step={form.step} />}
 			<box style={{ flexDirection: "column", flexGrow: 1, marginTop: 1 }}>
 				{phase.kind === "welcome" ? (
 					<WelcomeCard />
@@ -367,8 +366,20 @@ export const SetupScreen = ({
 					spinnerFrame={spinnerFrame}
 				/>
 			</box>
-			<StatusBar hints={footerFor(phase, defaults)} />
+			<StatusBar hints={footerFor(phase, defaults, form.step)} />
 		</box>
+	);
+};
+
+const Title = ({ step }: { step: SetupPlan.Step }): ReactNode => {
+	const theme = useTheme();
+	return (
+		<text fg={theme.defaultFg}>
+			<span attributes={TextAttributes.BOLD}>kabane</span>
+			<span fg={theme.muted}>
+				{step === "extensions" ? " · setup · extensions" : " · setup"}
+			</span>
+		</text>
 	);
 };
 
@@ -432,6 +443,7 @@ const ConfirmPanel = ({
 				agents={form.checked.length}
 				firstAgent={SetupPlan.firstAgent(form, defaults)}
 				extensions={form.accepted}
+				next={SetupPlan.nextStep(form, defaults) !== undefined}
 			/>
 			{phase.error ? (
 				<text fg={theme.failed} style={{ marginTop: 1 }}>
@@ -582,7 +594,6 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 				return (
 					<ExtensionRow
 						key={field.extension.name}
-						label=""
 						offer={field.extension}
 						checked={form.accepted.includes(field.extension.name)}
 						focused={focused}
@@ -590,9 +601,14 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 				);
 		}
 	};
-	const [name, ...rows] = SetupPlan.fields(defaults).map(row);
-	const agents = rows.slice(0, defaults.harnesses.length);
-	const extensions = rows.slice(defaults.harnesses.length);
+	if (form.step === "extensions")
+		return (
+			<Panel first gutter>
+				{SetupPlan.fields(defaults, "extensions").map(row)}
+				<Note text={EXTENSIONS_NOTE} />
+			</Panel>
+		);
+	const [name, ...agents] = SetupPlan.fields(defaults).map(row);
 	return (
 		<Panel first gutter>
 			{name}
@@ -615,14 +631,6 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 					</>
 				)}
 			</box>
-			{extensions.length > 0 ? (
-				<box style={{ flexDirection: "column", marginTop: 1 }}>
-					{/* Wider than the label column, so it heads its rows on a line of its own. */}
-					<text fg={theme.text}>{"  extensions"}</text>
-					{extensions}
-					<Note text={EXTENSIONS_NOTE} />
-				</box>
-			) : null}
 		</Panel>
 	);
 };
@@ -640,22 +648,28 @@ const EnterPanel = ({
 	agents,
 	firstAgent,
 	extensions,
+	next,
 }: {
 	configPath: string;
 	agents: number;
 	firstAgent?: string;
 	extensions: readonly string[];
+	// Enter moves on to the extensions step and changes nothing yet.
+	next: boolean;
 }): ReactNode => {
 	const theme = useTheme();
 	const { width } = useTerminalDimensions();
 	const room = width - LABEL_WIDTH - "saves ".length;
 	return (
 		<Panel gutter>
-			{enterLines(
-				elidePath(configPath, room),
-				agents,
-				firstAgent,
-				extensions,
+			{(next
+				? [NEXT_STEP_LINE]
+				: enterLines(
+						elidePath(configPath, room),
+						agents,
+						firstAgent,
+						extensions,
+					)
 			).map((line, index) => (
 				<text key={line} fg={theme.text}>
 					{index === 0 ? (
@@ -908,14 +922,12 @@ const CheckRow = ({
 };
 
 // An extension row is a check row with what the extension does under it, dim: one line cut to the
-// panel, the whole of it while the row has focus.
+// panel, more of it while the row has focus.
 const ExtensionRow = ({
-	label,
 	offer,
 	checked,
 	focused,
 }: {
-	label: string;
 	offer: SetupPlan.Offer;
 	checked: boolean;
 	focused: boolean;
@@ -923,12 +935,14 @@ const ExtensionRow = ({
 	const theme = useTheme();
 	const room = usePanelWidth() + 2 * PANEL_PAD - LABEL_WIDTH - 4;
 	const about = offer.description ?? "";
+	// Three lines' worth while focused: the step has to fit a 24-row terminal at 40 columns.
+	const fits = room * (focused ? 3 : 1);
 	const shown =
-		focused || about.length <= room ? about : `${about.slice(0, room - 1)}…`;
+		about.length <= fits ? about : `${about.slice(0, fits - 1).trimEnd()}…`;
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<CheckRow
-				label={label}
+				label=""
 				harness={offer.name}
 				checked={checked}
 				focused={focused}

@@ -35,7 +35,11 @@ export namespace SetupPlan {
 		| { kind: "harness"; harness: Harness }
 		| { kind: "extension"; extension: Offer };
 
+	/** The form's two steps: who you are and the agents, then the extensions, when any ships. */
+	export type Step = "form" | "extensions";
+
 	export type Form = {
+		step: Step;
 		name: string;
 		checked: readonly string[];
 		/** The extensions ticked, by name. */
@@ -64,17 +68,19 @@ export namespace SetupPlan {
 
 	export const ACTOR_PREFIX = ActorUri.HUMAN;
 
-	export const fields = (defaults: Defaults): Field[] => [
-		{ kind: "name" },
-		...defaults.harnesses.map((harness): Field => ({
-			kind: "harness",
-			harness,
-		})),
-		...defaults.extensions.map((extension): Field => ({
-			kind: "extension",
-			extension,
-		})),
-	];
+	export const fields = (defaults: Defaults, step: Step = "form"): Field[] =>
+		step === "extensions"
+			? defaults.extensions.map((extension): Field => ({
+					kind: "extension",
+					extension,
+				}))
+			: [
+					{ kind: "name" },
+					...defaults.harnesses.map((harness): Field => ({
+						kind: "harness",
+						harness,
+					})),
+				];
 
 	// Every detected harness starts checked: wiring the agents is why most people run setup at all.
 	// No extension does: setup suggests one, it never turns one on unasked.
@@ -83,7 +89,17 @@ export namespace SetupPlan {
 		checked: defaults.harnesses.map((h) => h.id),
 		accepted: [],
 		focus: 0,
+		step: "form",
 	});
+
+	/**
+	 * What enter on the first step leads to: the extensions step when this install ships any,
+	 * focus on its first row; undefined when enter confirms.
+	 */
+	export const nextStep = (form: Form, defaults: Defaults): Form | undefined =>
+		form.step === "form" && defaults.extensions.length > 0
+			? { ...form, step: "extensions", focus: 0 }
+			: undefined;
 
 	/** Focus wraps, so tab from the last row lands back on the name. */
 	export const moveFocus = (
@@ -91,12 +107,12 @@ export namespace SetupPlan {
 		defaults: Defaults,
 		delta: number,
 	): Form => {
-		const count = fields(defaults).length;
+		const count = fields(defaults, form.step).length;
 		return { ...form, focus: (((form.focus + delta) % count) + count) % count };
 	};
 
 	export const focused = (form: Form, defaults: Defaults): Field | undefined =>
-		fields(defaults)[form.focus];
+		fields(defaults, form.step)[form.focus];
 
 	/** Whether `field` is a checkbox row, which space flips. */
 	export const ticks = (field: Field | undefined): boolean =>

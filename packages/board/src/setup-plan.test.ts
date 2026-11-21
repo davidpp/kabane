@@ -126,35 +126,46 @@ describe("extensions", () => {
 			{ name: "loop" },
 		],
 	};
-	const at = (focus: number): SetupPlan.Form => ({
-		...SetupPlan.initialForm(OFFERED),
-		focus,
-	});
 
-	test("one row each after the harnesses, none ticked", () => {
+	test("a step of their own after the form, one row each, none ticked", () => {
+		const form = SetupPlan.initialForm(OFFERED);
 		expect(SetupPlan.fields(OFFERED).map((f) => f.kind)).toEqual([
 			"name",
 			"harness",
 			"harness",
+		]);
+		const next = SetupPlan.nextStep({ ...form, focus: 2 }, OFFERED);
+		expect(next?.step).toBe("extensions");
+		expect(next?.focus).toBe(0);
+		expect(SetupPlan.fields(OFFERED, "extensions").map((f) => f.kind)).toEqual([
 			"extension",
 			"extension",
 		]);
-		const planned = SetupPlan.plan(SetupPlan.initialForm(OFFERED), OFFERED);
+		expect(next && SetupPlan.nextStep(next, OFFERED)).toBeUndefined();
+		expect(SetupPlan.nextStep(form, DEFAULTS)).toBeUndefined();
+		const planned = SetupPlan.plan(form, OFFERED);
 		expect(planned.ok && planned.value.extensions).toEqual([]);
 	});
 
-	test("space ticks one, and the plan names them in offer order", () => {
-		const form = SetupPlan.toggle(
-			{ ...SetupPlan.toggle(at(4), OFFERED), focus: 3 },
+	test("space ticks one, focus wraps within the step, and the plan names them in offer order", () => {
+		const step = SetupPlan.nextStep(SetupPlan.initialForm(OFFERED), OFFERED);
+		if (!step) throw new Error("no extensions step");
+		const loop = SetupPlan.toggle(
+			SetupPlan.moveFocus(step, OFFERED, 1),
 			OFFERED,
 		);
-		const planned = SetupPlan.plan(form, OFFERED);
+		const both = SetupPlan.toggle(
+			SetupPlan.moveFocus(loop, OFFERED, 1),
+			OFFERED,
+		);
+		expect(both.focus).toBe(0);
+		const planned = SetupPlan.plan(both, OFFERED);
 		expect(planned.ok && planned.value.extensions).toEqual([
 			"dispatch",
 			"loop",
 		]);
 		expect(planned.ok && planned.value.install).toEqual(["claude", "codex"]);
-		const untick = SetupPlan.plan(SetupPlan.toggle(form, OFFERED), OFFERED);
+		const untick = SetupPlan.plan(SetupPlan.toggle(both, OFFERED), OFFERED);
 		expect(untick.ok && untick.value.extensions).toEqual(["loop"]);
 	});
 });
