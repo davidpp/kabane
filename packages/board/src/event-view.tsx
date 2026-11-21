@@ -29,6 +29,7 @@ import {
 	type ReactNode,
 	type RefObject,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -313,6 +314,9 @@ export const EventView = ({
 	map,
 }: EventViewProps): ReactNode => {
 	const { card, events } = useCardEvents(cardId, source, initialCard, onCard);
+	// Each session log's opened rows and place, by lane, kept while the arrangement around it changes
+	// (crossing SPLIT_COLS remounts it). One view per card, so per card.
+	const logs = useRef<LogMemory>(new Map()).current;
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
@@ -359,6 +363,7 @@ export const EventView = ({
 					spinnerFrame={spinnerFrame}
 					scrollRef={scrollRef}
 					toolDetails={toolDetails}
+					logs={logs}
 				/>
 			) : (
 				<>
@@ -445,6 +450,7 @@ type CockpitProps = {
 	spinnerFrame: string;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	toolDetails: boolean | undefined;
+	logs: LogMemory;
 };
 
 // The rows the regions share: what the footer leaves them, and never more, so the footer stays.
@@ -474,9 +480,16 @@ const SessionLog = ({
 	spinnerFrame,
 	scrollRef,
 	toolDetails,
+	logs,
 }: Pick<
 	CockpitProps,
-	"card" | "events" | "width" | "spinnerFrame" | "scrollRef" | "toolDetails"
+	| "card"
+	| "events"
+	| "width"
+	| "spinnerFrame"
+	| "scrollRef"
+	| "toolDetails"
+	| "logs"
 > & { lane: string; pinned: boolean }): ReactNode => (
 	<box
 		style={{
@@ -498,6 +511,7 @@ const SessionLog = ({
 			tabbed
 			spinnerFrame={spinnerFrame}
 			toolDetails={toolDetails}
+			memory={logs}
 		/>
 	</box>
 );
@@ -718,6 +732,20 @@ const PermissionDock = ({
 	);
 };
 
+type StreamProps = {
+	card: ActivityCard;
+	events: readonly ActivityEvent[];
+	lane: string | null;
+	lanes: readonly string[];
+	width: number;
+	toolDetails: boolean | undefined;
+	scrollRef: RefObject<ScrollBoxRenderable | null>;
+	tabbed: boolean;
+	spinnerFrame: string;
+	// Where a session's log keeps its opened rows and place across a remount, by its lane.
+	memory?: LogMemory;
+};
+
 // The events, and how the card ended. A card's tab is a live stream: pinned to the newest line until
 // the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
 // its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
@@ -732,24 +760,21 @@ export const Stream = ({
 	tabbed,
 	spinnerFrame,
 	toolDetails,
-}: {
-	card: ActivityCard;
-	events: readonly ActivityEvent[];
-	lane: string | null;
-	lanes: readonly string[];
-	width: number;
-	toolDetails: boolean | undefined;
-	scrollRef: RefObject<ScrollBoxRenderable | null>;
-	tabbed: boolean;
-	spinnerFrame: string;
-}): ReactNode => {
+	memory,
+}: StreamProps): ReactNode => {
 	const theme = useTheme();
 	const live = isInFlight(card);
 	const rows = useMemo(
 		() => ToolRows.rows(laneEvents(events, lane), live),
 		[events, lane, live],
 	);
-	const { isOpen, toggle } = useOpenRows(rows, scrollRef, toolDetails === true);
+	const { isOpen, toggle } = useOpenRows(
+		rows,
+		scrollRef,
+		toolDetails === true,
+		lane !== null ? memory : undefined,
+		lane ?? "",
+	);
 	const cols = lanes.length > 0 ? tagCols(lanes, width) : 0;
 	const tagRoom = cols > 0 ? cols + 1 : 0;
 	const promptRoom = Math.max(
@@ -841,6 +866,42 @@ export const Stream = ({
 	);
 };
 
+// The tool rows a click flipped against the view's `t`, which `t` forgets.
+type Flipped = { allOpen: boolean; keys: ReadonlySet<string> };
+
+/** A session log's opened rows and where it was scrolled, kept by lane while it is off screen. */
+export type LogMemory = Map<
+	string,
+	{ flipped?: Flipped; place?: { top: number; following: boolean } }
+>;
+// A log scrolled back keeps its place when it is mounted again; one following its newest line goes
+// on following. Read as it goes, before the reconciler takes its scrollbox away.
+const useKeptPlace = (
+	scrollRef: RefObject<ScrollBoxRenderable | null>,
+	memory: LogMemory | undefined,
+	lane: string,
+): void => {
+	useLayoutEffect(() => {
+		const box = scrollRef.current;
+		if (!memory || !box) return;
+		const place = memory.get(lane)?.place;
+		if (place && !place.following)
+			box.afterLayout(() => {
+				box.scrollTop = place.top;
+			});
+		return () => {
+			if (box.isDestroyed) return;
+			const following =
+				box.scrollTop >= box.scrollHeight - box.viewport.height - 1;
+			memory.set(lane, {
+				...memory.get(lane),
+				place: { top: box.scrollTop, following },
+			});
+		};
+		// The place is read when the log comes on screen and kept as it leaves.
+	}, [scrollRef, memory, lane]);
+};
+
 // Which tool rows are open, by key: every one while `allOpen` (the view's `t`), none otherwise, and
 // the rows a click flipped against that. A new `allOpen` forgets the clicks. A clicked header keeps
 // its place on screen through the layout that follows (ScrollBox.anchor, as opencode's session view
@@ -850,15 +911,20 @@ const useOpenRows = (
 	rows: readonly ToolRows.Row[],
 	scrollRef: RefObject<ScrollBoxRenderable | null>,
 	allOpen: boolean,
+	memory: LogMemory | undefined,
+	lane: string,
 ): {
 	isOpen: (key: string) => boolean;
 	toggle: (key: string, header: Renderable | null) => void;
 } => {
 	const renderer = useRenderer();
-	const [flipped, setFlipped] = useState<{
-		allOpen: boolean;
-		keys: ReadonlySet<string>;
-	}>({ allOpen, keys: NOTHING_OPEN });
+	const [flipped, setFlipped] = useState<Flipped>(
+		() => memory?.get(lane)?.flipped ?? { allOpen, keys: NOTHING_OPEN },
+	);
+	useEffect(() => {
+		memory?.set(lane, { ...memory.get(lane), flipped });
+	}, [memory, lane, flipped]);
+	useKeptPlace(scrollRef, memory, lane);
 	const keys = flipped.allOpen === allOpen ? flipped.keys : NOTHING_OPEN;
 	const lastKey = rowKey(rows[rows.length - 1]);
 	const toggle = (key: string, header: Renderable | null): void => {

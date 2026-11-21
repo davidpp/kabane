@@ -1161,3 +1161,77 @@ describe("a card tab's footer keeps the bottom row", () => {
 			}
 		});
 });
+
+// A finished run's session log with a run of tool calls, pinned (`enter`), as the split shows it.
+const LOGGED: ActivityCard = {
+	...FINISHED,
+	steps: [
+		{
+			name: "recheck",
+			state: "done",
+			sessions: [{ name: "docs", state: "done", lane: "docs" }],
+		},
+	],
+	left: [],
+};
+const LOG: ActivityEvent[] = [
+	["phase", "codex rechecks the docs", undefined],
+	["tool_call", "Read guide", "a"],
+	["tool_completed", "Read guide", "a"],
+	["tool_call", "Read readme", "b"],
+	["tool_completed", "Read readme", "b"],
+	["text", "Both still name the old flag.", undefined],
+].map(([type = "", summary = "", callId], at) => ({
+	seq: at + 1,
+	at: "2026-11-20T09:10:00.000Z",
+	type,
+	summary,
+	lane: "docs",
+	...(callId ? { callId } : {}),
+}));
+
+describe("a session log across the split", () => {
+	it("keeps a tool group it opened when the pane narrows past 160", async () => {
+		const { renderOnce, captureCharFrame, mockMouse, resize, destroy } =
+			await renderTest(
+				<EventView
+					cardId={LOGGED.id}
+					initialCard={LOGGED}
+					source={{
+						load: async () => ok([LOGGED]),
+						card: async () => ok(LOGGED),
+						events: async (_id, after) =>
+							ok(LOG.filter((event) => event.seq > after)),
+					}}
+					resolveShortId={() => undefined}
+					scrollRef={createRef()}
+					tabbed
+					lane="docs"
+					map={{ view: {}, asking: new Set() }}
+					keys={{ context: "cardTab", situation: { map: true, log: true } }}
+				/>,
+				{ width: 160, height: 24 },
+			);
+		try {
+			const split = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("▸ explored · 2 reads"),
+			);
+			const rows = split.split("\n");
+			const y = rows.findIndex((row) => row.includes("▸ explored · 2 reads"));
+			await mockMouse.click(rows[y]?.indexOf("explored · 2 reads") ?? 0, y);
+			await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("▾ explored · 2 reads"),
+			);
+			resize(159, 24);
+			const stacked = await pumpUntil(
+				renderOnce,
+				captureCharFrame,
+				(f) => !f.includes(" map ") && f.includes("explored · 2 reads"),
+			);
+			expect(stacked).toContain("▾ explored · 2 reads");
+			expect(stacked).toContain("Read readme");
+		} finally {
+			destroy();
+		}
+	});
+});
