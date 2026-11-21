@@ -526,7 +526,8 @@ type Extension = {
 - **`board`** keeps `activity` and `dispatcher` and takes headers as data (above). `jobs` is a
   `JobSource`: for the job ids the board lists from the tracker, every scope's, it gives each
   one's schedule, next fire, recipe, inputs, harness, session mode, folder and recent runs as data, which the
-  board's Jobs tab draws. Without one the tab lists the jobs with their title, scope and state
+  board's Jobs tab draws; handing one keeps the tab in the bar before the first job. Without one
+  the tab shows only while there is a job, and lists the jobs with their title, scope and state
   only. Running a job now is a trigger its `dispatcher` offers on the job, not part of this port.
 - **`doctor`** uses `Doctor.Source["doctor"]` from `packages/extension/doctor.ts`: findings
   with a stable `id`, a severity of `auto`, `mention`,

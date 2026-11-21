@@ -460,9 +460,11 @@ changes nothing else: it is not retried. Under launchd, the command must be on t
 
 ### Jobs on the board
 
-While this device has a job, the board has a Jobs tab after the tracker (tab 2; `2`, `{` and `}`
-reach it, or click it). It lists the jobs of every project on this device, not only the
-board's, one section per project named after its folder. Each row shows the state of the
+With the recipes extension enabled, the board has a Jobs tab after the tracker (tab 2; `2`, `{`
+and `}` reach it, or click it), from before the first job. Until there is one, the tab says what a
+job is and that you make one by asking your agent, or by pressing `A` and asking the copilot. It
+lists the jobs of every project on this device, not only the board's, one section per project
+named after its folder. Each row shows the state of the
 job's latest run, its id and title, then as much as fits of: `? waiting` when that run waits on
 you, `paused`, when it fires next, its schedule, its recipe and its harness. A waiting run is
 in the accent color, and the tab counts them (`jobs ?1`), so you see from any tab that a job
@@ -477,7 +479,8 @@ needs you.
 
 Each run in the detail shows its state, when it started and `kabane runs attach <id>`, which
 opens its session in hc; the board does not show the session. A board without the recipes
-extension still lists the jobs, with only their id, title, project and whether they are paused.
+extension shows the tab only while this device has a job, and lists the jobs with only their id,
+title, project and whether they are paused.
 
 ### Tick on a schedule
 
