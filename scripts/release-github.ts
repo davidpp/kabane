@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProcessReply } from "../packages/cli/src/update-process";
+import { compareVersions } from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 
 const Release = z.object({
@@ -133,10 +134,10 @@ const nextPage = (
 	return validateRelations(relations, page);
 };
 
-const listDraft = async (
-	tag: string,
+/** Every release, drafts included, which only an authenticated listing with push access shows. */
+const listReleases = async (
 	request: Request,
-): Promise<Result<GitHubRelease | null>> => {
+): Promise<Result<GitHubRelease[]>> => {
 	const access = await request(REPOSITORY);
 	if (!access.ok) return access;
 	const authenticated = decode(access.value);
@@ -154,7 +155,7 @@ const listDraft = async (
 			"Authenticated push access is required to discover drafts; absence is not proven.",
 		);
 	const seen = new Set<number>();
-	let matching: GitHubRelease | null = null;
+	const all: GitHubRelease[] = [];
 	for (let page = 1; page <= MAX_PAGES; page++) {
 		const result = await request(
 			`${REPOSITORY}/releases?per_page=${PAGE_SIZE}&page=${page}`,
@@ -180,18 +181,60 @@ const listDraft = async (
 					"Repeated release in GitHub listing; pagination is ambiguous.",
 				);
 			seen.add(release.id);
-			if (release.tag_name !== tag) continue;
-			if (matching || !release.draft)
-				return fail(
-					"Duplicate matching release or conflicting published/tag metadata.",
-				);
-			matching = release;
+			all.push(release);
 		}
-		if (next.value === null) return ok(matching);
+		if (next.value === null) return ok(all);
 	}
 	return fail(
 		"GitHub releases listing was not fully consumed; absence is not proven.",
 	);
+};
+
+const listDraft = async (
+	tag: string,
+	request: Request,
+): Promise<Result<GitHubRelease | null>> => {
+	const releases = await listReleases(request);
+	if (!releases.ok) return releases;
+	const matching = releases.value.filter((release) => release.tag_name === tag);
+	const [only] = matching;
+	if (matching.length > 1 || (only && !only.draft))
+		return fail(
+			"Duplicate matching release or conflicting published/tag metadata.",
+		);
+	return ok(only ?? null);
+};
+
+const STABLE_TAG = /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/;
+
+/**
+ * The highest `X.Y.Z` among the published releases' `vX.Y.Z` tags, or null when none is published:
+ * where the next version starts and what a new release must pass. A draft or a beta does not count.
+ */
+export const highestStableRelease = (
+	releases: readonly Pick<GitHubRelease, "tag_name" | "draft">[],
+): string | null => {
+	let highest: string | null = null;
+	for (const release of releases) {
+		const version = STABLE_TAG.exec(release.tag_name)?.[1];
+		if (
+			release.draft ||
+			!version ||
+			!version.split(".").every((part) => Number.isSafeInteger(Number(part)))
+		)
+			continue;
+		if (highest === null || compareVersions(version, highest) > 0)
+			highest = version;
+	}
+	return highest;
+};
+
+/** The highest published stable release on GitHub (`highestStableRelease`). */
+export const readHighestStableRelease = async (
+	request: Request,
+): Promise<Result<string | null>> => {
+	const releases = await listReleases(request);
+	return releases.ok ? ok(highestStableRelease(releases.value)) : releases;
 };
 
 /** The tag endpoint returns published releases only; authenticated listing is the draft lookup. */

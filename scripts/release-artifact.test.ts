@@ -10,12 +10,9 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { z } from "zod";
 import { DIST } from "./build";
 import {
 	inspectArchive,
-	integrity,
-	npmViewSchema,
 	PackOutputSchema,
 	type ReleaseManifest,
 	sha256,
@@ -177,19 +174,6 @@ test("npm pack's JSON is read in npm 11's array and npm 12's keyed shape, one ka
 	])
 		expect(PackOutputSchema.safeParse(refused).success).toBe(false);
 });
-test("npm view's JSON is read bare (npm 11) or wrapped in one array (npm 12), never a longer array", () => {
-	const Version = npmViewSchema(z.string());
-	expect(Version.parse("4.6.7")).toBe("4.6.7");
-	expect(Version.parse(["4.6.7"])).toBe("4.6.7");
-	const Release = npmViewSchema(z.object({ version: z.string() }));
-	expect(Release.parse({ version: "4.6.7" })).toEqual({ version: "4.6.7" });
-	expect(Release.parse([{ version: "4.6.7" }])).toEqual({ version: "4.6.7" });
-	for (const refused of [[], ["4.6.7", "4.6.8"], [["4.6.7"]]])
-		expect(Version.safeParse(refused).success).toBe(false);
-	expect(
-		Release.safeParse([{ version: "4.6.7" }, { version: "4.6.8" }]).success,
-	).toBe(false);
-});
 /** `npm pack` a package directory into a new directory and validate the archive it writes. */
 const packBuild = async (packageDir: string) => {
 	const dir = join(WORK, String(sequence++));
@@ -281,71 +265,37 @@ test("manifest identity, private workspace dependency, maps and machine paths fa
 		).toBe(false);
 });
 
-test("release-file byte round trip and source/tag/version/checksum mismatches", () => {
+test("release-file round trip and tag/version/notes/checksum mismatches", () => {
 	const dir = join(WORK, "roundtrip");
 	mkdirSync(dir);
-	const bytes = archive(normal),
-		notes = Buffer.from("Reviewed notes\n");
+	const notes = Buffer.from("Reviewed notes\n");
 	const record: ReleaseManifest = {
 		version: "1.2.3",
 		commit: "a".repeat(40),
 		tag: "v1.2.3",
 		dirty: false,
-		filename: "kabane-1.2.3.tgz",
-		sha256: sha256(bytes),
-		integrity: integrity(bytes),
 		notesSha256: sha256(notes),
 		bun: "1.4.0",
-		npm: "12.2.0",
 	};
 	const write = (value: ReleaseManifest): void => {
-		writeFileSync(join(dir, value.filename), bytes);
 		writeFileSync(join(dir, "manifest.json"), JSON.stringify(value));
 		writeFileSync(join(dir, "release-notes.md"), notes);
-		writeFileSync(
-			join(dir, "SHA256SUMS"),
-			`${value.sha256}  ${value.filename}\n`,
-		);
 	};
 	write(record);
 	expect(verifyReleaseFiles(dir).ok).toBe(true);
-	const beta = {
-		...record,
-		version: "1.2.3-beta.0",
-		tag: "v1.2.3-beta.0",
-		filename: "kabane-1.2.3-beta.0.tgz",
-	};
-	write(beta);
+	write({ ...record, version: "1.2.3-beta.0", tag: "v1.2.3-beta.0" });
 	expect(verifyReleaseFiles(dir).ok).toBe(true);
-	rmSync(join(dir, beta.filename));
 	for (const bad of [
-		{ ...beta, tag: "v1.2.3" },
-		{
-			...beta,
-			version: "1.2.3-rc.0",
-			tag: "v1.2.3-rc.0",
-			filename: "kabane-1.2.3-rc.0.tgz",
-		},
-	]) {
-		write(bad);
-		expect(verifyReleaseFiles(dir).ok).toBe(false);
-		rmSync(join(dir, bad.filename));
-	}
-	for (const bad of [
+		{ ...record, version: "1.2.3-beta.0" },
+		{ ...record, version: "1.2.3-rc.0", tag: "v1.2.3-rc.0" },
 		{ ...record, tag: "v1.2.4" },
-		{ ...record, filename: "kabane-1.2.4.tgz" },
-		{ ...record, sha256: "b".repeat(64) },
+		{ ...record, notesSha256: "b".repeat(64) },
+		{ ...record, filename: "kabane-1.2.3.tgz" },
 	]) {
-		write(bad);
+		write(bad as ReleaseManifest);
 		expect(verifyReleaseFiles(dir).ok).toBe(false);
 	}
-	write(record);
-	writeFileSync(join(dir, record.filename), "corrupted");
-	expect(verifyReleaseFiles(dir).ok).toBe(false);
 	write(record);
 	writeFileSync(join(dir, "release-notes.md"), "changed");
-	expect(verifyReleaseFiles(dir).ok).toBe(false);
-	write(record);
-	rmSync(join(dir, record.filename));
 	expect(verifyReleaseFiles(dir).ok).toBe(false);
 });

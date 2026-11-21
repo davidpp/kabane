@@ -7,12 +7,8 @@ const record: ReleaseManifest = {
 	tag: "v1.2.3",
 	dirty: false,
 	commit: "a".repeat(40),
-	filename: "kabane-1.2.3.tgz",
-	sha256: "0".repeat(64),
-	integrity: "sha512-AAAA",
 	notesSha256: "1".repeat(64),
 	bun: "1.4.0",
-	npm: "12.2.0",
 	binaries: BinaryTargetSchema.options.map((target, index) => ({
 		target,
 		filename: `kabane-${target}.tar.gz`,

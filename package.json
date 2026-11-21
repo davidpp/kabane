@@ -15,7 +15,7 @@
 		"gallery": "bun packages/board/gallery.tsx",
 		"build": "bun scripts/build.ts",
 		"smoke": "bun scripts/smoke.ts",
-		"release:local": "bun scripts/release-local.ts",
+		"release": "bun scripts/release-local.ts",
 		"deploy": "bun scripts/deploy.ts",
 		"land": "bun scripts/land.ts",
 		"main-build": "bun scripts/main-build.ts",
