@@ -17,6 +17,7 @@ import type { QuestionView } from "@kabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import { createRef, type ReactNode, useEffect, useMemo, useRef } from "react";
+import { BoardActivity } from "../activity";
 import { Board } from "../board";
 import { CardHeader } from "../card-header";
 import { CardTab } from "../card-tab";
@@ -1711,6 +1712,28 @@ export const STORIES: readonly Story[] = [
 				pane={<Pane copilot={Fixtures.copilot({ actor: CLAUDE })} />}
 			/>
 		),
+	},
+	{
+		name: "board-badge-narrow",
+		about:
+			"a paused run's badge cut with … at forty columns, the title at its floor",
+		width: 40,
+		height: 8,
+		render: () => {
+			const probe = task({
+				id: "b1",
+				shortId: "JREP-1",
+				title: "Probe the badge at forty columns",
+			});
+			return (
+				<Board
+					sections={[section("next", [{ task: probe, children: [] }])]}
+					expanded={new Set()}
+					selectedId={null}
+					activity={BoardActivity.indexCards([Fixtures.waitingRun(probe)])}
+				/>
+			);
+		},
 	},
 	{
 		name: "detail-checklist",
