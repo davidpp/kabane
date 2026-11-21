@@ -104,6 +104,32 @@ describe("Self.current", () => {
 	});
 });
 
+describe("Self.upgraded", () => {
+	const KEG: Self.Host = {
+		...BINARY,
+		execPath: "/opt/homebrew/Cellar/kabane/1.0.0/libexec/kabane",
+	};
+	const MISE: Self.Host = {
+		...BINARY,
+		execPath: "/home/me/.local/share/mise/installs/kabane/1.0.0/kabane",
+	};
+	const none = () => null;
+
+	it("is the link brew or mise keeps, which an upgrade moved off this binary", () => {
+		// brew upgrade removed the 1.0.0 keg; only the link is left.
+		expect(
+			Self.upgraded(KEG, (path) => path === "/opt/homebrew/bin/kabane", none),
+		).toBe("/opt/homebrew/bin/kabane");
+		expect(Self.upgraded(MISE, () => true, none)).toBe(
+			"/home/me/.local/share/mise/installs/kabane/latest/kabane",
+		);
+	});
+
+	it("is the binary itself, which kabane update replaced in place", () => {
+		expect(Self.upgraded(BINARY, () => true, none)).toBe("/opt/kabane/kabane");
+	});
+});
+
 describe("Self.lasting", () => {
 	const MISE: Self.Host = {
 		...SCRIPT,

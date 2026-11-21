@@ -44,6 +44,7 @@ import { Extensions } from "../extensions";
 import { Self } from "../self";
 import { Skills } from "../skills";
 import { UpdateNotice } from "../update-notice";
+import { UpgradeOffer } from "../upgrade-offer";
 import { BoardControl } from "./board-control";
 
 /**
@@ -258,7 +259,8 @@ const settingsSource = (args: ParsedArgs, ctx: Ctx): SettingsSource => {
  * defaults without any), the scope the CLI would have filtered on (the issue's,
  * with `--issue`), the issue to open on, a copilot on the chosen harness, the
  * settings the `,` view lists, and the release notice unless `updates.check`
- * is false.
+ * is false; `offered` is the release already offered before the board, which it
+ * does not name again.
  *
  * The scope is resolved here rather than passed through as a resolver, because
  * the copilot needs the same answer the board shows: the project directory as
@@ -277,12 +279,14 @@ export const boardDeps = async (
 		directories = [],
 		issue,
 		requests,
+		offered,
 	}: {
 		extensions?: readonly Extension[];
 		refusals?: Extensions.Refusal[];
 		directories?: readonly Extensions.Directory[];
 		issue?: Task;
 		requests?: OpenRequests;
+		offered?: string;
 	} = {},
 ): Promise<BoardWiring> => {
 	const scope = await boardScope(args, ctx, issue);
@@ -304,7 +308,7 @@ export const boardDeps = async (
 							const update =
 								ctx.config.updates?.check === false
 									? ok(null)
-									: await UpdateNotice.announcer(ctx.home).announce();
+									: await UpdateNotice.announcer(ctx.home, offered).announce();
 							if (!update.ok) return update;
 							const summary = refused(
 								ctx.home,
@@ -414,6 +418,11 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 		return failure("kabane board needs a terminal; use `kabane list` here");
 	const harness = copilotHarness(args, ctx);
 	if (!harness.ok) return failure(harness.error.message);
+	// Before anything holds the terminal or a socket: a yes replaces this process.
+	const offer = await UpgradeOffer.offer(ctx.home, {
+		checks: ctx.config.updates?.check !== false,
+	});
+	if (offer.kind === "quit") return success({ closed: true }, "");
 	const enabled = Extensions.enabled(ctx.home);
 	if (!enabled.ok) return failure(enabled.error);
 	const extensions = await Extensions.loadAll(enabled.value, ctx.home);
@@ -424,6 +433,7 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 		directories: extensions.directories,
 		issue: issue.value,
 		requests: control.requests,
+		...(offer.offered === undefined ? {} : { offered: offer.offered }),
 	});
 	try {
 		await startBoard(deps);

@@ -16,7 +16,7 @@ data modules; setup, configuration, updates and the board's runtime are the host
 | `src/copilot-files.ts` | a directory extension's `copilot/shortcuts` files, `{{extension}}` filled, unusable files refused |
 | `src/skills.ts` | base kabane's `kabane` skill (`skills/kabane/`, imported as text) and a directory extension's `skills/<name>/`, served by `kabane mcp` as `kabane_skillList` and `kabane_skillGet`, `{{extension}}` and `{{kabane}}` filled, unusable skills refused |
 | `src/commands/board-runtime.ts` | builds the board's ports and `BoardCopilot` from `@kabane/board`, passing `Self.executable()`, then calls `startBoard` |
-| `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts` | the setup screen, MCP registration in harness configs, self-update |
+| `src/first-run.ts`, `src/mcp-clients.ts`, `src/update-*.ts`, `src/upgrade-offer.ts` | the setup screen, MCP registration in harness configs, self-update, the upgrade offer before the board |
 
 ## It is the host, so it may depend on everything below it and nothing beside it
 
