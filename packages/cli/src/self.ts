@@ -49,6 +49,19 @@ export namespace Self {
 	// `brew upgrade` removes the old keg, while `<prefix>/bin/kabane` links whichever is installed.
 	const CELLAR = /^(.*)\/Cellar\/kabane\/[^/]+\//;
 
+	// mise's install, `<mise data>/installs/<tool>/<version>/<path>`. `mise up` installs the next
+	// version beside it and prunes this one, while `<tool>/latest` links the newest installed.
+	// Not mise's shim: it picks a version per working directory and fails where none is set.
+	const MISE_INSTALL = /^(.*\/installs\/[^/]+)\/[^/]+\/(.+)$/;
+
+	// The link a package manager keeps to the binary at real path `execPath` across upgrades.
+	const linkTo = (execPath: string): string | undefined => {
+		const keg = CELLAR.exec(execPath);
+		if (keg) return join(keg[1] ?? "", "bin/kabane");
+		const mise = MISE_INSTALL.exec(execPath);
+		return mise ? join(mise[1] ?? "", "latest", mise[2] ?? "") : undefined;
+	};
+
 	const realPath = (path: string): string | undefined => {
 		const real = trySync(() => realpathSync(path));
 		return real.ok ? real.value : undefined;
@@ -58,16 +71,15 @@ export namespace Self {
 	 * An executable path that runs kabane with no interpreter in front of it: the binary, or the
 	 * entry script, whose hashbang finds bun on PATH. A source entry's hashbang also passes the
 	 * production NODE_ENV define, through `env -S`; the bundle has the define built in. A binary in
-	 * Homebrew's keg is named by Homebrew's link to it, so a path written down outlives an upgrade.
+	 * Homebrew's keg or a mise install is named by the link its manager keeps to it, so a path
+	 * written down outlives an upgrade.
 	 */
 	export const executable = (
 		host: Host = HOST,
 		real: (path: string) => string | undefined = realPath,
 	): string => {
 		if (!compiled(host)) return host.entry ? resolve(host.entry) : "kabane";
-		const prefix = CELLAR.exec(host.execPath)?.[1];
-		const linked =
-			prefix === undefined ? undefined : join(prefix, "bin/kabane");
+		const linked = linkTo(host.execPath);
 		return linked !== undefined && real(linked) === host.execPath
 			? linked
 			: host.execPath;
