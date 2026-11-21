@@ -73,6 +73,17 @@ test("consume every page even after a match; later duplicates cannot authorize p
 	expect(pages).toBe(4);
 });
 
+test("an Actions token, which the repository endpoint tells no permissions, still lists the releases", async () => {
+	const { permissions: _, ...actionsRepo } = repo;
+	const request = async (endpoint: string): Promise<Result<ProcessReply>> =>
+		endpoint.includes("/tags/")
+			? response({}, 404)
+			: endpoint === "repos/davidpp/kabane"
+				? response(actionsRepo)
+				: response([]);
+	expect((await discoverGitHubRelease(TAG, request)).ok).toBe(true);
+});
+
 test("fail closed for conflicting metadata, auth and partial/oversized listings", async () => {
 	for (const request of [
 		listing(release(), release(2)),
