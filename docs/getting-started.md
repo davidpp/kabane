@@ -681,10 +681,10 @@ start them again, harness sessions included, so each `kabane mcp` starts with it
 ### Upgrading from 1.0.0-beta.0: the loop and dispatch are extensions you install
 
 In 1.0.0-beta.0 the loop came inside kabane, and `"extensions": ["loop"]` in `config.json` turned
-it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Kabane now
-bundles neither: the loop and the [dispatch extension](../extensions/dispatch/README.md), which
-holds the dispatch and grill skills and `/setup-dispatch`, are directories you build and install
-yourself. Updating kabane does not install them. The grill skill is now served by `kabane mcp`
+it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Now the loop
+and the [dispatch extension](../extensions/dispatch/README.md), which holds the dispatch and grill
+skills and `/setup-dispatch`, are extensions: a release install ships them beside the binary, and
+from npm or a checkout you build and install them yourself. Updating kabane turns neither on. The grill skill is now served by `kabane mcp`
 rather than copied into a project: a copy under a project's `.agents/skills/grill/` is no longer
 checked and drifts from the served one, so delete it.
 
@@ -713,7 +713,8 @@ exits with status 1:
 Error: Unknown config key: loop.model. Run `kabane config list` or call kabane_configGet without a key for known keys.
 ```
 
-`kabane doctor` reports the missing directory as `loop/extension-refused` under `mention`. The
+`kabane doctor` reports the missing directory as `loop/extension-refused`: under `auto` on a
+release install, which ships the loop, and under `mention` otherwise. The
 board writes nothing on stderr; it shows `Extension loop refused: not installed` over its footer
 until you press `esc`. On the board, `a` starts no run, and the copilot no longer offers
 `/setup-dispatch`.
@@ -723,7 +724,11 @@ in a project included, and are read again once the loop is installed and enabled
 under `KABANE_HOME/loops/`. Stop a loop runner the old version started before you update, as the
 sections above say for every process of the old version.
 
-To get the loop back, build it from a clone of this repository. This needs git and
+On a release install (Homebrew, mise, the installer or an extracted archive), `kabane doctor
+--fix` links the loop it ships, and `kabane config set extensions loop,dispatch --layer global`
+links each one it names; the build below is not needed.
+
+From npm or a checkout, get the loop back by building it from a clone of this repository. This needs git and
 [Bun](https://bun.sh) 1.4 or later, also when you run the npm package or the standalone binary.
 Build from the tag of the kabane you run: `kabane --version` prints its version, and every
 release is tagged `v<version>`. Stop the board first. From the directory you want the clone in:
