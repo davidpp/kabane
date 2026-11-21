@@ -53,9 +53,11 @@ fresh preparation to supply your own public notes.
 After verification it enables GitHub release immutability if disabled, creates an annotated
 `v<selected-version>` tag (honoring configured Git signing), and atomically pushes main plus that tag.
 It never moves an existing tag. A configured signing key may require its own authentication.
-Pushing the tag also starts the Actions [publishing run](#human-publishing-run), which waits for
-the `npm-release` approval: reject that approval when you publish locally, since the local
-route publishes npm-only and the Actions run would then find a conflicting release.
+Pushing the tag also starts the Actions [publishing run](#human-publishing-run). Until the
+`npm-release` environment is set up ([below](#human-owned-actions-setup-optional-before-workflow-publishing)),
+its publish job stops at authorization, before any write. Once it is, the job waits for that
+environment's approval: reject it when you publish locally, since the local route publishes
+npm-only and the Actions run would then find a conflicting release.
 **Preparation does not publish, run npm login, replace your installed Kabane, or open tracker
 config/data.** These source/tag/settings writes are authorization granted by the human
 running the command; agents must not execute the release flow against real accounts.

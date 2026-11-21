@@ -19,7 +19,7 @@ Syncing several machines through a Cloudflare hub is optional and lives in
 
 Install kabane one of these ways. The first three install the standalone binary, which carries
 its own Bun, so the Bun prerequisite above does not apply to them; they work from the first
-release that ships binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases).
+stable release that ships binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases).
 Until then, use Bun.
 
 ```bash
@@ -38,8 +38,8 @@ installed file. A Homebrew install registers `$(brew --prefix)/bin/kabane`, whic
 `brew upgrade` keeps. To work on Kabane itself from source, use the
 [clone and `bun link` path](../README.md#install).
 
-Homebrew installs stable releases only. For a beta, run the installer with
-`sh -s -- --version X.Y.Z-beta.N`, use `mise use -g github:davidpp/kabane@X.Y.Z-beta.N`, or
+Homebrew installs stable releases only. For a beta, run that release's installer,
+`curl -fsSL https://github.com/davidpp/kabane/releases/download/vX.Y.Z-beta.N/install.sh | sh -s -- --version X.Y.Z-beta.N`, use `mise use -g github:davidpp/kabane@X.Y.Z-beta.N`, or
 `bun add -g kabane@beta`, which updates along its own channel ([beta installs](#beta-installs)).
 
 The README's [install section](../README.md#install) says what the installer and mise check

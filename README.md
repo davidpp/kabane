@@ -32,9 +32,9 @@ your own.
 ## Install
 
 Releases ship a standalone binary, which includes Bun, for macOS (`darwin-arm64`, `darwin-x64`)
-and Linux (`linux-x64`, `linux-arm64`, glibc), starting with the first release that carries
-binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases). Until then, install
-the npm package with Bun. Any one of these puts `kabane` on PATH:
+and Linux (`linux-x64`, `linux-arm64`, glibc), starting with the first stable release that
+carries binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases). Until then,
+install the npm package with Bun. Any one of these puts `kabane` on PATH:
 
 ```bash
 brew install davidpp/tap/kabane                  # Homebrew (recommended)
@@ -51,8 +51,10 @@ kabane --version
 - **The installer** downloads the archive for this machine and the release's `SHA256SUMS`,
   refuses the archive on a mismatch, and checks its build provenance with
   `gh attestation verify` when an authenticated `gh` is on PATH. It installs the release
-  directory as `~/.local/share/kabane` and links `~/.local/bin/kabane`. `sh -s -- --version
-  X.Y.Z-beta.N` installs a beta; `--prefix <dir>` and `--bin <dir>` choose other places.
+  directory as `~/.local/share/kabane` and links `~/.local/bin/kabane`. `--prefix <dir>` and
+  `--bin <dir>` choose other places. `latest` is the latest stable release; for a beta, take
+  that release's installer and name its version:
+  `curl -fsSL https://github.com/davidpp/kabane/releases/download/vX.Y.Z-beta.N/install.sh | sh -s -- --version X.Y.Z-beta.N`.
 - **mise** downloads the same archive for your platform and checks it against `SHA256SUMS`.
 - **Bun**: `bun add -g kabane@beta` installs the current beta instead. `bunx kabane` runs it
   once without installing; install it globally before you let setup wire your coding agents,
