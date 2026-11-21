@@ -73,8 +73,18 @@ test("consume every page even after a match; later duplicates cannot authorize p
 	expect(pages).toBe(4);
 });
 
-test("an Actions token, which the repository endpoint tells no permissions, still lists the releases", async () => {
-	const { permissions: _, ...actionsRepo } = repo;
+test("the Actions token lists the releases although the repository endpoint tells it every permission is false", async () => {
+	// The shape the release job's GITHUB_TOKEN got from GET /repos/davidpp/kabane on 2026-11-21.
+	const actionsRepo = {
+		...repo,
+		permissions: {
+			admin: false,
+			maintain: false,
+			pull: false,
+			push: false,
+			triage: false,
+		},
+	};
 	const request = async (endpoint: string): Promise<Result<ProcessReply>> =>
 		endpoint.includes("/tags/")
 			? response({}, 404)
@@ -93,7 +103,7 @@ test("fail closed for conflicting metadata, auth and partial/oversized listings"
 			endpoint.includes("/tags/")
 				? response({}, 404)
 				: endpoint === "repos/davidpp/kabane"
-					? response({ ...repo, permissions: { push: false } })
+					? response({}, 404)
 					: response([]),
 		async (endpoint: string) =>
 			endpoint.includes("/tags/")
