@@ -53,11 +53,11 @@ fresh preparation to supply your own public notes.
 After verification it enables GitHub release immutability if disabled, creates an annotated
 `v<selected-version>` tag (honoring configured Git signing), and atomically pushes main plus that tag.
 It never moves an existing tag. A configured signing key may require its own authentication.
-Pushing the tag also starts the Actions [publishing run](#human-publishing-run). Until the
-`npm-release` environment is set up ([below](#human-owned-actions-setup-optional-before-workflow-publishing)),
-its publish job stops at authorization, before any write. Once it is, the job waits for that
-environment's approval: reject it when you publish locally, since the local route publishes
-npm-only and the Actions run would then find a conflicting release.
+Pushing the tag also starts the Actions [verified release](#verification-without-publishing) workflow
+on it, which builds, checks and attests that tag and publishes nothing: only a dispatch with
+`publish=true` ([publishing run](#human-publishing-run)) publishes. Do not dispatch one for a
+version you publish locally, since the local route publishes npm-only and the Actions run would
+then find a conflicting release.
 **Preparation does not publish, run npm login, replace your installed Kabane, or open tracker
 config/data.** These source/tag/settings writes are authorization granted by the human
 running the command; agents must not execute the release flow against real accounts.
@@ -321,9 +321,10 @@ restore a backup taken before the migration, which loses what changed since.
    newly configured publishers to staged-publish permission only. No long-lived token
    fallback is provided. Public package/repository are needed for automatic provenance.
 4. For the tap: add a deploy key with write access to `davidpp/homebrew-tap`, and store its
-   private half as the repository secret **`HOMEBREW_TAP_DEPLOY_KEY`** in `davidpp/kabane`.
-   Without it, the `homebrew` job fails after a stable release and nothing else changes; rerun
-   it once the secret exists.
+   private half as the secret **`HOMEBREW_TAP_DEPLOY_KEY`** of the **`npm-release`
+   environment**, not as a repository secret, so only a job that passes that environment's
+   protection can read it. Without it, the `homebrew` job fails after a stable release and
+   nothing else changes; rerun it once the secret exists.
 5. Only after checking those settings, set environment variable
    **`RELEASE_SETUP_CONFIRMED=true`** in `npm-release`. This is a human assertion, not
    programmatic proof that reviewers, tag protection, immutability or OIDC are configured.
@@ -344,7 +345,8 @@ publish credentials.
 The local command handles version/lock commit and annotated tag creation/push. For the
 Actions route, choose the version in `packages/cli/package.json` and refresh its lockfile;
 do not change the private root version or reset data. Commit the reviewed implementation
-and selected release version, then a human creates/pushes the signed existing tag:
+and selected release version, then a human creates/pushes the signed existing tag, which
+starts a verification run, and dispatches the [publishing run](#human-publishing-run) on it:
 
 ```bash
 # HUMAN ONLY, after choosing/reviewing the version and source commit:
@@ -399,19 +401,21 @@ be checked but are nonpromotable. Remove your disposable directory afterward; pr
 on failure for investigation. Never substitute a rebuilt archive in partial-release recovery.
 
 GitHub's **verified release** workflow runs on `workflow_dispatch`, where `publish` defaults
-false, and on a pushed `vX.Y.Z` or `vX.Y.Z-beta.N` tag, which takes the publishing path below.
-Branch verification is allowed. A human may run nonpublishing verification on an
-existing tag, inspect the retained Actions artifact and review its notes/checksums. It
-executes no `npm publish` (including `--dry-run`), draft/tag/release writes or OIDC exchange.
-This tests artifact preparation/transfer/install, not publisher authentication.
+false, and on a pushed `vX.Y.Z` or `vX.Y.Z-beta.N` tag. Both verify without publishing; only a
+dispatch with `publish=true` takes the publishing path below. Branch verification is allowed. A
+human may run nonpublishing verification on an existing tag, inspect the retained Actions
+artifact and review its notes/checksums. It executes no `npm publish` (including `--dry-run`),
+no draft/tag/release writes and no npm publisher authentication. In `davidpp/kabane` its
+`attest` job still takes an OIDC token (`id-token: write`) and records build-provenance
+attestations for that run's archives and `install.sh`, as every run does. This tests artifact
+preparation/transfer/install and attestation, not publisher authentication.
 
 ## Human publishing run
 
-Push the `v<version>` tag, or dispatch on the **existing `v<version>` tag ref** with
-`publish=true` and reviewed public notes. A pushed tag has no notes input, so its release carries
-the default notes, a placeholder that names the source commit and asks for review; dispatch
-when the release needs written notes. Do not
-dispatch a branch and substitute a different checkout ref. The workflow:
+Dispatch on the **existing `v<version>` tag ref** with `publish=true` and reviewed public notes.
+Pushing the tag only verifies it. Empty notes give the release the default notes, a placeholder
+that names the source commit and asks for review. Do not dispatch a branch and substitute a
+different checkout ref. The workflow:
 
 1. Frozen install and full gates on Linux; build/pack one release archive, inspect and
    upload that immutable Actions artifact identity.
@@ -436,8 +440,9 @@ dispatch a branch and substitute a different checkout ref. The workflow:
    download URL, which answers only once the GitHub release is final, and requires it to
    match this run's. It then commits this run's `kabane.rb` to `davidpp/homebrew-tap` as
    `Formula/kabane.rb`, with no commit when it already matches. It writes with the
-   `HOMEBREW_TAP_DEPLOY_KEY` deploy key, never the repository token. A beta leaves the tap
-   alone. The publish job finalizes GitHub only after npm, so today a failed npm publish
+   `HOMEBREW_TAP_DEPLOY_KEY` deploy key, never the repository token. That key is an
+   `npm-release` environment secret, so this job runs in that environment and waits for its own
+   approval once publication has finished. A beta leaves the tap alone. The publish job finalizes GitHub only after npm, so today a failed npm publish
    also holds the tap back; the tap job itself reads nothing from npm.
 
 Only publication has GitHub contents-write permission; publication and attestation have

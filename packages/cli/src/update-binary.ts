@@ -5,7 +5,7 @@
  * draft or a prerelease, and `beta` the highest `X.Y.Z-beta.N` prerelease. The GitHub release of
  * that tag carries `kabane-<os>-<arch>.tar.gz` and the `SHA256SUMS` that covers it.
  * `KABANE_UPDATE_API` and `KABANE_UPDATE_RELEASES` point both somewhere else, such as a mirror, over
- * https; plain http only reaches this machine's loopback.
+ * https; plain http only reaches this machine's loopback, at every redirect.
  */
 
 import { createHash } from "node:crypto";
@@ -78,25 +78,50 @@ export namespace UpdateBinary {
 			`refusing ${url}: releases are read over https only (http only from 127.0.0.1, ::1 or localhost); check KABANE_UPDATE_API and KABANE_UPDATE_RELEASES`,
 		);
 
+	/** One request of a redirect chain, never following it: `fetch` unless a test passes another. */
+	export type Hop = (url: string, init: RequestInit) => Promise<Response>;
+
+	/** GitHub's release downloads take one redirect, to its asset storage. */
+	const REDIRECT_LIMIT = 5;
+	const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
 	/**
-	 * A GET of `url` that only `secure` URLs answer: the one asked for and the one its redirects
-	 * end at, refused before any of the body is read.
+	 * A GET of `url` that follows its redirects itself, so that every hop is `secure`, not only
+	 * the first and the last; an insecure one is refused before it is requested. One timeout
+	 * covers the whole chain.
 	 */
-	const get = async (
+	export const get = async (
 		url: string,
 		runningVersion: string,
 		timeoutMs: number,
+		hop: Hop = fetch,
 	): Promise<Result<Response>> => {
-		if (!secure(url)) return err(insecure(url));
-		const response = await tryCatch(() =>
-			fetch(url, {
-				headers: { "user-agent": `kabane/${runningVersion}` },
-				signal: AbortSignal.timeout(timeoutMs),
-			}),
+		const signal = AbortSignal.timeout(timeoutMs);
+		let current = url;
+		for (let redirects = 0; redirects <= REDIRECT_LIMIT; redirects++) {
+			if (!secure(current)) return err(insecure(current));
+			const response = await tryCatch(() =>
+				hop(current, {
+					headers: { "user-agent": `kabane/${runningVersion}` },
+					redirect: "manual",
+					signal,
+				}),
+			);
+			if (!response.ok) return response;
+			const location = response.value.headers.get("location");
+			if (!REDIRECTS.has(response.value.status) || location === null)
+				return response;
+			await response.value.body?.cancel().catch(() => {});
+			const next = trySync(() => new URL(location, current).href);
+			if (!next.ok)
+				return err(
+					new Error(`${current} redirected to an unreadable ${location}`),
+				);
+			current = next.value;
+		}
+		return err(
+			new Error(`${url} redirected more than ${REDIRECT_LIMIT} times`),
 		);
-		if (!response.ok || secure(response.value.url)) return response;
-		await response.value.body?.cancel().catch(() => {});
-		return err(insecure(response.value.url));
 	};
 
 	const ReleaseSchema = z.object({

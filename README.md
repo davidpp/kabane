@@ -48,11 +48,13 @@ kabane --version
   tap, whose formula this repository's release workflow commits and pins by SHA-256. In a
   Brewfile: `tap "davidpp/tap"` and `brew "davidpp/tap/kabane", trusted: true` (`brew bundle`
   refuses formulae from a third-party tap it has not been told to trust).
-- **The installer** downloads the archive for this machine and the release's `SHA256SUMS`,
-  refuses the archive on a mismatch, and checks its build provenance with
-  `gh attestation verify` when an authenticated `gh` is on PATH. It installs the release
+- **The installer** downloads the archive for this machine and the release's `SHA256SUMS` over
+  https, redirects included, refuses the archive on a mismatch, and checks its build provenance
+  with `gh attestation verify` when an authenticated `gh` is on PATH. It installs the release
   directory as `~/.local/share/kabane` and links `~/.local/bin/kabane`. `--prefix <dir>` and
-  `--bin <dir>` choose other places. `latest` is the latest stable release; for a beta, take
+  `--bin <dir>` choose other places. Run again, it keeps the previous install until the new one
+  is linked and puts it back if anything fails. It never overwrites a `kabane` in the bin
+  directory that is not a symlink. `latest` is the latest stable release; for a beta, take
   that release's installer and name its version:
   `curl -fsSL https://github.com/davidpp/kabane/releases/download/vX.Y.Z-beta.N/install.sh | sh -s -- --version X.Y.Z-beta.N`.
 - **mise** downloads the same archive for your platform and checks it against `SHA256SUMS`.
