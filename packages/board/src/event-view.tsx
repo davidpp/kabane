@@ -882,7 +882,7 @@ export const Stream = ({
 type Flipped = { allOpen: boolean; keys: ReadonlySet<string> };
 
 /** A session log's opened rows and where it was scrolled, kept by lane while it is off screen. */
-export type LogMemory = Map<
+type LogMemory = Map<
 	string,
 	{ flipped?: Flipped; place?: { top: number; following: boolean } }
 >;
