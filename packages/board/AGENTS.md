@@ -49,7 +49,10 @@ bun run gallery --print plan --width 40 --theme light --ansi
 ```
 
 Then drive the flow in the real board under tmux, as the root `AGENTS.md` shows under
-"Validating a UI change". Check at 40 columns first: `DESIGN.md` makes forty the design target.
+"Validating a UI change". Check the tracker, the detail and the jobs tab at 40 columns first:
+`DESIGN.md` makes forty their design target. A run's card tab is designed at 200×50 and splits
+from 160 columns (`src/cockpit.ts`): check it at 200×50, at 160 and 159, and at 40 as the
+fallback, with a short pane (100×22) to see the footer stay.
 Mouse, the host's pasteboard, OSC 52 over ssh and a real light/dark switch are manual checks.
 
 ## Mistakes that are easy to make here

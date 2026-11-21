@@ -168,7 +168,10 @@ from three feet away.
 2. **The narrow pane is the design target.** Forty columns, in a split or a herdr pane.
    A feature that is idle on most rows costs nothing on those rows, including in the
    footer. A frame costs two columns at forty; a background tone costs none. Wider panes
-   get more room, never a different layout to learn.
+   get more room, never a different layout to learn. A run's tab is the exception: it is
+   opened to watch rather than glanced at, so its home is a wide terminal, and from about
+   160 columns it splits in two. Its regions and keys stay the same at every width, so
+   there is still one layout to learn, and forty columns stays a checked fallback.
 3. **Store identity, never content.** Point at other systems; do not copy them. What is not
    stored cannot go stale, and what cannot go stale needs no UI. What kabane does store, it
    dates: information decays silently, so every brief shows its age to humans and agents
