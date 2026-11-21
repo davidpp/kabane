@@ -235,7 +235,8 @@ the lanes below.
 The same regions and keys are arranged two ways (`src/cockpit.ts`):
 
 - **Stacked, under 160 columns:** the map, the question, then `now` (the live sessions' last
-  lines; once the card is over, the run trace). `enter` shows the session's log in place of `now`,
+  lines; once the card is over, the run trace: its steps, then the `run` events no step states,
+  by the rule in the `@kabane/extension` README). `enter` shows the session's log in place of `now`,
   and `esc` goes back to it before a second `esc` goes to the tracker.
 - **Split, from 160 columns:** a left column, 66 wide on the raised surface, with the map, the
   question and `run` (the card's `facts`, shown whole or not at all in the rows left). The right

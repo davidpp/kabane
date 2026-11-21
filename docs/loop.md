@@ -77,8 +77,9 @@ Under the map, `now` interleaves the live sessions’ last lines, newest last. A
 each session while several are live. A run of tool calls stays on its first row as the count,
 failures and elapsed time update, even while another session speaks. With one session, the
 tag drops away. Between sessions, the feed shows the run’s own work, including gates, merges
-and claims. Once the run ends, the feed becomes a trace of the steps it reached, the landing
-and any later pruning.
+and claims. Once the run ends, the feed becomes a trace of the steps it reached, then the run's
+own events that no step states, such as subtask merges, warnings, the run's end and any later
+pruning.
 
 From 160 columns wide the tab splits in two. The left column holds the map, the question a
 session asks you, and what the run runs with: its slots, continuations, spend, harnesses, gates,

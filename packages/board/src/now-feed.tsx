@@ -93,12 +93,17 @@ export const nowLines = (
 	return rows.map((row) => (isFold(row) ? folded(row) : row));
 };
 
+// A finished card's trace: the steps it reached, then the run's own events, from the whole run,
+// that say something no step's row does (a subtask merged, a warning, the end). An event whose
+// summary opens with a step's name is that step's (`gates · …`), and one another event `includes`
+// was said by that one (a claim, by its session's start): their steps' rows already state them.
 export const trace = (
 	card: ActivityCard,
 	events: readonly ActivityEvent[],
 ): Line[] => {
+	const steps = card.steps ?? [];
 	const lines: Line[] = [];
-	for (const step of card.steps ?? []) {
+	for (const step of steps) {
 		if (step.state === "pending") continue;
 		lines.push({
 			durationMs: step.durationMs,
@@ -106,9 +111,15 @@ export const trace = (
 			summary: [step.name, step.result].filter(Boolean).join(" · "),
 		});
 	}
-	const finishedAt = card.finishedAt;
-	if (finishedAt)
-		lines.push(...events.filter((e) => e.run && e.at >= finishedAt));
+	const included = new Set(events.flatMap((e) => e.includes ?? []));
+	const stepOwns = (e: ActivityEvent): boolean =>
+		steps.some(
+			(step) =>
+				e.summary === step.name || e.summary.startsWith(`${step.name} `),
+		);
+	lines.push(
+		...events.filter((e) => e.run && !included.has(e.seq) && !stepOwns(e)),
+	);
 	return lines;
 };
 

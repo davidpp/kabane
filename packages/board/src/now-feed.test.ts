@@ -106,9 +106,28 @@ it("keeps a slot through a collision, when the session that won it ends", () => 
 	expect([full.get("G"), full.get("H")]).toEqual([1, 2]);
 });
 
-it("traces timed steps from the card and run events from completion onwards", () => {
-	const finished = event(2, undefined, "done");
-	const after: ActivityEvent = { ...event(3, "A", "done"), run: true };
+it("traces the steps, then the run's milestones from the whole run, not what a step already says", () => {
+	const run = (
+		seq: number,
+		lane: string | undefined,
+		type: string,
+		summary: string,
+		extra: Partial<ActivityEvent> = {},
+	): ActivityEvent => ({
+		...event(seq, lane, type),
+		summary,
+		run: true,
+		...extra,
+	});
+	const claim = run(1, "A", "progress", "claude claims KAB-2: one");
+	const merged = run(5, "A", "progress", "KAB-2 merged into kab-1 at abc123");
+	const end = run(8, undefined, "progress", "completed: plan-done");
+	const pruned = run(
+		9,
+		undefined,
+		"done",
+		"pruned · worktree and branch removed",
+	);
 	const lines = trace(
 		{
 			id: "card",
@@ -117,21 +136,35 @@ it("traces timed steps from the card and run events from completion onwards", ()
 			detail: [],
 			status: "completed",
 			startedAt: event(0, undefined, "phase").at,
-			finishedAt: finished.at,
+			finishedAt: end.at,
 			steps: [
-				{ name: "inspect", state: "done", durationMs: 1200 },
-				{ name: "optional", state: "pending" },
+				{ name: "implement", state: "done", durationMs: 1200 },
+				{ name: "gates", state: "done", result: "ok · 2 passes" },
+				{ name: "land", state: "pending" },
 			],
 		},
 		[
-			{ ...event(1, "A", "done"), summary: "unrelated wording", run: true },
-			finished,
-			after,
+			claim,
+			{
+				...event(2, "A", "phase"),
+				summary: "claude claims KAB-2: one",
+				includes: [1],
+			},
+			run(3, "A", "progress", "gates for KAB-2: ok"),
+			run(4, "A", "done", "gates · KAB-2 · ok passed in 5ms"),
+			merged,
+			event(6, "A", "text"),
+			run(7, undefined, "done", "land · none"),
+			end,
+			pruned,
 		],
 	);
 	expect(lines).toEqual([
-		{ type: "done", durationMs: 1200, summary: "inspect" },
-		after,
+		{ type: "done", durationMs: 1200, summary: "implement" },
+		{ type: "done", durationMs: undefined, summary: "gates · ok · 2 passes" },
+		merged,
+		end,
+		pruned,
 	]);
 });
 
