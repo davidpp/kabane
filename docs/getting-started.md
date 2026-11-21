@@ -459,8 +459,9 @@ highest `X.Y.Z-beta.N` prerelease. Bun's registry and proxy settings do not appl
 downloads `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from that version's
 [GitHub release](https://github.com/davidpp/kabane/releases) and refuses on any checksum
 mismatch. It extracts into a temporary directory beside the executable, runs the new
-`kabane --version` and requires the candidate version, then renames the new executable and
-`templates/` (empty now that kabane ships no template) over the old ones. A symlink on PATH is followed to the real executable, so
+`kabane --version` and requires the candidate version, then renames the new executable,
+`templates/` (empty now that kabane ships no template) and `extensions/` over the old ones. An
+archive from a release before extensions shipped leaves the installed `extensions/` as it is. A symlink on PATH is followed to the real executable, so
 harness MCP entries that point at it keep working. A failure before the rename leaves the old
 install as it was. The executable needs `templates/` beside it, as extracted from the release,
 and its directory must be writable; otherwise replace the directory with a verified download

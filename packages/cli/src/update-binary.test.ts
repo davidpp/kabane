@@ -13,7 +13,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "@kabane/extension";
 import { version } from "../package.json";
 import { type Host, runUpdate } from "./commands/update";
@@ -163,6 +163,8 @@ const install = (dir: string) => {
 	const home = join(base, "home");
 	const directory = join(base, dir);
 	mkdirSync(join(directory, "templates/dispatch"), { recursive: true });
+	mkdirSync(join(directory, "extensions/dispatch"), { recursive: true });
+	writeFileSync(join(directory, "extensions/dispatch/retired.js"), "old\n");
 	mkdirSync(join(base, "bin"));
 	mkdirSync(home);
 	const executable = join(directory, "kabane");
@@ -201,7 +203,9 @@ const update = (
 const leftovers = (directory: string): string[] =>
 	readdirSync(directory).filter(
 		(name) =>
-			name.startsWith(".kabane-update-") || name.startsWith("templates."),
+			name.startsWith(".kabane-update-") ||
+			name.startsWith("templates.") ||
+			name.startsWith("extensions."),
 	);
 
 test("--check reads the releases API alone and changes nothing", async () => {
@@ -224,9 +228,13 @@ test("--check reads the releases API alone and changes nothing", async () => {
 	expect(updateSnapshot(installed.base)).toEqual(before);
 }, 30_000);
 
-test("update replaces the real executable behind a symlink, and its templates, with the verified release", async () => {
+test("update replaces the real executable behind a symlink, and its templates and extensions, with the verified release", async () => {
 	serve(repacked);
 	const installed = install("opt/kabane");
+	// An extension enabled from this install, linked through the install's path.
+	const linked = join(installed.home, ".kabane/extensions/dispatch");
+	mkdirSync(dirname(linked), { recursive: true });
+	symlinkSync(join(installed.directory, "extensions/dispatch"), linked);
 	const updated = await update([], installed.link, { HOME: installed.home });
 	expect(updated).toMatchObject({
 		exitCode: 0,
@@ -252,12 +260,26 @@ test("update replaces the real executable behind a symlink, and its templates, w
 	expect(readdirSync(templates).sort()).toEqual(
 		readdirSync(join(WORK, `repack-${NEXT}/kabane/templates`)).sort(),
 	);
+	const extensions = join(installed.directory, "extensions");
+	expect(readdirSync(extensions).sort()).toEqual([
+		"dispatch",
+		"loop",
+		"recipes",
+	]);
+	expect(existsSync(join(linked, "retired.js"))).toBe(false);
+	expect(readFileSync(join(linked, "package.json"), "utf8")).toBe(
+		readFileSync(
+			join(WORK, `repack-${NEXT}/kabane/extensions/dispatch/package.json`),
+			"utf8",
+		),
+	);
 	expect(readFileSync(join(installed.directory, "README.md"), "utf8")).toBe(
 		"kept\n",
 	);
 	expect(leftovers(installed.directory)).toEqual([]);
 	expect(readdirSync(installed.directory).sort()).toEqual([
 		"README.md",
+		"extensions",
 		"kabane",
 		"templates",
 	]);
@@ -653,17 +675,23 @@ test("a hash-verified archive with a symlink in it is refused before extraction"
 	expect(leftovers(installed.directory)).toEqual([]);
 }, 30_000);
 
-/** An install directory and a staged release beside it, for the swap alone. */
-const staging = () => {
+/**
+ * An install directory and a staged release beside it, for the swap alone. `extensions` says which
+ * of the two has an `extensions/`: neither, as before releases shipped them, by default.
+ */
+const staging = (extensions: { installed?: true; shipped?: true } = {}) => {
 	const base = mkdtempSync(join(WORK, "swap-"));
 	const directory = join(base, "kabane");
 	const staged = join(base, "staged");
-	for (const [root, label] of [
-		[directory, "old"],
-		[staged, "new"],
+	for (const [root, label, ships] of [
+		[directory, "old", extensions.installed],
+		[staged, "new", extensions.shipped],
 	] as const) {
 		mkdirSync(join(root, "templates"), { recursive: true });
 		writeFileSync(join(root, "templates/which.md"), label);
+		if (!ships) continue;
+		mkdirSync(join(root, "extensions/dispatch"), { recursive: true });
+		writeFileSync(join(root, "extensions/dispatch/which.md"), label);
 	}
 	const executable = join(directory, "kabane");
 	writeFileSync(executable, "old executable");
@@ -687,6 +715,10 @@ const staging = () => {
 	const state = () => ({
 		executable: read(executable),
 		templates: read(join(directory, "templates/which.md")),
+		...(existsSync(join(directory, "extensions")) ||
+		existsSync(join(directory, `extensions.prev-1.0.0`))
+			? { extensions: read(join(directory, "extensions/dispatch/which.md")) }
+			: {}),
 		entries: readdirSync(directory).sort(),
 	});
 	/** The `mv` commands a failure names, run in a shell as the human would. */
@@ -798,6 +830,86 @@ test("a rollback that fails names the mv commands that restore the previous inst
 		executable: "old executable",
 		templates: "old",
 		entries: ["kabane", "templates"],
+	});
+});
+
+test("a release's extensions replace the installed ones beside its templates, and a failure at the executable puts both back", () => {
+	const both = staging({ installed: true, shipped: true });
+	// An extension enabled from this install, linked through its path.
+	const link = join(both.directory, "..", "dispatch-link");
+	symlinkSync(join(both.directory, "extensions/dispatch"), link);
+	expect(UpdateBinary.swap(both.swap).ok).toBe(true);
+	expect(both.state()).toEqual({
+		executable: "new executable",
+		templates: "new",
+		extensions: "new",
+		entries: ["extensions", "kabane", "templates"],
+	});
+	expect(readFileSync(join(link, "which.md"), "utf8")).toBe("new");
+
+	const failing = staging({ installed: true, shipped: true });
+	expect(
+		UpdateBinary.swap(failing.swap, failing.move(failing.swap.executable)),
+	).toEqual({
+		ok: false,
+		error: {
+			text: `Could not rename the new release into ${failing.directory}; nothing was replaced.`,
+		},
+	});
+	expect(failing.state()).toEqual({
+		executable: "old executable",
+		templates: "old",
+		extensions: "old",
+		entries: ["extensions", "kabane", "templates"],
+	});
+
+	// The first release that ships them, over an install that has none.
+	const fresh = staging({ shipped: true });
+	expect(
+		UpdateBinary.swap(fresh.swap, fresh.move(fresh.swap.executable)).ok,
+	).toBe(false);
+	expect(fresh.state()).toEqual({
+		executable: "old executable",
+		templates: "old",
+		entries: ["kabane", "templates"],
+	});
+	expect(UpdateBinary.swap(fresh.swap).ok).toBe(true);
+	expect(fresh.state()).toMatchObject({ extensions: "new" });
+});
+
+test("a release from before extensions shipped leaves the installed extensions alone", () => {
+	const older = staging({ installed: true });
+	expect(UpdateBinary.swap(older.swap).ok).toBe(true);
+	expect(older.state()).toEqual({
+		executable: "new executable",
+		templates: "new",
+		extensions: "old",
+		entries: ["extensions", "kabane", "templates"],
+	});
+});
+
+test("a rollback that fails for both directories names the mv commands for each", () => {
+	const stuck = staging({ installed: true, shipped: true });
+	const at = (name: string) => join(stuck.directory, name);
+	const result = UpdateBinary.swap(
+		stuck.swap,
+		stuck.move(
+			stuck.swap.executable,
+			join(stuck.staged, "templates"),
+			join(stuck.staged, "extensions"),
+		),
+	);
+	expect(result.ok).toBe(false);
+	if (result.ok) return;
+	expect(result.error).toEqual({
+		text: `Could not replace ${stuck.swap.executable}, nor move the new extensions out. ${stuck.swap.executable} is still 1.0.0; restore its templates and extensions with: mv '${at("extensions")}' '${at("extensions.failed-1.0.1")}' && mv '${at("extensions.prev-1.0.0")}' '${at("extensions")}' && mv '${at("templates")}' '${at("templates.failed-1.0.1")}' && mv '${at("templates.prev-1.0.0")}' '${at("templates")}'`,
+		partial: true,
+	});
+	stuck.follow(result.error.text);
+	expect(stuck.state()).toMatchObject({
+		executable: "old executable",
+		templates: "old",
+		extensions: "old",
 	});
 });
 

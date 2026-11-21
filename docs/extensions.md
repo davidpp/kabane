@@ -48,9 +48,9 @@ prints `Extension dispatch: <home>/extensions/dispatch links to <old path>, whic
 `kabane doctor` reports it as `dispatch/extension-refused` under `auto`. `kabane doctor --fix`
 links it to the running install's copy.
 
-`kabane update` on an extracted archive or an installer install replaces the binary and
-`templates/` only, so the linked extensions stay at the version installed before it; run the
-installer again to bring them along.
+`kabane update` on an extracted archive or an installer install replaces the binary,
+`templates/` and `extensions/` together, at the same paths, so the links follow it to the new
+version as well.
 
 ## Build them from a kabane checkout
 
