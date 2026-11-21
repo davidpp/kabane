@@ -131,10 +131,11 @@ const runOn = async (
 
 // Each prompt: note the session as live (and how many were, itself included) and where it runs,
 // write its subtask's files there (or, when the runner says merging the run's branch in left
-// conflicts, the resolution in `<task>.resolve.json`), wait until `together` sessions have started
+// conflicts, the resolution in `<task>.resolve.json`, staged), wait until `together` sessions have started
 // when that marker says so, then close the subtask. Reopened, a subtask with a `<task>.cancel`
 // marker cancels itself instead. With a `resume` marker it advertises session/resume and reports
-// a tenth of its window used, so a retry resumes its session.
+// a tenth of its window used, so a retry resumes its session. A `<task>.stubborn` marker has it
+// close the subtask once without touching its conflict.
 const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, readFileSync, readdirSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
@@ -170,8 +171,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   return reply(message.id, { stopReason: "end_turn" });
  }
  const conflicted = text.includes("left conflicts in");
- const writes = JSON.parse(readFileSync(join(script, task + (conflicted ? ".resolve.json" : ".files.json")), "utf8"));
+ const stubborn = join(script, task + ".stubborn");
+ const ignored = conflicted && existsSync(stubborn);
+ if (ignored) rmSync(stubborn);
+ const writes = ignored ? {} : JSON.parse(readFileSync(join(script, task + (conflicted ? ".resolve.json" : ".files.json")), "utf8"));
  for (const [path, content] of Object.entries(writes)) writeFileSync(path, content);
+ if (conflicted && !ignored) Bun.spawnSync(["git", "add", ...Object.keys(writes)]);
  const together = join(script, "together");
  const until = Date.now() + 5000;
  while (existsSync(together) && Date.now() < until && readdirSync(join(script, "started")).length < Number(readFileSync(together, "utf8"))) await Bun.sleep(5);
@@ -408,6 +413,69 @@ describe("Subtasks in worktrees of their own", () => {
 			},
 			SLOW_MS,
 		);
+
+	it(
+		"sends back a resumed session that closes its subtask with the conflict unresolved, before any gate runs",
+		async () => {
+			const { parent, subtasks } = await plan(
+				{ "shared.txt": "from the first\n" },
+				{ "shared.txt": "from the second\n" },
+			);
+			writeFileSync(join(script, "together"), "2");
+			writeFileSync(join(script, "resume"), "");
+			for (const task of subtasks) {
+				writeFileSync(
+					join(script, `${label(task)}.resolve.json`),
+					JSON.stringify({ "shared.txt": "from both\n" }),
+				);
+				writeFileSync(join(script, `${label(task)}.stubborn`), "");
+			}
+			const ran = join(script, "gates.log");
+			await runOn(parent, {
+				gates: { where: `echo "$PWD $(git rev-parse HEAD)" >> ${ran}` },
+			});
+
+			const ended = await drive();
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"completed",
+				"plan-done",
+			]);
+			const loser = subtasks.find(
+				(t) => label(t) === events("merge_conflict")[0]?.task,
+			);
+			if (!loser) throw new Error("no conflict");
+			// Closed once with the conflict as git left it: sent back again, its files still named,
+			// with no gate run and nothing committed over the markers.
+			const passes = passFor(ended, loser);
+			expect(passes.map((p) => p.ok)).toEqual([false, false, true]);
+			expect(passes[1]?.results.map((r) => r.name)).toEqual(["merge"]);
+			expect(passes[1]?.results[0]?.conflicts).toEqual(["shared.txt"]);
+			expect(passes[1]?.checkpoint).toBeUndefined();
+			const tree = ended.claims.find((c) => c.taskId === loser.id)?.worktree;
+			const worktree = ended.worktree ?? "";
+			const head = gitIn(worktree, "rev-parse", "HEAD");
+			expect(lines(ran).filter((l) => l.startsWith(`${tree} `))).toEqual([
+				`${tree} ${head}`,
+			]);
+			expect(gitIn(worktree, "show", "HEAD:shared.txt")).toBe("from both");
+			expect(
+				gitIn(
+					worktree,
+					"show",
+					"-s",
+					"--format=%B",
+					passes[2]?.checkpoint ?? "",
+				),
+			).toContain("Resolves the conflicts in shared.txt.");
+			const prompts = lines(join(script, `${label(loser)}.prompts`)).map((l) =>
+				String(JSON.parse(l)),
+			);
+			expect(prompts).toHaveLength(3);
+			expect(prompts[2]).toContain("left conflicts in shared.txt");
+		},
+		SLOW_MS,
+	);
 
 	it(
 		"with isolation shared, works every subtask in the run's tree, one at a time",

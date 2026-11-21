@@ -197,8 +197,8 @@ export namespace Checks {
 		return pass;
 	};
 
-	// A step after the gates that failed the pass as a red gate would: its output is what the
-	// subtask's next brief quotes.
+	// A step of the pass other than a gate (its checkpoint, a merge) that failed it as a red gate
+	// would: its output is what the subtask's next brief quotes.
 	const refused = (
 		name: string,
 		command: string,
@@ -353,14 +353,32 @@ export namespace Checks {
 		const into = RunStore.branchOf(ctx.run);
 		const merging = `kabane loop ${ctx.run.id}: merge ${into} into ${tree.branch} for ${subject.label}`;
 		const started = performance.now();
-		// A merge its last pass left for its session to resolve: what this checkpoint concludes.
+		// A merge an earlier pass left for its session to resolve: what this checkpoint concludes,
+		// once git has no conflict left in it. Staging would mark the markers resolved.
 		const resolving =
 			(await Worktree.mergeHead(tree.dir, gitOf(ctx))) === undefined
 				? undefined
-				: (Gates.lastFailure(
-						ctx.run.gateRuns,
-						subject.taskId ?? ctx.run.parentId,
-					)?.conflicts ?? []);
+				: conflictsOf(ctx, subject);
+		const left =
+			resolving === undefined
+				? []
+				: await Worktree.unmerged(tree.dir, gitOf(ctx));
+		if (left.length > 0)
+			return save(ctx, subject, place, {
+				results: [
+					sentBack(
+						ctx,
+						subject,
+						tree,
+						{
+							files: [...new Set([...(resolving ?? []), ...left])],
+							still: true,
+						},
+						started,
+					),
+				],
+				ok: false,
+			});
 		const committed = await commit(
 			ctx,
 			subject,
@@ -402,6 +420,44 @@ export namespace Checks {
 		});
 	};
 
+	// The files the merge in progress in the subtask's tree conflicted in, as the last pass that
+	// sent it back recorded them: a pass since that git or a hook refused names none.
+	const conflictsOf = (ctx: Ctx, subject: Subject): string[] => {
+		const taskId = subject.taskId ?? ctx.run.parentId;
+		const sent = ctx.run.gateRuns.findLast(
+			(r) => r.taskId === taskId && r.results.some((x) => x.conflicts),
+		);
+		return sent?.results.find((x) => x.conflicts)?.conflicts ?? [];
+	};
+
+	// A subtask sent back to resolve the merge of the run's HEAD into its `tree`, which conflicted
+	// in `files` there, or that it closed `still` unresolved: the red `merge` result its next brief quotes.
+	const sentBack = (
+		ctx: Ctx,
+		subject: Subject,
+		tree: ClaimTrees.Tree,
+		{ files, still }: { files: string[]; still: boolean },
+		started: number,
+	): Gates.Result => {
+		const into = RunStore.branchOf(ctx.run);
+		const named = files.join(", ");
+		RunState.event(ctx, {
+			...(subject.lane ? { lane: subject.lane } : {}),
+			type: "merge_conflict",
+			task: subject.label,
+			summary: still
+				? `${subject.label} closed with the merge of ${into} into ${tree.branch} unresolved, its conflicts left in ${named}: no gate runs until it resolves them`
+				: `merging ${into} into ${tree.branch} left conflicts in ${named}: no gate runs until ${subject.label} resolves them`,
+		});
+		const tail = still
+			? `The merge of the run's branch ${into} into ${tree.branch} is still in progress in this worktree: it left conflicts in ${named}, and they are not resolved yet. Resolve them, keeping what both sides meant, stage each with \`git add\`, then call kabane_done again. The runner commits the merge, then runs the gates on it.`
+			: `The run's branch ${into} has moved since ${subject.label} was cut, and merging it into ${tree.branch} left conflicts in ${named}. The merge is in progress in this worktree, with the conflicts left for you: resolve them, keeping what both sides meant, stage each with \`git add\`, then call kabane_done again. The runner commits the merge, then runs the gates on it.`;
+		return {
+			...refused("merge", `git merge ${into}`, started, tail),
+			conflicts: files,
+		};
+	};
+
 	// The run's HEAD not merged into a subtask's `tree`, conflicting there or refused: the red
 	// `merge` result its next brief quotes.
 	const notCaughtUp = (
@@ -411,22 +467,27 @@ export namespace Checks {
 		caught: Result<string[]>,
 		started: number,
 	): Gates.Result => {
+		if (caught.ok)
+			return sentBack(
+				ctx,
+				subject,
+				tree,
+				{ files: caught.value, still: false },
+				started,
+			);
 		const into = RunStore.branchOf(ctx.run);
-		const tail = caught.ok
-			? `The run's branch ${into} has moved since ${subject.label} was cut, and merging it into ${tree.branch} left conflicts in ${caught.value.join(", ")}. The merge is in progress in this worktree, with the conflicts left for you: resolve them, keeping what both sides meant, then call kabane_done again. The runner commits the merge, then runs the gates on it.`
-			: `The run's branch ${into} did not merge into ${tree.branch}: ${caught.error.message}`;
 		RunState.event(ctx, {
 			...(subject.lane ? { lane: subject.lane } : {}),
-			type: caught.ok ? "merge_conflict" : "warning",
+			type: "warning",
 			task: subject.label,
-			summary: caught.ok
-				? `merging ${into} into ${tree.branch} left conflicts in ${caught.value.join(", ")}: no gate runs until ${subject.label} resolves them`
-				: `${into} not merged into ${tree.branch}: ${caught.error.message}`,
+			summary: `${into} not merged into ${tree.branch}: ${caught.error.message}`,
 		});
-		return {
-			...refused("merge", `git merge ${into}`, started, tail),
-			...(caught.ok ? { conflicts: caught.value } : {}),
-		};
+		return refused(
+			"merge",
+			`git merge ${into}`,
+			started,
+			`The run's branch ${into} did not merge into ${tree.branch}: ${caught.error.message}`,
+		);
 	};
 
 	// A green pass in a subtask's `tree`, landed on the run's branch by a fast-forward: what the

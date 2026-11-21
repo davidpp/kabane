@@ -292,8 +292,11 @@ export namespace Worktree {
 		return cleaned.ok ? ok(undefined) : cleaned;
 	};
 
-	// The files a merge or rebase left conflicted in `dir`.
-	const conflicted = async (dir: string, run: Git): Promise<string[]> => {
+	/** The files a merge or rebase left conflicted in `dir` that are not resolved yet. */
+	export const unmerged = async (
+		dir: string,
+		run: Git = git,
+	): Promise<string[]> => {
 		const listed = await run(dir, ["diff", "--name-only", "--diff-filter=U"]);
 		return listed.ok
 			? listed.value.split("\n").filter((f) => f.trim() !== "")
@@ -313,7 +316,7 @@ export namespace Worktree {
 		if (!isLinked.ok) return isLinked;
 		const rebased = await run(dir, ["rebase", "-q", onto]);
 		if (rebased.ok) return ok(undefined);
-		const files = await conflicted(dir, run);
+		const files = await unmerged(dir, run);
 		await run(dir, ["rebase", "--abort"]);
 		return err(
 			files.length > 0
@@ -348,7 +351,7 @@ export namespace Worktree {
 			branch,
 		]);
 		if (!merged.ok) {
-			const files = await conflicted(dir, run);
+			const files = await unmerged(dir, run);
 			const why =
 				files.length > 0
 					? `conflicts in ${files.join(", ")}`
@@ -409,7 +412,7 @@ export namespace Worktree {
 		if (!isLinked.ok) return isLinked;
 		const merged = await run(dir, ["merge", "-q", "-m", message, sha]);
 		if (merged.ok) return ok([]);
-		const files = await conflicted(dir, run);
+		const files = await unmerged(dir, run);
 		return files.length > 0 ? ok(files) : merged;
 	};
 
