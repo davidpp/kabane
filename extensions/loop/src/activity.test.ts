@@ -593,3 +593,33 @@ it("keeps a launch visible when its session fails to open", () => {
 		["done", "error: handshake failed", undefined],
 	]);
 });
+
+it("names whose gates a gate row reports", () => {
+	const at = "2026-11-20T09:15:00Z";
+	const rows = LoopActivity.boardEvents(
+		[
+			{
+				seq: 1,
+				at,
+				type: "gate_passed",
+				summary: "slow passed",
+				lane: "JGIT-17",
+				task: "JGIT-17",
+			},
+			{
+				seq: 2,
+				at,
+				type: "gate_failed",
+				summary: "slow failed",
+				task: "JGIT-16",
+			},
+			{ seq: 3, at, type: "gate_passed", summary: "slow passed" },
+		],
+		0,
+	);
+	expect(rows.map((e) => e.summary)).toEqual([
+		"gates · JGIT-17 · slow passed",
+		"gates · JGIT-16 · slow failed",
+		"gates · slow passed",
+	]);
+});

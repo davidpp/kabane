@@ -254,7 +254,8 @@ export namespace LoopActivity {
 				return `pruned · ${e.summary.replace(/^worktree .+ and branch .+ removed: /, "worktree and branch removed: ")}`;
 			case "gate_passed":
 			case "gate_failed":
-				return `gates · ${e.summary}`;
+				// Between sessions these rows carry no tag, so the subject says whose gates ran.
+				return `gates · ${e.task ? `${e.task} · ` : ""}${e.summary}`;
 			case "landed":
 				return `land · ${e.summary}`;
 			default:
