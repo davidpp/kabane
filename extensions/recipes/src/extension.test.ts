@@ -620,7 +620,7 @@ test("doctor offers the user-level job skill, and --fix installs it for every ha
 		"Wrote ~/.agents/skills/job/SKILL.md and linked ~/.claude/skills/job to it",
 	);
 	expect(readFileSync(join(user, ".claude/skills/job/SKILL.md"), "utf8")).toBe(
-		readFileSync(join(EXTENSION, "templates/job/SKILL.md"), "utf8"),
+		readFileSync(join(EXTENSION, "skills/job/SKILL.md"), "utf8"),
 	);
 	expect(
 		findings().filter((f: { id: string }) => f.id.startsWith("job-skill")),

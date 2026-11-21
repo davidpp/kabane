@@ -16,13 +16,14 @@ import type { Doctor } from "@kabane/extension";
 import { trySync } from "./result";
 
 export namespace JobSkill {
-	// The extension's own templates/. The build flattens src/ into index.js beside it and rewrites
-	// this URL to match (scripts/build.ts).
-	const TEMPLATES = new URL("../templates/", import.meta.url);
+	// The extension's own skills/, which `kabane mcp` also serves: the user-level copy is that file.
+	// The build flattens src/ into index.js beside it and rewrites this URL to match
+	// (scripts/build.ts).
+	const SKILLS = new URL("../skills/", import.meta.url);
 
 	/** The shipped skill. */
 	export const template = (): string =>
-		fileURLToPath(new URL("job/SKILL.md", TEMPLATES));
+		fileURLToPath(new URL("job/SKILL.md", SKILLS));
 
 	const exists = (path: string): boolean => trySync(() => lstatSync(path)).ok;
 

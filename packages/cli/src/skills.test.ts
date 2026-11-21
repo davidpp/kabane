@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	mkdtempSync,
+	readFileSync,
 	realpathSync,
 	rmSync,
 	symlinkSync,
@@ -342,6 +343,21 @@ it("kabane mcp lists and serves an enabled extension's skill over stdio", async 
 	} finally {
 		await client.close();
 	}
+});
+
+it("the recipes extension serves its job skill, the same file its doctor fix installs for the user", () => {
+	const directory = join(import.meta.dir, "../../../extensions/recipes");
+	const read = Skills.read([{ name: "recipes", directory }]);
+	expect(read.refused).toEqual([]);
+	expect(read.skills.map((skill) => skill.name)).toEqual(["kabane", "job"]);
+	const got = Skills.get(read.skills, "job", undefined, "KABANE");
+	if (!got.ok) throw got.error;
+	expect(got.value.text).toBe(
+		readFileSync(join(directory, "skills/job/SKILL.md"), "utf8"),
+	);
+	expect(got.value.text).toContain(
+		"kabane doctor --fix recipes/job-tick-missing",
+	);
 });
 
 it("the loop's loop-run skill sets up and starts a run with the kabane this server runs", () => {

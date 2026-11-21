@@ -415,8 +415,11 @@ one fits, a harness only when you named one), then reads the job back with `kaba
 tells you when it fires next, in which folder, with which harness. It asks only for what the prompt
 leaves open, such as the time of day.
 
-The skill is installed for your user, not for one project: `kabane doctor` reports
-`recipes/job-skill-missing` while `~/.agents/skills/job/SKILL.md` is absent, and
+While the extension is enabled, `kabane mcp` serves the skill to every session that has kabane's
+tools (`kabane_skillList` names it, `kabane_skillGet` returns it), the board's copilot included,
+with nothing to install. A harness also reads it on its own, without asking kabane, once it is
+installed for your user: `kabane doctor` reports `recipes/job-skill-missing` while
+`~/.agents/skills/job/SKILL.md` is absent, and
 
 ```bash
 kabane doctor --fix recipes/job-skill-missing
