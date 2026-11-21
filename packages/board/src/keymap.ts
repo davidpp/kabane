@@ -561,6 +561,13 @@ export namespace Keymap {
 					when: cursor,
 				},
 				{ key: "a", label: "dispatch", tier: "help", keys: ["a"] },
+				{ key: "d", label: "done", tier: "help", keys: ["d"] },
+				{
+					key: "[ ]",
+					label: "previous · next state",
+					tier: "help",
+					keys: ["[", "]"],
+				},
 				{ key: "n", label: "to next", tier: "help", keys: ["n"] },
 				{ key: "s", label: "to someday", tier: "help", keys: ["s"] },
 				{ key: "x", label: "cancel task", tier: "help", keys: ["x"] },

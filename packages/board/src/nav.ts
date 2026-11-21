@@ -1442,9 +1442,10 @@ export namespace BoardNav {
 	// `]`). Progression order is independent of the section display order.
 	const shiftState = (
 		state: BoardState,
-		task: Task,
+		task: Task | undefined,
 		delta: number,
 	): { state: BoardState; effect: Effect } => {
+		if (!task) return { state, effect: NONE };
 		const progression: readonly TaskState[] = BoardData.STATE_PROGRESSION;
 		const current = progression.indexOf(task.state);
 		const target = BoardData.STATE_PROGRESSION[current + delta];
@@ -1479,6 +1480,22 @@ export namespace BoardNav {
 				id: task.id,
 				state: target,
 				notice: `${shortId(task)} ${verb}`,
+			},
+		};
+	};
+
+	// `d`: close the task in hand as done, on the board's row and in its detail alike.
+	const markDone = (
+		state: BoardState,
+		task: Task | undefined,
+	): { state: BoardState; effect: Effect } => {
+		if (!task) return { state, effect: NONE };
+		return {
+			state: withUndo(state, stateUndoEntry(task)),
+			effect: {
+				type: "markDone",
+				id: task.id,
+				notice: `${shortId(task)} done`,
 			},
 		};
 	};
@@ -2490,13 +2507,34 @@ export namespace BoardNav {
 				return state.copilot.turn === "idle"
 					? { state, effect: { type: "openEvents", taskId } }
 					: openCopilotEvents(state);
-			default:
+			default: {
+				const task = taskById(state, taskId);
 				return (
-					reduceInHandKey(state, taskId, taskById(state, taskId), key) ?? {
-						state,
-						effect: NONE,
-					}
+					reduceStateKey(state, task, key) ??
+					reduceInHandKey(state, taskId, task, key) ?? { state, effect: NONE }
 				);
+			}
+		}
+	};
+
+	// `d` marks the task done and `[`/`]` step its state, on the board's row and in the detail (a job's
+	// included), which stays open on the task as it does for `n`, `s` and `x`. Apart from
+	// reduceInHandKey because the Jobs tab's list shares that and binds none of these. Null for every
+	// other key.
+	const reduceStateKey = (
+		state: BoardState,
+		task: Task | undefined,
+		key: KeyInput,
+	): { state: BoardState; effect: Effect } | null => {
+		switch (key.name) {
+			case "d":
+				return markDone(state, task);
+			case "[":
+				return shiftState(state, task, -1);
+			case "]":
+				return shiftState(state, task, 1);
+			default:
+				return null;
 		}
 	};
 
@@ -2693,8 +2731,8 @@ export namespace BoardNav {
 		}
 	};
 
-	// The selected row's keys: `enter` opens it, `d` marks it done, `[`/`]` step its state, and the
-	// keys for the task in hand. With nothing selected, none of them does anything.
+	// The selected row's keys: `enter` opens it, then the state keys and the keys for the task in
+	// hand. With nothing selected, none of them does anything.
 	const reduceRowKey = (
 		state: BoardState,
 		key: KeyInput,
@@ -2708,21 +2746,9 @@ export namespace BoardNav {
 					state: { ...state, view: { type: "detail", taskId: task.id } },
 					effect: NONE,
 				};
-			case "d":
-				return {
-					state: withUndo(state, stateUndoEntry(task)),
-					effect: {
-						type: "markDone",
-						id: task.id,
-						notice: `${shortId(task)} done`,
-					},
-				};
-			case "[":
-				return shiftState(state, task, -1);
-			case "]":
-				return shiftState(state, task, 1);
 			default:
 				return (
+					reduceStateKey(state, task, key) ??
 					reduceInHandKey(state, task.id, task, key) ?? { state, effect: NONE }
 				);
 		}
