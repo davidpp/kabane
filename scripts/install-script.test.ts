@@ -35,6 +35,12 @@ const server = Bun.serve({
 				`http://127.0.0.1:${server.port}/download/${path.slice("/redirect/".length)}`,
 				302,
 			);
+		if (path === "/releases/latest")
+			return Response.json({
+				tag_name: "v1.0.1",
+				draft: false,
+				prerelease: false,
+			});
 		const asset = assets.get(path);
 		return asset ? new Response(asset) : new Response("none", { status: 404 });
 	},
@@ -107,11 +113,9 @@ const leftovers = (prefix: string): string[] =>
 		name.startsWith(".kabane-install."),
 	);
 
-test("a relative --prefix and --bin install a link that runs from anywhere", async () => {
+test("the latest release, installed with a relative --prefix and --bin, is linked to run from anywhere", async () => {
 	const base = place();
 	const result = await install(base, [
-		"--version",
-		"1.0.0",
 		"--prefix",
 		"opt/kabane",
 		"--bin",
@@ -120,7 +124,7 @@ test("a relative --prefix and --bin install a link that runs from anywhere", asy
 	expect(result).toMatchObject({ exitCode: 0 });
 	const link = join(base, "bin/kabane");
 	expect(readlinkSync(link)).toBe(join(base, "opt/kabane/kabane"));
-	expect(runs(link)).toBe("1.0.0");
+	expect(runs(link)).toBe("1.0.1");
 	expect(leftovers(join(base, "opt/kabane"))).toEqual([]);
 });
 

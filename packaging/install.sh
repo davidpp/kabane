@@ -5,11 +5,12 @@
 #   curl -fsSL https://github.com/davidpp/kabane/releases/latest/download/install.sh | sh
 #   curl -fsSL …/install.sh | sh -s -- --version 1.2.0 --prefix ~/opt/kabane --bin ~/bin
 #
-# Downloads this machine's archive and SHA256SUMS with curl, over https at every redirect, refuses the archive unless its SHA-256
+# Downloads this machine's archive and SHA256SUMS with curl, refuses the archive unless its SHA-256
 # matches its line there, and also verifies its build provenance with `gh attestation verify` when
 # an authenticated GitHub CLI is available. Run again to reinstall; `kabane update` updates it in
 # place. KABANE_UPDATE_API and KABANE_UPDATE_RELEASES point it at another releases API and asset
-# base, as they do for `kabane update` (docs/release.md).
+# base, as they do for `kabane update` (docs/release.md): https, or plain http to this machine's
+# loopback. Unlike `kabane update`, every redirect must be https, a loopback one included.
 set -eu
 
 repo="davidpp/kabane"
