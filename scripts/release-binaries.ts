@@ -5,6 +5,7 @@ import { ChannelVersionSchema } from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 import {
 	BinaryTargetSchema,
+	INSTALLER,
 	BinaryArtifactSchema,
 	ReleaseVersionSchema,
 	readArtifactFile,
@@ -24,10 +25,16 @@ const ProducerSchema = z
 	})
 	.strict();
 
-/** Assemble retained native outputs; never rebuild or repack during transfer/publication. */
+const INSTALL_SCRIPT = resolve(import.meta.dir, "../packaging/install.sh");
+
+/**
+ * Assemble retained native outputs, with the curl installer that downloads them; never rebuild or
+ * repack during transfer/publication.
+ */
 export const attachBinaries = (
 	directory: string,
 	producers: string,
+	installer = INSTALL_SCRIPT,
 ): Result<void> => {
 	try {
 		const verified = verifyReleaseFiles(directory);
@@ -67,13 +74,20 @@ export const attachBinaries = (
 				return err(new Error(`Binary checksum mismatch: ${target}`));
 			binaries.push(binary.data);
 		}
+		const script = readArtifactFile(installer, 65_536);
+		if (!script.ok) return script;
 		for (const binary of binaries)
 			cpSync(
 				join(producers, binary.filename),
 				join(directory, binary.filename),
 				{ errorOnExist: true, force: false },
 			);
-		const record = { ...verified.value, binaries };
+		writeFileSync(join(directory, INSTALLER), script.value, { flag: "wx" });
+		const record = {
+			...verified.value,
+			binaries,
+			installerSha256: sha256(script.value),
+		};
 		writeFileSync(
 			join(directory, "manifest.json"),
 			`${JSON.stringify(record, null, 2)}\n`,

@@ -73,6 +73,9 @@ test("assembly retains bytes, hashes every archive, rejects corruption and repla
 	expect(verified.ok).toBe(true);
 	if (!verified.ok) return;
 	expect(verified.value.binaries?.length).toBe(4);
+	expect(readFileSync(join(directory, "install.sh"))).toEqual(
+		readFileSync(join(import.meta.dir, "../packaging/install.sh")),
+	);
 	expect(
 		readFileSync(join(directory, "SHA256SUMS"), "utf8").trim().split("\n"),
 	).toHaveLength(5);
@@ -82,6 +85,13 @@ test("assembly retains bytes, hashes every archive, rejects corruption and repla
 		);
 	expect(attachBinaries(directory, producers).ok).toBe(false);
 	writeFileSync(join(directory, "kabane-linux-x64.tar.gz"), "changed");
+	expect(verifyReleaseFiles(directory).ok).toBe(false);
+});
+
+test("a changed installer fails verification", () => {
+	const { directory, producers } = artifacts();
+	expect(attachBinaries(directory, producers).ok).toBe(true);
+	writeFileSync(join(directory, "install.sh"), "#!/bin/sh\n");
 	expect(verifyReleaseFiles(directory).ok).toBe(false);
 });
 

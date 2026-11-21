@@ -13,6 +13,7 @@ import {
 } from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
 import {
+	INSTALLER,
 	npmViewSchema,
 	readArtifactFile,
 	type ReleaseManifest,
@@ -648,6 +649,7 @@ const publishVerifiedRelease = async (
 		const assets = [
 			record.filename,
 			...(record.binaries ?? []).map((binary) => binary.filename),
+			...(record.installerSha256 ? [INSTALLER] : []),
 			"manifest.json",
 			"SHA256SUMS",
 			"release-notes.md",
