@@ -829,7 +829,7 @@ describe("a ctrl chord is its own key, never the letter under it", () => {
 		expect(next).toBe(BoardNav.sight(s, 0));
 	};
 
-	for (const letter of ["x", "n", "s", "v"])
+	for (const letter of ["x", "n", "s", "v", "[", "]"])
 		it(`ctrl+${letter} on the detail leaves the open task's state alone`, () => {
 			expect(reduce(detail, char(letter)).effect.type).not.toBe("none");
 			inert(detail, ctrl(letter));

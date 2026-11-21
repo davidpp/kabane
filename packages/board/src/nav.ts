@@ -2517,9 +2517,10 @@ export namespace BoardNav {
 		}
 	};
 
-	// `d` marks the task done and `[`/`]` step its state, on the board's row and in the detail, which
-	// stays open on the task as it does for `n`, `s` and `x`. Apart from reduceInHandKey because the
-	// Jobs tab shares that and binds none of these. Null for every other key.
+	// `d` marks the task done and `[`/`]` step its state, on the board's row and in the detail (a job's
+	// included), which stays open on the task as it does for `n`, `s` and `x`. Apart from
+	// reduceInHandKey because the Jobs tab's list shares that and binds none of these. Null for every
+	// other key.
 	const reduceStateKey = (
 		state: BoardState,
 		task: Task | undefined,
