@@ -415,16 +415,18 @@ const ownOf = (
 };
 
 /**
- * After `job add`, when nothing ticks this machine: at a terminal, ask to install the tick and
+ * After `job add`, when nothing ticks this machine or its tick's program is gone: at a terminal, ask to install the tick and
  * install it on yes; elsewhere (an agent's shell) or on no, the line that says how. No line when
  * something ticks already.
  */
 const offerTick = (ctx: Extension.Ctx, host: Host): string[] => {
 	const platform = JobTick.platformOf(process.platform);
 	const home = homedir();
-	if (platform === undefined || JobTick.installed(platform, home)) return [];
-	const nothing =
-		"Nothing runs kabane job tick on this machine yet, so no job fires";
+	if (platform === undefined) return [];
+	const tick = JobTick.found(platform, home);
+	const reason = JobTick.why(tick);
+	if (reason === undefined) return [];
+	const nothing = `${reason}${tick.state === "none" ? " yet" : ""}, so no job fires`;
 	const how = `${nothing}: \`kabane doctor --fix recipes/job-tick-missing\` installs ${JobTick.what(platform)}.`;
 	const answer = terminalAsk()?.(
 		`${nothing}. Install ${JobTick.what(platform)}? [y/N]`,

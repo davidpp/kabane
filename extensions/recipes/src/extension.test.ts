@@ -722,3 +722,43 @@ test("with KABANE_JOB_TICK=print, as the sandbox sets it, the tick's fix says wh
 	expect(existsSync(join(user, "Library/LaunchAgents"))).toBe(false);
 	expect(existsSync(join(home, "tools/table"))).toBe(false);
 });
+
+test("a tick whose program is gone is reported, and doctor --fix points it at the running kabane", () => {
+	const { kabane, home } = setup();
+	const { user, path, called } = tickTools(home);
+	const gone = join(home, "old-install/kabane");
+	const agent = join(user, "Library/LaunchAgents/com.kabane.job-tick.plist");
+	const table = join(home, "tools/table");
+	if (process.platform === "darwin") {
+		mkdirSync(dirname(agent), { recursive: true });
+		writeFileSync(
+			agent,
+			`<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>com.kabane.job-tick</string><key>ProgramArguments</key><array><string>${gone}</string><string>job</string><string>tick</string></array></dict></plist>\n`,
+		);
+	} else writeFileSync(table, `* * * * * ${gone} job tick\n`);
+	const options = { home: user, path };
+	expect(kabane(ADD_TIDY, options).code).toBe(0);
+	const doctor = kabane(["doctor"], options).stdout;
+	expect(doctor).toContain(`runs ${gone}, which is gone`);
+	const fixed = kabane(
+		["doctor", "--fix", "recipes/job-tick-missing"],
+		options,
+	);
+	expect(fixed.code).toBe(0);
+	const written = readFileSync(
+		process.platform === "darwin" ? agent : table,
+		"utf8",
+	);
+	expect(written).not.toContain(gone);
+	expect(written).toContain(CLI);
+	if (process.platform === "darwin")
+		expect(called()).toEqual([
+			expect.stringMatching(
+				/^launchctl bootout gui\/\d+\/com\.kabane\.job-tick$/,
+			),
+			expect.stringMatching(
+				/^launchctl bootstrap gui\/\d+ .*com\.kabane\.job-tick\.plist$/,
+			),
+		]);
+	expect(kabane(["doctor"], options).stdout).not.toContain("job-tick-missing");
+});

@@ -3,8 +3,14 @@
 // `kabane doctor --fix recipes/job-tick-missing` is the yes an agent relays. It runs the kabane
 // that installed it (`host.kabane.current`, which Homebrew and mise keep across upgrades), with that
 // process's PATH, so the tick finds hc and the harnesses the human's shell finds, and with its
-// KABANE_HOME, so a second device on the machine ticks its own jobs.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+// KABANE_HOME. A tick whose program is gone counts as missing, and installing replaces it.
+import {
+	accessSync,
+	constants,
+	existsSync,
+	mkdirSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { Doctor, Host, Result } from "@kabane/extension";
 import { err, ok, trySync } from "./result";
@@ -88,14 +94,36 @@ export namespace JobTick {
 	export const cronLine = ({ kabane, kabaneHome, path }: Target): string =>
 		`* * * * * PATH=${sh(path)} KABANE_HOME=${sh(kabaneHome)} ${sh(kabane)} job tick >> ${sh(join(kabaneHome, "job-tick.log"))} 2>> ${sh(join(kabaneHome, "job-tick.error.log"))}`;
 
-	/** Whether a crontab already runs a tick, kabane's line or one of the human's own. */
+	// A crontab line that runs a tick, kabane's or one of the human's own.
+	const tickLine = (line: string): boolean =>
+		!line.trimStart().startsWith("#") && line.includes(" job tick");
+
+	/** Whether a crontab already runs a tick. */
 	export const inCrontab = (crontab: string): boolean =>
-		crontab
-			.split("\n")
-			.some(
-				(line) =>
-					!line.trimStart().startsWith("#") && line.includes(" job tick"),
-			);
+		crontab.split("\n").some(tickLine);
+
+	// The word before ` job tick`: single-quoted as `sh` quotes it, or bare.
+	const CRON_PROGRAM = /('(?:[^']|'\\'')*'|\S+) job tick/;
+
+	/**
+	 * The program a crontab's tick line runs, unquoted, with `$HOME` and `~` expanded; undefined
+	 * with no tick line.
+	 */
+	export const cronProgram = (
+		crontab: string,
+		home: string,
+	): string | undefined => {
+		const word = CRON_PROGRAM.exec(
+			crontab.split("\n").find(tickLine) ?? "",
+		)?.[1];
+		if (word === undefined) return undefined;
+		const unquoted = word.startsWith("'")
+			? word.slice(1, -1).replaceAll(`'\\''`, "'")
+			: word;
+		return unquoted
+			.replaceAll("\\%", "%")
+			.replace(/^(\$HOME|\$\{HOME\}|~)(?=\/)/, home);
+	};
 
 	const run = (
 		command: string[],
@@ -128,11 +156,54 @@ export namespace JobTick {
 			: err(new Error(`crontab -l exited ${code}: ${stderr}`));
 	};
 
-	/** Whether something already runs the tick: kabane's launchd agent, or a crontab line. */
-	export const installed = (platform: Platform, home: string): boolean => {
-		if (platform === "darwin") return existsSync(agentPath(home));
+	// The program kabane's launchd agent runs; undefined when plutil cannot read it.
+	const agentProgram = (file: string): string | undefined => {
+		const read = trySync(() =>
+			run(["plutil", "-extract", "ProgramArguments.0", "raw", "-o", "-", file]),
+		);
+		return read.ok && read.value.code === 0
+			? read.value.stdout.trim()
+			: undefined;
+	};
+
+	const runnable = (program: string): boolean =>
+		trySync(() => accessSync(program, constants.X_OK)).ok;
+
+	/**
+	 * What ticks this machine: nothing, a tick that would run, or one whose program is gone (an
+	 * install removed since, a binary moved). A program kabane cannot read, or a bare name a PATH
+	 * lookup finds, counts as one that runs.
+	 */
+	export type Found =
+		| { state: "none" }
+		| { state: "runs" }
+		| { state: "gone"; where: string; program: string };
+
+	export const found = (platform: Platform, home: string): Found => {
+		if (platform === "darwin") {
+			const file = agentPath(home);
+			if (!existsSync(file)) return { state: "none" };
+			const program = agentProgram(file);
+			return program === undefined || runnable(program)
+				? { state: "runs" }
+				: { state: "gone", where: file, program };
+		}
 		const current = crontab();
-		return current.ok && inCrontab(current.value);
+		if (!current.ok || !inCrontab(current.value)) return { state: "none" };
+		const program = cronProgram(current.value, home);
+		return program === undefined ||
+			!program.startsWith("/") ||
+			runnable(program)
+			? { state: "runs" }
+			: { state: "gone", where: "the crontab", program };
+	};
+
+	/** Why no job fires, for the offer and the finding; undefined when the tick runs. */
+	export const why = (tick: Found): string | undefined => {
+		if (tick.state === "runs") return undefined;
+		return tick.state === "none"
+			? "Nothing runs kabane job tick on this machine"
+			: `The tick at ${tick.where} runs ${tick.program}, which is gone`;
 	};
 
 	/** Writes the launchd agent under `home`; its path. Loading it is `load`'s. */
@@ -145,11 +216,12 @@ export namespace JobTick {
 		});
 	};
 
-	// launchd reads the agent at login; bootstrap starts it now, in this user's session.
+	// launchd reads the agent at login; bootstrap starts it now, in this user's session, after
+	// bootout takes out the one loaded before, which fails harmlessly when there is none.
 	const load = (file: string): Result<void> => {
-		const loaded = trySync(() =>
-			run(["launchctl", "bootstrap", `gui/${process.getuid?.() ?? ""}`, file]),
-		);
+		const domain = `gui/${process.getuid?.() ?? ""}`;
+		trySync(() => run(["launchctl", "bootout", `${domain}/${LABEL}`]));
+		const loaded = trySync(() => run(["launchctl", "bootstrap", domain, file]));
 		if (!loaded.ok) return loaded;
 		return loaded.value.code === 0
 			? ok(undefined)
@@ -189,8 +261,11 @@ export namespace JobTick {
 		}
 		const read = crontab();
 		if (!read.ok) return read;
-		const current = read.value;
-		const next = `${current}${current === "" || current.endsWith("\n") ? "" : "\n"}${cronLine(target)}\n`;
+		// A tick line already there is replaced: its program may be gone.
+		const kept = read.value
+			.split("\n")
+			.filter((line) => line !== "" && !tickLine(line));
+		const next = `${[...kept, cronLine(target)].join("\n")}\n`;
 		const saved = trySync(() => run(["crontab", "-"], next));
 		if (!saved.ok) return saved;
 		return saved.value.code === 0
@@ -211,14 +286,17 @@ export namespace JobTick {
 		target: Target,
 		{ platform, home }: { platform: Platform | undefined; home: string },
 	): Doctor.Finding[] => {
-		if (jobs === 0 || platform === undefined || installed(platform, home))
-			return [];
+		if (jobs === 0 || platform === undefined) return [];
+		const tick = found(platform, home);
+		const reason = why(tick);
+		if (reason === undefined) return [];
+		const whose = tick.state === "none" ? "its" : "this machine's";
 		return [
 			{
 				id: "job-tick-missing",
 				...(platform === "darwin" ? { path: agentPath(home) } : {}),
 				severity: "suggest",
-				summary: `Nothing runs kabane job tick on this machine, so its ${jobs === 1 ? "job never fires" : `${jobs} jobs never fire`}. --fix recipes/job-tick-missing installs ${what(platform)}.`,
+				summary: `${reason}, so ${whose} ${jobs === 1 ? "job never fires" : `${jobs} jobs never fire`}. --fix recipes/job-tick-missing installs ${what(platform)}.`,
 				fix: async () => install(platform, target, home),
 			},
 		];

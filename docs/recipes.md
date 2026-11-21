@@ -500,7 +500,9 @@ kabane doctor --fix recipes/job-tick-missing
 
 The tick runs the kabane that installed it, with that shell's `PATH`, so it finds `hc`, the
 harnesses and the `recipes.onAttention` command as your shell does, and with its `KABANE_HOME`.
-After you change your `PATH` or move kabane, remove the tick and install it again. To remove it on
+When the kabane a tick runs is gone, such as an old install removed after a move to Homebrew,
+`job add` and `kabane doctor` report it as they report a missing one, and the fix replaces it with
+one for the kabane you run. After you change your `PATH`, remove the tick and install it again. To remove it on
 macOS, `launchctl bootout gui/$(id -u)/com.kabane.job-tick` and delete the file; on Linux, delete
 the line with `crontab -e`. Its output goes to `job-tick.log` and `job-tick.error.log` in
 `KABANE_HOME`. A tick with nothing due does nothing, so ticking every minute is cheap.
