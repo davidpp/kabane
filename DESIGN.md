@@ -117,7 +117,9 @@ sleek pass on the board: keep what explained a decision, drop what had to be for
 replace the metaphor if it stops earning its keep.*
 
 **Key Characteristics:**
-- Forty columns is the design target; wider panes get more room, never a different layout.
+- Forty columns is the tracker's design target; wider panes get more room, never a different
+  layout. A run's card tab is opened to watch, so its home is a wide terminal (200×50): from 160
+  columns it splits in two, with the same regions and keys, and forty stays a checked fallback.
 - No lines. Background tone separates regions; herdr draws the frames.
 - Hue is meaning, contrast is time.
 - One accent, and it always means a human is needed.
@@ -354,9 +356,24 @@ against every glyph already here.
 - **Fit:** a result gives up whole ` · ` parts from its tail before it is cut with `…`. Under
   sixty columns the time column goes (a row with no result keeps its time), and the finished
   steps the cursor is not on share rows, as many names to a row as fit:
-  `✓ implement gates triage review`. The map and its left-for-you list take at most half the tab's
-  rows while the work goes and seven tenths once it is over, and keep the cursor in sight,
-  counting the rows they leave out as `… n more`.
+  `✓ implement gates triage review`. Stacked, the map and its left-for-you list take at most half
+  the tab's rows while the work goes and seven tenths once it is over, and keep the cursor in
+  sight, counting the rows they leave out as `… n more`. Whatever the size, `now` keeps its title
+  and five rows and the footer keeps the bottom row: a question under the map gives up its blank
+  rows first, then the map windows, then the question holds its text to the rows left, down to one
+  that scrolls.
+- **Split:** from 160 columns the tab is two columns under the run row. The left one, 66 wide on
+  raised, holds `map`, the question a session waits on, and `run`: what the card runs with (its
+  facts, the `?` sheet's list), whole facts as many to a row as fit, in the rows the map and the
+  question leave, whole or not at all. The right one, on the terminal's own background, holds
+  `now` (as many rows as it has lines, up to sixteen and half the column) over the log of the
+  session under the cursor, named over it and following the cursor with no key. The log stands
+  alone while it is the one live session, or once `enter` pinned it (`esc` unpins it); `now` fills
+  the column when the cursor is on no session. On a finished card `now` is the run trace, over
+  `sessions · n`: every session the card ran (a skipped lens is not one), one row each with its
+  glyph, name, time and result, until the cursor is on one. `g/G` and `⌃d/⌃u` scroll the log when
+  one is on screen, else `now` or the trace. The raised column is the only seam between them: the
+  No-Line Rule holds.
 - **Without steps:** a card that gives none keeps its stream with a chip per lane under the
   header, `all <noun> · live` first, `h/l` walking them, each in its series hue.
 
@@ -503,7 +520,8 @@ one-row collapsed forms follow the same colors.
 - **Do** reach for OpenTUI's components (tonal panels, selects, tabs, inputs, scrollboxes,
   markdown, diffs) when they read faster than bare text.
 - **Do** pair every hue with a glyph shape, so the board still reads with color off.
-- **Do** check every row at forty columns before anything else.
+- **Do** check every row at forty columns before anything else, on the tracker. On a run's card
+  tab check 200×50 first, then both sides of 160 and forty as the fallback.
 
 ### Don't:
 - **Don't** rebuild Jake's `UpstreamWorkCard`: two panels, cached descriptions, dual

@@ -2,6 +2,7 @@
 import type { ActivityCard, ActivityEvent } from "@kabane/extension";
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import { useMemo, type ReactNode, type RefObject } from "react";
+import { Cockpit } from "./cockpit";
 import { took } from "./elapsed";
 import { eventStyle } from "./event-style";
 import { isInFlight } from "./ports";
@@ -137,18 +138,22 @@ export const orderedLiveLanes = (
 	const live = card.liveLanes ?? EMPTY;
 	return card.lanes?.filter((lane) => live.includes(lane)) ?? live;
 };
+// The feed fills the rows down to the footer, keeping at least NOW_MIN_ROWS of them; with `rows`, a
+// log sits under it, and it takes as many rows as it has lines up to `rows`.
 export const NowFeed = ({
 	card,
 	events,
 	width,
 	spinnerFrame,
 	scrollRef,
+	rows,
 }: {
 	card: ActivityCard;
 	events: readonly ActivityEvent[];
 	width: number;
 	spinnerFrame: string;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
+	rows?: number;
 }): ReactNode => {
 	const theme = useTheme();
 	const live = isInFlight(card);
@@ -163,14 +168,23 @@ export const NowFeed = ({
 	);
 	const tags = shortTags(card, lanes.length > 1 ? lanes : EMPTY);
 	const cols = Math.max(0, ...Array.from(tags.values(), (tag) => tag.length));
+	// A basis rather than a height: OpenTUI drops a box's shrink once its numeric height changes.
+	const shown = Math.max(1, lines.length);
+	const size =
+		rows === undefined
+			? { flexGrow: 1, flexBasis: 0, minHeight: 1 + Cockpit.NOW_MIN_ROWS }
+			: {
+					flexGrow: 0,
+					flexBasis: 1 + Math.min(shown, rows),
+					minHeight: 1 + Math.min(shown, Cockpit.NOW_MIN_ROWS),
+				};
 	return (
 		<box
 			style={{
 				flexDirection: "column",
-				flexGrow: 1,
-				flexBasis: 6,
-				minHeight: 6,
+				flexShrink: 1,
 				marginTop: 1,
+				...size,
 			}}
 		>
 			<text attributes={TextAttributes.BOLD}>{live ? "now" : "run trace"}</text>
@@ -178,7 +192,7 @@ export const NowFeed = ({
 				ref={scrollRef}
 				stickyScroll
 				stickyStart="bottom"
-				style={{ flexGrow: 1, maxHeight: 16 }}
+				style={{ flexGrow: 1 }}
 			>
 				{lines.length === 0 && <text fg={theme.muted}>no events yet</text>}
 				{lines.map((line, index) => {
