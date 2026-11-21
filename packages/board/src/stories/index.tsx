@@ -8,13 +8,15 @@ import type {
 	ActivityCard,
 	ActivityEvent,
 	ActivityLeft,
+	ActivitySource,
 	ActivityStep,
+	Header,
 	HeaderPart,
 } from "@kabane/extension";
 import type { QuestionView } from "@kabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { createRef, type ReactNode, useEffect, useRef } from "react";
+import { createRef, type ReactNode, useEffect, useMemo, useRef } from "react";
 import { Board } from "../board";
 import { CardHeader } from "../card-header";
 import { CardTab } from "../card-tab";
@@ -27,11 +29,9 @@ import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
 import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
-import { EventView, mapShare, Stream } from "../event-view";
-import { StatusBar } from "../footer";
+import { EventView, Stream } from "../event-view";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
-import { Keymap } from "../keymap";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import { BoardNav } from "../nav";
 import { NowFeed } from "../now-feed";
@@ -40,7 +40,6 @@ import {
 	type CopilotUpdate,
 	noActivity,
 } from "../ports";
-import { RunMapView } from "../run-map-view";
 import { SettingsOverlay } from "../settings-overlay";
 import { SettingsView } from "../settings-view";
 import { SPINNER_IDLE } from "../spinner";
@@ -796,6 +795,17 @@ const LIVE: ActivityCard = {
 	tab: true,
 	lanes: (RECHECK_LIVE.sessions ?? []).flatMap((s) => (s.lane ? [s.lane] : [])),
 	liveLanes: ["architecture-recheck", "docs-recheck"],
+	facts: [
+		{ label: "slots", value: "2/2" },
+		{ label: "continuations", value: "0/3" },
+		{ label: "spend", value: "$17.50 (codex unpriced)" },
+		{ label: "implementer", value: "claude opus" },
+		{ label: "verifier", value: "codex" },
+		{ label: "review", value: "triage" },
+		{ label: "gates", value: "check·test·build" },
+		{ label: "lenses", value: "functional·quality·docs·architecture·design" },
+		{ label: "land", value: "none" },
+	],
 	steps: [
 		...DONE,
 		RECHECK_LIVE,
@@ -885,54 +895,85 @@ const runRow = (
 	];
 };
 
+// A card that never changes, as a host's source would serve it: the event view polls it as it would
+// a live one.
+const staticSource = (
+	card: ActivityCard,
+	events: readonly ActivityEvent[],
+): ActivitySource => ({
+	load: async () => ok([card]),
+	card: async () => ok(card),
+	events: async (_id, after) => ok(events.filter((e) => e.seq > after)),
+});
+
+// A loop run's tab as the board mounts it: the tab bar over the event view, with the run row, the map
+// (`view` is how the human left it), what needs the human, "now" or a log, the copilot's row and the
+// footer. Stacked under 160 columns, split from there.
 const RunTab = ({
 	card,
 	queue = [],
-	events,
+	events = [],
 	state,
 	facts,
+	view: patch = {},
 }: {
 	card: ActivityCard;
 	queue?: readonly BoardTabs.Question[];
 	events?: readonly ActivityEvent[];
 	state: HeaderPart;
 	facts: readonly string[];
+	view?: Partial<BoardTabs.CardView>;
 }): ReactNode => {
-	const { width, height } = useTerminalDimensions();
 	const { tabs } = BoardTabs.withActivity(
 		BoardNav.init([], { scoped: false }),
 		[card],
 		queue,
 	);
 	const onTab = { ...tabs, active: card.id };
+	const view = { ...CardTab.view(onTab, card.id), ...patch };
+	const source = useMemo(() => staticSource(card, events), [card, events]);
+	const header = useMemo(
+		(): Header => async (_card, at) => ok([runRow(at.width, state, facts)]),
+		[state, facts],
+	);
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<TabBar tabs={onTab} cards={[card]} spinnerFrame="⠋" />
-			<CardHeader
-				header={async (_card, view) => ok([runRow(view.width, state, facts)])}
-				card={card}
-				width={width - 1}
-				expanded={false}
+			<EventView
+				cardId={card.id}
+				initialCard={card}
+				source={source}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				tabbed
+				lane={view.lane}
+				header={header}
+				map={{ view, asking: CardTab.asking(onTab, card.id) }}
+				banner={<CardTabQuestion tabs={onTab} onAnswer={() => {}} />}
+				keys={{
+					context: "cardTab",
+					situation: { map: true, log: view.lane !== null },
+				}}
+				pane={<Pane copilot={Fixtures.copilot()} chip={card.taskShortId} />}
 			/>
-			<RunMapView
-				card={card}
-				view={CardTab.view(onTab, card.id)}
-				asking={CardTab.asking(onTab, card.id)}
-				width={width - 1}
-				maxRows={Math.max(8, Math.floor(height * mapShare(card)))}
-				spinnerFrame="⠋"
-			/>
-			<CardTabQuestion tabs={onTab} onAnswer={() => {}} />
-			{events && (
-				<>
-					<FeedStory card={card} events={events} />
-					<Pane copilot={Fixtures.copilot()} chip={card.taskShortId} />
-					<StatusBar hints={Keymap.footer("cardTab", { map: true })} />
-				</>
-			)}
 		</box>
 	);
 };
+
+const LIVE_ROW: HeaderPart = { text: "● recheck", tone: "working", bold: true };
+const LIVE_FACTS = ["2 of 5 done", "2/2 live", "40m28s", "$17.50"];
+const ASKED_ROW: HeaderPart = {
+	text: "? docs-recheck waits on you",
+	tone: "accent",
+	bold: true,
+};
+const ASKED_FACTS = ["recheck 2 of 5 done", "2/2 live", "40m28s", "$17.50"];
+const FINISHED_ROW: HeaderPart = {
+	text: "✓ completed",
+	tone: "done",
+	bold: true,
+};
+const FINISHED_FACTS = ["6 findings left for you", "46m52s", "$17.50"];
 
 const RUN_MAP_STORIES: readonly Story[] = [
 	{
@@ -944,8 +985,9 @@ const RUN_MAP_STORIES: readonly Story[] = [
 		render: () => (
 			<RunTab
 				card={LIVE}
-				state={{ text: "● recheck", tone: "working", bold: true }}
-				facts={["2 of 5 done", "2/2 live", "40m28s", "$17.50"]}
+				events={NOW_EVENTS}
+				state={LIVE_ROW}
+				facts={LIVE_FACTS}
 			/>
 		),
 	},
@@ -960,12 +1002,8 @@ const RUN_MAP_STORIES: readonly Story[] = [
 				card={LIVE}
 				queue={[ASKED]}
 				events={NOW_EVENTS}
-				state={{
-					text: "? docs-recheck waits on you",
-					tone: "accent",
-					bold: true,
-				}}
-				facts={["recheck 2 of 5 done", "2/2 live", "40m28s", "$17.50"]}
+				state={ASKED_ROW}
+				facts={ASKED_FACTS}
 			/>
 		),
 	},
@@ -976,9 +1014,75 @@ const RUN_MAP_STORIES: readonly Story[] = [
 		height: 30,
 		render: () => (
 			<RunTab
-				card={FINISHED}
-				state={{ text: "✓ completed", tone: "done", bold: true }}
-				facts={["6 findings left for you", "46m52s", "$17.50"]}
+				card={TRACE_CARD}
+				events={TRACE_EVENTS}
+				state={FINISHED_ROW}
+				facts={FINISHED_FACTS}
+			/>
+		),
+	},
+	{
+		name: "run-map-short",
+		about:
+			"a finished run on a short pane, a step opened: the map windows and the footer stays",
+		width: 100,
+		height: 22,
+		render: () => (
+			<RunTab
+				card={TRACE_CARD}
+				events={TRACE_EVENTS}
+				state={FINISHED_ROW}
+				facts={FINISHED_FACTS}
+				view={{
+					folds: new Map([["recheck", true]]),
+					cursor: "step:recheck",
+					follow: false,
+				}}
+			/>
+		),
+	},
+	{
+		name: "cockpit-live",
+		about:
+			"from 160 columns: the map, the question and the run on the left, now over the cursor's log",
+		width: 200,
+		height: 50,
+		render: () => (
+			<RunTab
+				card={LIVE}
+				queue={[ASKED]}
+				events={NOW_EVENTS}
+				state={ASKED_ROW}
+				facts={ASKED_FACTS}
+			/>
+		),
+	},
+	{
+		name: "cockpit-finished",
+		about:
+			"a finished run split: what it left on the left, the trace over every session on the right",
+		width: 200,
+		height: 50,
+		render: () => (
+			<RunTab
+				card={TRACE_CARD}
+				events={TRACE_EVENTS}
+				state={FINISHED_ROW}
+				facts={FINISHED_FACTS}
+			/>
+		),
+	},
+	{
+		name: "cockpit-narrow",
+		about: "the split at its threshold, 160 columns, mid-run",
+		width: 160,
+		height: 40,
+		render: () => (
+			<RunTab
+				card={LIVE}
+				events={NOW_EVENTS}
+				state={LIVE_ROW}
+				facts={LIVE_FACTS}
 			/>
 		),
 	},
