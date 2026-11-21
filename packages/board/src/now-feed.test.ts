@@ -56,16 +56,16 @@ it("updates each fold at its first call across other lanes, until its own lane s
 	]);
 });
 
-it("only live sessions consume the six distinct series hues", () => {
+it("only live sessions take one of the six series slots", () => {
 	const lanes = ["a", "g", "h", "i", "j", "k", "l", "m"];
 	const live = lanes.slice(1);
-	const hues = Theme.liveHues(Theme.DARK, lanes, live);
-	expect(hues.has("a")).toBe(false);
-	expect(new Set(live.slice(0, 6).map((lane) => hues.get(lane))).size).toBe(6);
-	expect(hues.get("m")).toBe(Theme.DARK.secondary);
+	const slots = Theme.liveSlots(6, lanes, live);
+	expect(slots.has("a")).toBe(false);
+	expect(new Set(live.slice(0, 6).map((lane) => slots.get(lane))).size).toBe(6);
+	expect(slots.has("m")).toBe(false);
 });
 
-it("keeps a live session's hue while others start and end", () => {
+it("keeps a live session's slot while others start and end", () => {
 	const lanes = ["first", "second", "third", "fourth"];
 	const steps = [
 		["first"],
@@ -73,16 +73,37 @@ it("keeps a live session's hue while others start and end", () => {
 		["third", "second"],
 		["fourth", "third"],
 	];
-	const seen = new Map<string, Set<string | undefined>>();
+	const seen = new Map<string, Set<number | undefined>>();
+	let held: ReadonlyMap<string, number> = new Map();
 	for (const liveLanes of steps) {
 		const ordered = orderedLiveLanes({ lanes, liveLanes });
 		expect(ordered).toEqual(liveLanes.toReversed());
-		const hues = Theme.liveHues(Theme.DARK, lanes, ordered);
-		expect(new Set(hues.values()).size).toBe(ordered.length);
+		held = Theme.liveSlots(6, lanes, ordered, held);
+		expect(new Set(held.values()).size).toBe(ordered.length);
 		for (const lane of ordered)
-			seen.set(lane, (seen.get(lane) ?? new Set()).add(hues.get(lane)));
+			seen.set(lane, (seen.get(lane) ?? new Set()).add(held.get(lane)));
 	}
-	for (const hues of seen.values()) expect(hues.size).toBe(1);
+	for (const slots of seen.values()) expect(slots.size).toBe(1);
+});
+
+it("keeps a slot through a collision, when the session that won it ends", () => {
+	// Eight lanes on six slots: G's place gives slot 0, which A holds, so G took 1 and H 2.
+	const lanes = ["A", "B", "C", "D", "E", "F", "G", "H"];
+	const before = Theme.liveSlots(6, lanes, ["A", "G", "H"]);
+	expect([...before]).toEqual([
+		["A", 0],
+		["G", 1],
+		["H", 2],
+	]);
+	const after = Theme.liveSlots(6, lanes, ["G", "H"], before);
+	expect([...after]).toEqual([
+		["G", 1],
+		["H", 2],
+	]);
+	// The slot A freed goes to a session that arrives later: six live, six slots, none shared.
+	const full = Theme.liveSlots(6, lanes, ["B", "C", "D", "E", "G", "H"], after);
+	expect(new Set(full.values())).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+	expect([full.get("G"), full.get("H")]).toEqual([1, 2]);
 });
 
 it("traces timed steps from the card and run events from completion onwards", () => {

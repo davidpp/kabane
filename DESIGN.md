@@ -176,8 +176,9 @@ which is why the `-light` ramp has grays of its own rather than reusing the dark
   chip and the tag on each of its lines in a card's stream. Cyan, magenta, yellow, violet, teal
   and pink, a step darker on a light terminal; none is a status hue or the accent, so a tag never
   reads as a state. In a map's `now` feed, only live sessions take a series slot, and a session
-  keeps its slot while others start and end (`Theme.liveHues`). Their short names carry identity
-  with colour off and past six concurrent sessions. A single session needs no tag. On a card with
+  keeps its slot while others start and end, even when the session whose slot it gave way to ends
+  (`Theme.liveSlots`); a freed slot goes to a session that starts later. Their short names carry
+  identity with colour off and past six concurrent sessions. A single session needs no tag. On a card with
   lane chips, a lane keeps its hue by its place in the card’s list.
 
 ### Named Rules

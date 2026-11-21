@@ -44,7 +44,7 @@ import { eventStyle } from "./event-style";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
-import { NowFeed } from "./now-feed";
+import { type HueMemory, NowFeed } from "./now-feed";
 import { clicks, PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
@@ -320,6 +320,8 @@ export const EventView = ({
 	// Each session log's opened rows and place, by lane, kept while the arrangement around it changes
 	// (crossing SPLIT_COLS remounts it). One view per card, so per card.
 	const logs = useRef<LogMemory>(new Map()).current;
+	// The live sessions' hues in "now", kept as the arrangement remounts it (NowFeed).
+	const hues = useRef<HueMemory>(new Map()).current;
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
@@ -367,6 +369,7 @@ export const EventView = ({
 					scrollRef={scrollRef}
 					toolDetails={toolDetails}
 					logs={logs}
+					hues={hues}
 				/>
 			) : (
 				<>
@@ -454,6 +457,7 @@ type CockpitProps = {
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	toolDetails: boolean | undefined;
 	logs: LogMemory;
+	hues: HueMemory;
 };
 
 // The rows the regions share: what the footer leaves them, and never more, so the footer stays.
@@ -571,6 +575,7 @@ const StackedCockpit = (props: CockpitProps): ReactNode => {
 					width={width}
 					scrollRef={props.scrollRef}
 					spinnerFrame={spinnerFrame}
+					memory={props.hues}
 				/>
 			) : (
 				<SessionLog
@@ -607,6 +612,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 			width={right}
 			scrollRef={keys ? props.scrollRef : ownRef}
 			spinnerFrame={spinnerFrame}
+			memory={props.hues}
 			{...(rows === undefined ? {} : { rows })}
 		/>
 	);

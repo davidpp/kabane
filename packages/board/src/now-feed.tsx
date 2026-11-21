@@ -1,7 +1,13 @@
 /** @jsxImportSource @opentui/react */
 import type { ActivityCard, ActivityEvent } from "@kabane/extension";
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
-import { useMemo, type ReactNode, type RefObject } from "react";
+import {
+	useEffect,
+	useMemo,
+	useState,
+	type ReactNode,
+	type RefObject,
+} from "react";
 import { Cockpit } from "./cockpit";
 import { took } from "./elapsed";
 import { eventStyle } from "./event-style";
@@ -127,6 +133,9 @@ const shortTags = (
 	return tags;
 };
 
+/** The series slot each live lane was last drawn in, by lane (Theme.liveSlots). */
+export type HueMemory = Map<string, number>;
+
 const EMPTY: readonly string[] = [];
 export const orderedLiveLanes = (
 	card: Pick<ActivityCard, "lanes" | "liveLanes">,
@@ -143,6 +152,7 @@ export const NowFeed = ({
 	spinnerFrame,
 	scrollRef,
 	rows,
+	memory,
 }: {
 	card: ActivityCard;
 	events: readonly ActivityEvent[];
@@ -150,17 +160,34 @@ export const NowFeed = ({
 	spinnerFrame: string;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	rows?: number;
+	// The live lanes' series slots as last drawn, kept by the card's view: "now" is remounted as the
+	// cockpit's arrangement changes, and a session keeps its hue across that. Its own without one.
+	memory?: HueMemory;
 }): ReactNode => {
 	const theme = useTheme();
+	const [own] = useState(() => new Map<string, number>());
+	const held = memory ?? own;
 	const live = isInFlight(card);
 	const lanes = useMemo(() => orderedLiveLanes(card), [card]);
 	const lines = useMemo(
 		() => (live ? nowLines(events, lanes) : trace(card, events)),
 		[live, events, lanes, card],
 	);
+	const slots = useMemo(
+		() =>
+			Theme.liveSlots(theme.series.length, card.lanes ?? lanes, lanes, held),
+		[theme.series.length, card.lanes, lanes, held],
+	);
+	useEffect(() => {
+		held.clear();
+		for (const [lane, slot] of slots) held.set(lane, slot);
+	}, [held, slots]);
 	const hues = useMemo(
-		() => Theme.liveHues(theme, card.lanes ?? lanes, lanes),
-		[theme, card.lanes, lanes],
+		() =>
+			new Map(
+				[...slots].map(([lane, slot]) => [lane, Theme.seriesOf(theme, slot)]),
+			),
+		[slots, theme],
 	);
 	const tags = shortTags(card, lanes.length > 1 ? lanes : EMPTY);
 	const cols = Math.max(0, ...Array.from(tags.values(), (tag) => tag.length));
