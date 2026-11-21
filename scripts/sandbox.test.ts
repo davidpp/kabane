@@ -13,16 +13,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
+import { GitFixture } from "../packages/core/scope/git-fixture";
 
 const ROOT = resolve(import.meta.dir, "..");
 const TMP = mkdtempSync(join(tmpdir(), "kabane-sandbox-test-"));
-const CONFIG = join(
-	TMP,
-	"kabane-sandbox",
-	basename(ROOT),
-	".kabane",
-	"config.json",
-);
+const SANDBOX = join(TMP, "kabane-sandbox", basename(ROOT));
+const CONFIG = join(SANDBOX, ".kabane", "config.json");
 const AGENT = join(ROOT, "packages/acp/scripts/scripted-agent.ts");
 
 afterAll(() => rmSync(TMP, { recursive: true, force: true }));
@@ -76,6 +72,20 @@ describe("bun run sandbox --scripted", () => {
 		await after(await sandbox("list"), () => {
 			expect(config().loop).toBeUndefined();
 			expect(config().copilot).toBeUndefined();
+		});
+	}, 60_000);
+});
+
+describe("bun run sandbox", () => {
+	it("commits the seed it creates, so a loop run has a HEAD to cut its worktree from", async () => {
+		const repo = join(SANDBOX, "repo");
+		await after(await sandbox("--help"), () => {
+			expect(GitFixture.run(repo, ["rev-list", "--count", "HEAD"]).trim()).toBe(
+				"1",
+			);
+			expect(GitFixture.run(repo, ["ls-files"]).split("\n")).toEqual(
+				expect.arrayContaining(["CLAUDE.md", "package.json"]),
+			);
 		});
 	}, 60_000);
 });
