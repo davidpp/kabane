@@ -2,6 +2,7 @@ import { expect, it } from "bun:test";
 import type { ActivityEvent } from "@kabane/extension";
 import { nowLines, orderedLiveLanes, trace } from "./now-feed";
 import { Theme } from "./theme";
+import { ToolRows } from "./tool-rows";
 
 const event = (
 	seq: number,
@@ -47,7 +48,7 @@ it("updates each fold at its first call across other lanes, until its own lane s
 		["A", "B"],
 	);
 	expect(lines.map((r) => [r.lane, r.type, r.summary])).toEqual([
-		["A", "tools", "2 tools · 1 failed · 6s"],
+		["A", "tools", "2 tools · 1 failed · 6.0s"],
 		["B", "running-tools", "1 tool"],
 		["B", "thought", "thought 3"],
 		["A", "text", "text 6"],
@@ -111,4 +112,19 @@ it("traces timed steps from the card and run events from completion onwards", ()
 		{ type: "done", durationMs: 1200, summary: "inspect" },
 		after,
 	]);
+});
+
+it("times a fold as the log does: two overlapping 5s calls took 5s on both", () => {
+	const events: ActivityEvent[] = [
+		event(1, "A", "tool_call", "x"),
+		event(1, "A", "tool_call", "y"),
+		{ ...event(6, "A", "tool_completed", "x"), seq: 3 },
+		{ ...event(6, "A", "tool_completed", "y"), seq: 4 },
+	].map((e, n) => ({ ...e, seq: n + 1 }));
+	expect(nowLines(events, ["A"]).map((line) => line.summary)).toEqual([
+		"2 tools · 5.0s",
+	]);
+	const [group] = ToolRows.rows(events, true);
+	if (group?.type !== "group") throw new Error("expected a group");
+	expect(ToolRows.groupLabel(group.group)).toBe("2 tools · 5.0s");
 });

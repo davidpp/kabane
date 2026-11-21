@@ -30,15 +30,11 @@ const folded = ({ calls }: Fold): Line => {
 	const first = calls[0];
 	const failures = calls.filter((c) => c.status === "failed").length;
 	const running = calls.some((c) => c.status === "running");
-	const start = Date.parse(first?.at ?? "");
-	const end = calls.reduce(
-		(last, c) => (c.endedAt ? Math.max(last, Date.parse(c.endedAt)) : last),
-		-Infinity,
-	);
+	const spent = ToolRows.foldTime(calls);
 	const summary = [
 		`${calls.length} ${calls.length === 1 ? "tool" : "tools"}`,
 		...(failures ? [`${failures} failed`] : []),
-		...(end >= start ? [took(end - start)] : []),
+		...(spent !== undefined ? [spent] : []),
 	].join(" · ");
 	return {
 		lane: first?.lane,

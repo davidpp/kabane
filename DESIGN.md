@@ -308,7 +308,7 @@ against every glyph already here.
 | `⊘` | the detail's trail: a blocker still open | accent |
 | `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
 | spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
-| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open; a running call spins the group glyph | muted, working |
+| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open, timed from its first start to its last end so calls side by side count once, in the log and in `now` alike; a running call spins the group glyph | muted, working |
 | `!` | transcript: a harness's notice by its severity, or a loop's warning; a warning in the accent, since the session is not running as asked, an error in the failed hue, information muted | accent, failed, muted |
 
 ### Footer

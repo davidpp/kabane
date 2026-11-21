@@ -143,7 +143,7 @@ describe("ToolRows.rows", () => {
 		);
 	});
 
-	it("keeps a live run keyed as calls arrive, sums paired durations, and starts fresh after a thought", () => {
+	it("keeps a live run keyed as calls arrive, times it on the clock, and starts fresh after a thought", () => {
 		const events = [
 			ev({ type: "tool_call", summary: "Read a", callId: "r" }),
 			ev({ type: "tool_call", summary: "Build", callId: "b" }),
@@ -178,7 +178,8 @@ describe("ToolRows.rows", () => {
 		expect(finished.group.key).toBe(live.group.key);
 		expect(ToolRows.groupStatus(finished.group)).toBe("failed");
 		expect(ToolRows.groupLabel(finished.group)).toBe(
-			"3 tools · 1 failed · 13s",
+			// Read and Build ran side by side: 0 to 9s, not 4s and 9s added up.
+			"3 tools · 1 failed · 9.0s",
 		);
 		expect(thought?.type).toBe("event");
 		expect(next?.type).toBe("call");
