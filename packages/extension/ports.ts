@@ -160,6 +160,11 @@ export type ActivityEvent = {
 	severity?: NoticeSeverity;
 	// Which of the card's `lanes` this event belongs to; absent, it shows under every lane.
 	lane?: string;
+	// Include this event in the card's run-wide activity, including when it belongs to a lane.
+	run?: true;
+	// Earlier event sequence numbers already shown in this row's summary or detail. A transcript
+	// displays those events on their own until this row arrives.
+	includes?: readonly number[];
 	// The tool call this event belongs to, unique within its lane: a call and its end carry the same
 	// id and read as one row. Without one, an end pairs with the open call of the same summary.
 	callId?: string;

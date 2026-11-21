@@ -18,7 +18,7 @@ import {
 	TextAttributes,
 } from "@opentui/core";
 import { act, createRef, useEffect, useState } from "react";
-import { EventView, promptLines } from "./event-view";
+import { EventView, laneEvents, promptLines } from "./event-view";
 import type { BoardNav } from "./nav";
 import type { PlanEntry } from "./ports";
 import { noActivity } from "./ports";
@@ -27,6 +27,34 @@ import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
 const T0 = "2026-09-12T10:00:00.000Z";
+
+it("shows a lane's setup until its start includes it, and keeps its own run events", () => {
+	const setup = { at: T0, type: "progress", summary: "launch" };
+	const firstPage = [
+		{ ...setup, seq: 1, lane: "arch" },
+		{ ...setup, seq: 2, lane: "docs" },
+	] as const;
+	const started = {
+		at: T0,
+		seq: 3,
+		type: "phase",
+		lane: "arch",
+		summary: "started",
+		includes: [1],
+	};
+	const passed = {
+		at: T0,
+		seq: 4,
+		type: "done",
+		lane: "arch",
+		summary: "passed",
+		run: true as const,
+	};
+	const events = [...firstPage, started, passed];
+	expect(laneEvents(firstPage, "arch")).toEqual([firstPage[0]]);
+	expect(laneEvents(events, "arch")).toEqual([started, passed]);
+	expect(laneEvents(events, "docs")).toEqual([firstPage[1]]);
+});
 
 const PLAN: readonly PlanEntry[] = [
 	{ content: "read the issue", status: "completed" },

@@ -11,8 +11,12 @@ import type {
 	ActivityStep,
 	ActivityStepState,
 } from "@kabane/extension";
-import { type ColorInput, TextAttributes } from "@opentui/core";
-import type { ReactNode } from "react";
+import {
+	type BoxRenderable,
+	type ColorInput,
+	TextAttributes,
+} from "@opentui/core";
+import { type ReactNode, useState } from "react";
 import { elapsed, took } from "./elapsed";
 import { RunMap } from "./run-map";
 import { type Theme, useTheme } from "./theme";
@@ -321,6 +325,7 @@ const windowed = (
 	cursor: string | undefined,
 	max: number,
 ): { shown: readonly Entry[]; above: number; below: number } => {
+	if (max <= 0) return { shown: [], above: 0, below: 0 };
 	if (entries.length <= max) return { shown: entries, above: 0, below: 0 };
 	const at = Math.max(
 		0,
@@ -329,15 +334,15 @@ const windowed = (
 				entry.kind === "line" && entry.line.keys.includes(cursor ?? ""),
 		),
 	);
-	const room = Math.max(1, max - 2);
+	const room = max >= 3 ? max - 2 : max;
 	const start = Math.max(
 		0,
 		Math.min(entries.length - room, at - Math.floor(room / 2)),
 	);
 	return {
 		shown: entries.slice(start, start + room),
-		above: start,
-		below: entries.length - start - room,
+		above: max >= 3 ? start : 0,
+		below: max >= 3 ? entries.length - start - room : 0,
 	};
 };
 
@@ -431,12 +436,25 @@ export const RunMapView = ({
 				]
 			: []),
 	];
-	const { shown, above, below } = windowed(entries, cursor, maxRows);
+	// The header, question and footer take their actual height first. Window around the
+	// cursor using the rows flex layout leaves after the feed has its minimum.
+	const [height, setHeight] = useState(maxRows);
+	const { shown, above, below } = windowed(entries, cursor, height);
 	const issues = (card.left ?? []).filter(
 		(item) => item.taskId !== undefined || item.taskShortId !== undefined,
 	).length;
 	return (
-		<box style={{ flexDirection: "column", flexShrink: 0 }}>
+		<box
+			style={{
+				flexDirection: "column",
+				height: Math.min(entries.length, maxRows),
+				flexShrink: 1,
+				overflow: "hidden",
+			}}
+			onSizeChange={function (this: BoxRenderable) {
+				setHeight(this.height);
+			}}
+		>
 			<More count={above} theme={theme} />
 			{shown.map((entry) =>
 				entry.kind === "line" ? (

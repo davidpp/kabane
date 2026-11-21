@@ -6,6 +6,7 @@
 import { ok } from "@kabane/core";
 import type {
 	ActivityCard,
+	ActivityEvent,
 	ActivityLeft,
 	ActivityStep,
 	HeaderPart,
@@ -26,11 +27,14 @@ import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
 import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
-import { EventView, mapShare } from "../event-view";
+import { EventView, mapShare, Stream } from "../event-view";
+import { StatusBar } from "../footer";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
+import { Keymap } from "../keymap";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import { BoardNav } from "../nav";
+import { NowFeed } from "../now-feed";
 import {
 	type CopilotElicitation,
 	type CopilotUpdate,
@@ -884,11 +888,13 @@ const runRow = (
 const RunTab = ({
 	card,
 	queue = [],
+	events,
 	state,
 	facts,
 }: {
 	card: ActivityCard;
 	queue?: readonly BoardTabs.Question[];
+	events?: readonly ActivityEvent[];
 	state: HeaderPart;
 	facts: readonly string[];
 }): ReactNode => {
@@ -917,6 +923,13 @@ const RunTab = ({
 				spinnerFrame="⠋"
 			/>
 			<CardTabQuestion tabs={onTab} onAnswer={() => {}} />
+			{events && (
+				<>
+					<FeedStory card={card} events={events} />
+					<Pane copilot={Fixtures.copilot()} chip={card.taskShortId} />
+					<StatusBar hints={Keymap.footer("cardTab", { map: true })} />
+				</>
+			)}
 		</box>
 	);
 };
@@ -946,6 +959,7 @@ const RUN_MAP_STORIES: readonly Story[] = [
 			<RunTab
 				card={LIVE}
 				queue={[ASKED]}
+				events={NOW_EVENTS}
 				state={{
 					text: "? docs-recheck waits on you",
 					tone: "accent",
@@ -969,6 +983,165 @@ const RUN_MAP_STORIES: readonly Story[] = [
 		),
 	},
 ];
+
+const feedEvent = (
+	seq: number,
+	type: string,
+	summary: string,
+	lane?: string,
+	callId?: string,
+): ActivityEvent => ({
+	seq,
+	at: new Date(2026, 10, 20, 9, 15, seq).toISOString(),
+	type,
+	summary,
+	lane,
+	callId,
+});
+const docs = "docs-recheck";
+const arch = "architecture-recheck";
+const NOW_EVENTS: ActivityEvent[] = [
+	{
+		...feedEvent(1, "done", "gates · check, test, build", "PROJ-41"),
+		run: true,
+	},
+	{
+		...feedEvent(
+			2,
+			"progress",
+			"PROJ-41 merged into the run branch",
+			"PROJ-41",
+		),
+		run: true,
+	},
+	{
+		...feedEvent(3, "progress", "codex claims the docs recheck", docs),
+		run: true,
+	},
+	feedEvent(4, "phase", "codex rechecks the docs findings", docs),
+	feedEvent(5, "phase", "codex rechecks the architecture findings", arch),
+	feedEvent(6, "tool_call", "Read guide", docs, "a"),
+	feedEvent(7, "thought", "**Checking the storage boundary**", arch),
+	feedEvent(8, "tool_call", "Run examples", docs, "b"),
+	feedEvent(9, "tool_failed", "Run examples", docs, "b"),
+	feedEvent(10, "tool_completed", "Read guide", docs, "a"),
+	feedEvent(
+		11,
+		"text",
+		"The guide still names the removed flag. I'll check the replacement.",
+		docs,
+	),
+	feedEvent(12, "tool_call", "Read adapter", arch, "a"),
+	feedEvent(13, "permission", "Run the updated example?", docs),
+];
+const traceEnd: ActivityEvent = {
+	...feedEvent(18, "progress", "completed: plan-done"),
+	run: true,
+};
+const TRACE_CARD: ActivityCard = {
+	...FINISHED,
+	finishedAt: traceEnd.at,
+	steps: [
+		{
+			name: "gates",
+			state: "done",
+			result: "check · test · build",
+			durationMs: 14_000,
+		},
+		{
+			name: "recheck",
+			state: "done",
+			result: "8 confirmed · 1 reopened",
+			durationMs: 635_000,
+			sessions: [
+				{ name: "docs", state: "done", lane: docs },
+				{ name: "architecture", state: "done", lane: arch },
+			],
+		},
+		{ name: "land", state: "done", result: "merged into HEAD" },
+	],
+};
+const TRACE_EVENTS: ActivityEvent[] = [
+	...NOW_EVENTS,
+	feedEvent(14, "done", "docs checked", docs),
+	feedEvent(15, "done", "architecture checked", arch),
+	feedEvent(17, "done", "land · merged into HEAD"),
+	traceEnd,
+	{
+		...feedEvent(
+			19,
+			"done",
+			"pruned · worktree and branch removed: branch merged into HEAD",
+		),
+		run: true,
+	},
+];
+const SessionLog = (): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const claim = "codex claims PROJ-41: update the guide";
+	const launch = "codex-acp";
+	const mode = "mode: review";
+	const events: ActivityEvent[] = [
+		{ ...feedEvent(1, "progress", claim, docs), run: true },
+		feedEvent(2, "progress", launch, docs),
+		feedEvent(3, "progress", mode, docs),
+		{
+			...feedEvent(4, "phase", claim, docs),
+			includes: [1, 2, 3],
+			detail: { input: [launch, mode].join("\n") },
+		},
+		feedEvent(5, "text", "Updated the example in the guide.", docs),
+		{
+			...feedEvent(6, "done", "gates · storage check passed", arch),
+			run: true,
+		},
+		{ ...feedEvent(7, "done", "gates · docs check passed", docs), run: true },
+	];
+	return (
+		<Stream
+			card={LIVE}
+			events={events}
+			lane={docs}
+			lanes={[]}
+			width={width}
+			scrollRef={createRef<ScrollBoxRenderable>()}
+			tabbed
+			spinnerFrame="⠋"
+			toolDetails={false}
+		/>
+	);
+};
+
+const FeedStory = ({
+	card,
+	events,
+}: {
+	card: ActivityCard;
+	events: readonly ActivityEvent[];
+}): ReactNode => {
+	const { width } = useTerminalDimensions();
+	return (
+		<NowFeed
+			card={card}
+			events={events}
+			width={width}
+			scrollRef={useRef<ScrollBoxRenderable>(null)}
+			spinnerFrame="⠋"
+		/>
+	);
+};
+const nowStory = (
+	name: string,
+	about: string,
+	card: ActivityCard,
+	events = NOW_EVENTS,
+): Story => ({
+	name,
+	about,
+	width: 100,
+	height: 12,
+	render: () => <FeedStory card={card} events={events} />,
+});
 
 export const STORIES: readonly Story[] = [
 	{
@@ -1763,6 +1936,32 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	...RUN_MAP_STORIES,
+	{
+		name: "session-log",
+		about: "One session's start details and gate in a concurrent run",
+		width: 100,
+		height: 10,
+		render: () => <SessionLog />,
+	},
+	nowStory(
+		"now-two",
+		"Two sessions interleave while a tool fold updates in place",
+		LIVE,
+	),
+	nowStory("now-one", "The remaining live session drops its tag", {
+		...LIVE,
+		liveLanes: [docs],
+	}),
+	nowStory("now-between", "The run moves between steps", {
+		...LIVE,
+		liveLanes: [],
+	}),
+	nowStory(
+		"run-trace",
+		"The finished steps, landing and pruning",
+		TRACE_CARD,
+		TRACE_EVENTS,
+	),
 ];
 
 export const storyNamed = (name: string): Story | undefined =>

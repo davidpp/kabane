@@ -111,6 +111,36 @@ export namespace Theme {
 	export const seriesOf = (tokens: Tokens, index: number): string =>
 		tokens.series[index % tokens.series.length] ?? tokens.secondary;
 
+	/**
+	 * The hue of each live lane. Only live sessions hold a series slot. A slot comes from the
+	 * lane's place in the card's `lanes`, so a session keeps its hue while others start and
+	 * end; a slot an older live session holds passes to the next free one. Beyond the palette
+	 * the name carries identity.
+	 */
+	export const liveHues = (
+		tokens: Tokens,
+		lanes: readonly string[],
+		live: readonly string[],
+	): Map<string, string> => {
+		const hues = new Map<string, string>();
+		const taken = new Set<number>();
+		const size = tokens.series.length;
+		for (const [index, lane] of lanes.entries()) {
+			if (!live.includes(lane)) continue;
+			const slot = Array.from(
+				{ length: size },
+				(_, step) => (index + step) % size,
+			).find((candidate) => !taken.has(candidate));
+			if (slot !== undefined) taken.add(slot);
+			hues.set(
+				lane,
+				(slot !== undefined ? tokens.series[slot] : undefined) ??
+					tokens.secondary,
+			);
+		}
+		return hues;
+	};
+
 	// The ANSI slots the ink reads: magenta, yellow, cyan. Never blue, green or red, the terminal's
 	// cousins of the working, done and failed hues.
 	const INK_SLOTS = { heading: 5, code: 3, link: 6 } as const;
