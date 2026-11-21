@@ -67,22 +67,29 @@ export const RunFacts = ({
 			<text bg={surface} fg={theme.text} attributes={TextAttributes.BOLD}>
 				{" run"}
 			</text>
-			{Cockpit.factRows(facts, width - 1).map((row) => (
+			{Cockpit.factRows(facts, width - 2).map((row) => (
 				<text
 					key={row.map((fact) => fact.label).join(" ")}
 					bg={surface}
 					wrapMode="none"
 					style={{ height: 1, flexShrink: 0 }}
 				>
-					{" "}
-					{row.flatMap((fact, at) => [
-						<span key={`${fact.label}:label`} fg={theme.muted}>
-							{`${at > 0 ? " · " : ""}${fact.label} `}
-						</span>,
-						<span key={`${fact.label}:value`} fg={theme.text}>
-							{fact.value}
-						</span>,
-					])}
+					{/* A fact wider than the column alone on its row is cut with `…`. */}
+					{Segments.spans(
+						Segments.fit(
+							[
+								{ text: " ", fg: theme.text },
+								...row.flatMap((fact, at) => [
+									{
+										text: `${at > 0 ? " · " : ""}${fact.label} `,
+										fg: theme.muted,
+									},
+									{ text: fact.value, fg: theme.text },
+								]),
+							],
+							width - 1,
+						),
+					)}
 				</text>
 			))}
 		</box>
