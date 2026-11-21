@@ -73,6 +73,8 @@ const splitArgs = (argv: string[]): { own: Set<OwnFlag>; rest: string[] } => {
 
 // A CLAUDE.md and a gate give the dispatch extension's `/setup-dispatch` something real to read.
 // The seed has no tests, so the gate passes on none: a harness would otherwise chase a red gate.
+// It is committed: a loop run cuts its worktree from HEAD, and the first commit is what the scope
+// id derives from, so committing later would move the issues filed before it to another scope.
 const seedRepo = (): void => {
 	if (existsSync(REPO)) return;
 	mkdirSync(REPO, { recursive: true });
@@ -85,6 +87,13 @@ const seedRepo = (): void => {
 		join(REPO, "package.json"),
 		`${JSON.stringify({ name: "sandbox", private: true, scripts: { test: "bun test --pass-with-no-tests" } }, null, 2)}\n`,
 	);
+	GitFixture.run(REPO, ["add", "-A"]);
+	GitFixture.run(REPO, [
+		"commit",
+		"-q",
+		"-m",
+		"chore: seed the sandbox project",
+	]);
 };
 
 // Claude Code reads CLAUDE_CONFIG_DIR before HOME: a contributor's own would take setup's install

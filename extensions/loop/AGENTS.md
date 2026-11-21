@@ -89,10 +89,8 @@ bun run sandbox --scripted loop status <runId>    # until completed; events.json
 bun run sandbox show JGIT-1                       # the run's comment and its loop: work-log ref
 ```
 
-Commit the sandbox repo's seed files first, before adding the issues (the scope id, and so the
-issue prefix, changes with the first commit): `seedRepo` leaves them untracked, and `loop start`
-fails on git in a repository with no commit to cut the run's worktree from. The repo is the
-path the sandbox prints on every call: `git -C <repo> add -A && git -C <repo> commit -m seed`.
+The sandbox commits its seed files when it creates the repo, so `loop start` has a HEAD to cut
+the run's worktree from. A sandbox made before that has no commit: start it over with `--fresh`.
 
 ## Mistakes that are easy to make here
 
