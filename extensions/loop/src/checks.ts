@@ -1,9 +1,9 @@
 // A pass over the run's gates and what follows from it: a checkpoint commit when it is green and
 // the run has a worktree, naming the checklist items ticked since the last checkpoint of the same
 // task, the pass in run.json and on the trace, and the result on the tracker. A subtask that works
-// in a worktree of its own (`ClaimTrees`) has its gates and checkpoint there, and a green pass then
-// merges its branch into the run's; a checkpoint refused there, or a merge that conflicts, fails
-// the pass as a red gate would.
+// in a worktree of its own (`ClaimTrees`) has its checkpoint first, then the run's HEAD merged in,
+// and its gates on that merge; a green pass fast-forwards the run's branch to it. A checkpoint
+// refused there, or a merge that conflicts, fails the pass before any gate runs.
 // A subtask's pass goes on its work log, and a red one reopens it; the run's own final pass goes
 // on the parent's.
 import { type Result } from "@kabane/core";
@@ -28,6 +28,8 @@ export namespace Checks {
 	};
 
 	const NOTE_CHARS = 2_000;
+
+	const gitOf = (ctx: Ctx): Worktree.Git => ctx.deps.git ?? Worktree.git;
 
 	/** What a checkpoint read of its task's checklist: the items it names, and every one ticked. */
 	type Snapshot = { named: Checklists.Item[]; ticked: string[] };
@@ -66,39 +68,45 @@ export namespace Checks {
 		};
 	};
 
+	// A checkpoint's message: its first line, the checklist items it ticks, then `more`.
 	const message = (
-		ctx: Ctx,
-		subject: Subject,
-		results: readonly Gates.Result[],
+		first: string,
 		items: readonly Checklists.Item[],
+		more: readonly string[],
 	): string =>
 		[
-			`kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}`,
+			first,
 			...(items.length > 0
 				? [
 						`Ticked:\n${items.map((item) => `- ${item.handle} ${item.text}`).join("\n")}`,
 					]
 				: []),
-			results.length > 0
-				? `Gates passed: ${results.map((r) => r.name).join(", ")}.`
-				: "No gates configured.",
+			...more,
 		].join("\n\n");
 
-	// The checkpoint a green pass commits, if any: an error when git (or a hook of the user's)
+	/** What a checkpoint's message says: `first` in place of the subject's, then `more`. */
+	type Wording = { first?: string; more: readonly string[] };
+
+	// The checkpoint `dir`'s pass commits, if any: an error when git (or a hook of the user's)
 	// refused it, its changes left uncommitted where they are.
 	const commit = async (
 		ctx: Ctx,
 		subject: Subject,
-		results: readonly Gates.Result[],
 		dir: string | undefined,
+		wording: Wording,
 	): Promise<Result<Pick<Gates.Run, "checkpoint" | "ticked">>> => {
 		if (dir === undefined) return ok({});
 		const read = await snapshot(ctx, subject);
 		const items = read?.named ?? [];
 		const made = await Worktree.checkpoint(
 			dir,
-			message(ctx, subject, results, items),
-			ctx.deps.git,
+			message(
+				wording.first ??
+					`kabane loop ${ctx.run.id}: ${subject.label} ${subject.title}`,
+				items,
+				wording.more,
+			),
+			gitOf(ctx),
 		);
 		const tag = subject.lane ? { lane: subject.lane } : {};
 		if (!made.ok) {
@@ -112,11 +120,7 @@ export namespace Checks {
 		// Nothing uncommitted is not nothing done: the session may have committed its work itself,
 		// and the tree's HEAD is then that work.
 		if (made.value === undefined) {
-			const at = await (ctx.deps.git ?? Worktree.git)(dir, [
-				"rev-parse",
-				"--short=12",
-				"HEAD",
-			]);
+			const at = await gitOf(ctx)(dir, ["rev-parse", "--short=12", "HEAD"]);
 			RunState.event(ctx, {
 				...tag,
 				type: "checkpoint",
@@ -157,7 +161,8 @@ export namespace Checks {
 	/**
 	 * `gate`, for a subject `ready` settles once the pass's turn comes rather than when it queues:
 	 * the tracker may change while it waits behind another pass. Undefined, it runs nothing. In a
-	 * subtask's own `tree` the pass waits for no other: only its merge into the run's branch does.
+	 * subtask's own `tree`, the pass merges the run's HEAD in before its gates and lands by a
+	 * fast-forward (`ClaimTrees`).
 	 */
 	export const gateWhen = (
 		ctx: Ctx,
@@ -179,12 +184,13 @@ export namespace Checks {
 					: runPlace(ctx.run),
 			);
 		};
-		return tree ? body() : queued(ctx, body);
+		return queued(ctx, body);
 	};
 
-	// One pass at a time in the run's tree, and one merge into it: two sessions ending together
-	// there share a directory, and two passes would run the gates over each other and race for
-	// git's index.
+	// One pass at a time. Two sessions ending together in the run's tree share a directory, and two
+	// passes would run the gates over each other and race for git's index. A pass in a subtask's
+	// own tree holds the run's HEAD still from its merge into that tree to the fast-forward onto
+	// it, so what its gates ran on is what lands.
 	const queued = <T>(ctx: Ctx, body: () => Promise<T>): Promise<T> => {
 		const pass = ctx.gating.then(body);
 		ctx.gating = pass.catch(() => undefined);
@@ -215,55 +221,6 @@ export namespace Checks {
 		return task.ok && (!task.value || task.value.state === "cancelled");
 	};
 
-	// A green pass in a subtask's tree, merged into the run's branch: the commit that left it at, or
-	// the merge's failure as a red result for the subtask's next brief. Undefined when the subtask
-	// was dropped before its merge's turn came: its tree stays held, for `Claims.settleHeld` to free
-	// with its branch kept, as it frees any a cancelled or deleted subtask holds.
-	const mergeIn = async (
-		ctx: Ctx,
-		subject: Subject,
-		tree: ClaimTrees.Tree,
-	): Promise<{ merged: string } | { failed: Gates.Result } | undefined> => {
-		const started = performance.now();
-		const merged = await queued(ctx, async () =>
-			(await dropped(ctx, subject))
-				? undefined
-				: ClaimTrees.merge(ctx, tree, {
-						id: subject.taskId ?? ctx.run.parentId,
-						shortId: subject.label,
-						title: subject.title,
-					}),
-		);
-		const tag = subject.lane ? { lane: subject.lane } : {};
-		if (merged === undefined) {
-			RunState.event(ctx, {
-				...tag,
-				type: "warning",
-				task: subject.label,
-				summary: `${subject.label} not merged: it was cancelled or deleted while its pass ran`,
-			});
-			return undefined;
-		}
-		RunState.event(ctx, {
-			...tag,
-			type: merged.ok ? "merged" : "merge_conflict",
-			task: subject.label,
-			summary: merged.ok
-				? `${subject.label} merged into ${RunStore.branchOf(ctx.run)} at ${merged.value.slice(0, 12)}`
-				: merged.error.message,
-			...(merged.ok ? { data: { sha: merged.value } } : {}),
-		});
-		if (merged.ok) return { merged: merged.value };
-		return {
-			failed: refused(
-				"merge",
-				`git merge --no-ff ${tree.branch}`,
-				started,
-				merged.error.message,
-			),
-		};
-	};
-
 	// One pass in or out of `gating`, for the header: a pass under way shows as running, never as
 	// the result of the one before it.
 	const marking = (ctx: Ctx, label: string, running: boolean): void => {
@@ -289,12 +246,36 @@ export namespace Checks {
 		}
 	};
 
-	const passNow = async (
+	type Outcome = Pick<
+		Gates.Run,
+		"results" | "ok" | "checkpoint" | "ticked" | "merged"
+	>;
+
+	// The pass, in run.json.
+	const save = async (
 		ctx: Ctx,
 		subject: Subject,
-		place: Place,
+		{ dir, tree }: Place,
+		outcome: Outcome,
 	): Promise<Gates.Run> => {
-		const { dir, tree } = place;
+		const pass: Gates.Run = {
+			at: ctx.now().toISOString(),
+			...(subject.taskId ? { taskId: subject.taskId } : {}),
+			...outcome,
+			tree: await ctx.tree(dir),
+			...(tree ? { branch: tree.branch } : {}),
+		};
+		RunState.save(ctx, { ...ctx.run, gateRuns: [...ctx.run.gateRuns, pass] });
+		return pass;
+	};
+
+	// The gates in `dir`, on the trace: `on` says what they run on, `none` what a pass with none does.
+	const runGates = async (
+		ctx: Ctx,
+		subject: Subject,
+		dir: string,
+		{ on, none }: { on: string; none: string },
+	): Promise<{ ran: Gates.Result[]; green: boolean }> => {
 		const { gates } = ctx.run.config;
 		const tag = subject.lane ? { lane: subject.lane } : {};
 		RunState.event(ctx, {
@@ -302,8 +283,8 @@ export namespace Checks {
 			type: "gates",
 			task: subject.label,
 			summary: Gates.configured(gates)
-				? `gates for ${subject.label}: ${Object.keys(gates).join(", ")}`
-				: `no gates configured for ${subject.label}; checkpointing it`,
+				? `gates for ${subject.label}${on}: ${Object.keys(gates).join(", ")}`
+				: `no gates configured for ${subject.label}${on}${none}`,
 		});
 		const ran = await Gates.run(
 			gates,
@@ -318,51 +299,198 @@ export namespace Checks {
 			task: subject.label,
 			summary: ran.map(Gates.describe).join(" · ") || "no gate ran",
 		});
-		const started = performance.now();
-		const committed = green
-			? await commit(ctx, subject, ran, place.worktree)
-			: ok({});
-		// In a subtask's own tree, a checkpoint refused fails the pass: its work is not on its
-		// branch, so nothing of it would merge, and freeing the tree would throw it away. The
-		// subtask keeps the tree, its work uncommitted there, for its next claim.
-		const merge =
-			!green || !tree
-				? undefined
-				: committed.ok
-					? await mergeIn(ctx, subject, tree)
-					: {
-							failed: refused(
-								"checkpoint",
-								"git commit",
-								started,
-								committed.error.message,
-							),
-						};
-		const results = merge && "failed" in merge ? [...ran, merge.failed] : ran;
-		const pass: Gates.Run = {
-			at: ctx.now().toISOString(),
-			...(subject.taskId ? { taskId: subject.taskId } : {}),
-			results,
-			ok: green && !(merge && "failed" in merge),
-			tree: await ctx.tree(dir),
-			...(committed.ok ? committed.value : {}),
-			...(tree ? { branch: tree.branch } : {}),
-			...(merge && "merged" in merge ? { merged: merge.merged } : {}),
-		};
-		RunState.save(ctx, { ...ctx.run, gateRuns: [...ctx.run.gateRuns, pass] });
-		return pass;
+		return { ran, green };
 	};
+
+	const passNow = (
+		ctx: Ctx,
+		subject: Subject,
+		place: Place,
+	): Promise<Gates.Run> =>
+		place.tree
+			? treePass(ctx, subject, { ...place, tree: place.tree })
+			: runPass(ctx, subject, place);
+
+	// A pass in the run's own tree: the gates, then a green pass's checkpoint, whose refusal is a
+	// warning and leaves the work uncommitted there.
+	const runPass = async (
+		ctx: Ctx,
+		subject: Subject,
+		place: Place,
+	): Promise<Gates.Run> => {
+		const { ran, green } = await runGates(ctx, subject, place.dir, {
+			on: "",
+			none: "; checkpointing it",
+		});
+		const committed = green
+			? await commit(ctx, subject, place.worktree, {
+					more: [
+						ran.length > 0
+							? `Gates passed: ${ran.map((r) => r.name).join(", ")}.`
+							: "No gates configured.",
+					],
+				})
+			: ok({});
+		return save(ctx, subject, place, {
+			results: ran,
+			ok: green,
+			...(committed.ok ? committed.value : {}),
+		});
+	};
+
+	// A pass in a subtask's own tree (`ClaimTrees`): its session's work committed, the run's HEAD
+	// merged in, the gates on that merge, and a green pass fast-forwarding the run's branch to it.
+	// A checkpoint refused fails the pass, its work left uncommitted in the tree the subtask keeps;
+	// a merge that conflicts fails it too, its conflicts left there mid-merge. Either way no gate
+	// runs. A subtask cancelled or deleted while its gates ran does not land: its tree stays held,
+	// for `Claims.settleHeld` to free with its branch kept.
+	const treePass = async (
+		ctx: Ctx,
+		subject: Subject,
+		place: Place & { tree: ClaimTrees.Tree },
+	): Promise<Gates.Run> => {
+		const { tree } = place;
+		const into = RunStore.branchOf(ctx.run);
+		const merging = `kabane loop ${ctx.run.id}: merge ${into} into ${tree.branch} for ${subject.label}`;
+		const started = performance.now();
+		// A merge its last pass left for its session to resolve: what this checkpoint concludes.
+		const resolving =
+			(await Worktree.mergeHead(tree.dir, gitOf(ctx))) === undefined
+				? undefined
+				: (Gates.lastFailure(
+						ctx.run.gateRuns,
+						subject.taskId ?? ctx.run.parentId,
+					)?.conflicts ?? []);
+		const committed = await commit(
+			ctx,
+			subject,
+			tree.dir,
+			resolving === undefined
+				? { more: [] }
+				: {
+						first: merging,
+						more:
+							resolving.length > 0
+								? [`Resolves the conflicts in ${resolving.join(", ")}.`]
+								: [],
+					},
+		);
+		if (!committed.ok)
+			return save(ctx, subject, place, {
+				results: [
+					refused("checkpoint", "git commit", started, committed.error.message),
+				],
+				ok: false,
+			});
+		const kept = committed.value;
+		const caught = await ClaimTrees.catchUp(ctx, tree, merging);
+		if (!caught.ok || caught.value.length > 0)
+			return save(ctx, subject, place, {
+				results: [notCaughtUp(ctx, subject, tree, caught, started)],
+				ok: false,
+				...kept,
+			});
+		const { ran, green } = await runGates(ctx, subject, place.dir, {
+			on: ` on ${tree.branch} with ${into} merged in`,
+			none: "",
+		});
+		if (!green)
+			return save(ctx, subject, place, { results: ran, ok: false, ...kept });
+		return save(ctx, subject, place, {
+			...(await landAfter(ctx, subject, tree, ran)),
+			...kept,
+		});
+	};
+
+	// The run's HEAD not merged into a subtask's `tree`, conflicting there or refused: the red
+	// `merge` result its next brief quotes.
+	const notCaughtUp = (
+		ctx: Ctx,
+		subject: Subject,
+		tree: ClaimTrees.Tree,
+		caught: Result<string[]>,
+		started: number,
+	): Gates.Result => {
+		const into = RunStore.branchOf(ctx.run);
+		const tail = caught.ok
+			? `The run's branch ${into} has moved since ${subject.label} was cut, and merging it into ${tree.branch} left conflicts in ${caught.value.join(", ")}. The merge is in progress in this worktree, with the conflicts left for you: resolve them, keeping what both sides meant, then call kabane_done again. The runner commits the merge, then runs the gates on it.`
+			: `The run's branch ${into} did not merge into ${tree.branch}: ${caught.error.message}`;
+		RunState.event(ctx, {
+			...(subject.lane ? { lane: subject.lane } : {}),
+			type: caught.ok ? "merge_conflict" : "warning",
+			task: subject.label,
+			summary: caught.ok
+				? `merging ${into} into ${tree.branch} left conflicts in ${caught.value.join(", ")}: no gate runs until ${subject.label} resolves them`
+				: `${into} not merged into ${tree.branch}: ${caught.error.message}`,
+		});
+		return {
+			...refused("merge", `git merge ${into}`, started, tail),
+			...(caught.ok ? { conflicts: caught.value } : {}),
+		};
+	};
+
+	// A green pass in a subtask's `tree`, landed on the run's branch by a fast-forward: what the
+	// pass records. A subtask dropped while its gates ran does not land, and its pass stays green.
+	const landAfter = async (
+		ctx: Ctx,
+		subject: Subject,
+		tree: ClaimTrees.Tree,
+		ran: Gates.Result[],
+	): Promise<Pick<Gates.Run, "results" | "ok" | "merged">> => {
+		const tag = subject.lane ? { lane: subject.lane } : {};
+		if (await dropped(ctx, subject)) {
+			RunState.event(ctx, {
+				...tag,
+				type: "warning",
+				task: subject.label,
+				summary: `${subject.label} not merged: it was cancelled or deleted while its pass ran`,
+			});
+			return { results: ran, ok: true };
+		}
+		const started = performance.now();
+		const landed = await ClaimTrees.land(ctx, tree);
+		RunState.event(ctx, {
+			...tag,
+			type: landed.ok ? "merged" : "warning",
+			task: subject.label,
+			summary: landed.ok
+				? `${subject.label} merged into ${RunStore.branchOf(ctx.run)} at ${landed.value.slice(0, 12)}, a fast-forward to what its gates ran on`
+				: landed.error.message,
+			...(landed.ok ? { data: { sha: landed.value } } : {}),
+		});
+		return landed.ok
+			? { results: ran, ok: true, merged: landed.value }
+			: {
+					results: [
+						...ran,
+						refused(
+							"merge",
+							`git merge --ff-only ${tree.branch}`,
+							started,
+							landed.error.message,
+						),
+					],
+					ok: false,
+				};
+	};
+
+	/** Why a red result reopens its subtask, as the trace says it: `merge conflict in a.ts`. */
+	export const why = (failed: Gates.Result): string =>
+		failed.conflicts
+			? `merge conflict in ${failed.conflicts.join(", ")}`
+			: Gates.describe(failed);
 
 	/**
 	 * Put a pass on the tracker: every gate's result (and the checkpoint) on `taskId`'s work log,
 	 * the first failure's output as its note. A red gate on a subtask reopens it to `next`, so it
 	 * is claimed again with that output in its brief; a gate the run's stop killed reopens nothing.
+	 * Why it reopened the subtask, when it did.
 	 */
 	export const record = async (
 		ctx: Ctx,
 		pass: Gates.Run,
 		target: { taskId: string; label: string; lane?: string; assignee?: string },
-	): Promise<void> => {
+	): Promise<string | undefined> => {
 		const { taskId } = target;
 		const failed = pass.results.find((r) => !r.ok);
 		const refs = [
@@ -401,7 +529,7 @@ export namespace Checks {
 			failed === undefined ||
 			failed.exit === null
 		)
-			return;
+			return undefined;
 		// A human can park, cancel, retype or hand off the work while its gates run. A red
 		// result only reopens the done issue owned by the claim that requested those gates.
 		const current = await ctx.deps.host.record.get({ id: taskId });
@@ -410,14 +538,14 @@ export namespace Checks {
 				type: "warning",
 				summary: `not read after a red gate: ${current.error.message}`,
 			});
-			return;
+			return undefined;
 		}
 		if (
 			current.value?.kind !== "issue" ||
 			current.value.state !== "done" ||
 			current.value.assignee !== target.assignee
 		)
-			return;
+			return undefined;
 		const reopened = await ctx.deps.host.record.edit({
 			id: taskId,
 			state: "next",
@@ -427,8 +555,9 @@ export namespace Checks {
 			task: target.label,
 			type: reopened.ok ? "reopened" : "warning",
 			summary: reopened.ok
-				? `${target.label} reopened: ${Gates.describe(failed)}`
+				? `${target.label} reopened: ${why(failed)}`
 				: `not reopened after a red gate: ${reopened.error.message}`,
 		});
+		return reopened.ok ? why(failed) : undefined;
 	};
 }

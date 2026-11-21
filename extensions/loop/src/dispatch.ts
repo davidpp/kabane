@@ -20,7 +20,7 @@ import type { LoopConfig } from "./config";
 import type { Gates } from "./gates";
 import { LoopPlan } from "./plan";
 import { err, ok, tryCatch } from "./result";
-import type { Retry } from "./retry";
+import { Retry } from "./retry";
 import { Review } from "./review";
 import { Route } from "./route";
 import { SERVER_NAME, actorUri } from "./session-identity";
@@ -636,7 +636,10 @@ export namespace Dispatch {
 		else if (claim.resumes)
 			return resume(claim, connection, options, sink, {
 				...claim.resumes,
-				purpose: " for a gate retry",
+				purpose:
+					claim.work.kind === "implement" && claim.work.retry
+						? Retry.purpose(claim.work.retry)
+						: " for a gate retry",
 				instead: "a new session gets the full brief",
 			});
 		const started = await AcpClient.newSession(connection, options);

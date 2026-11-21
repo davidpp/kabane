@@ -130,10 +130,11 @@ const runOn = async (
 };
 
 // Each prompt: note the session as live (and how many were, itself included) and where it runs,
-// write its subtask's files there (or, when the runner says its branch did not merge, the
-// resolution in `<task>.resolve.json`), wait until `together` sessions have started when that
-// marker says so, then close the subtask. Reopened, a subtask with a `<task>.cancel` marker
-// cancels itself instead.
+// write its subtask's files there (or, when the runner says merging the run's branch in left
+// conflicts, the resolution in `<task>.resolve.json`), wait until `together` sessions have started
+// when that marker says so, then close the subtask. Reopened, a subtask with a `<task>.cancel`
+// marker cancels itself instead. With a `resume` marker it advertises session/resume and reports
+// a tenth of its window used, so a retry resumes its session.
 const AGENT = `
 import { createInterface } from "node:readline";
 import { existsSync, readFileSync, readdirSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
@@ -146,11 +147,14 @@ const reply = (id, result) => console.log(JSON.stringify({ jsonrpc: "2.0", id, r
 let task;
 createInterface({ input: process.stdin }).on("line", async (line) => {
  const message = JSON.parse(line);
- if (message.method === "initialize") reply(message.id, { protocolVersion: message.params.protocolVersion, agentCapabilities: {} });
- if (message.method === "session/new") reply(message.id, { sessionId: "fixture" });
+ const resume = existsSync(join(script, "resume"));
+ if (message.method === "initialize") reply(message.id, { protocolVersion: message.params.protocolVersion, agentCapabilities: resume ? { sessionCapabilities: { resume: {} } } : {} });
+ if (message.method === "session/new") reply(message.id, { sessionId: "fixture-" + crypto.randomUUID() });
+ if (message.method === "session/resume") reply(message.id, {});
  if (message.method !== "session/prompt") return;
  const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
- task ??= /Your subtask is ([^.]+)\\./.exec(text)?.[1];
+ task ??= (/Your subtask is ([^.]+)\\./.exec(text) ?? /^After you called kabane_done on ([^,]+),/.exec(text))?.[1];
+ if (resume) console.log(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: message.params.sessionId, update: { sessionUpdate: "usage_update", used: 10, size: 100 } } }));
  if (!task) process.exit(2);
  const live = join(script, "live", task);
  writeFileSync(live, "");
@@ -165,7 +169,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   if (!cancelled.ok) process.exit(3);
   return reply(message.id, { stopReason: "end_turn" });
  }
- const conflicted = text.includes("did not merge into the run's branch");
+ const conflicted = text.includes("left conflicts in");
  const writes = JSON.parse(readFileSync(join(script, task + (conflicted ? ".resolve.json" : ".files.json")), "utf8"));
  for (const [path, content] of Object.entries(writes)) writeFileSync(path, content);
  const together = join(script, "together");
@@ -268,7 +272,9 @@ describe("Subtasks in worktrees of their own", () => {
 					.map((e) => e.task)
 					.sort(),
 			).toEqual([label(a), label(b)].sort());
-			// Each checkpoint has only its own subtask's file, and the run's checkpoints are the merges.
+			// Each checkpoint has only its own subtask's file. The first to land moved the run's
+			// branch to its checkpoint; the second had the run's HEAD merged in over its own, and the
+			// run's branch moved to that merge. Both by a fast-forward: the run's branch is a line.
 			for (const [task, file] of [
 				[a, "a.txt"],
 				[b, "b.txt"],
@@ -276,10 +282,15 @@ describe("Subtasks in worktrees of their own", () => {
 				const [pass] = passFor(ended, task);
 				expect(pass?.ok).toBe(true);
 				expect(changed(worktree, pass?.checkpoint ?? "")).toEqual([file]);
-				expect(gitIn(worktree, "rev-parse", `${pass?.merged}^2`)).toBe(
-					pass?.checkpoint ?? "",
-				);
 			}
+			const [first, second] = ended.gateRuns;
+			expect(first?.merged).toBe(first?.checkpoint ?? "");
+			expect(gitIn(worktree, "rev-parse", `${second?.merged}^1`)).toBe(
+				second?.checkpoint ?? "",
+			);
+			expect(gitIn(worktree, "rev-parse", `${second?.merged}^2`)).toBe(
+				first?.merged ?? "",
+			);
 			expect(RunStore.checkpoints(ended)).toEqual(
 				ended.gateRuns.flatMap((r) => (r.merged ? [r.merged] : [])),
 			);
@@ -291,60 +302,112 @@ describe("Subtasks in worktrees of their own", () => {
 		SLOW_MS,
 	);
 
-	it(
-		"reopens a subtask whose branch conflicts, with the conflict in its brief, and merges its resolution",
-		async () => {
-			const { parent, subtasks } = await plan(
-				{ "shared.txt": "from the first\n" },
-				{ "shared.txt": "from the second\n" },
-			);
-			const [first, second] = subtasks;
-			if (!first || !second) throw new Error("no subtasks");
-			writeFileSync(join(script, "together"), "2");
-			for (const task of subtasks)
-				writeFileSync(
-					join(script, `${label(task)}.resolve.json`),
-					JSON.stringify({ "shared.txt": "from both\n" }),
+	for (const resume of [false, true])
+		it(
+			`sends a subtask whose merge of the run's branch conflicts back to its session before any gate runs, then lands its resolution by a fast-forward${resume ? ", in the session it resumes" : ""}`,
+			async () => {
+				const { parent, subtasks } = await plan(
+					{ "shared.txt": "from the first\n" },
+					{ "shared.txt": "from the second\n" },
 				);
-			await runOn(parent);
+				const [first, second] = subtasks;
+				if (!first || !second) throw new Error("no subtasks");
+				writeFileSync(join(script, "together"), "2");
+				if (resume) writeFileSync(join(script, "resume"), "");
+				for (const task of subtasks)
+					writeFileSync(
+						join(script, `${label(task)}.resolve.json`),
+						JSON.stringify({ "shared.txt": "from both\n" }),
+					);
+				// Each gate run says where it ran and on what commit.
+				const ran = join(script, "gates.log");
+				await runOn(parent, {
+					gates: { where: `echo "$PWD $(git rev-parse HEAD)" >> ${ran}` },
+				});
 
-			const ended = await drive();
+				const ended = await drive();
 
-			expect([ended.status, ended.exit?.reason]).toEqual([
-				"completed",
-				"plan-done",
-			]);
-			// Whichever merged second conflicted, and only it was reopened.
-			const [conflict, ...others] = events("merge_conflict");
-			expect(others).toEqual([]);
-			const loser = subtasks.find((t) => label(t) === conflict?.task);
-			if (!loser) throw new Error("no conflict");
-			expect(conflict?.summary).toContain("conflicts in shared.txt");
-			const reopened = events("reopened").map((e) => e.summary);
-			expect(reopened).toHaveLength(1);
-			expect(reopened[0]).toStartWith(
-				`${label(loser)} reopened: merge failed (exit 1)`,
-			);
-			// The retry's brief names the conflict and that it is left in its worktree to resolve.
-			const prompts = lines(join(script, `${label(loser)}.prompts`)).map((l) =>
-				String(JSON.parse(l)),
-			);
-			expect(prompts).toHaveLength(2);
-			expect(prompts[1]).toContain("the `merge` gate");
-			expect(prompts[1]).toContain("conflicts in shared.txt");
-			expect(prompts[1]).toContain("left for you: resolve them");
-			// It retried in the worktree it held, and its resolution merged.
-			const claims = ended.claims.filter((c) => c.taskId === loser.id);
-			expect(claims.map((c) => c.worktree)).toEqual([
-				claims[0]?.worktree,
-				claims[0]?.worktree,
-			]);
-			const worktree = ended.worktree ?? "";
-			expect(gitIn(worktree, "show", "HEAD:shared.txt")).toBe("from both");
-			expect(passFor(ended, loser).map((p) => p.ok)).toEqual([false, true]);
-		},
-		SLOW_MS,
-	);
+				expect([ended.status, ended.exit?.reason]).toEqual([
+					"completed",
+					"plan-done",
+				]);
+				// Whichever passed second conflicted, and only it was reopened.
+				const [conflict, ...others] = events("merge_conflict");
+				expect(others).toEqual([]);
+				const loser = subtasks.find((t) => label(t) === conflict?.task);
+				const winner = subtasks.find((t) => t !== loser);
+				if (!loser || !winner) throw new Error("no conflict");
+				expect(conflict?.summary).toContain("left conflicts in shared.txt");
+				// No gate ran on its tree before the conflict was resolved, and then once, on the merge
+				// that landed: the run's branch is at the commit its gates ran on, so it moved by a
+				// fast-forward.
+				const claims = ended.claims.filter((c) => c.taskId === loser.id);
+				const tree = claims[0]?.worktree ?? "missing";
+				expect(claims.map((c) => c.worktree)).toEqual([tree, tree]);
+				const loserPasses = passFor(ended, loser);
+				expect(loserPasses.map((p) => p.ok)).toEqual([false, true]);
+				expect(loserPasses[0]?.results.map((r) => r.name)).toEqual(["merge"]);
+				expect(loserPasses[0]?.results[0]?.conflicts).toEqual(["shared.txt"]);
+				const worktree = ended.worktree ?? "";
+				const head = gitIn(worktree, "rev-parse", "HEAD");
+				expect(lines(ran).filter((l) => l.startsWith(`${tree} `))).toEqual([
+					`${tree} ${head}`,
+				]);
+				expect(loserPasses[1]?.merged).toBe(head);
+				expect(gitIn(worktree, "show", "HEAD:shared.txt")).toBe("from both");
+				// The commit that resolves the conflict says it is the merge of the run's branch.
+				const branch = `kabane-loop/run-1--${label(loser).toLowerCase()}`;
+				const resolution = loserPasses[1]?.checkpoint ?? "";
+				expect(
+					gitIn(worktree, "show", "-s", "--format=%B", resolution),
+				).toStartWith(
+					`kabane loop run-1: merge kabane-loop/run-1 into ${branch} for ${label(loser)}\n\nResolves the conflicts in shared.txt.`,
+				);
+				expect(gitIn(worktree, "rev-parse", `${resolution}^2`)).toBe(
+					passFor(ended, winner)[0]?.merged ?? "",
+				);
+				// The trace says it was a conflict, from the reopen to the session that resolves it.
+				const read = RunStore.readEvents(home, "run-1");
+				if (!read.ok) throw read.error;
+				const told = read.value
+					.filter(
+						(e) =>
+							(e.task === label(loser) || e.lane?.startsWith(label(loser))) &&
+							[
+								"merge_conflict",
+								"reopened",
+								"session_end",
+								"session_resumed",
+							].includes(e.type),
+					)
+					.map((e) => `${e.type}: ${e.summary}`);
+				expect(told.slice(1, 3)).toEqual([
+					`reopened: ${label(loser)} reopened: merge conflict in shared.txt`,
+					`session_end: ended with ${label(loser)} open again: merge conflict in shared.txt`,
+				]);
+				if (resume)
+					expect(told[3]).toMatch(
+						new RegExp(
+							`^session_resumed: gemini session fixture-\\S+ of ${label(loser)}, resumed to resolve a merge conflict$`,
+						),
+					);
+				else
+					expect(told.some((t) => t.startsWith("session_resumed"))).toBe(false);
+				// The retry hears the conflict, and that it is left in its worktree to resolve.
+				const prompts = lines(join(script, `${label(loser)}.prompts`)).map(
+					(l) => String(JSON.parse(l)),
+				);
+				expect(prompts).toHaveLength(2);
+				expect(prompts[1]).toStartWith(
+					resume
+						? `After you called kabane_done on ${label(loser)}, the runner merged the run's branch into this subtask's before running the gates, and that merge conflicted in shared.txt`
+						: "You are one implementing session",
+				);
+				expect(prompts[1]).toContain("left conflicts in shared.txt");
+				expect(prompts[1]).toContain("left for you: resolve them");
+			},
+			SLOW_MS,
+		);
 
 	it(
 		"with isolation shared, works every subtask in the run's tree, one at a time",
@@ -633,7 +696,15 @@ else await Planner.deleteTask(home, id);
 				const [pass] = passFor(ended, gone);
 				expect(pass?.merged).toBeUndefined();
 				const branch = `kabane-loop/run-1--${label(gone).toLowerCase()}`;
-				expect(gitIn(repo, "rev-parse", branch)).toBe(pass?.checkpoint ?? "");
+				expect(gitIn(repo, "show", `${branch}:a.txt`)).toBe("a");
+				// Throws unless the checkpoint is in the branch.
+				gitIn(
+					repo,
+					"merge-base",
+					"--is-ancestor",
+					pass?.checkpoint ?? "",
+					branch,
+				);
 				const who =
 					change === "cancelled"
 						? `${label(gone)} was cancelled`

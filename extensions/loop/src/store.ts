@@ -298,7 +298,7 @@ export namespace RunStore {
 
 	/**
 	 * The checkpoints on the run's branch, oldest first: each committed in the run's worktree, or
-	 * for a subtask that worked in its own, the merge that brought its checkpoint into the run's.
+	 * for a subtask that worked in its own, the commit its green pass moved the run's branch to.
 	 */
 	export const checkpoints = (run: Run): string[] =>
 		run.gateRuns.flatMap((g) => {

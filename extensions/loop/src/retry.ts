@@ -7,6 +7,7 @@
 // when the session opens (`AcpClient.resumeOrStart`). An interrupted claim is not a gate retry:
 // JCAB-40's takeover continues it.
 import type { Budget } from "./budget";
+import type { Gates } from "./gates";
 import type { RunStore } from "./store";
 
 export namespace Retry {
@@ -22,6 +23,10 @@ export namespace Retry {
 		/** A new session; `why` says what kept attempt `lane`'s session from continuing. */
 		| { resume: false; lane: string; why: string };
 	export type Resume = Extract<Session, { resume: true }>;
+
+	/** What a retry after red result `failed` is for, as the trace says it: ` for a gate retry`. */
+	export const purpose = (failed: Gates.Result): string =>
+		failed.conflicts ? " to resolve a merge conflict" : " for a gate retry";
 
 	const percent = (share: number): string => `${Math.round(share * 100)}%`;
 
