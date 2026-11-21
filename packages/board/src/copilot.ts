@@ -450,7 +450,8 @@ export namespace BoardCopilot {
 	// harness still in its handshake, or its connection closed once the handshake answered. A newer
 	// start lets go of the ones before it without waiting on them, so a start the human cancelled
 	// and prompted past is not left running; `stop` lets go of every start and settles once every
-	// harness halted so far has exited, a cancel's the board did not wait for included.
+	// harness halted so far has exited, a cancel's the board did not wait for included. `close` is
+	// `stop` for good: a prompt that reaches the copilot while the board quits starts nothing.
 	const createStarts = (options: Options) => {
 		type Start = {
 			stop: AbortController;
@@ -458,6 +459,7 @@ export namespace BoardCopilot {
 		};
 		const inFlight = new Set<Start>();
 		const halting = new Set<Promise<void>>();
+		let closed = false;
 
 		const halt = async (start: Start): Promise<void> => {
 			start.stop.abort();
@@ -480,10 +482,16 @@ export namespace BoardCopilot {
 			await Promise.all(halting);
 		};
 
+		const close = (): Promise<void> => {
+			closed = true;
+			return stop();
+		};
+
 		const open = async (
 			launch: Launch,
 			handlers: Omit<Handlers, "signal">,
 		): Promise<Result<Opened>> => {
+			if (closed) return stopped(options);
 			letGo();
 			const stopping = new AbortController();
 			const start: Start = {
@@ -505,15 +513,48 @@ export namespace BoardCopilot {
 			return opened.ok && stopping.signal.aborted ? stopped(options) : opened;
 		};
 
-		return { open, stop };
+		return { open, stop, close };
+	};
+
+	// The session the copilot holds, and the closes a quit waits on. A harness that exits by itself
+	// is let go of at once, so the next prompt starts a new one and quit has no stale harness left
+	// to stop; its close still runs, and ends once whatever it left behind is gone.
+	const createHeld = (lost: () => void) => {
+		let held: Opened | null = null;
+		const releasing = new Set<Promise<void>>();
+		const release = (connection: AcpClient.Connection): void => {
+			const released: Promise<void> = AcpClient.close(connection).finally(() =>
+				releasing.delete(released),
+			);
+			releasing.add(released);
+		};
+		return {
+			session: (): AcpClient.Session | null => held?.session ?? null,
+			hold: (opened: Opened): void => {
+				held = opened;
+				void opened.connection.closed.then(() => {
+					if (held !== opened) return;
+					held = null;
+					lost();
+					release(opened.connection);
+				});
+			},
+			// Lets go of the session, and settles once every harness let go of has exited.
+			close: async (): Promise<void> => {
+				if (held) release(held.connection);
+				held = null;
+				await Promise.all(releasing);
+			},
+		};
 	};
 
 	export const create = (options: Options): Handle => {
 		const actor = HarnessInstructions.actorUri(options.harness);
-		let connection: AcpClient.Connection | null = null;
-		let session: AcpClient.Session | null = null;
 		// The instruction block rides the first prompt of the session and only that one.
 		let instructed = false;
+		const held = createHeld(() => {
+			instructed = false;
+		});
 		// The harness's slash commands as it last listed them, so a prompt that runs one goes to it
 		// as written.
 		let commands: readonly AcpClient.Command[] = [];
@@ -529,6 +570,7 @@ export namespace BoardCopilot {
 		// its tool server: a harness spawning a path that is gone opens the session anyway, with
 		// no tracker tools and an error that names something else.
 		const start = async (): Promise<Result<AcpClient.Session> | null> => {
+			const session = held.session();
 			if (session) return ok(session);
 			const bin = options.kabaneBin();
 			if (bin === null) return null;
@@ -538,9 +580,8 @@ export namespace BoardCopilot {
 				questions.handlers,
 			);
 			if (!opened.ok) return opened;
-			connection = opened.value.connection;
-			session = opened.value.session;
-			return ok(session);
+			held.hold(opened.value);
+			return ok(opened.value.session);
 		};
 
 		// What one prompt goes to the harness as, and whether it carries the instruction block. A
@@ -649,6 +690,7 @@ export namespace BoardCopilot {
 			// stops its start, harness and all, and the next prompt starts afresh.
 			cancel: async () => {
 				questions.unblockAll();
+				const session = held.session();
 				await (session ? AcpClient.cancel(session) : starts.stop());
 			},
 			answerPermission: questions.answerPermission,
@@ -657,12 +699,9 @@ export namespace BoardCopilot {
 				CopilotInstructions.shortcuts(options.setup),
 			close: async () => {
 				questions.unblockAll();
-				await starts.stop();
-				const held = connection;
-				connection = null;
-				session = null;
+				await starts.close();
 				instructed = false;
-				if (held) await AcpClient.close(held);
+				await held.close();
 			},
 		};
 	};

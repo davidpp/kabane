@@ -9,6 +9,11 @@
  *   session     answers `initialize`, never `session/new`; written when `session/new` arrives
  *   open        answers `initialize`, `session/new` and every prompt (an empty `end_turn`);
  *               written when `session/new` arrives
+ *   deaf        answers `initialize` and `session/new`, then reads nothing more from stdin, so a
+ *               large write to it stays pending; written when `session/new` arrives
+ *
+ * A third argument, `eof`, makes it exit once stdin closes, leaving behind its child, which
+ * still ignores SIGTERM: a wrapper that dies on EOF and orphans what it launched.
  */
 import { renameSync } from "node:fs";
 import {
@@ -18,9 +23,15 @@ import {
 	PROTOCOL_VERSION,
 } from "@agentclientprotocol/sdk";
 
-const [pidfile, stage] = process.argv.slice(2);
-if (!pidfile || !["handshake", "session", "open"].includes(stage ?? ""))
-	throw new Error("usage: stubborn-agent.ts <pidfile> handshake|session|open");
+const [pidfile, stage, onEof] = process.argv.slice(2);
+if (
+	!pidfile ||
+	!["handshake", "session", "open", "deaf"].includes(stage ?? "") ||
+	![undefined, "eof"].includes(onEof)
+)
+	throw new Error(
+		"usage: stubborn-agent.ts <pidfile> handshake|session|open|deaf [eof]",
+	);
 
 process.on("SIGTERM", () => {});
 // An ignored signal stays ignored across exec, so `sleep` ignores it as well.
@@ -37,6 +48,20 @@ setInterval(() => {}, 1 << 30);
 
 const never = () => new Promise<never>(() => {});
 
+// Stdin as the SDK reads it, until `deaf` is set: from then on nothing is read, and what kabane
+// writes piles up in the pipe.
+let deaf = false;
+const stdin = Bun.stdin.stream().getReader();
+const input = new ReadableStream<Uint8Array>({
+	async pull(controller) {
+		if (deaf) return never();
+		const read = await stdin.read();
+		if (!read.done) return controller.enqueue(read.value);
+		if (onEof) process.exit(0);
+		controller.close();
+	},
+});
+
 const app = agent({ name: "kabane-stubborn" })
 	.onRequest(methods.agent.initialize, async () => {
 		if (stage !== "handshake")
@@ -49,6 +74,7 @@ const app = agent({ name: "kabane-stubborn" })
 	})
 	.onRequest(methods.agent.session.new, async () => {
 		await reached();
+		if (stage === "deaf") deaf = true;
 		return stage === "session" ? never() : { sessionId: "stubborn" };
 	})
 	.onRequest(methods.agent.session.prompt, () => ({
@@ -60,4 +86,4 @@ const stdout = new WritableStream<Uint8Array>({
 		process.stdout.write(chunk);
 	},
 });
-app.connect(ndJsonStream(stdout, Bun.stdin.stream()));
+app.connect(ndJsonStream(stdout, input));

@@ -304,8 +304,15 @@ export namespace AcpClient {
 		);
 		if (!spawned.ok) return spawned;
 		const proc = spawned.value;
+		// Once only, and as soon as the harness exits, however it came to: a harness that dies by
+		// itself can be held for hours before anyone closes it, and by then its emptied group's id
+		// may belong to someone else's processes.
+		let sweeping: Promise<void> | undefined;
+		const sweep = () => (sweeping ??= sweepGroup(proc.pid));
+		void proc.exited.then(sweep);
 		let stopping: Promise<void> | undefined;
-		const stop = (graceMs: number) => (stopping ??= stopProcess(proc, graceMs));
+		const stop = (graceMs: number) =>
+			(stopping ??= stopProcess(proc, graceMs, sweep));
 		const stderr = collectStderr(proc.stderr);
 		const stream = ndJsonStream(
 			Stdio.stdinSink(proc.stdin),
@@ -343,38 +350,55 @@ export namespace AcpClient {
 		}
 	};
 
-	const groupExited = async (pid: number, ms: number): Promise<void> => {
+	// True once no process is left in the group, false if one still is after `ms`.
+	const groupEmptied = async (pid: number, ms: number): Promise<boolean> => {
 		const until = Date.now() + ms;
-		while (signalGroup(pid, 0) && Date.now() < until) await Bun.sleep(10);
+		while (signalGroup(pid, 0)) {
+			if (Date.now() >= until) return false;
+			await Bun.sleep(10);
+		}
+		return true;
+	};
+
+	// SIGTERM to the harness's whole process group, then SIGKILL to what ignored it, and settles
+	// once the group is empty or the wait is up. Stops at the first sign the group is empty: its id
+	// is free for reuse from then on.
+	const sweepGroup = async (pid: number): Promise<void> => {
+		if (!signalGroup(pid, "SIGTERM")) return;
+		if (await groupEmptied(pid, KILL_WAIT_MS)) return;
+		if (!signalGroup(pid, "SIGKILL")) return;
+		await groupEmptied(pid, KILL_WAIT_MS);
 	};
 
 	// An npx wrapper killed outright orphans the adapter's own child (the real `claude`
 	// process kept running after SIGTERM to the wrapper). Stdin EOF lets the adapter shut
-	// its child down; the kill is only for what ignores it, and goes to the harness's whole
-	// process group, SIGKILL after SIGTERM. The group is swept even when the harness exited by
-	// itself: a wrapper that dies can leave its child behind. Settles once the harness has exited.
+	// its child down; the sweep is only for what ignores it. The group is swept even when the
+	// harness exits within the grace: a wrapper that dies can leave its child behind. Settles once
+	// the harness has exited.
 	const stopProcess = async (
 		proc: Bun.Subprocess<"pipe", "pipe", "pipe">,
 		graceMs: number,
+		sweep: () => Promise<void>,
 	): Promise<void> => {
-		await tryCatch(async () => {
+		// Not awaited: ending a pipe that still holds a write the harness stopped reading waits
+		// until the harness exits, and the grace has to run out regardless.
+		void tryCatch(async () => {
 			await proc.stdin.end();
 		});
 		await withTimeout(proc.exited, graceMs, "still running");
-		signalGroup(proc.pid, "SIGTERM");
-		await groupExited(proc.pid, KILL_WAIT_MS);
-		signalGroup(proc.pid, "SIGKILL");
+		await sweep();
 		await proc.exited;
 	};
 
-	type Process = Pick<Connection, "closed" | "stderr" | "close"> & {
+	type Process = Pick<Connection, "stderr" | "close"> & {
+		// Absent for an in-process transport: its connection is closed once the transport is.
+		closed?: Connection["closed"];
 		// What was launched, so a start that failed can say what kabane was trying to run.
 		// Absent for an in-process transport, which never started anything.
 		launch?: Harnesses.Launch;
 	};
 
 	const NO_PROCESS: Process = {
-		closed: Promise.resolve(null),
 		stderr: () => "",
 		close: async () => {},
 	};
@@ -421,7 +445,7 @@ export namespace AcpClient {
 			steering: false,
 			resume: false,
 			resumed,
-			closed: process.closed,
+			closed: process.closed ?? raw.closed.then(() => null),
 			stderr: process.stderr,
 			close: () => {
 				raw.close();

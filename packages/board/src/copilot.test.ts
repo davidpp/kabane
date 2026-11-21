@@ -1,6 +1,6 @@
 // The copilot against the SDK's in-process agent: what reaches the harness on session/new and on
 // each prompt, and what the board gets back. No subprocess, no npx, same wire as client.test.ts.
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -353,9 +353,24 @@ describe("BoardCopilot", () => {
 	it("asks the host for kabane again at each new session", async () => {
 		const seen = fresh();
 		let bin = "/old/kabane";
-		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: () => bin });
+		const agents = [scriptedAgent(seen), scriptedAgent(seen)];
+		const connections: AcpClient.Connection[] = [];
+		const copilot = copilotOver(scriptedAgent(seen), {
+			kabaneBin: () => bin,
+			connect: async (handlers) => {
+				const agent = agents.shift();
+				if (!agent) throw new Error("a third connect");
+				const opened = await AcpClient.connect("claude", agent, handlers);
+				if (opened.ok) connections.push(opened.value);
+				return opened;
+			},
+		});
 		await collect(copilot.run("go", context()));
-		await copilot.close();
+		// The harness goes away, so the next prompt opens a new session.
+		const [first] = connections;
+		if (!first) throw new Error("no connection");
+		await AcpClient.close(first);
+		await first.closed;
 		bin = "/new/kabane";
 		await collect(copilot.run("go", context()));
 		const commands = seen.newSession.map(
@@ -1067,28 +1082,61 @@ describe("BoardCopilot close leaves no harness running", () => {
 		return stat !== "" && !stat.startsWith("Z");
 	};
 
-	const stubborn = (stage: "handshake" | "session" | "open") => {
+	type Stage = "handshake" | "session" | "open";
+
+	// Every harness a test saw start, killed outright after it, so one that fails leaves nothing.
+	const seen: number[] = [];
+	afterEach(() => {
+		for (const pid of seen.splice(0))
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {}
+	});
+
+	// Each start launches the next stage given, the last one from then on.
+	const stubborn = (...stages: [Stage, ...Stage[]]) => {
 		const dir = mkdtempSync(join(tmpdir(), "copilot-stop-"));
 		const pidfile = join(dir, "harness.pids");
+		let launches = 0;
 		const copilot = BoardCopilot.create({
 			harness: "claude",
 			scopeDir: dir,
 			kabaneBin: () => BIN,
 			home: join(dir, ".kabane"),
 			setup: SETUP,
-			overrides: { command: process.execPath, args: [AGENT, pidfile, stage] },
+			connect: (handlers) => {
+				const stage = stages[Math.min(launches++, stages.length - 1)];
+				return AcpClient.spawn("claude", dir, {
+					...handlers,
+					overrides: {
+						command: process.execPath,
+						args: [AGENT, pidfile, stage ?? "open"],
+					},
+				});
+			},
 		});
+		const pidsWritten = (): number[] => {
+			const pids = readFileSync(pidfile, "utf8").split(" ").map(Number);
+			rmSync(pidfile);
+			seen.push(...pids);
+			return pids;
+		};
 		// The harness's pid and its child's, once the harness has started; the file is taken so
 		// the next start writes its own.
 		const started = async (): Promise<number[]> => {
 			for (let i = 0; i < 1000 && !existsSync(pidfile); i++) await Bun.sleep(5);
-			const pids = readFileSync(pidfile, "utf8").split(" ").map(Number);
-			rmSync(pidfile);
+			const pids = pidsWritten();
 			expect(pids.map(running)).toEqual([true, true]);
 			return pids;
 		};
+		// Whether a harness reached its stage since the last one was taken.
+		const startedSince = (): boolean => {
+			if (!existsSync(pidfile)) return false;
+			pidsWritten();
+			return true;
+		};
 		const done = () => rmSync(dir, { recursive: true, force: true });
-		return { copilot, started, done };
+		return { copilot, started, startedSince, done };
 	};
 
 	it("quit before the harness answers initialize: it is dead when close settles, and the turn ends as an error", async () => {
@@ -1142,8 +1190,10 @@ describe("BoardCopilot close leaves no harness running", () => {
 		done();
 	}, 10_000);
 
+	// The second start never answers initialize, so its halt is quicker than the first's: a quit
+	// that forgot the first harness would settle while that one is still running.
 	it("a start cancelled and prompted past is stopped too, so quit leaves neither harness", async () => {
-		const { copilot, started, done } = stubborn("session");
+		const { copilot, started, done } = stubborn("session", "handshake");
 		const first = collectAll(copilot.run("go", context()));
 		const cancelled = await started();
 		void copilot.cancel();
@@ -1162,7 +1212,57 @@ describe("BoardCopilot close leaves no harness running", () => {
 		done();
 	}, 10_000);
 
-	it("closes a connection whose session/new has not answered, and the next run starts afresh", async () => {
+	// The prompt reaches the board while quit waits on the cancelled start: the context load that
+	// comes before `run` finished after quit took its snapshot.
+	it("a prompt that arrives while quit is stopping a harness starts none", async () => {
+		const { copilot, started, startedSince, done } = stubborn("session");
+		const first = collectAll(copilot.run("go", context()));
+		const cancelled = await started();
+		void copilot.cancel();
+		const closing = copilot.close();
+		const late = collectAll(copilot.run("again", context()));
+
+		await closing;
+		expect(cancelled.map(running)).toEqual([false, false]);
+		await Bun.sleep(500);
+		expect(startedSince()).toBe(false);
+		expect(types(await first)).toEqual(["error"]);
+		expect(types(await late)).toEqual(["error"]);
+		done();
+	}, 10_000);
+
+	it("a harness that died by itself is let go of: the next prompt starts a new one, and quit stops it", async () => {
+		const { copilot, started, done } = stubborn("open");
+		expect(types(await collect(copilot.run("go", context())))).toContain(
+			"done",
+		);
+		const [harness = 0, child = 0] = await started();
+
+		process.kill(harness, "SIGKILL");
+		for (let i = 0; i < 300 && running(child); i++) await Bun.sleep(10);
+		expect(running(child)).toBe(false);
+		const again = await collect(copilot.run("again", context()));
+		expect(types(again)).toContain("done");
+		const pids = await started();
+
+		await copilot.close();
+		expect(pids.map(running)).toEqual([false, false]);
+		done();
+	}, 10_000);
+
+	it("quit right after a harness died by itself settles once the child it left is gone", async () => {
+		const { copilot, started, done } = stubborn("open");
+		await collect(copilot.run("go", context()));
+		const [harness = 0, child = 0] = await started();
+
+		process.kill(harness, "SIGKILL");
+		await Bun.sleep(100);
+		await copilot.close();
+		expect(running(child)).toBe(false);
+		done();
+	}, 10_000);
+
+	it("a cancel closes a connection whose session/new has not answered, and the next run starts afresh", async () => {
 		const seen = fresh();
 		// Answers initialize, then never session/new.
 		const stuck = agentApp({ name: "stuck" })
@@ -1195,7 +1295,7 @@ describe("BoardCopilot close leaves no harness running", () => {
 			await Bun.sleep(5);
 		expect(seen.newSession).toHaveLength(1);
 
-		await copilot.close();
+		await copilot.cancel();
 		expect(closes).toBe(1);
 		const ended = await Promise.race([
 			turn.then(types),
