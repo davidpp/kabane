@@ -22,7 +22,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { build as buildLoop } from "../extensions/loop/scripts/build";
 import { ContextPageSchema } from "../packages/core/context-output";
@@ -305,6 +305,22 @@ const checkShippedLens = (): void => {
 };
 
 // Exercise the base artifact before installing the separately built directory extension.
+/** The extensions a release archive ships beside its executable. */
+const shippedExtensions = (): string => join(dirname(BIN), "extensions");
+
+const SHIPPED = ["dispatch", "loop", "recipes"];
+
+const checkShipped = (): void => {
+	const missing = SHIPPED.filter(
+		(name) => !existsSync(join(shippedExtensions(), name, "package.json")),
+	);
+	if (missing.length)
+		fail(
+			`the archive ships no ${missing.join(", ")} in ${shippedExtensions()}`,
+		);
+	pass(`archive ships extensions ${SHIPPED.join(", ")}`);
+};
+
 const checkLoopExtension = async (version: string): Promise<void> => {
 	const extensions = join(KABANE_HOME, "extensions");
 	mkdirSync(extensions, { recursive: true });
@@ -331,11 +347,17 @@ const checkLoopExtension = async (version: string): Promise<void> => {
 		fail("enabled missing loop printed no installation diagnostic", missing);
 	const contextId = checkCommands(version);
 	await checkMcp(version, contextId);
-	const output = join(WORK, "loop-build");
-	const built = await buildLoop(output);
-	if (!built.success) fail(`loop build failed: ${built.logs.join("\n")}`);
-	cpSync(output, join(extensions, "loop"), { recursive: true });
-	rmSync(output, { recursive: true });
+	if (binaryMode)
+		cpSync(join(shippedExtensions(), "loop"), join(extensions, "loop"), {
+			recursive: true,
+		});
+	else {
+		const output = join(WORK, "loop-build");
+		const built = await buildLoop(output);
+		if (!built.success) fail(`loop build failed: ${built.logs.join("\n")}`);
+		cpSync(output, join(extensions, "loop"), { recursive: true });
+		rmSync(output, { recursive: true });
+	}
 	if (!kabane("loop", "--help").stdout.includes("kabane loop status"))
 		fail("kabane loop --help printed no loop usage");
 	const status = kabane("loop", "status");
@@ -689,6 +711,7 @@ if (binaryMode && input) {
 		existsSync(join(WORK, "dotenv-home"))
 	)
 		fail("standalone loaded project dotenv");
+	checkShipped();
 	checkCommands(version);
 	await checkLoopExtension(version);
 	await checkMcp(version, "");
