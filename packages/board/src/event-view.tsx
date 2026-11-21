@@ -475,7 +475,7 @@ const SessionLog = ({
 	card,
 	events,
 	lane,
-	pinned,
+	back,
 	width,
 	spinnerFrame,
 	scrollRef,
@@ -490,7 +490,7 @@ const SessionLog = ({
 	| "scrollRef"
 	| "toolDetails"
 	| "logs"
-> & { lane: string; pinned: boolean }): ReactNode => (
+> & { lane: string; back?: string }): ReactNode => (
 	<box
 		style={{
 			flexDirection: "column",
@@ -500,7 +500,7 @@ const SessionLog = ({
 			minHeight: LOG_MIN_ROWS,
 		}}
 	>
-		<LogLabel name={sessionName(card.steps ?? [], lane)} pinned={pinned} />
+		<LogLabel name={sessionName(card.steps ?? [], lane)} back={back} />
 		<Stream
 			card={card}
 			events={events}
@@ -568,7 +568,12 @@ const StackedCockpit = (props: CockpitProps): ReactNode => {
 					spinnerFrame={spinnerFrame}
 				/>
 			) : (
-				<SessionLog {...props} key={lane} lane={lane} pinned />
+				<SessionLog
+					{...props}
+					key={lane}
+					lane={lane}
+					back={`esc back to ${isInFlight(card) ? "now" : "the run trace"}`}
+				/>
 			)}
 		</box>
 	);
@@ -601,8 +606,15 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 		/>
 	);
 	const cap = Cockpit.nowCap(height - CHROME_ROWS);
+	// `esc` on a log `enter` opened unpins it: the right column follows the cursor again.
 	const log = (at: string, pinned: boolean): ReactNode => (
-		<SessionLog {...props} key={at} lane={at} pinned={pinned} width={right} />
+		<SessionLog
+			{...props}
+			key={at}
+			lane={at}
+			{...(pinned ? { back: "esc unpin" } : {})}
+			width={right}
+		/>
 	);
 	const column =
 		lane !== null ? (

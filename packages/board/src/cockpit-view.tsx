@@ -20,15 +20,16 @@ const TIME_COLS = 7;
 const NAME_SHARE = 0.35;
 
 /**
- * Over a session's log: whose log it is, and, when `enter` opened it rather than the cursor, the
- * way back.
+ * Over a session's log: whose log it is, and, when `enter` opened it rather than the cursor, what
+ * `esc` does (`back`): unpin it in the split, where the cursor's log may stay; go back to "now" or
+ * the trace when stacked.
  */
 export const LogLabel = ({
 	name,
-	pinned,
+	back,
 }: {
 	name: string;
-	pinned: boolean;
+	back?: string;
 }): ReactNode => {
 	const theme = useTheme();
 	return (
@@ -37,9 +38,7 @@ export const LogLabel = ({
 				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
 					{name}
 				</span>
-				<span fg={theme.muted}>
-					{pinned ? " · log · esc back to the stream" : " · log"}
-				</span>
+				<span fg={theme.muted}>{back ? ` · log · ${back}` : " · log"}</span>
 			</text>
 		</box>
 	);
