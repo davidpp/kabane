@@ -39,7 +39,6 @@ const DirectorySettingsSchema = z.object({
 		.object({
 			globalDir: z.string().optional(),
 			globalBinDir: z.string().optional(),
-			dryRun: z.boolean().optional(),
 		})
 		.optional(),
 });
@@ -49,10 +48,9 @@ export type RegistryInstall = {
 	globalDir: string;
 	bin: string;
 	version: string;
-	dryRun: boolean;
 };
 const UNSUPPORTED =
-	"Unsupported installation; update only supports positively verified hoisted Bun global registry installs. For source links, review/update your checkout manually and follow the contributor build/link instructions; otherwise inspect your Bun global installation manually. No automatic repair or replacement was attempted.";
+	"Unsupported installation; kabane update replaces a standalone binary or a main build, and recognizes only a hoisted Bun global install. For a source link, update your checkout and follow the contributor build/link instructions; otherwise install a release with brew or the installer (README, Install). Nothing was replaced.";
 
 const directory = (value: string, home: string): Result<string, string> => {
 	const expanded =
@@ -67,16 +65,14 @@ const directory = (value: string, home: string): Result<string, string> => {
 type DirectorySettings = {
 	globalDir: string | undefined;
 	binDir: string | undefined;
-	dryRun: boolean;
 };
 
-/** The global directories and dry-run the user's own bunfigs set, read inside `globalDirectories`' try. */
+/** The global directories the user's own bunfigs set, read inside `globalDirectories`' try. */
 const userDirectorySettings = (
 	files: readonly string[],
 ): Result<DirectorySettings, string> => {
 	let globalDir: string | undefined;
 	let binDir: string | undefined;
-	let dryRun = false;
 	for (const file of files) {
 		if (!existsSync(file)) continue;
 		if (lstatSync(file).size > 65_536) return err(UNSUPPORTED);
@@ -84,7 +80,6 @@ const userDirectorySettings = (
 			Bun.TOML.parse(readFileSync(file, "utf8")),
 		);
 		if (!settings.success) return err(UNSUPPORTED);
-		dryRun ||= settings.data.install?.dryRun === true;
 		const nextGlobal = settings.data.install?.globalDir;
 		const nextBin = settings.data.install?.globalBinDir;
 		// Ambiguous HOME/XDG directory precedence is not ownership evidence.
@@ -96,13 +91,13 @@ const userDirectorySettings = (
 		globalDir ??= nextGlobal;
 		binDir ??= nextBin;
 	}
-	return ok({ globalDir, binDir, dryRun });
+	return ok({ globalDir, binDir });
 };
 
-/** Read only directory settings; Bun itself owns registry/auth/proxy/age configuration. */
+/** Read only directory settings. */
 const globalDirectories = (
 	env: NodeJS.ProcessEnv,
-): Result<{ globalDir: string; binDir: string; dryRun: boolean }, string> => {
+): Result<{ globalDir: string; binDir: string }, string> => {
 	try {
 		const home = env.HOME ?? homedir();
 		const settings = userDirectorySettings([
@@ -125,11 +120,7 @@ const globalDirectories = (
 		);
 		if (!global.ok) return global;
 		if (!bin.ok) return bin;
-		return ok({
-			globalDir: global.value,
-			binDir: bin.value,
-			dryRun: settings.value.dryRun,
-		});
+		return ok({ globalDir: global.value, binDir: bin.value });
 	} catch {
 		return err(UNSUPPORTED);
 	}
@@ -213,20 +204,18 @@ const lockedVersion = (
 	return ok(version);
 };
 
-/** Whether the global root's own bunfig asks for dry-run. Reject directory redirection by it rather than guessing. */
-const rootDryRun = (globalDir: string): Result<boolean, string> => {
+/** The global root's own bunfig must not redirect the global directories; it is refused rather than guessed at. */
+const rootRedirects = (globalDir: string): boolean => {
 	const local = join(globalDir, "bunfig.toml");
-	if (!existsSync(local)) return ok(false);
+	if (!existsSync(local)) return false;
 	const settings = DirectorySettingsSchema.safeParse(
 		Bun.TOML.parse(readFileSync(local, "utf8")),
 	);
-	if (
+	return (
 		!settings.success ||
-		settings.data.install?.globalDir ||
-		settings.data.install?.globalBinDir
-	)
-		return err(UNSUPPORTED);
-	return ok(settings.data.install?.dryRun === true);
+		Boolean(settings.data.install?.globalDir) ||
+		Boolean(settings.data.install?.globalBinDir)
+	);
 };
 
 /** No metadata network request is made until bin, registration and registry lock agree. */
@@ -242,8 +231,7 @@ export const inspectRegistryInstall = async (
 		if (!ownsGlobalBin(slot, bin, host.bin)) return err(UNSUPPORTED);
 		const version = lockedVersion(globalDir, slot);
 		if (!version.ok) return version;
-		const local = rootDryRun(globalDir);
-		if (!local.ok) return local;
+		if (rootRedirects(globalDir)) return err(UNSUPPORTED);
 		const reported = await runUpdateProcess(
 			[host.bun, "pm", "bin", "-g"],
 			globalDir,
@@ -256,12 +244,7 @@ export const inspectRegistryInstall = async (
 				realpathSync(directories.value.binDir)
 		)
 			return err(UNSUPPORTED);
-		return ok({
-			globalDir,
-			bin,
-			version: version.value,
-			dryRun: directories.value.dryRun || local.value,
-		});
+		return ok({ globalDir, bin, version: version.value });
 	} catch {
 		return err(UNSUPPORTED);
 	}

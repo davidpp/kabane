@@ -313,7 +313,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `scope` | `--json` — resolve the current directory without device setup: `{ scopeUri, baseUri, scopeId, name, root, extensions }`; `scopeUri` includes branch/package extensions, `baseUri` omits them. Outside a project: `{ "scopeUri": null }`, exit 0. Text: `name · scopeUri · root` |
 | `sync [status\|push\|pull\|backfill]` | `backfill` seeds the log with rows that existed before sync was armed, then pushes |
 | `doctor` | `--fix [<source/id>…]` `--json` — report what kabane wrote that has fallen behind this version (settings, the project's Tracker block, harness MCP entries, a project skill stamped from a template no enabled extension checks) plus each enabled extension's checks; each finding is `auto`, `mention`, `suggest` or `route`. `--fix` alone applies the `auto` ones, `--fix <source/id>` the named ones. `--json` gives `{ findings, fixes }`. Findings do not fail the command |
-| `update` | `--check` `--json` — metadata-only stable candidate (policy-unverified), or explicit verified update of a supported hoisted Bun global registry install; no tracker initialization |
+| `update` | `--check` `--json` — the candidate from GitHub Releases on the installed channel, or a verified update of a standalone binary or a main build; a Bun global install is told releases moved to GitHub, with the brew and installer commands; no tracker initialization |
 | `board` | `--scope <uri>` — the terminal kanban (`@kabane/board`) on this device, no activity feed or dispatcher; those are host ports |
 | `mcp` | `--as <actor>` — serve this device over MCP on stdio; the hub's tool list (`kabane_*`), with the working directory's scope as the default so writes may omit `scopeUri` |
 | `mcp install` | `--harness claude\|codex\|gemini` (repeatable) `--force` `--print` — register `mcp` in each harness on PATH through its own `mcp add`, as `kabane://actor/agent/<harness>`; existing entries are unchanged, with `stale` for a different launch command (`present` for the current one); `--force` or `doctor --fix kabane/mcp-entry-stale-<harness>` re-points it; `--print` prints snippets, also the fallback when none is found |
@@ -322,12 +322,12 @@ Doctor and `mcp install` read Claude registrations from `$CLAUDE_CONFIG_DIR/.cla
 when `CLAUDE_CONFIG_DIR` is nonempty, otherwise from `~/.claude.json`. This includes
 both user entries and the current project’s local entries.
 
-Updates are latest-stable only within the installed major (`0.x`: same minor). Source links,
-file/tarball/other-manager and unverified isolated/missing-global-bin installs refuse both
-`update` and `update --check` (exit 1, no registry request);
+Updates are latest-stable only within the installed major (`0.x`: same minor). A Homebrew or
+mise install is left to its manager. A Bun global install (`bun add -g kabane`) gets no newer
+release, since releases stopped going to npm: both `update` and `update --check` say so (status
+`moved`) and print the brew and installer commands, with no network request. Source links and
+unrecognized installs refuse both (exit 1);
 no automatic link repair, downgrade, git pull, startup networking or MCP rewiring is performed.
-The explicit update preserves Bun registry/proxy/age policy; dry-run may populate external
-package-manager caches, while check only reads metadata and may use runtime/metadata caches.
 No tracker DB/config is opened. Restart board/MCP after a verified update; binary rollback
 is not database rollback. See [compatibility/backup procedure](../../docs/getting-started.md#updating).
 
