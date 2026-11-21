@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	readlinkSync,
 	realpathSync,
 	rmSync,
 	statSync,
@@ -286,9 +287,19 @@ export namespace Extensions {
 	export const disabledAdvice =
 		"or remove it from extensions with `kabane config set extensions <names> --layer global`.";
 	const refusal = (reason: string): string => `${reason}; ${disabledAdvice}`;
+	/**
+	 * Why `name` is not installed: nothing there, or a link left by an install that has since been
+	 * removed or moved, which `kabane doctor --fix` re-points when this install ships the extension.
+	 */
+	const notInstalled = (home: string, name: string): string => {
+		const path = directory(home, name);
+		const link = trySync(() => readlinkSync(path));
+		if (!link.ok) return `not installed; put it in ${path}/`;
+		return `${path} links to ${link.value}, which is gone; ${shipped().includes(name) ? "`kabane doctor --fix` links it to this install's copy" : `put it in ${path}/`}`;
+	};
 	export const missing = (name: string, home: string): Refusal => ({
 		name,
-		reason: refusal(`not installed; put it in ${directory(home, name)}/`),
+		reason: refusal(notInstalled(home, name)),
 	});
 
 	type ManifestFile = {
@@ -372,10 +383,7 @@ export namespace Extensions {
 					"invalid extension directory name; use a single directory name",
 				),
 			);
-		if (!installed(home, name))
-			return err(
-				new Error(`not installed; put it in ${directory(home, name)}/`),
-			);
+		if (!installed(home, name)) return err(new Error(notInstalled(home, name)));
 		const manifest = readManifest(home, name);
 		if (!manifest.ok) return manifest;
 		if (manifest.value.entry.api !== 1)

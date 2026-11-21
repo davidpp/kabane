@@ -663,3 +663,15 @@ it("links a shipped extension the home lacks, and leaves the user's own install 
 	const none = Extensions.link(home, ["dispatch"], undefined);
 	expect(none.ok && none.value).toEqual([]);
 });
+
+it("names a link left by a removed install as the reason an extension is not installed", () => {
+	const home = makeHome();
+	mkdirSync(join(home, "extensions"));
+	symlinkSync(join(home, "gone/dispatch"), join(home, "extensions/dispatch"));
+	expect(Extensions.missing("dispatch", home).reason).toContain(
+		`${join(home, "extensions/dispatch")} links to ${join(home, "gone/dispatch")}, which is gone`,
+	);
+	expect(Extensions.missing("loop", home).reason).toContain(
+		`not installed; put it in ${join(home, "extensions/loop")}/`,
+	);
+});

@@ -14,6 +14,24 @@ import { uncheckedSkills } from "../doctor/project";
 import { Extensions } from "../extensions";
 import { activateHostRecord, hostHarnessMode } from "../host";
 
+/**
+ * The repair of an enabled extension that is not installed but ships with this install: link it,
+ * as enabling it did, which also re-points a link an earlier install left behind.
+ */
+const relink = (home: string, name: string): Pick<Doctor.Finding, "fix"> =>
+	Extensions.installed(home, name) || !Extensions.shipped().includes(name)
+		? {}
+		: {
+				fix: async () => {
+					const linked = Extensions.link(home, [name]);
+					return linked.ok
+						? ok(
+								`linked ${name} to ${join(Extensions.shippedRoot() ?? "", name)}`,
+							)
+						: linked;
+				},
+			};
+
 const USAGE = "kabane doctor [--fix [<source/id>...]] [--json]";
 
 const text = (report: Doctor.Report): string => {
@@ -116,6 +134,7 @@ export const doctor: Command = {
 							id: "extension-refused",
 							severity: "mention",
 							summary: Extensions.line(refusal),
+							...relink(ctx.home, refusal.name),
 						},
 					]),
 			});
