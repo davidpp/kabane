@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { err, ok } from "../packages/core/result";
-import type { ReleaseManifest } from "./release-artifact";
+import { BinaryTargetSchema, type ReleaseManifest } from "./release-artifact";
 import {
 	authorizePublication,
 	completeRelease,
+	finalizeArguments,
 	type PublishOperations,
-	type RegistryState,
 	type ReleaseState,
 } from "./release-publish";
 
@@ -14,362 +14,202 @@ const record: ReleaseManifest = {
 	tag: "v1.2.3",
 	commit: "a".repeat(40),
 	dirty: false,
-	filename: "kabane-1.2.3.tgz",
-	sha256: "b".repeat(64),
-	integrity: "sha512-Zml4dHVyZQ==",
 	notesSha256: "c".repeat(64),
 	bun: "1.4.0",
-	npm: "12.2.0",
+	binaries: BinaryTargetSchema.options.map((target, index) => ({
+		target,
+		filename: `kabane-${target}.tar.gz`,
+		sha256: String(index + 2).repeat(64),
+	})),
+	installerSha256: "d".repeat(64),
 };
 const beta: ReleaseManifest = {
 	...record,
 	version: "1.2.3-beta.0",
 	tag: "v1.2.3-beta.0",
-	filename: "kabane-1.2.3-beta.0.tgz",
 };
-/** Publishing moves the tag its channel names, as `npm publish --tag` does. */
-const mockPublication = (subject = record) => {
+const published = (prerelease: boolean): NonNullable<ReleaseState> => ({
+	draft: false,
+	prerelease,
+	immutable: true,
+	assetsMatch: true,
+	assetsComplete: true,
+});
+
+/** GitHub as the state machine sees it: one release for the tag, and the highest published stable. */
+const github = (subject = record, highest: string | null = "1.2.2") => {
 	const prerelease = subject.version.includes("-");
 	const writes: string[] = [];
-	let registry: RegistryState = {
-		existingIntegrity: null,
-		latest: "1.2.2",
-		beta: null,
-	};
 	let release: ReleaseState = null;
 	const ops: PublishOperations = {
 		verifyTag: async () => ok(undefined),
-		registry: async () => ok(registry),
 		release: async () => ok(release),
+		highestStable: async () => ok(highest),
 		prepareDraft: async () => {
 			writes.push("draft");
-			release = {
-				draft: true,
-				prerelease,
-				immutable: false,
-				assetsMatch: true,
-				assetsComplete: true,
-			};
-			return ok(undefined);
-		},
-		publishArchive: async () => {
-			writes.push("publish-once");
-			registry = prerelease
-				? {
-						...registry,
-						existingIntegrity: subject.integrity,
-						beta: subject.version,
-					}
-				: {
-						existingIntegrity: subject.integrity,
-						latest: subject.version,
-						beta: null,
-					};
+			release = { ...published(prerelease), draft: true, immutable: false };
 			return ok(undefined);
 		},
 		finalizeDraft: async () => {
 			writes.push("finalize");
-			release = {
-				draft: false,
-				prerelease,
-				immutable: true,
-				assetsMatch: true,
-				assetsComplete: true,
-			};
+			release = published(prerelease);
 			return ok(undefined);
 		},
 	};
 	return {
 		ops,
 		writes,
-		setRegistry: (value: RegistryState): void => {
-			registry = value;
-		},
 		setRelease: (value: ReleaseState): void => {
 			release = value;
 		},
 	};
 };
-test("fresh publication prepares verified assets, publishes once, then freezes GitHub", async () => {
-	const fixture = mockPublication();
+
+test("a fresh stable release is drafted with every asset, read back, then published as latest", async () => {
+	const fixture = github();
+	expect(await completeRelease(record, fixture.ops)).toEqual({
+		ok: true,
+		value: "Verified immutable GitHub release, now the latest.",
+	});
+	expect(fixture.writes).toEqual(["draft", "finalize"]);
+	expect(finalizeArguments(record).slice(-2)).toEqual([
+		"--draft=false",
+		"--latest",
+	]);
+});
+
+test("a beta completes as a prerelease that never becomes latest", async () => {
+	const fixture = github(beta);
+	expect(await completeRelease(beta, fixture.ops)).toEqual({
+		ok: true,
+		value: "Verified immutable GitHub prerelease.",
+	});
+	expect(fixture.writes).toEqual(["draft", "finalize"]);
+	expect(finalizeArguments(beta).slice(-3)).toEqual([
+		"--draft=false",
+		"--prerelease",
+		"--latest=false",
+	]);
+	// A finalized beta that GitHub shows as an ordinary release is not verified.
+	const unmarked = github(beta);
+	unmarked.ops.finalizeDraft = async () => {
+		unmarked.setRelease(published(false));
+		return ok(undefined);
+	};
+	expect((await completeRelease(beta, unmarked.ops)).ok).toBe(false);
+});
+
+test("the first stable release needs no published one before it", async () => {
+	const fixture = github(record, null);
 	expect((await completeRelease(record, fixture.ops)).ok).toBe(true);
-	expect(fixture.writes).toEqual(["draft", "publish-once", "finalize"]);
+	expect(fixture.writes).toEqual(["draft", "finalize"]);
 });
-test("already identical immutable release is read-only; matching npm partial state resumes GitHub only", async () => {
-	for (const complete of [false, true]) {
-		const fixture = mockPublication();
-		fixture.setRegistry({
-			existingIntegrity: record.integrity,
-			latest: record.version,
-			beta: null,
-		});
-		if (complete)
-			fixture.setRelease({
-				draft: false,
-				prerelease: false,
-				immutable: true,
-				assetsMatch: true,
-				assetsComplete: true,
-			});
-		expect((await completeRelease(record, fixture.ops)).ok).toBe(true);
-		expect(fixture.writes).toEqual(complete ? [] : ["draft", "finalize"]);
-	}
+
+test("an identical immutable release is read-only; a matching draft resumes", async () => {
+	const complete = github();
+	complete.setRelease(published(false));
+	expect(await completeRelease(record, complete.ops)).toEqual({
+		ok: true,
+		value: "Verified already complete; no writes performed.",
+	});
+	expect(complete.writes).toEqual([]);
+	const draft = github();
+	draft.setRelease({ ...published(false), draft: true, immutable: false });
+	expect((await completeRelease(record, draft.ops)).ok).toBe(true);
+	expect(draft.writes).toEqual(["draft", "finalize"]);
 });
-test("version/hash/latest/tag/source conflicts fail before irreversible operations", async () => {
+
+test("conflicting, mutable or mismarked releases fail before any write", async () => {
 	for (const state of [
-		{ existingIntegrity: "different", latest: record.version, beta: null },
-		{ existingIntegrity: null, latest: record.version, beta: null },
-		{ existingIntegrity: null, latest: "2.0.0", beta: null },
+		{ ...published(false), assetsMatch: false },
+		{ ...published(false), immutable: false },
+		{ ...published(false), assetsComplete: false },
+		published(true),
+		{ ...published(false), draft: true, assetsMatch: false },
 	]) {
-		const fixture = mockPublication();
-		fixture.setRegistry(state);
+		const fixture = github();
+		fixture.setRelease(state);
 		expect((await completeRelease(record, fixture.ops)).ok).toBe(false);
 		expect(fixture.writes).toEqual([]);
 	}
-	for (const bad of [
+});
+
+test("a release that does not pass the highest published stable is never drafted", async () => {
+	for (const [subject, highest] of [
+		[record, "1.2.3"],
+		[record, "1.10.0"],
+		[beta, "1.2.3"],
+	] as const) {
+		const fixture = github(subject, highest);
+		expect((await completeRelease(subject, fixture.ops)).ok).toBe(false);
+		expect(fixture.writes).toEqual([]);
+	}
+	const unreadable = github();
+	unreadable.ops.highestStable = async () => err(new Error("offline"));
+	expect((await completeRelease(record, unreadable.ops)).ok).toBe(false);
+	expect(unreadable.writes).toEqual([]);
+});
+
+test("a dirty, untagged or binary-less artifact is nonpromotable", async () => {
+	for (const subject of [
 		{ ...record, dirty: true },
 		{ ...record, tag: null },
 		{ ...record, tag: "v1.2.4" },
+		{ ...record, binaries: undefined, installerSha256: undefined },
 	]) {
-		const fixture = mockPublication();
-		expect((await completeRelease(bad, fixture.ops)).ok).toBe(false);
+		const fixture = github();
+		expect((await completeRelease(subject, fixture.ops)).ok).toBe(false);
 		expect(fixture.writes).toEqual([]);
 	}
-	const missing = mockPublication();
-	missing.ops.verifyTag = async () => err(new Error("missing remote tag"));
-	expect((await completeRelease(record, missing.ops)).ok).toBe(false);
-	expect(missing.writes).toEqual([]);
 });
-test("conflicting or incomplete draft assets cannot authorize npm publication", async () => {
-	const conflict = mockPublication();
-	conflict.setRelease({
-		draft: true,
-		prerelease: false,
-		immutable: false,
-		assetsMatch: false,
-		assetsComplete: false,
-	});
-	expect((await completeRelease(record, conflict.ops)).ok).toBe(false);
-	expect(conflict.writes).toEqual([]);
-	const incomplete = mockPublication();
-	incomplete.ops.prepareDraft = async () => {
-		incomplete.setRelease({
+
+test("an unverified draft or a moved tag stops before finalization", async () => {
+	const partial = github();
+	partial.ops.prepareDraft = async () => {
+		partial.writes.push("draft");
+		partial.setRelease({
+			...published(false),
 			draft: true,
-			prerelease: false,
 			immutable: false,
-			assetsMatch: true,
 			assetsComplete: false,
 		});
 		return ok(undefined);
 	};
-	expect((await completeRelease(record, incomplete.ops)).ok).toBe(false);
-	expect(incomplete.writes).toEqual([]);
-});
-test("publisher error after a committed write is reconciled by readback, never a second publish", async () => {
-	const fixture = mockPublication();
-	fixture.ops.publishArchive = async () => {
-		fixture.writes.push("ambiguous-publish");
-		fixture.setRegistry({
-			existingIntegrity: record.integrity,
-			latest: record.version,
-			beta: null,
-		});
-		return err(new Error("connection lost"));
-	};
-	expect((await completeRelease(record, fixture.ops)).ok).toBe(true);
-	expect(fixture.writes).toEqual(["draft", "ambiguous-publish", "finalize"]);
-});
-test("unconfirmed publisher failure stops at a retained draft with no blind retry", async () => {
-	const fixture = mockPublication();
-	fixture.ops.publishArchive = async () => {
-		fixture.writes.push("failed-publish");
-		return err(new Error("OIDC/permission failure"));
-	};
-	const result = await completeRelease(record, fixture.ops, {
-		attempts: 2,
-		intervalMs: 0,
-	});
-	expect(result.ok).toBe(false);
-	if (!result.ok) expect(result.error.message).toContain("unverified/partial");
-	expect(fixture.writes).toEqual(["draft", "failed-publish"]);
-});
-test("a publish the registry serves late is still confirmed and finalized", async () => {
-	const fixture = mockPublication();
-	let reads = 0;
-	const registry = fixture.ops.registry;
-	fixture.ops.publishArchive = async () => {
-		fixture.writes.push("publish-once");
+	expect((await completeRelease(record, partial.ops)).ok).toBe(false);
+	expect(partial.writes).toEqual(["draft"]);
+	const moved = github();
+	let checks = 0;
+	moved.ops.verifyTag = async () =>
+		++checks > 1 ? err(new Error("moved")) : ok(undefined);
+	expect((await completeRelease(record, moved.ops)).ok).toBe(false);
+	expect(moved.writes).toEqual(["draft"]);
+	const mutable = github();
+	mutable.ops.finalizeDraft = async () => {
+		mutable.writes.push("finalize");
+		mutable.setRelease({ ...published(false), immutable: false });
 		return ok(undefined);
 	};
-	fixture.ops.registry = async () => {
-		if (fixture.writes.includes("publish-once") && ++reads === 4)
-			fixture.setRegistry({
-				existingIntegrity: record.integrity,
-				latest: record.version,
-				beta: null,
-			});
-		return registry();
-	};
-	const result = await completeRelease(record, fixture.ops, {
-		attempts: 5,
-		intervalMs: 0,
-	});
-	expect(result.ok).toBe(true);
-	expect(fixture.writes).toEqual(["draft", "publish-once", "finalize"]);
+	expect((await completeRelease(record, mutable.ops)).ok).toBe(false);
 });
-test("npm success followed by GitHub failure reports recoverable partial state", async () => {
-	const fixture = mockPublication();
-	fixture.ops.finalizeDraft = async () => err(new Error("GitHub denied"));
-	const result = await completeRelease(record, fixture.ops);
-	expect(result.ok).toBe(false);
-	if (!result.ok)
-		expect(result.error.message).toContain("never rebuild or republish");
-	expect(fixture.writes).toEqual(["draft", "publish-once"]);
-	expect(
-		(
-			await completeRelease(record, {
-				...fixture.ops,
-				finalizeDraft: async () => {
-					fixture.setRelease({
-						draft: false,
-						prerelease: false,
-						immutable: true,
-						assetsMatch: true,
-						assetsComplete: true,
-					});
-					return ok(undefined);
-				},
-			})
-		).ok,
-	).toBe(true);
-	expect(
-		fixture.writes.filter((write) => write === "publish-once"),
-	).toHaveLength(1);
-});
-test("publication guard requires human-job context/OIDC/setup and forbids credential fallback", () => {
+
+test("publication runs only in the approved publish job on a matching tag ref", () => {
 	const env = {
 		GITHUB_ACTIONS: "true",
 		GITHUB_REPOSITORY: "davidpp/kabane",
 		GITHUB_SHA: record.commit,
 		GITHUB_REF: "refs/tags/v1.2.3",
 		RELEASE_PUBLISH: "true",
-		RELEASE_SETUP_CONFIRMED: "true",
 		GH_TOKEN: "fixture-only",
-		ACTIONS_ID_TOKEN_REQUEST_TOKEN: "fixture-only",
-		ACTIONS_ID_TOKEN_REQUEST_URL: "https://example.invalid/fixture",
 	};
 	expect(authorizePublication(record, {}).ok).toBe(false);
 	expect(authorizePublication(record, env).ok).toBe(true);
 	for (const altered of [
+		{ ...env, GITHUB_ACTIONS: "" },
+		{ ...env, GITHUB_REPOSITORY: "fork/kabane" },
 		{ ...env, GITHUB_REF: "refs/heads/main" },
 		{ ...env, GITHUB_SHA: "b".repeat(40) },
-		{ ...env, RELEASE_SETUP_CONFIRMED: "" },
-		{ ...env, ACTIONS_ID_TOKEN_REQUEST_TOKEN: "" },
-		{ ...env, NODE_AUTH_TOKEN: "fixture-secret" },
+		{ ...env, RELEASE_PUBLISH: "false" },
+		{ ...env, GH_TOKEN: "" },
 	])
 		expect(authorizePublication(record, altered).ok).toBe(false);
-});
-
-test("a beta publishes on npm beta, leaves latest alone and completes as a GitHub prerelease", async () => {
-	const fixture = mockPublication(beta);
-	expect(await completeRelease(beta, fixture.ops)).toEqual({
-		ok: true,
-		value: "Verified npm beta publication and immutable GitHub prerelease.",
-	});
-	expect(fixture.writes).toEqual(["draft", "publish-once", "finalize"]);
-	const resumed = mockPublication(beta);
-	resumed.setRegistry({
-		existingIntegrity: beta.integrity,
-		latest: "1.2.2",
-		beta: beta.version,
-	});
-	expect((await completeRelease(beta, resumed.ops)).ok).toBe(true);
-	expect(resumed.writes).toEqual(["draft", "finalize"]);
-});
-test("a beta must advance both npm latest and npm beta before any write", async () => {
-	for (const state of [
-		{ existingIntegrity: null, latest: "1.2.3", beta: null },
-		{ existingIntegrity: null, latest: "1.2.2", beta: "1.2.3-beta.0" },
-		{ existingIntegrity: null, latest: "1.2.2", beta: "1.2.3-beta.10" },
-		{ existingIntegrity: beta.integrity, latest: "1.2.2", beta: null },
-	]) {
-		const fixture = mockPublication(beta);
-		fixture.setRegistry(state);
-		expect((await completeRelease(beta, fixture.ops)).ok).toBe(false);
-		expect(fixture.writes).toEqual([]);
-	}
-});
-test("a beta readback that moved latest, or a release not marked prerelease, is unverified", async () => {
-	const moved = mockPublication(beta);
-	moved.ops.publishArchive = async () => {
-		moved.writes.push("publish-once");
-		moved.setRegistry({
-			existingIntegrity: beta.integrity,
-			latest: beta.version,
-			beta: beta.version,
-		});
-		return ok(undefined);
-	};
-	const result = await completeRelease(beta, moved.ops, {
-		attempts: 2,
-		intervalMs: 0,
-	});
-	expect(result.ok).toBe(false);
-	if (!result.ok) expect(result.error.message).toContain("latest unchanged");
-	expect(moved.writes).toEqual(["draft", "publish-once"]);
-	const unmarked = mockPublication(beta);
-	unmarked.ops.finalizeDraft = async () => {
-		unmarked.writes.push("finalize");
-		unmarked.setRelease({
-			draft: false,
-			prerelease: false,
-			immutable: true,
-			assetsMatch: true,
-			assetsComplete: true,
-		});
-		return ok(undefined);
-	};
-	expect((await completeRelease(beta, unmarked.ops)).ok).toBe(false);
-	expect(unmarked.writes).toEqual(["draft", "publish-once", "finalize"]);
-});
-
-test("tag rechecks stop before publishing or finalizing with the original diagnostics", async () => {
-	for (const failedCheck of [2, 3]) {
-		const fixture = mockPublication();
-		let checks = 0;
-		fixture.ops.verifyTag = async () =>
-			++checks === failedCheck ? err(new Error("tag changed")) : ok(undefined);
-		const result = await completeRelease(record, fixture.ops);
-		expect(result.ok).toBe(false);
-		if (!result.ok)
-			expect(result.error.message).toBe(
-				failedCheck === 2
-					? "tag changed"
-					: "npm may be published but tag identity changed; stop before GitHub completion.",
-			);
-		expect(fixture.writes).toEqual(
-			failedCheck === 2 ? ["draft"] : ["draft", "publish-once"],
-		);
-	}
-});
-
-test("a registry change after verified draft preparation stops before publication", async () => {
-	const fixture = mockPublication();
-	const prepare = fixture.ops.prepareDraft;
-	fixture.ops.prepareDraft = async () => {
-		const result = await prepare();
-		fixture.setRegistry({
-			existingIntegrity: record.integrity,
-			latest: record.version,
-			beta: null,
-		});
-		return result;
-	};
-	const result = await completeRelease(record, fixture.ops);
-	expect(result.ok).toBe(false);
-	if (!result.ok)
-		expect(result.error.message).toBe(
-			"Registry changed before publish; stop and inspect without retrying writes.",
-		);
-	expect(fixture.writes).toEqual(["draft"]);
 });

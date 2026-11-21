@@ -1,180 +1,172 @@
 # Releasing kabane
 
-Kabane ships as the npm package `kabane` (requiring Bun) and standalone Unix binaries
-through the Actions release flow. A release is
-**human-triggered**: agents must never publish, log in, create/push tags, run a
-publish-capable workflow, or configure npm/GitHub release settings. Nonpublishing local
-verification and installed smoke are safe with the disposable homes described below.
+A kabane release is a GitHub release of `davidpp/kabane`: a standalone binary for each of four
+Unix platforms, the curl installer `install.sh`, `SHA256SUMS`, the release manifest and its
+notes, with build-provenance attestations. A stable release also commits the Homebrew formula
+to `davidpp/homebrew-tap`. Homebrew, the installer and mise's `github:` backend all install from
+it. Nothing is published to npm: the npm package `kabane` stops at `1.0.0-beta.0`, and
+`kabane update` on a Bun install says releases moved to GitHub and prints the brew and installer
+commands.
 
-The implementation is committed; the additional review was stopped at the maintainer's
-request without a release/update verdict. No release version is selected by this work.
-Live environment protection, trusted publishing, provenance and immutable-release behavior
-remain unverified until a human performs the approved release.
+A release is **human-triggered**. Agents never run `bun run release` without `--dry-run`,
+dispatch `release.yml` with `publish=true`, push release tags or change release settings. A
+`publish=false` dispatch and the local checks below publish nothing and are safe.
 
-## Local release (human-run)
+## One command from a version to a published release
 
-You can release from your computer without an Actions environment, npm trusted publisher,
-or OIDC. Use a clean `main` checkout with this implementation committed and pushed. GitHub
-CLI must already be authenticated (`gh auth login` if needed), with repository admin access
-when enabling release immutability. Let the command choose and bump the version:
+From a clean `main` checkout that matches `origin/main`, with `gh` authenticated as a
+maintainer:
 
 ```bash
-bun run release:local prepare
+bun run release --dry-run                # print every step and any unmet precondition
+bun run release                          # auto: Conventional Commits since the last release
+bun run release --bump patch|minor|major # an explicit increment
+bun run release --version 1.0.0          # an explicit version
 ```
 
-Auto reads npm `latest` and inspects the complete commit range since that release's
-consistent tag or registry `gitHead`. It checks the baseline's CLI version and ancestry;
-missing/conflicting baselines, shallow history, more than 1000 commits, or oversized/unclear
-history fail rather than guessing. Selection uses declared Conventional Commit intent, not
-an automatic proof of API compatibility:
+Before it writes anything, the command checks:
+
+- the tree is clean, on `main`, and `HEAD` is `origin`'s `main` (`git ls-remote`); `origin` is
+  `davidpp/kabane`;
+- no `v<version>` tag exists here or on `origin`, and the version is newer than the source's
+  `packages/cli/package.json` and than the highest published stable release;
+- release immutability is enabled on the repository;
+- the `release` environment exists. A job naming a missing environment would create it,
+  without protection and without the tap's deploy key.
+
+Then it sets the version in `packages/cli/package.json`, refreshes `bun.lock`, runs
+`bun run check`, `typecheck` and `test` on that tree, commits both files as
+`chore: release kabane <version>`, creates the annotated tag `v<version>` (honoring configured
+Git signing), pushes `main` and the tag in one atomic push, dispatches `release.yml` on the tag
+with `publish=true` and the release notes, and watches that run until it ends, printing its
+URL first. It finds the run by the tag's commit and the `workflow_dispatch` event, since the
+pushed tag also starts a [verification run](#verification-without-publishing). There is no npm
+login.
+
+The notes come from `--notes-file <path>` (32KiB at most), or are drafted from history: the
+`feat`, `fix` and `perf` subjects since the previous tag, at most 60, then a link to the compare
+view. `--dry-run` prints them. A change that moves where kabane keeps data or settings, migrates
+its database, or changes what it outputs gets an upgrade section under
+[Updating](getting-started.md#updating) before its release, and reviewed notes link to it (for
+example
+[settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)).
+
+A step that fails stops the command and names it; the steps before it stay done. A failed gate
+leaves the version edit uncommitted: `git checkout -- packages/cli/package.json bun.lock` undoes
+it. A failed publishing run leaves `main` and the tag pushed: rerun its
+failed jobs from the run page, or fix the cause and release the next version. Nothing moves or
+deletes a tag.
+
+### How the version is chosen
+
+`--bump` and auto start from the highest stable `vX.Y.Z` tag that has a published GitHub
+release; drafts and betas never count. With none published there is nothing to bump, and the
+command asks for `--version`. Auto reads the commit range since that tag. It checks that the
+tag's commit is the same here and on `origin`, that it is an ancestor of `HEAD` and that its
+`packages/cli/package.json` names that version; shallow history, more than 1000 commits or
+unclear history fail rather than guess. Selection uses declared Conventional Commit intent, not
+a proof of API compatibility:
 
 - `!`, `BREAKING CHANGE:` or `BREAKING-CHANGE:`: major, **minor during 0.x**. Auto never
-  declares initial development stable 1.0.0.
+  declares initial development stable 1.0.0: pass `--version 1.0.0`.
 - `feat:`: minor; `fix:` / `perf:`: patch. Highest severity wins.
 - `docs`, `chore`, `style`, `refactor`, `test` / `tests`, and `ci`: no automatic release
-  without release-affecting commits. Unknown/substantive types without declared breaking
-  intent (`build`, `revert`) and unclassified merges require a deliberate override.
+  without release-affecting commits. Other types (`build`, `revert`) and unclassified merges
+  need an explicit `--bump`.
 
-For a fresh release, force a semantic increment with `prepare --bump patch`, `--bump minor`,
-or `--bump major`; these increment npm latest without requiring history inference. Explicit
-major during 0.x means deliberately entering stable 1.0.0. Numeric `--version X.Y.Z` remains
-available for deliberate selection/recovery. Do not combine selectors.
+### Beta releases
 
-This command updates **only** the CLI version and lockfile, commits those files, runs
-check/typecheck/test, builds/packs **once**, validates the archive and runs the installed
-CLI/MCP smoke on those bytes. It retains the original archive, manifest, checksums, release
-notes and verification record under gitignored `.releases/<selected-version>/`. The selected
-version/selector/source and phase are retained in `.releases/current.json`. Repeated preparation
-and publication reuse that choice; authentication handoff never increments again, even if
-npm latest has already advanced during partial publication. Default notes contain
-recent commit subjects for review; provide `--notes-file /path/to/reviewed-notes.md` during
-fresh preparation to supply your own public notes.
+A beta is `X.Y.Z-beta.N` (`N` a non-negative integer; no other prerelease identifier), and only
+`--version` selects one. It must pass the highest published stable release, like any release.
+The publishing run creates the draft with `--prerelease` and finalizes it with
+`--prerelease --latest=false`, so GitHub's latest release, which Homebrew, the installer's
+`latest` URL and `kabane update` on a stable install read, stays the last stable one. The tap is
+left alone. Promote to stable with `--version X.Y.Z`.
 
-After verification it enables GitHub release immutability if disabled, creates an annotated
-`v<selected-version>` tag (honoring configured Git signing), and atomically pushes main plus that tag.
-It never moves an existing tag. A configured signing key may require its own authentication.
-Pushing the tag also starts the Actions [verified release](#verification-without-publishing) workflow
-on it, which builds, checks and attests that tag and publishes nothing: only a dispatch with
-`publish=true` ([publishing run](#human-publishing-run)) publishes. Do not dispatch one for a
-version you publish locally, since the local route publishes npm-only and the Actions run would
-then find a conflicting release.
-**Preparation does not publish, run npm login, replace your installed Kabane, or open tracker
-config/data.** These source/tag/settings writes are authorization granted by the human
-running the command; agents must not execute the release flow against real accounts.
+## One-time setup
 
-A change that moves where kabane keeps data or settings, migrates its database, or changes what
-it outputs, gets an upgrade section under [Updating](getting-started.md#updating) before its
-release; the public notes link to it (for example
-[settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)
-and [comment kinds and handoffs](getting-started.md#upgrading-from-100-beta0-comment-kinds-and-handoffs)).
+1. Create the GitHub environment **`release`** on `davidpp/kabane`. Add required reviewers if a
+   publishing run should wait for approval; without them, `publish=true` publishes as soon as the
+   checks pass. Restrict it to tag refs and protect `v*` tags from moving.
+2. Enable repository **release immutability**
+   (`gh api --method PUT repos/davidpp/kabane/immutable-releases`).
+3. Add a deploy key with write access to `davidpp/homebrew-tap`, and store its private half as
+   the secret **`HOMEBREW_TAP_DEPLOY_KEY`** of the **`release` environment**, not as a
+   repository secret, so only a job in that environment reads it. Without it the `homebrew`
+   job fails after a stable release and nothing else changes; rerun it once the secret exists.
+4. Review the exact action pins in `.github/workflows/release.yml`. Bun comes from
+   `.bun-version`; the release needs no Node or npm.
 
-Review the retained notes and perform the real-terminal board check below using that archive,
-then authenticate to npm and explicitly resume:
+## What the publishing run does
 
-```bash
-npm login
-bun run release:local publish
-```
+A dispatch of `release.yml` on an existing `v<version>` tag ref with `publish=true`. Do not
+dispatch a branch with `publish=true`: preparation refuses it.
 
-Publication uses your local npm configuration/authentication, including interactive npm
-2FA prompts. It refuses a missing/unverified artifact, changed source/tool versions, moved
-remote tag, disabled immutability, conflicting assets or registry bytes. It creates the
-matching GitHub draft/assets, publishes the exact retained tarball once, waits up to five
-minutes for the registry to serve it with matching integrity/latest, then finalizes and verifies the immutable GitHub release. **It does not
-rerun gates, build or pack.** Local publication does not claim GitHub Actions OIDC provenance.
+1. Each of four native runners builds its archive once and retains it with a source, version,
+   Bun and hash record ([standalone release assets](#standalone-release-assets)).
+2. `prepare` runs the frozen install and the full gate, records the release's identity and
+   notes (`scripts/release.ts prepare`), attaches the four archives and `install.sh` after
+   checking their records (`scripts/release-binaries.ts`), renders `kabane.rb`, and uploads
+   one Actions artifact.
+3. `installed-smoke` on Linux x64 and macOS arm64 downloads **that artifact ID**, verifies its
+   hashes, and drives the extracted binary with no Bun on `PATH`.
+4. `attest` records build provenance for the archives and `install.sh`
+   (`actions/attest-build-provenance`), which `install.sh` checks with `gh attestation verify`.
+5. `publish` (environment `release`, `contents: write` only) re-verifies the bytes, the clean
+   source and the remote tag's commit, and reads the release for the tag. A published release
+   with identical assets is a verified no-op; one with other assets, or one that is not
+   immutable, fails. Otherwise the version must pass the highest published stable release. It
+   creates a draft with every asset (`gh release create --verify-tag --draft`), or adds only the
+   missing ones to a matching draft, never overwriting; downloads each asset back and compares
+   its SHA-256; checks the tag again; then publishes the draft and verifies it is final,
+   immutable, complete and marked as its channel says.
+6. `homebrew`, for a stable release only, downloads the published `SHA256SUMS` from its public
+   URL, which answers only once the release is final, requires it to match this run's, and
+   commits this run's `kabane.rb` to `davidpp/homebrew-tap` as `Formula/kabane.rb` (no commit
+   when it already matches). It writes with the deploy key, never the repository token.
 
-GitHub's tag endpoint exposes **published** releases, not drafts. The publisher discovers
-drafts through an authenticated push-authorized releases listing, consumes all pages within
-its bound (100 releases/page, at most 10 pages), and rejects conflicting, duplicate,
-malformed or incomplete metadata/pagination. A tag-route 404 alone never proves absence.
-All matching asset bytes are still downloaded and hashed; API digests do not replace this.
+GitHub's tag endpoint shows published releases only; drafts are found through an authenticated
+listing with push access, read to its last page (100 a page, at most 10 pages). Conflicting,
+duplicate, malformed or incomplete listings fail; a 404 alone never proves absence. The publish
+job's concurrency group never cancels a publication in flight.
 
-If a tooling bug blocks an already verified release, keep its source checkout and original
-archive unchanged. A separate fixed tooling checkout can use that clean `main` source root
-for **publish only**, without committing source changes or rebuilding:
+## Verification without publishing
 
-```bash
-# HUMAN ONLY, from the original verified source checkout:
-bun /path/to/fixed-tooling/scripts/release-local.ts publish --source-root "$PWD"
-```
-
-Source-root selection still requires the original manifest/proof/bytes, exact source commit,
-remote tag and producer tool versions, local authentication, and enabled immutability. It is
-not accepted for preparation or as an alternative to CI's protected OIDC authorization.
-Retain the recovery tooling/checkpoint until publication is verified complete; only then
-integrate the fix into main for future releases.
-
-Rerun `prepare` for the same untouched prepared source to finish a failed setting/tag/push
-step without rerunning successful gates/smoke or rebuilding. Rerun `publish` for matching
-npm-success/GitHub-failure state to complete GitHub only. An identical completed release
-is a verified no-op. Never delete the archive and rebuild after an ambiguous publication.
-A failed gate/version commit may leave local source changes: inspect/fix them deliberately,
-not by stashing/resetting unrelated work. Before an archive exists, auto rechecks changed
-source and resumes only if it still selects the original version; once an archive exists,
-restore the original source instead of replacing its bytes. After successful publication,
-a new `prepare` selects the next release from the newly published baseline. Keep the selection
-record; if it is missing for an older verified archive, deliberately pass its numeric
-`--version` to publish. A `.releases/release.lock` prevents overlapping local commands on this
-checkout; investigate a stale lock before removing it. It is not a cross-machine lock against
-other publishers.
-
-The `.releases/` directory is deliberately retained, not automatically cleaned up. Keep the
-four original public assets for recovery; remove local artifacts only after a verified
-successful release and an intentional retention decision.
-
-## Beta releases
-
-A beta is `X.Y.Z-beta.N` (`N` a non-negative integer; no other prerelease identifier) on npm
-dist-tag `beta`. Only an explicit `--version` selects one. Auto and `--bump` never produce a
-prerelease and keep reading npm `latest` as their baseline, so a beta never becomes the base
-of a stable selection.
+The gate, as CI runs it:
 
 ```bash
-bun run release:local prepare --version 1.0.0-beta.0 --notes-file <reviewed notes>
-npm login
-bun run release:local publish
+bun install --frozen-lockfile
+bun run check && bun run typecheck && bun run test
+bun run smoke
 ```
 
-Everything above applies, with these differences. The version must be newer by SemVer
-precedence than npm `latest` and any npm `beta` (`1.0.0-beta.10` follows `1.0.0-beta.9`),
-and not older than the source. Tag, archive and retained directory keep the
-`v<version>`/`kabane-<version>.tgz`/`.releases/<version>/` naming. Publication runs
-`npm publish --tag beta`, never `latest`; readback requires the archive's integrity, `beta`
-at or past this version and `latest` exactly as it was before publishing. The GitHub draft
-is created with `--prerelease` and finalized with `--prerelease --latest=false`; final
-verification also requires the prerelease flag, and immutability, asset and byte checks are
-unchanged. Afterwards `npm view kabane dist-tags` shows `beta: 1.0.0-beta.0` beside the
-unchanged `latest`, and the GitHub release is marked Pre-release.
+`bun run smoke` builds and packs the bundled package into a temporary archive, checks its
+members, identity, exact externals and that no machine path or source map leaks, installs it
+with `bun add -g` into throwaway homes and drives the CLI and stdio MCP, then the loop extension.
+It checks the bundle, which no release ships; the release smoke drives the binary.
 
-The next beta is a fresh `prepare --version 1.0.0-beta.1`. Promote to stable with a fresh
-`prepare --version 1.0.0` (auto never selects 1.0.0 during 0.x); it publishes on `latest`
-like any stable release. `beta` keeps naming the last beta, so `bun add -g kabane@beta`
-installs that older beta until another ships, while an installed beta's `kabane update`
-already prefers the newer `latest`. Never move npm dist-tags by hand: the publisher reads
-them as release state. The Actions route runs the same scripts on the existing
-`v<version>` beta tag.
+The whole release pipeline, on any branch, publishing nothing:
 
-## Package and version
+```bash
+gh workflow run release.yml --repo davidpp/kabane --ref <branch> -f publish=false
+```
 
-`packages/cli/package.json` is the only release version. Its development manifest stays
-private, with a source bin and `workspace:*` dependencies. `scripts/build.ts` generates
-`packages/cli/dist` containing:
+A pushed `vX.Y.Z` or `vX.Y.Z-beta.N` tag runs the same. Both build the four archives, run the
+gate and the installed smoke, attest, and retain the artifact; only a tag-ref dispatch with
+`publish=true` reaches `publish` and `homebrew`.
 
-- `bin/kabane.js`: Bun bundle entry, workspace and pure-JS dependencies inlined, Bun shebang
-  kept, plus `bin/chunk-<hash>.js`: code-split chunks for what loads lazily (the board's TUI,
-  lazy commands), so a command that draws nothing never loads OpenTUI. The artifact check
-  admits exactly that shape. Extensions are installed separately as directories; none is bundled.
-- `types/extension.d.ts`: the extension contract's declarations, exported as `kabane/extension`.
-- Repository README and LICENSE, and generated package.json. No template ships: the dispatch and
-  grill skills are the dispatch extension's.
-- Exactly pinned external `@opentui/core`, `@opentui/react` and `react`, taken from the
-  board manifest. OpenTUI installs its platform-native optional dependency; React must not
-  be duplicated inside the bundle. No published dependency may name `@kabane/*`.
+The release's identity and notes, locally:
 
-The build carries CLI name/version/description/keywords/license/repository/homepage/bugs,
-adds type/bin/files/dependencies, and derives the minimum Bun engine from `.bun-version`.
-CLI `--version` and stdio MCP identify this version. Do not publish the private source
-package or rebuild/repack after choosing a verified archive.
+```bash
+work=$(mktemp -d)
+bun scripts/release.ts prepare "$work/release"
+bun scripts/release.ts verify "$work/release"
+rm -rf "$work"
+```
+
+The manifest records the version, commit, tag (or null), whether the source was dirty, the Bun
+version and the notes' SHA-256; once the archives are attached, their SHA-256s and the
+installer's. A dirty or untagged release can be checked but never published.
 
 ## Standalone release assets
 
@@ -195,16 +187,14 @@ need their harness runtime (currently Node/npx); bundling Bun does not bundle th
 
 Each matrix job builds once and retains its archive and source/version/Bun/hash record.
 Preparation downloads this run's native artifacts, verifies their source commit, version,
-Bun version and hashes against the npm manifest, then retains one combined artifact ID.
-Its manifest lists all four binaries; `SHA256SUMS` covers all five archives. Linux x64 and
+Bun version and hashes against the release manifest, then retains one combined artifact ID.
+Its manifest lists all four binaries; `SHA256SUMS` covers the four archives. Linux x64 and
 macOS arm64 smoke extract those downloaded bytes and run version, init/add/list and MCP
 initialize/tools/list with `PATH=/usr/bin:/bin`, isolated HOME/KABANE_HOME, and hostile
 project preload/dotenv files. Publication includes the binaries in existing draft conflict,
 byte verification, no-overwrite and immutable finalization checks. It never rebuilds them.
 
-The local release command still produces npm-only releases; use Actions for all-platform
-binary releases. Older npm-only retained manifests remain valid for partial-release recovery.
-Do not add binaries to an already published immutable release or replace retained bytes.
+Do not add assets to an already published immutable release or replace retained bytes.
 Binary self-update is `kabane update` ([standalone binaries](getting-started.md#standalone-binaries)).
 
 A release with binaries also carries `install.sh`, the curl installer copied from
@@ -231,10 +221,10 @@ rm -rf .binary-check
 The build requires a new output directory and refuses replacement. Smoke creates its isolated
 home/repo under the system temporary directory (honoring `TMPDIR`), removes it on success
 and prints its retained location on failure.
-A human must dispatch `publish: false` to prove all runner builds and retained transfer, then
+A human must dispatch `publish=false` to prove all runner builds and retained transfer, then
 check first-run setup/board in a real terminal. Manually verify MCP installation, copilot
 and loop template/self-launch behavior in disposable
-homes. No live release, npm/OIDC or notarization claim follows from local binary smoke.
+homes. No live release or notarization claim follows from local binary smoke.
 
 To rehearse a binary update before a release exists, build an older and a newer binary
 (the newer from a checkout whose CLI version is bumped), install the older one, and serve
@@ -253,11 +243,26 @@ redirects. Run the older binary with an isolated `HOME`/`KABANE_HOME`: `kabane u
 to see it refuse with the old install untouched. The first real GitHub update after a
 release, which follows the download redirect, stays a human check.
 
+## Recovery
+
+- Identical published release: verified no-op, no writes.
+- Matching draft: each existing asset's bytes are checked; only missing assets are added.
+- Any source, tag, version, hash or asset conflict, or a published release that is not
+  immutable: the run fails and writes nothing more. Investigate by hand; nothing deletes a
+  release or moves a tag.
+- A run that failed after its draft: rerun the failed jobs while the run's artifact is retained.
+  A rebuild of the same source is not the same bytes, so never substitute one.
+
+A live release still has to show the environment, immutable assets and tag, the attestations,
+the tap commit and each platform's binary running. Static workflow checks and local runs do not
+prove those. Binary updates and data rollback are separate; see
+[updating](getting-started.md#updating).
+
 ## Main builds
 
 A main build is kabane built from a commit of `main` rather than a release. It installs like
 the standalone binary, with the repository's extensions beside it, and it follows `main`
-instead of npm's `latest` or `beta`. Build and install one from a clone, with Bun 1.4 or later:
+instead of the latest or beta release. Build and install one from a clone, with Bun 1.4 or later:
 
 ```bash
 git clone https://github.com/davidpp/kabane.git
@@ -298,198 +303,8 @@ fails with that build's output when it fails. When the clone is gone it says so 
 nothing: run `bun run main-build` from another clone.
 
 To go back to a release, install the release over the main build (the
-[standalone binary](getting-started.md#standalone-binaries), or remove `~/.bun/bin/kabane` and
-`bun add -g kabane`), then build the extensions from a checkout of that release's tag and
+[standalone binary](getting-started.md#standalone-binaries); remove `~/.bun/bin/kabane` first),
+then build the extensions from a checkout of that release's tag and
 install them ([extensions](extensions.md#build-them-from-a-kabane-checkout)). A main build may
 have migrated the database past what the release reads. In that case keep the main build, or
 restore a backup taken before the migration, which loses what changed since.
-
-## Human-owned Actions setup (optional; before workflow publishing)
-
-1. Review the proposed exact action pins in `.github/workflows/release.yml`, Node
-   **24.21.0** and npm **12.2.0**. These versions/pins were checked against official
-   distribution/registry/GitHub refs; availability is not approval to execute a release.
-   Keep Bun **1.4.4** from `.bun-version`. npm trusted publishing requires CLI >=11.5.1
-   and Node >=22.14.0; npm12.2.0 also requires a sufficiently recent Node24.
-2. Configure GitHub environment **`npm-release`**, required reviewers and an appropriate
-   self-review/bypass policy. A solo maintainer needs a reviewer arrangement that can
-   actually approve their run. Restrict allowed release refs; protect tags from movement.
-   Enable repository **release immutability**.
-3. Configure the npm trusted publisher for public package `kabane`: owner **davidpp**,
-   repository **kabane**, workflow filename **release.yml**, environment **npm-release**,
-   GitHub-hosted runners. Explicitly permit **direct `npm publish`**: current npm defaults
-   newly configured publishers to staged-publish permission only. No long-lived token
-   fallback is provided. Public package/repository are needed for automatic provenance.
-4. For the tap: add a deploy key with write access to `davidpp/homebrew-tap`, and store its
-   private half as the secret **`HOMEBREW_TAP_DEPLOY_KEY`** of the **`npm-release`
-   environment**, not as a repository secret, so only a job that passes that environment's
-   protection can read it. Without it, the `homebrew` job fails after a stable release and
-   nothing else changes; rerun it once the secret exists.
-5. Only after checking those settings, set environment variable
-   **`RELEASE_SETUP_CONFIRMED=true`** in `npm-release`. This is a human assertion, not
-   programmatic proof that reviewers, tag protection, immutability or OIDC are configured.
-   `npm whoami` is not an OIDC permission check.
-6. Review compatibility and prepare notes, linking each upgrade section under
-   [Updating](getting-started.md#updating) that this release adds. The pipeline compares the existing tag's commit
-   but does not authenticate a maintainer signing key; signed-tag review is a human step.
-
-The local command needs none of the Actions environment/trusted-publisher setup above.
-It can enable release immutability when the human explicitly runs preparation. No agent
-performs account setup or executes release operations. An accidentally auto-created unprotected
-GitHub environment is not authorization: the publication script also requires confirmed
-setup, a matching tag-ref event/source SHA, OIDC request permissions and no inherited npm
-publish credentials.
-
-## Human version and tag selection
-
-The local command handles version/lock commit and annotated tag creation/push. For the
-Actions route, choose the version in `packages/cli/package.json` and refresh its lockfile;
-do not change the private root version or reset data. Commit the reviewed implementation
-and selected release version, then a human creates/pushes the signed existing tag, which
-starts a verification run, and dispatches the [publishing run](#human-publishing-run) on it:
-
-```bash
-# HUMAN ONLY, after choosing/reviewing the version and source commit:
-git tag -s v<version> -m "kabane <version>"
-git push origin v<version>
-```
-
-The workflow never creates or pushes a missing tag. Package version, tag suffix, peeled
-remote tag commit, checkout HEAD, event source SHA and installed CLI/MCP identity must
-agree. Publishing a stable version must advance npm `latest` rather than downgrade it; a
-beta must advance both `latest` and `beta` ([beta releases](#beta-releases)).
-An already published name/version cannot be replaced, even after npm unpublish.
-
-## Verification without publishing
-
-Ordinary local gate:
-
-```bash
-bun install --frozen-lockfile
-bun run check && bun run typecheck && bun run test
-bun run smoke
-```
-
-Default smoke builds/packs a temporary archive, checks safe members, published identity,
-exact externals, workspace dependencies, maps and machine-path leaks, installs into
-throwaway HOME/Bun global directories/cache/KABANE_HOME, then exercises installed CLI
-and stdio MCP, including concise queue/receipt/context checks and stdin-close exit.
-Both package and native binary smoke check that an empty extensions directory leaves no
-`loop` help entry or command. Enabling an absent loop reports its installation path while
-the CLI/MCP checks still work. The smoke then builds the loop separately in its temporary
-workspace, copies that artifact into `$KABANE_HOME/extensions/loop`, and checks its help,
-status and shipped `lenses/quality.md` (including failure when that installed file is removed).
-No loop harness is launched. Supplied kabane archives/binaries are not rebuilt.
-Installation preserves the invoking user's registry/release-age settings; it does not
-null out npmrc or weaken age/integrity policy. It does not open the board.
-
-A retained nonpublishing archive and local byte round trip:
-
-```bash
-work=$(mktemp -d)
-bun scripts/release.ts prepare "$work/release"
-bun scripts/release.ts verify "$work/release"
-bun scripts/smoke.ts --artifact-dir "$work/release"
-# Existing archive only (no build/pack), for additional local checks:
-bun scripts/smoke.ts --tarball "$work/release/kabane-<version>.tgz"
-```
-
-Preparation builds/packs **once** and retains archive, `manifest.json`, `SHA256SUMS` and
-`release-notes.md`. The manifest records commit, tag (or null), dirty-source status,
-Bun/npm versions, archive SHA256/SHA512 and notes SHA256. Dirty or branch artifacts can
-be checked but are nonpromotable. Remove your disposable directory afterward; preserve it
-on failure for investigation. Never substitute a rebuilt archive in partial-release recovery.
-
-GitHub's **verified release** workflow runs on `workflow_dispatch`, where `publish` defaults
-false, and on a pushed `vX.Y.Z` or `vX.Y.Z-beta.N` tag. Both verify without publishing; only a
-dispatch with `publish=true` takes the publishing path below. Branch verification is allowed. A
-human may run nonpublishing verification on an existing tag, inspect the retained Actions
-artifact and review its notes/checksums. It executes no `npm publish` (including `--dry-run`),
-no draft/tag/release writes and no npm publisher authentication. In `davidpp/kabane` its
-`attest` job still takes an OIDC token (`id-token: write`) and records build-provenance
-attestations for that run's archives and `install.sh`, as every run does. This tests artifact
-preparation/transfer/install and attestation, not publisher authentication.
-
-## Human publishing run
-
-Dispatch on the **existing `v<version>` tag ref** with `publish=true` and reviewed public notes.
-Pushing the tag only verifies it. Empty notes give the release the default notes, a placeholder
-that names the source commit and asks for review. Do not dispatch a branch and substitute a
-different checkout ref. The workflow:
-
-1. Frozen install and full gates on Linux; build/pack one release archive, inspect and
-   upload that immutable Actions artifact identity.
-2. Linux x64 and macOS arm64 jobs download **the same artifact ID**, independently verify
-   hashes, and install/drive CLI+MCP from that archive without another build/pack. The standalone
-   matrix also builds macOS x64 and Linux arm64; interactive-board checks remain manual.
-3. The `npm-release` job waits for the configured human approval. Download **this run's
-   archive** and perform the real-terminal board check before approving; a prior dry-run
-   archive is not necessarily byte-identical to this run's archive.
-4. Revalidate original bytes, clean source, remote tag, registry version/integrity/latest and
-   release state. Prepare a draft with matching archive/manifest/checksum/notes using
-   `gh release create --verify-tag`; append only missing matching draft assets, never
-   overwrite remote assets.
-5. Publish the **archive path**, not dist, using npm OIDC; bounded registry readback confirms
-   integrity/stable-tag state. Publish the draft only afterward; verify final asset hashes
-   and immutability. Notes/title can still be edited on GitHub, so the reviewed notes file
-   is also an immutable asset. Checksums establish bytes, not independently trusted origin;
-   the `attest` job, which runs before publication on every run in `davidpp/kabane`, records
-   build provenance for the npm archive, the binaries and `install.sh` with
-   `actions/attest-build-provenance`, which `install.sh` checks with `gh attestation verify`.
-6. For a stable release, the `homebrew` job downloads the release's `SHA256SUMS` from its public
-   download URL, which answers only once the GitHub release is final, and requires it to
-   match this run's. It then commits this run's `kabane.rb` to `davidpp/homebrew-tap` as
-   `Formula/kabane.rb`, with no commit when it already matches. It writes with the
-   `HOMEBREW_TAP_DEPLOY_KEY` deploy key, never the repository token. That key is an
-   `npm-release` environment secret, so this job runs in that environment and waits for its own
-   approval once publication has finished. A beta leaves the tap alone. The publish job finalizes GitHub only after npm, so today a failed npm publish
-   also holds the tap back; the tap job itself reads nothing from npm.
-
-Only publication has GitHub contents-write permission; publication and attestation have
-id-token-write. Its package-wide
-concurrency group does not cancel an in-flight publication and is separate from superseding
-CI gates. Pending runs can be replaced; external publishers are not locked by Actions.
-Tag protection and human setup remain important because the remote services are not an
-atomic transaction.
-
-### Manual real-terminal smoke
-
-Use the publishing run's downloaded archive in a disposable home. Keep registry/age policy;
-if blocked, inspect it rather than bypassing it. The package manager must install the
-supported global bin; do not synthesize an internal-bin fallback.
-
-```bash
-# HUMAN, in a real terminal; replace the archive path with this run's original bytes:
-work=$(mktemp -d)
-cd "$work" && git init -q
-HOME="$work/home" BUN_INSTALL="$work/bun" \
-  BUN_INSTALL_GLOBAL_DIR="$work/bun/install/global" BUN_INSTALL_BIN="$work/bun/bin" \
-  KABANE_HOME="$work/tracker" KABANE_HARNESSES= \
-  bun add -g /absolute/path/to/kabane-<version>.tgz
-HOME="$work/home" KABANE_HOME="$work/tracker" KABANE_HARNESSES= "$work/bun/bin/kabane"
-```
-
-Expect first-run card/setup/board; `q` quits. This command is not an agent authorization.
-
-## Duplicate and partial-release recovery
-
-- Identical npm version plus immutable matching GitHub release: verified no-op, no writes.
-- Matching draft: verify each existing asset; add only missing assets, never clobber.
-- npm version already exists with matching original bytes/stable-tag state: finish GitHub
-  only, never republish. A later `latest` is not rolled back during older-release recovery.
-- Any source/tag/version/hash/asset conflict, unknown state or unprotected final release:
-  nonzero failure; investigate manually. Never unpublish/delete/move tags automatically.
-- Publisher timeout/error: read committed state with a bounded retry, **no blind publish
-  retry**. npm success followed by GitHub failure leaves a recoverable draft and nonzero
-  partial result. Rerun failed jobs while the successful producer's original artifact is
-  retained. If unavailable, recover the original hash-verified bytes from retained draft
-  assets, or stop; rebuilding the same source does not recover its artifact identity.
-
-A live human release must verify trusted-publisher token exchange, npm provenance and
-integrity, protected-environment behavior, immutable GitHub assets/tag/attestation and
-actual supported-platform execution. Local mocks/static workflow validation do not prove
-those properties.
-
-Official sources and pinned-Bun proof are recorded in
-[`release-update-plan.md`](../wiki/release-update-plan.md). Binary updates/data rollback are
-separate procedures; see [updating](getting-started.md#updating).

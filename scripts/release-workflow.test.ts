@@ -120,9 +120,6 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 		smoke.steps.some((step) => step.run?.includes("release.ts verify")),
 	).toBe(true);
 	expect(
-		smoke.steps.some((step) => step.run?.includes("smoke.ts --artifact-dir")),
-	).toBe(true);
-	expect(
 		smoke.steps.some(
 			(step) => step.run?.includes("build") || step.run?.includes("pack"),
 		),
@@ -136,12 +133,9 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 			"merge-multiple": true,
 		});
 	}
-	expect(publish.environment).toBe("npm-release");
-	expect(publish.permissions).toEqual({
-		contents: "write",
-		"id-token": "write",
-		actions: "read",
-	});
+	expect(publish.environment).toBe("release");
+	// Writing the release is all it does: no OIDC token, since nothing goes to npm.
+	expect(publish.permissions).toEqual({ contents: "write" });
 	expect(publish.if).toContain("github.ref_type == 'tag'");
 	expect(publish.if).toContain("github.repository == 'davidpp/kabane'");
 	expect(publish.concurrency).toEqual({
@@ -150,16 +144,16 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 	});
 	expect(
 		publish.steps.find((step) => step.run?.includes("release.ts publish"))?.env,
-	).toMatchObject({
-		RELEASE_SETUP_CONFIRMED: "${{ vars.RELEASE_SETUP_CONFIRMED }}",
+	).toEqual({
+		GH_TOKEN: "${{ github.token }}",
+		RELEASE_PUBLISH:
+			"${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
 	});
 	for (const job of Object.values(parsed.data.jobs))
-		for (const step of job.steps) {
+		for (const step of job.steps)
 			if (step.uses) expect(step.uses).toMatch(/^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
-			expect(step.env?.NODE_AUTH_TOKEN).toBeUndefined();
-		}
-	expect(raw).toContain('node-version: "24.21.0"');
-	expect(raw).toContain("npm@12.2.0");
+	// A release builds, checks and publishes with Bun and gh alone.
+	expect(raw).not.toMatch(/setup-node|npm |\.tgz/);
 });
 
 test("native matrix retains four archives and smoke consumes the assembled bytes", () => {
@@ -243,7 +237,7 @@ test("only a publish=true dispatch publishes; a pushed tag and a dry run verify 
 	const subjects = attest.steps.find((step) =>
 		step.uses?.startsWith("actions/attest-build-provenance@"),
 	)?.with?.["subject-path"];
-	for (const subject of ["*.tgz", "*.tar.gz", "install.sh"])
+	for (const subject of ["*.tar.gz", "install.sh"])
 		expect(subjects).toContain(`release/${subject}`);
 	expect(
 		prepare.steps.some((step) => step.run?.includes("release-formula.ts")),
@@ -259,14 +253,14 @@ test("only a publish=true dispatch publishes; a pushed tag and a dry run verify 
 				expect(step.with?.["no-cache"]).toBe(true);
 });
 
-test("the tap takes a stable release's formula once its GitHub release is public, with its own key behind the approval", () => {
+test("the tap takes a stable release's formula once its GitHub release is public, with the release environment's key", () => {
 	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
 	const { homebrew } = parsed.data.jobs;
 	expect(homebrew.needs).toEqual(["prepare", "publish"]);
-	// Its deploy key is an environment secret: only a job behind the approval can read it.
-	expect(homebrew.environment).toBe("npm-release");
+	// Its deploy key is an environment secret: only a job in that environment reads it.
+	expect(homebrew.environment).toBe("release");
 	expect(homebrew.if).toContain("!contains(github.ref_name, '-')");
 	expect(homebrew.permissions).toEqual({});
 	const runs = homebrew.steps.map((step) => step.run ?? "").join("\n");

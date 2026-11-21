@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { highestStableRelease } from "./release-github";
 import { bumpReleaseVersion, inferReleaseBump } from "./release-version";
 
 const commits = (...messages: string[]) =>
@@ -89,4 +90,29 @@ test("auto never silently patches empty, maintenance-only, ambiguous or excessiv
 			),
 		),
 	).toBe("patch");
+});
+
+test("the next version starts at the highest published stable vX.Y.Z tag on GitHub", () => {
+	const release = (tag_name: string, draft = false) => ({ tag_name, draft });
+	expect(highestStableRelease([])).toBeNull();
+	expect(
+		highestStableRelease([
+			release("v0.3.0"),
+			release("v1.0.0-beta.0"),
+			release("v0.2.0", true),
+			release("v0.10.0"),
+			release("v0.9.1"),
+		]),
+	).toBe("0.10.0");
+	// A draft or a beta never sets the starting point, nor a tag that is not vX.Y.Z.
+	expect(
+		highestStableRelease([
+			release("v0.3.0"),
+			release("v2.0.0", true),
+			release("v1.0.0-beta.0"),
+			release("1.5.0"),
+			release("v01.0.0"),
+			release("v1.0.9007199254740993"),
+		]),
+	).toBe("0.3.0");
 });

@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { runUpdateProcess } from "../packages/cli/src/update-process";
 import { err, ok, type Result } from "../packages/core/result";
-import { npmViewSchema, ReleaseVersionSchema } from "./release-artifact";
+import { ReleaseVersionSchema } from "./release-artifact";
+import { readHighestStableRelease } from "./release-github";
 import { queryRelease } from "./release-process";
 
 export const StableReleaseVersionSchema = ReleaseVersionSchema.refine(
@@ -90,22 +92,15 @@ export const inferReleaseBump = (
 	);
 };
 
-const RegistryRelease = z.object({
-	name: z.literal("kabane"),
-	version: StableReleaseVersionSchema,
-	gitHead: z
-		.string()
-		.regex(/^[a-f0-9]{40}$/)
-		.optional(),
-});
 const CommitSha = z.string().regex(/^[a-f0-9]{40}$/);
 
+/** The commit the previous release's tag names, here and on origin, an ancestor of HEAD. */
 const releaseBaseline = async (
-	release: z.infer<typeof RegistryRelease>,
+	version: string,
 	root: string,
 	env: NodeJS.ProcessEnv,
 ): Promise<Result<string>> => {
-	const tag = `refs/tags/v${release.version}`;
+	const tag = `refs/tags/v${version}`;
 	const remote = await queryRelease(
 		["git", "ls-remote", "origin", tag, `${tag}^{}`],
 		root,
@@ -134,16 +129,13 @@ const releaseBaseline = async (
 		);
 		if (!fetched.ok) return fetched;
 	}
-	const baseline = remoteCommit ?? release.gitHead;
+	const baseline = remoteCommit;
 	if (
 		!baseline ||
 		!CommitSha.safeParse(baseline).success ||
-		(release.gitHead && release.gitHead !== baseline) ||
 		(local.ok && local.value !== baseline)
 	)
-		return fail(
-			`No consistent previous release tag/gitHead baseline. ${GUIDANCE}`,
-		);
+		return fail(`No consistent previous release tag baseline. ${GUIDANCE}`);
 	const ancestor = await queryRelease(
 		["git", "merge-base", "--is-ancestor", baseline, "HEAD"],
 		root,
@@ -163,7 +155,7 @@ const releaseBaseline = async (
 		const source = z
 			.object({
 				name: z.literal("kabane"),
-				version: z.literal(release.version),
+				version: z.literal(version),
 			})
 			.safeParse(JSON.parse(manifest.value));
 		return source.success
@@ -220,58 +212,33 @@ const releaseCommits = async (
 	return ok(commits);
 };
 
+/**
+ * The next version: the bump of the highest stable `vX.Y.Z` with a published GitHub release, or for
+ * `auto` the bump its Conventional Commits since that release's tag call for. With no published
+ * stable release there is nothing to bump; pass `--version` instead.
+ */
 export const selectReleaseVersion = async (
 	selector: SemanticBump | "auto",
 	root: string,
 	env: NodeJS.ProcessEnv,
 ): Promise<Result<string>> => {
 	try {
-		const latest = await queryRelease(
-			[
-				"npm",
-				"view",
-				"kabane",
-				"dist-tags.latest",
-				"--json",
-				"--registry",
-				"https://registry.npmjs.org/",
-			],
-			root,
-			env,
+		const published = await readHighestStableRelease((endpoint) =>
+			runUpdateProcess(["gh", "api", "--include", endpoint], root, env, 30_000),
 		);
-		if (!latest.ok) return latest;
-		const version = npmViewSchema(StableReleaseVersionSchema).safeParse(
-			JSON.parse(latest.value),
-		);
-		if (!version.success)
-			return fail("npm latest is not a safe stable version.");
-		if (selector !== "auto") return bumpReleaseVersion(version.data, selector);
-		const metadata = await queryRelease(
-			[
-				"npm",
-				"view",
-				`kabane@${version.data}`,
-				"--json",
-				"--registry",
-				"https://registry.npmjs.org/",
-			],
-			root,
-			env,
-		);
-		if (!metadata.ok) return metadata;
-		const release = npmViewSchema(RegistryRelease).safeParse(
-			JSON.parse(metadata.value),
-		);
-		if (!release.success || release.data.version !== version.data)
-			return fail(`Invalid previous npm release metadata. ${GUIDANCE}`);
-		const baseline = await releaseBaseline(release.data, root, env);
+		if (!published.ok) return published;
+		const current = published.value;
+		if (current === null)
+			return fail(
+				"No stable release is published on GitHub to bump from; pass --version X.Y.Z.",
+			);
+		if (selector !== "auto") return bumpReleaseVersion(current, selector);
+		const baseline = await releaseBaseline(current, root, env);
 		if (!baseline.ok) return baseline;
 		const commits = await releaseCommits(baseline.value, root, env);
 		if (!commits.ok) return commits;
-		const inferred = inferReleaseBump(version.data, commits.value);
-		return inferred.ok
-			? bumpReleaseVersion(version.data, inferred.value)
-			: inferred;
+		const inferred = inferReleaseBump(current, commits.value);
+		return inferred.ok ? bumpReleaseVersion(current, inferred.value) : inferred;
 	} catch {
 		return fail(
 			`Could not read previous release metadata/history. ${GUIDANCE}`,

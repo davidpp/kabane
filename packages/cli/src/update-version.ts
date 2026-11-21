@@ -79,8 +79,8 @@ export const compareVersions = (a: string, b: string): number => {
 };
 
 /**
- * The newest `latest` and `beta` releases: npm's dist-tags for a Bun install, the GitHub releases
- * for the board's notice and a binary (update-binary.ts). Any other tag is dropped.
+ * The newest `latest` and `beta` releases, read from the GitHub releases for the board's notice
+ * and a binary (update-binary.ts). Any other tag is dropped.
  */
 export const DistTagsSchema = z.object({
 	latest: SemverSchema,

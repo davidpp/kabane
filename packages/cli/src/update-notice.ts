@@ -164,7 +164,8 @@ export namespace UpdateNotice {
 
 	const HINTS = {
 		binary: "run kabane update",
-		bun: "run kabane update",
+		// Releases stopped going to npm; kabane update names the GitHub-release installs.
+		bun: "releases moved to GitHub, run kabane update",
 		manual: "update it the way you installed it",
 	};
 

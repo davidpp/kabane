@@ -263,7 +263,9 @@ test("the line names what this install runs to take the release", async () => {
 	expect(line("1.2.0", "binary")).toBe(
 		"kabane 1.2.0 is out · run kabane update",
 	);
-	expect(line("1.2.0", "bun")).toBe("kabane 1.2.0 is out · run kabane update");
+	expect(line("1.2.0", "bun")).toBe(
+		"kabane 1.2.0 is out · releases moved to GitHub, run kabane update",
+	);
 	expect(line("1.2.0", { name: "brew", upgrade: "brew upgrade kabane" })).toBe(
 		"kabane 1.2.0 is out · run brew upgrade kabane",
 	);

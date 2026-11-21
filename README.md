@@ -31,16 +31,14 @@ your own.
 
 ## Install
 
-Releases ship a standalone binary, which includes Bun, for macOS (`darwin-arm64`, `darwin-x64`)
-and Linux (`linux-x64`, `linux-arm64`, glibc), starting with the first stable release that
-carries binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases). Until then,
-install the npm package with Bun. Any one of these puts `kabane` on PATH:
+Releases ship on [GitHub Releases](https://github.com/davidpp/kabane/releases) as a standalone
+binary, which includes Bun, for macOS (`darwin-arm64`, `darwin-x64`) and Linux (`linux-x64`,
+`linux-arm64`, glibc). Any one of these puts `kabane` on PATH:
 
 ```bash
 brew install davidpp/tap/kabane                  # Homebrew (recommended)
 curl -fsSL https://github.com/davidpp/kabane/releases/latest/download/install.sh | sh
 mise use -g github:davidpp/kabane                # mise's GitHub backend
-bun add -g kabane                                # npm package; needs Bun 1.4.4 or later (not Node)
 kabane --version
 ```
 
@@ -58,9 +56,10 @@ kabane --version
   that release's installer and name its version:
   `curl -fsSL https://github.com/davidpp/kabane/releases/download/vX.Y.Z-beta.N/install.sh | sh -s -- --version X.Y.Z-beta.N`.
 - **mise** downloads the same archive for your platform and checks it against `SHA256SUMS`.
-- **Bun**: `bun add -g kabane@beta` installs the current beta instead. `bunx kabane` runs it
-  once without installing; install it globally before you let setup wire your coding agents,
-  since their MCP entries point at the installed file.
+- **On a Bun install** (`bun add -g kabane`, up to `1.0.0-beta.0`): releases no longer go to
+  npm. Install with Homebrew or the installer, run `bun remove -g kabane`, then
+  `kabane mcp install --force` so your coding agents launch the new `kabane`.
+  `kabane update` prints the same.
 
 Each install updates with its own command; the board's update notice names it:
 
@@ -69,7 +68,7 @@ Each install updates with its own command; the board's update notice names it:
 | Homebrew | `brew upgrade kabane` |
 | the installer, or an extracted release archive | `kabane update` |
 | mise | `mise up github:davidpp/kabane` |
-| `bun add -g` | `kabane update` |
+| `bun add -g` (up to `1.0.0-beta.0`) | move to Homebrew or the installer, as above |
 
 To install a release archive by hand, download its `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS`
 from the same release, check it with `shasum -a 256 --check --ignore-missing SHA256SUMS`
@@ -87,21 +86,18 @@ cd kabane && bun install
 cd packages/cli && bun link                      # `kabane` on PATH, pointing at the clone
 ```
 
-For a human-run local release, use `bun run release:local prepare` to infer and bump the
-version (or select `--bump patch|minor|major`, or `--version X.Y.Z-beta.N` for a beta on npm
-`beta`), then authenticate to npm and resume with `bun run release:local publish`. Publication reuses the selected version and original bytes.
-See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
+To release, a maintainer runs `bun run release` (or `--bump patch|minor|major`, or
+`--version X.Y.Z[-beta.N]`; `--dry-run` prints the steps). It commits the version, tags it,
+pushes, and starts the workflow that publishes the GitHub release and, for a stable release, the
+`davidpp/tap` formula. See [`docs/release.md`](docs/release.md).
 For a standalone binary, `kabane update --check` reports a candidate from GitHub releases,
 and, unless Homebrew or mise owns the install, `kabane update` downloads that release's archive for your platform, verifies it against
 its `SHA256SUMS`, checks that the new executable prints the candidate version, then renames it
 and `templates/` over the real executable (symlinks followed); any failure before that leaves
-the old install as it was. For a positively verified hoisted Bun global registry install,
-`kabane update --check` reports a candidate (installation policy is unverified), and
-`kabane update` explicitly checks Bun policy and verifies an exact installation. A stable
-install follows `latest` (npm's for a Bun install, GitHub's for a binary); a beta install takes
-the higher of `beta` and `latest`. Updates
-stay within major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin
-layouts refuse replacement. The board shows `kabane <version> is out` when that candidate
+the old install as it was. On a Bun global install, both say releases moved to GitHub and print
+the brew and installer commands. A stable install follows GitHub's latest release; a beta
+install takes the higher of the newest beta and latest. Updates
+stay within major, or minor for `0.x`; source links and unknown installs refuse replacement. The board shows `kabane <version> is out` when that candidate
 exists, with what your install runs to take it: `kabane update`, `brew upgrade kabane` or `mise up <tool>`. It reads GitHub releases at most once a day and installs nothing;
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
