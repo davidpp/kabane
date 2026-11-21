@@ -568,19 +568,20 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 	const { card, events, map, lane, banner, width, height, spinnerFrame } =
 		props;
 	const theme = useTheme();
-	// "Now"'s own scrollbox while a log under it has the scroll keys.
-	const nowRef = useRef<ScrollBoxRenderable | null>(null);
+	// The scroll keys (`g/G`, `⌃d/⌃u`) go to the log when one is on screen, else to "now" or the
+	// trace; whichever does not have them keeps a scrollbox of its own.
+	const ownRef = useRef<ScrollBoxRenderable | null>(null);
 	const raised = theme.surface.raised;
 	const right = width - Cockpit.LEFT_COLS - 1;
 	const live = isInFlight(card);
 	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asking);
 	const [leftRows, onLeftSize] = useLaidOutRows(height - CHROME_ROWS);
-	const now = (rows?: number): ReactNode => (
+	const now = (keys: boolean, rows?: number): ReactNode => (
 		<NowFeed
 			card={card}
 			events={events}
 			width={right}
-			scrollRef={rows === undefined ? props.scrollRef : nowRef}
+			scrollRef={keys ? props.scrollRef : ownRef}
 			spinnerFrame={spinnerFrame}
 			{...(rows === undefined ? {} : { rows })}
 		/>
@@ -594,20 +595,20 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 			log(lane, true)
 		) : shown === undefined ? (
 			live ? (
-				now()
+				now(true)
 			) : (
 				<>
-					{now(cap)}
+					{now(true, cap)}
 					<SessionsTable
 						steps={card.steps ?? []}
 						width={right}
-						scrollRef={props.scrollRef}
+						scrollRef={ownRef}
 					/>
 				</>
 			)
 		) : Cockpit.nowOverLog(card, live, shown) ? (
 			<>
-				{now(cap)}
+				{now(false, cap)}
 				{log(shown, false)}
 			</>
 		) : (

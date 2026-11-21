@@ -368,8 +368,9 @@ against every glyph already here.
   following the cursor with no key. The log stands alone while it is the one live session, or
   once `enter` opened it (`esc` closes it); `now` fills the column when the cursor is on no
   session. On a finished card `now` is the run trace, over `sessions · n`: every session the card
-  ran (a skipped lens is not one), one row each with its glyph, name, time and result, until the cursor is on one. The raised
-  column is the only seam between them: the No-Line Rule holds.
+  ran (a skipped lens is not one), one row each with its glyph, name, time and result, until the cursor is on one. `g/G` and
+  `⌃d/⌃u` scroll the log when one is on screen, else `now` or the trace. The raised column is the
+  only seam between them: the No-Line Rule holds.
 - **Without steps:** a card that gives none keeps its stream with a chip per lane under the
   header, `all <noun> · live` first, `h/l` walking them, each in its series hue.
 
