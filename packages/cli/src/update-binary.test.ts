@@ -118,8 +118,14 @@ const server = Bun.serve({
 		if (request.headers.get("user-agent")?.startsWith("kabane/"))
 			requests.push(path);
 		// The same assets one redirect away, at a name http may reach (127.0.0.1) and one it may not
-		// (0.0.0.0, still this machine, so a redirect that was followed would be answered).
-		const hop = /^\/(loopback|elsewhere)(\/.*)$/.exec(path);
+		// (0.0.0.0, still this machine, so a redirect that was followed would be answered), and
+		// two away, through 0.0.0.0 and back to 127.0.0.1.
+		const hop = /^\/(loopback|elsewhere|through)(\/.*)$/.exec(path);
+		if (hop?.[1] === "through")
+			return Response.redirect(
+				`http://0.0.0.0:${server.port}/loopback${hop[2]}`,
+				302,
+			);
 		if (hop)
 			return Response.redirect(
 				`http://${hop[1] === "loopback" ? "127.0.0.1" : "0.0.0.0"}:${server.port}/download${hop[2]}`,
@@ -438,6 +444,21 @@ test("releases are read over https, or http from loopback, wherever the redirect
 	);
 	expect(elsewhere).toMatchObject({ exitCode: 1, json: { status: "error" } });
 	expect(elsewhere.text).toContain(`refusing http://0.0.0.0:${server.port}/`);
+	// A chain that ends on loopback is refused at its insecure middle hop, never requested.
+	const through = await update(
+		[],
+		installed.link,
+		{ HOME: installed.home },
+		{
+			source: {
+				api: `${server.url.origin}/releases`,
+				releases: `${server.url.origin}/through`,
+			},
+		},
+	);
+	expect(through).toMatchObject({ exitCode: 1, json: { status: "error" } });
+	expect(through.text).toContain(`refusing http://0.0.0.0:${server.port}/`);
+	expect(requests.some((path) => path.startsWith("/loopback/"))).toBe(false);
 	expect(updateSnapshot(installed.base)).toEqual(before);
 	expect(leftovers(installed.directory)).toEqual([]);
 
@@ -455,6 +476,58 @@ test("releases are read over https, or http from loopback, wherever the redirect
 	expect(loopback).toMatchObject({ exitCode: 0, json: { status: "updated" } });
 	expect(sha256(installed.executable)).toBe(sha256(nextExecutable));
 }, 60_000);
+
+test("every hop of an https redirect chain is checked, the middle ones included", async () => {
+	// No https server runs here, so each hop is answered from this map, as GitHub's would be.
+	const chain = (hops: Record<string, string>) => {
+		const asked: string[] = [];
+		const hop: UpdateBinary.Hop = async (url) => {
+			asked.push(url);
+			const location = hops[url];
+			return location === undefined
+				? new Response("asset")
+				: new Response(null, { status: 302, headers: { location } });
+		};
+		return { asked, hop };
+	};
+	const download = "https://github.com/davidpp/kabane/releases/download/v1.0.0";
+	const secure = chain({
+		[download]: "https://objects.githubusercontent.com/asset?sig=1",
+	});
+	const fetched = await UpdateBinary.get(download, version, 5000, secure.hop);
+	expect(fetched.ok && (await fetched.value.text())).toBe("asset");
+	expect(secure.asked).toEqual([
+		download,
+		"https://objects.githubusercontent.com/asset?sig=1",
+	]);
+
+	const insecure = chain({
+		[download]: "http://mirror.example/asset",
+		"http://mirror.example/asset":
+			"https://objects.githubusercontent.com/asset",
+	});
+	const refused = await UpdateBinary.get(download, version, 5000, insecure.hop);
+	expect(!refused.ok && refused.error.message).toStartWith(
+		"refusing http://mirror.example/asset",
+	);
+	expect(insecure.asked).toEqual([download]);
+
+	const relative = chain({ [download]: "/elsewhere/asset" });
+	const resolved = await UpdateBinary.get(
+		download,
+		version,
+		5000,
+		relative.hop,
+	);
+	expect(resolved.ok).toBe(true);
+	expect(relative.asked[1]).toBe("https://github.com/elsewhere/asset");
+
+	const loop = chain({ [download]: download });
+	const endless = await UpdateBinary.get(download, version, 5000, loop.hop);
+	expect(!endless.ok && endless.error.message).toContain(
+		"redirected more than 5 times",
+	);
+});
 
 /** A ustar header for `name`, as tar writes one; `type` is its typeflag. */
 const header = (name: string, type: string, size = 0, link = ""): Buffer => {
