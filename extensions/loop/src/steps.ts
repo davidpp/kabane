@@ -508,10 +508,12 @@ export namespace RunSteps {
 	};
 
 	/**
-	 * What became of an over run's branch after the run: `removed` once its worktree and branch are
-	 * gone (`kabane loop prune` removes both once the branch merged), which run.json does not record.
+	 * What became of an over run's worktree after the run, which run.json does not record: `pruned`
+	 * when `kabane loop prune` removed it and its branch, which it does once the branch merged (its
+	 * `pruned` event says so), `missing` when the directory is gone with no such event, which says
+	 * nothing of the branch or its merge.
 	 */
-	export type After = { removed?: boolean };
+	export type After = { worktree?: "pruned" | "missing" };
 
 	const land = (run: RunStore.Run, after: After): ActivityStep => {
 		const how = run.config.land;
@@ -529,9 +531,12 @@ export namespace RunSteps {
 			return {
 				name: "land",
 				state: "done",
-				result: after.removed
-					? "none: kept for review, since merged and removed"
-					: "none: kept for review",
+				result:
+					after.worktree === "pruned"
+						? "none: kept for review, since merged and removed"
+						: after.worktree === "missing"
+							? "none: kept for review · worktree missing"
+							: "none: kept for review",
 			};
 		return { name: "land", state: "pending", result: LANDING[how] ?? how };
 	};
@@ -596,11 +601,17 @@ export namespace RunSteps {
 				};
 			});
 		const branch: ActivityLeft[] =
-			run.worktree !== undefined && run.landing?.ok !== true && !after.removed
+			run.worktree !== undefined &&
+			run.landing?.ok !== true &&
+			after.worktree !== "pruned"
 				? [
 						{
 							how: `branch ${RunStore.branchOf(run)}`,
-							reason: `land: ${run.config.land}${run.landing ? ` · ${run.landing.summary}` : ""}`,
+							reason: [
+								`land: ${run.config.land}`,
+								...(run.landing ? [run.landing.summary] : []),
+								...(after.worktree === "missing" ? ["worktree missing"] : []),
+							].join(" · "),
 						},
 					]
 				: [];

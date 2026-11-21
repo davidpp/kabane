@@ -438,7 +438,7 @@ describe("RunSteps", () => {
 
 describe("RunSteps after the branch was pruned", () => {
 	it("no longer leaves the branch to the human, and the landing says it went", () => {
-		const after = { removed: true };
+		const after = { worktree: "pruned" } as const;
 		expect(
 			RunSteps.left(finished(), NODES, after).some((item) =>
 				item.how.startsWith("branch"),
@@ -446,6 +446,18 @@ describe("RunSteps after the branch was pruned", () => {
 		).toBe(false);
 		expect(RunSteps.of(finished(), NODES, NOW, after).at(-1)?.result).toBe(
 			"none: kept for review, since merged and removed",
+		);
+	});
+
+	it("says only that the worktree is missing when nothing recorded a prune, and still leaves the branch", () => {
+		const after = { worktree: "missing" } as const;
+		expect(
+			RunSteps.left(finished(), NODES, after).find((item) =>
+				item.how.startsWith("branch"),
+			)?.reason,
+		).toEndWith("worktree missing");
+		expect(RunSteps.of(finished(), NODES, NOW, after).at(-1)?.result).toBe(
+			"none: kept for review · worktree missing",
 		);
 	});
 });

@@ -444,6 +444,46 @@ describe("LoopActivity", () => {
 			"2026-10-11T00:00:00.000Z",
 		);
 	});
+
+	it("calls a gone worktree merged only when a prune recorded removing it", async () => {
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			host: testHost(home),
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
+		RunStore.create(
+			home,
+			run({
+				status: "completed",
+				exit: undefined,
+				worktree: join(home, "gone"),
+			}),
+		);
+		const landing = async () => {
+			const loaded = await source.card?.("KAB-1-abc");
+			if (!loaded?.ok) throw new Error("no card");
+			return [
+				loaded.value?.steps?.at(-1)?.result,
+				loaded.value?.left?.map((item) => item.how),
+			];
+		};
+		expect(await landing()).toEqual([
+			"none: kept for review · worktree missing",
+			["branch kabane-loop/KAB-1-abc"],
+		]);
+		const log = RunStore.eventLog(home, "KAB-1-abc");
+		if (!log.ok) throw log.error;
+		log.value.append({
+			type: "pruned",
+			summary: "worktree gone and branch kab-1 removed: merged",
+		});
+		expect(await landing()).toEqual([
+			"none: kept for review, since merged and removed",
+			undefined,
+		]);
+	});
 });
 
 it("lists only loop questions with their card and lane, and answers through the port", async () => {
