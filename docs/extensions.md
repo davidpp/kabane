@@ -11,12 +11,12 @@ the binary, in `extensions/` beside the `kabane` executable. None is on until yo
 |---|---|
 | `loop` | `kabane loop`, which drives an issue or a parent issue's subtasks through coding harnesses on your machine; `a` on the board to start a run, with a tab per run; the served `loop-run` skill to set up and start a run; the `kabane_loop_advise` MCP tool; `loop.*` settings; doctor checks under `loop`. See [loop.md](loop.md). |
 | `dispatch` | The dispatch skill for your projects; two skills `kabane mcp` serves to any session: setup-dispatch, which writes a project's dispatch skill and runs on the board with `/setup-dispatch`, and grill, which walks you through open questions; `kabane dispatch stamp`; doctor checks under `dispatch`. See [its README](../extensions/dispatch/README.md). |
-| `recipes` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop those runs; `kabane job` to run a recipe on a schedule, with `kabane job tick` for launchd or cron; on the board, a card for each run that works on an issue, with its state and the command that attaches to it, and `a` on an issue to start a recipe; the `recipes.harness` setting; a doctor check under `recipes`. See [recipes.md](recipes.md). |
+| `jobs` | `kabane run`, which starts a prompt recipe from a project's `.kabane/recipes/` in a background `hc` (herdr core) terminal, and `kabane runs` to list, read, send to, attach to and stop those runs; `kabane job` to run a recipe on a schedule, with `kabane job tick` for launchd or cron; on the board, a card for each run that works on an issue, with its state and the command that attaches to it, and `a` on an issue to start a recipe; the `jobs.harness` and `jobs.onAttention` settings; doctor checks under `jobs`. See [recipes.md](recipes.md). |
 
 `a` on the board lists what the enabled extensions can start on an issue: a loop run, the
-project's recipes that target an issue, or both. Without the loop and recipes it does nothing.
+project's recipes that target an issue, or both. Without the loop and jobs it does nothing.
 Without dispatch, kabane serves neither the setup-dispatch nor the grill skill, and the copilot does not offer `/setup-dispatch`. Without
-recipes, kabane has no `run` or `runs`, and the board shows no run cards.
+jobs, kabane has no `run`, `runs` or `job`, and the board shows no run cards.
 
 ## Turn on the ones that came with kabane
 
@@ -63,7 +63,7 @@ git clone https://github.com/davidpp/kabane.git
 cd kabane && bun install
 bun run --cwd extensions/loop build
 bun run --cwd extensions/dispatch build
-bun run --cwd extensions/recipes build
+bun run --cwd extensions/jobs build
 ```
 
 Each build prints where it wrote, such as `build: /…/kabane/extensions/loop/dist`. The `dist/`
@@ -88,8 +88,8 @@ mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/loop"
 cp -R extensions/loop/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/loop/"
 mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch"
 cp -R extensions/dispatch/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/dispatch/"
-mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/recipes"
-cp -R extensions/recipes/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/recipes/"
+mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/jobs"
+cp -R extensions/jobs/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/jobs/"
 ```
 
 Then enable them by name. `extensions` is a list, and a `set` replaces the whole list, so read it
@@ -97,11 +97,11 @@ first and name every extension you want on:
 
 ```bash
 kabane config get extensions
-kabane config set extensions loop,dispatch,recipes --layer global
+kabane config set extensions loop,dispatch,jobs --layer global
 ```
 
 ```text
-extensions = ["loop","dispatch","recipes"] (global)
+extensions = ["loop","dispatch","jobs"] (global)
 ```
 
 In the board, the copilot's `/setup` shortcut, for its harness, model and extensions, can enable
@@ -139,8 +139,8 @@ directory can be a symlink to the source in the checkout, so a change there need
 From the clone, link every extension of the checkout, or only the ones you name:
 
 ```bash
-bun run link-extensions            # loop, dispatch, recipes
-bun run link-extensions recipes
+bun run link-extensions            # loop, dispatch, jobs
+bun run link-extensions jobs
 ```
 
 It links `${KABANE_HOME:-$HOME/.kabane}/extensions/<name>` to `extensions/<name>` and prints
@@ -153,7 +153,7 @@ name every extension you want on:
 
 ```bash
 kabane config get extensions
-kabane config set extensions loop,dispatch,recipes --layer global
+kabane config set extensions loop,dispatch,jobs --layer global
 ```
 
 The standalone binary cannot load the loop's source through that link. It resolves no package
@@ -167,10 +167,10 @@ Extension loop: the entry could not be imported: Cannot find package '@kabane/ac
 ## Try them in the sandbox
 
 `bun run sandbox`, from a checkout, links `extensions/loop`, `extensions/dispatch` and
-`extensions/recipes` into its throwaway `KABANE_HOME`. They are installed there but not enabled:
+`extensions/jobs` into its throwaway `KABANE_HOME`. They are installed there but not enabled:
 
 ```bash
-bun run sandbox config set extensions loop,dispatch,recipes --layer global
+bun run sandbox config set extensions loop,dispatch,jobs --layer global
 bun run sandbox loop --help
 bun run sandbox --scripted board
 ```

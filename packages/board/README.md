@@ -204,7 +204,7 @@ row is the job's id, title and whether it is paused.
 `JobPanel` at the top of each section's scroll, so a long run history scrolls away rather than
 hiding the request and comments; `esc` comes back to the tab. `s` pauses the job (`someday`), `n`
 resumes it (`next`), and `a` opens the dispatcher on it, where a host offers what it can start
-on a job (the recipes extension's `run now`). `esc` or `q` on the list goes to the tracker. A
+on a job (the jobs extension's `run now`). `esc` or `q` on the list goes to the tracker. A
 click selects a row, and a click on the selected row opens it.
 
 #### A card's map
