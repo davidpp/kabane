@@ -48,6 +48,50 @@ const Workflow = z.object({
 		})
 		.strict(),
 });
+/** The contexts a publication gate reads, for a pushed tag and for a tag-ref dispatch. */
+const TAG = {
+	"github.ref_type": "tag",
+	"github.ref": "refs/tags/v1.2.3",
+	"github.ref_name": "v1.2.3",
+	"github.repository": "davidpp/kabane",
+};
+const EVENTS = {
+	push: { ...TAG, "github.event_name": "push", "inputs.publish": null },
+	dryRun: {
+		...TAG,
+		"github.event_name": "workflow_dispatch",
+		"inputs.publish": false,
+	},
+	dispatch: {
+		...TAG,
+		"github.event_name": "workflow_dispatch",
+		"inputs.publish": true,
+	},
+};
+
+/**
+ * A gate of the workflow evaluated for one event: a conjunction of `path == 'value'`,
+ * `startsWith(path, 'value')` and bare `path` clauses, the shape its publication gates keep. Any
+ * other clause, an `||` included, fails the test rather than being guessed at.
+ */
+const gate = (
+	expression: string | undefined,
+	context: Record<string, unknown>,
+): boolean =>
+	(expression ?? "")
+		.replace(/^\$\{\{\s*|\s*\}\}$/g, "")
+		.split(" && ")
+		.every((clause) => {
+			const equals = /^([\w.]+) == '([^']*)'$/.exec(clause);
+			if (equals?.[1]) return context[equals[1]] === equals[2];
+			const starts = /^startsWith\(([\w.]+), '([^']*)'\)$/.exec(clause);
+			if (starts?.[1])
+				return String(context[starts[1]]).startsWith(starts[2] ?? "");
+			if (!/^[\w.]+$/.test(clause) || !(clause in context))
+				throw new Error(`unsupported gate clause: ${clause}`);
+			return Boolean(context[clause]);
+		});
+
 const workflow = () =>
 	readFileSync(
 		join(import.meta.dir, "../.github/workflows/release.yml"),
@@ -98,9 +142,6 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 		"id-token": "write",
 		actions: "read",
 	});
-	expect(publish.if).toContain(
-		"(github.event_name == 'push' || inputs.publish)",
-	);
 	expect(publish.if).toContain("github.ref_type == 'tag'");
 	expect(publish.if).toContain("github.repository == 'davidpp/kabane'");
 	expect(publish.concurrency).toEqual({
@@ -110,7 +151,6 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 	expect(
 		publish.steps.find((step) => step.run?.includes("release.ts publish"))?.env,
 	).toMatchObject({
-		RELEASE_PUBLISH: "${{ github.event_name == 'push' || inputs.publish }}",
 		RELEASE_SETUP_CONFIRMED: "${{ vars.RELEASE_SETUP_CONFIRMED }}",
 	});
 	for (const job of Object.values(parsed.data.jobs))
@@ -171,7 +211,7 @@ test("native matrix retains four archives and smoke consumes the assembled bytes
 	).toBe(true);
 });
 
-test("a pushed release tag publishes behind the same approval, after the archives are attested", () => {
+test("only a publish=true dispatch publishes; a pushed tag and a dry run verify and attest", () => {
 	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
@@ -180,10 +220,20 @@ test("a pushed release tag publishes behind the same approval, after the archive
 		"v[0-9]+.[0-9]+.[0-9]+",
 		"v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+",
 	]);
-	expect(
+	const gates = [
+		publish.if,
 		prepare.steps.find((step) => step.run?.includes("release.ts prepare"))?.env
 			?.RELEASE_PUBLISH,
-	).toBe("${{ github.event_name == 'push' || inputs.publish }}");
+		publish.steps.find((step) => step.run?.includes("release.ts publish"))?.env
+			?.RELEASE_PUBLISH,
+	];
+	for (const expression of gates) {
+		expect(gate(expression, EVENTS.push)).toBe(false);
+		expect(gate(expression, EVENTS.dryRun)).toBe(false);
+		expect(gate(expression, EVENTS.dispatch)).toBe(true);
+	}
+	// Attestation runs whatever the event, so a tag push still proves the attest job works.
+	expect(attest.if).toBe("github.repository == 'davidpp/kabane'");
 	expect(publish.needs).toEqual(["prepare", "installed-smoke", "attest"]);
 	expect(attest.permissions).toEqual({
 		contents: "read",
@@ -209,12 +259,14 @@ test("a pushed release tag publishes behind the same approval, after the archive
 				expect(step.with?.["no-cache"]).toBe(true);
 });
 
-test("the tap takes a stable release's formula once its GitHub release is public, with its own key", () => {
+test("the tap takes a stable release's formula once its GitHub release is public, with its own key behind the approval", () => {
 	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
 	const { homebrew } = parsed.data.jobs;
 	expect(homebrew.needs).toEqual(["prepare", "publish"]);
+	// Its deploy key is an environment secret: only a job behind the approval can read it.
+	expect(homebrew.environment).toBe("npm-release");
 	expect(homebrew.if).toContain("!contains(github.ref_name, '-')");
 	expect(homebrew.permissions).toEqual({});
 	const runs = homebrew.steps.map((step) => step.run ?? "").join("\n");
