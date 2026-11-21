@@ -363,13 +363,15 @@ a silent UTC.
 The board says when a release your install would update to is out: a line over its footer,
 `kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A binary mise
 installed says `run mise up kabane` instead, and an install `kabane update` would refuse says
-`update it the way you installed it`. It is the release
-`kabane update --check` would name, on your channel and within your major (minor for `0.x`).
-The board reads npm's `latest` and `beta` dist-tags at most once a day, after its first
-frame, and keeps them in `KABANE_HOME/update-check.json`. Bun's registry and proxy settings
-do not apply to that read. When the registry cannot be reached, nothing is shown and the board
-carries on. Only the board checks: `kabane mcp`, a piped command and every other command never
-do, and a run from a source checkout never shows the line. The check installs nothing. To turn
+`update it the way you installed it`. It is the newest release on your channel and within your
+major (minor for `0.x`), the one `kabane update --check` names on a binary.
+The board reads the latest release and the betas from
+[GitHub releases](https://github.com/davidpp/kabane/releases), where the binaries download
+from, at most once a day, after its first frame, and keeps them in
+`KABANE_HOME/update-check.json`. Bun's registry and proxy settings do not apply to that read.
+When GitHub cannot be reached, nothing is shown and the board carries on. Only the board
+checks: `kabane mcp`, a piped command and every other command never do, and a run from a
+source checkout never shows the line. The check installs nothing. To turn
 it off:
 
 ```bash
@@ -421,13 +423,14 @@ Use `--force` or the named doctor repair only when you want to re-point it.
 This applies once a release ships binaries ([install](#install)).
 
 ```bash
-kabane update --check        # metadata only: the candidate from npm's dist-tags
+kabane update --check        # metadata only: the candidate from GitHub releases
 kabane update               # download, verify and replace this binary
 ```
 
 A binary follows the same channel and version policy as a Bun install
-([subsequent updates](#subsequent-updates), [beta installs](#beta-installs)); it reads npm's
-dist-tags over HTTPS, so Bun's registry and proxy settings do not apply. `kabane update`
+([subsequent updates](#subsequent-updates), [beta installs](#beta-installs)). It reads the
+candidate from the GitHub releases API over HTTPS: `latest` is the latest release, `beta` the
+highest `X.Y.Z-beta.N` prerelease. Bun's registry and proxy settings do not apply. `kabane update`
 downloads `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from that version's
 [GitHub release](https://github.com/davidpp/kabane/releases) and refuses on any checksum
 mismatch. It extracts into a temporary directory beside the executable, runs the new

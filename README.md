@@ -70,7 +70,7 @@ For a human-run local release, use `bun run release:local prepare` to infer and 
 version (or select `--bump patch|minor|major`, or `--version X.Y.Z-beta.N` for a beta on npm
 `beta`), then authenticate to npm and resume with `bun run release:local publish`. Publication reuses the selected version and original bytes.
 See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
-For a standalone binary, `kabane update --check` reports a candidate from npm's dist-tags,
+For a standalone binary, `kabane update --check` reports a candidate from GitHub releases,
 and `kabane update` downloads that release's archive for your platform, verifies it against
 its `SHA256SUMS`, checks that the new executable prints the candidate version, then renames it
 and `templates/` over the real executable (symlinks followed); any failure before that leaves
@@ -80,7 +80,7 @@ the old install as it was. For a positively verified hoisted Bun global registry
 install follows npm `latest`; a beta install takes the higher of `beta` and `latest`. Updates
 stay within major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin
 layouts refuse replacement. The board shows `kabane <version> is out` when that candidate
-exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads npm's dist-tags at most once a day and installs nothing;
+exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads GitHub releases at most once a day and installs nothing;
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
 After an update, `kabane doctor` reports what kabane wrote that the new version has moved past:

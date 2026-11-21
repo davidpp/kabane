@@ -23,7 +23,7 @@ import { runUpdateProcess } from "./update-process";
 import { isPrerelease } from "./update-version";
 
 // Real release archives for this machine, built by the release script and served by a real
-// server on localhost; only the versions on the dist-tags and the paths they hang off are made up.
+// server on localhost; only the GitHub releases listed and the paths they hang off are made up.
 const ROOT = resolve(import.meta.dir, "../../..");
 const WORK = realpathSync(mkdtempSync(join(tmpdir(), "kabane-update-binary-")));
 const TARGET = UpdateBinary.target() ?? "";
@@ -48,9 +48,13 @@ const next = (from: string): string => {
 	return from;
 };
 const NEXT = next(version);
-const TAGS = isPrerelease(NEXT)
-	? { latest: "0.3.0", beta: NEXT }
-	: { latest: NEXT };
+/** The releases API's list, newest first: NEXT, as a prerelease when it is a beta. */
+const RELEASES = [
+	{ tag_name: `v${NEXT}`, draft: false, prerelease: isPrerelease(NEXT) },
+	{ tag_name: "v0.3.0", draft: false, prerelease: false },
+];
+const LATEST = RELEASES.find((release) => !release.prerelease);
+const API = ["/releases/latest", "/releases"];
 
 const sha256 = (file: string): string =>
 	new Bun.CryptoHasher("sha256").update(readFileSync(file)).digest("hex");
@@ -103,8 +107,8 @@ beforeAll(() => {
 }, 120_000);
 
 // What the release server answers, set per test, and every path kabane asked it for.
-type Release = { tags: unknown; archive: string; sums: string };
-let release: Release = { tags: TAGS, archive: "", sums: "" };
+type Release = { archive: string; sums: string };
+let release: Release = { archive: "", sums: "" };
 const requests: string[] = [];
 const server = Bun.serve({
 	port: 0,
@@ -121,8 +125,8 @@ const server = Bun.serve({
 				`http://${hop[1] === "loopback" ? "127.0.0.1" : "0.0.0.0"}:${server.port}/download${hop[2]}`,
 				302,
 			);
-		if (path === "/-/package/kabane/dist-tags")
-			return Response.json(release.tags);
+		if (path === "/releases/latest") return Response.json(LATEST);
+		if (path === "/releases") return Response.json(RELEASES);
 		if (path === `/download/v${NEXT}/SHA256SUMS`)
 			return new Response(release.sums);
 		if (path === `/download/v${NEXT}/${FILE}`)
@@ -137,7 +141,6 @@ afterAll(async () => {
 
 const serve = (archive: string, sums = `${sha256(archive)}  ${FILE}\n`) => {
 	release = {
-		tags: TAGS,
 		archive,
 		// Another target's line beside it, as the release's SHA256SUMS lists all of them.
 		sums: `${"0".repeat(64)}  kabane-other-target.tar.gz\n${sums}`,
@@ -181,7 +184,7 @@ const update = (
 			mainBuild: undefined,
 			target: TARGET,
 			source: {
-				registry: server.url.origin,
+				api: `${server.url.origin}/releases`,
 				releases: `${server.url.origin}/download`,
 			},
 			...over,
@@ -195,7 +198,7 @@ const leftovers = (directory: string): string[] =>
 			name.startsWith(".kabane-update-") || name.startsWith("templates."),
 	);
 
-test("--check reads the dist-tags alone and changes nothing", async () => {
+test("--check reads the releases API alone and changes nothing", async () => {
 	serve(repacked);
 	const installed = install("opt/kabane");
 	const before = updateSnapshot(installed.base);
@@ -211,7 +214,7 @@ test("--check reads the dist-tags alone and changes nothing", async () => {
 			candidateVersion: NEXT,
 		},
 	});
-	expect(requests).toEqual(["/-/package/kabane/dist-tags"]);
+	expect(requests).toEqual(API);
 	expect(updateSnapshot(installed.base)).toEqual(before);
 }, 30_000);
 
@@ -307,9 +310,7 @@ test("a binary mise installed is reported with mise up kabane and never download
 		json: { status: "manual_only", install: "mise", candidateVersion: NEXT },
 	});
 	expect(refused.text).toContain("run mise up kabane");
-	expect(requests.every((path) => path === "/-/package/kabane/dist-tags")).toBe(
-		true,
-	);
+	expect(requests.every((path) => API.includes(path))).toBe(true);
 	expect(updateSnapshot(installed.base)).toEqual(before);
 }, 30_000);
 
@@ -321,7 +322,7 @@ test("an executable without templates/ beside it is not an extracted release and
 	const refused = await update([], installed.link, { HOME: installed.home });
 	expect(refused).toMatchObject({ exitCode: 1, json: { status: "error" } });
 	expect(refused.text).toContain("no templates/");
-	expect(requests).toEqual(["/-/package/kabane/dist-tags"]);
+	expect(requests).toEqual(API);
 	expect(updateSnapshot(installed.base)).toEqual(before);
 }, 30_000);
 
@@ -347,7 +348,7 @@ test("a target with no published binary reports the candidate and replaces nothi
 test("releases are read over https, or http from loopback, wherever the redirects lead", async () => {
 	const { secure } = UpdateBinary;
 	for (const url of [
-		"https://registry.npmjs.org",
+		"https://api.github.com/repos/davidpp/kabane/releases",
 		"https://mirror.example/kabane",
 		"http://127.0.0.1:8080",
 		"http://[::1]:8080/download",
@@ -355,7 +356,7 @@ test("releases are read over https, or http from loopback, wherever the redirect
 	])
 		expect(secure(url)).toBe(true);
 	for (const url of [
-		"http://registry.npmjs.org",
+		"http://api.github.com/repos/davidpp/kabane/releases",
 		"http://0.0.0.0:8080",
 		"http://127.0.0.2:8080",
 		"http://localhost.example",
@@ -374,7 +375,7 @@ test("releases are read over https, or http from loopback, wherever the redirect
 		{ HOME: installed.home },
 		{
 			source: {
-				registry: "http://registry.npmjs.org",
+				api: "http://api.github.com/repos/davidpp/kabane/releases",
 				releases: `${server.url.origin}/download`,
 			},
 		},
@@ -387,7 +388,7 @@ test("releases are read over https, or http from loopback, wherever the redirect
 		{ HOME: installed.home },
 		{
 			source: {
-				registry: server.url.origin,
+				api: `${server.url.origin}/releases`,
 				releases: `${server.url.origin}/elsewhere`,
 			},
 		},
@@ -403,7 +404,7 @@ test("releases are read over https, or http from loopback, wherever the redirect
 		{ HOME: installed.home },
 		{
 			source: {
-				registry: server.url.origin,
+				api: `${server.url.origin}/releases`,
 				releases: `${server.url.origin}/loopback`,
 			},
 		},

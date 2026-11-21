@@ -337,7 +337,7 @@ const installCandidate = async (
 };
 
 /**
- * A standalone binary: the candidate from npm's dist-tags under the same policy, then the release
+ * A standalone binary: the candidate from the GitHub releases under the same policy, then the release
  * archive for this target downloaded, verified and renamed over the real executable. A binary mise
  * installed is left to `mise up kabane`.
  */
@@ -357,15 +357,15 @@ const updateBinary = async (
 	const install = UpdateBinary.miseOwned(executable.value, host.env)
 		? "mise"
 		: "binary";
-	const tags = await UpdateBinary.fetchTags(
-		host.source.registry,
+	const tags = await UpdateBinary.fetchReleases(
+		host.source.api,
 		runningVersion,
 		15_000,
 	);
 	if (!tags.ok)
 		return reply(
 			"error",
-			`Could not read kabane's dist-tags from ${host.source.registry} (${tags.error.message}); check the network and retry. No update attempted.`,
+			`Could not read kabane's releases from ${host.source.api} (${tags.error.message}); check the network and retry. No update attempted.`,
 			1,
 			{ install },
 		);

@@ -1,9 +1,11 @@
 /**
- * Where a release is read from, and how a standalone binary replaces itself with one. npm's
- * `latest` and `beta` dist-tags name the release, read over `fetch` because a binary has no Bun to
- * run `bun info` with; the GitHub release of that tag carries `kabane-<os>-<arch>.tar.gz` and the
- * `SHA256SUMS` that covers it. `KABANE_UPDATE_REGISTRY` and `KABANE_UPDATE_RELEASES` point both
- * somewhere else, such as a mirror, over https; plain http only reaches this machine's loopback.
+ * Where a release is read from, and how a standalone binary replaces itself with one. The GitHub
+ * releases API names the release, the same place its bytes come from, so a release reaches a
+ * binary or a brew install without npm: `latest` is the latest release, which GitHub never makes a
+ * draft or a prerelease, and `beta` the highest `X.Y.Z-beta.N` prerelease. The GitHub release of
+ * that tag carries `kabane-<os>-<arch>.tar.gz` and the `SHA256SUMS` that covers it.
+ * `KABANE_UPDATE_API` and `KABANE_UPDATE_RELEASES` point both somewhere else, such as a mirror, over
+ * https; plain http only reaches this machine's loopback.
  */
 
 import { createHash } from "node:crypto";
@@ -19,19 +21,28 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { err, ok, type Result, tryCatch, trySync } from "@kabane/core";
+import { z } from "zod";
 import { runUpdateProcess } from "./update-process";
-import { type DistTags, DistTagsSchema } from "./update-version";
+import {
+	ChannelVersionSchema,
+	compareVersions,
+	type DistTags,
+	isPrerelease,
+	SemverSchema,
+} from "./update-version";
 
 export namespace UpdateBinary {
 	export type Source = {
-		/** The npm registry whose dist-tags name the release. */
-		registry: string;
+		/** The releases API that names the release: `<api>/latest` and `<api>`, GitHub's shape. */
+		api: string;
 		/** The base the release assets hang off: `<releases>/v<version>/<asset>`. */
 		releases: string;
 	};
 
 	export const source = (env: NodeJS.ProcessEnv): Source => ({
-		registry: env.KABANE_UPDATE_REGISTRY ?? "https://registry.npmjs.org",
+		api:
+			env.KABANE_UPDATE_API ??
+			"https://api.github.com/repos/davidpp/kabane/releases",
 		releases:
 			env.KABANE_UPDATE_RELEASES ??
 			"https://github.com/davidpp/kabane/releases/download",
@@ -64,7 +75,7 @@ export namespace UpdateBinary {
 
 	const insecure = (url: string): Error =>
 		new Error(
-			`refusing ${url}: releases are read over https only (http only from 127.0.0.1, ::1 or localhost); check KABANE_UPDATE_REGISTRY and KABANE_UPDATE_RELEASES`,
+			`refusing ${url}: releases are read over https only (http only from 127.0.0.1, ::1 or localhost); check KABANE_UPDATE_API and KABANE_UPDATE_RELEASES`,
 		);
 
 	/**
@@ -88,25 +99,67 @@ export namespace UpdateBinary {
 		return err(insecure(response.value.url));
 	};
 
-	export const fetchTags = async (
-		registry: string,
-		version: string,
+	const ReleaseSchema = z.object({
+		tag_name: z.string(),
+		draft: z.boolean(),
+		prerelease: z.boolean(),
+	});
+
+	const getJson = async (
+		url: string,
+		runningVersion: string,
+		timeoutMs: number,
+	): Promise<Result<unknown>> => {
+		const response = await get(url, runningVersion, timeoutMs);
+		if (!response.ok) return response;
+		if (!response.value.ok) {
+			await response.value.body?.cancel().catch(() => {});
+			return err(new Error(`${url} answered ${response.value.status}`));
+		}
+		return tryCatch((): Promise<unknown> => response.value.json());
+	};
+
+	/** The version a release's `v<version>` tag names. */
+	const tagVersion = (tag: string): string => tag.replace(/^v/, "");
+
+	/**
+	 * The `latest` and `beta` releases from releases API `api`: `latest` from `<api>/latest`,
+	 * `beta` the highest published `X.Y.Z-beta.N` prerelease on the first page of `<api>`. Either
+	 * read failing fails both, so a half-read never stands in for a day's check.
+	 */
+	export const fetchReleases = async (
+		api: string,
+		runningVersion: string,
 		timeoutMs: number,
 	): Promise<Result<DistTags>> => {
-		const response = await get(
-			`${registry}/-/package/kabane/dist-tags`,
-			version,
-			timeoutMs,
-		);
-		if (!response.ok) return response;
-		if (!response.value.ok)
-			return err(new Error(`registry answered ${response.value.status}`));
-		const body = await tryCatch((): Promise<unknown> => response.value.json());
-		if (!body.ok) return body;
-		const parsed = DistTagsSchema.safeParse(body.value);
-		return parsed.success
-			? ok(parsed.data)
-			: err(new Error("registry dist-tags are not kabane's"));
+		const latest = await getJson(`${api}/latest`, runningVersion, timeoutMs);
+		if (!latest.ok) return latest;
+		const release = ReleaseSchema.safeParse(latest.value);
+		const latestVersion = release.success
+			? SemverSchema.safeParse(tagVersion(release.data.tag_name))
+			: undefined;
+		if (!latestVersion?.success)
+			return err(new Error("the latest release is not a kabane release"));
+		const listed = await getJson(api, runningVersion, timeoutMs);
+		if (!listed.ok) return listed;
+		const releases = z.array(z.unknown()).safeParse(listed.value);
+		if (!releases.success)
+			return err(new Error("the releases list is not a list"));
+		const betas = releases.data.flatMap((entry) => {
+			const parsed = ReleaseSchema.safeParse(entry);
+			if (!parsed.success || parsed.data.draft || !parsed.data.prerelease)
+				return [];
+			const version = tagVersion(parsed.data.tag_name);
+			return ChannelVersionSchema.safeParse(version).success &&
+				isPrerelease(version)
+				? [version]
+				: [];
+		});
+		const beta = betas.sort(compareVersions).at(-1);
+		return ok({
+			latest: latestVersion.data,
+			...(beta === undefined ? {} : { beta }),
+		});
 	};
 
 	/**

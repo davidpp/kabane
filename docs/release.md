@@ -225,10 +225,11 @@ homes. No live release, npm/OIDC or notarization claim follows from local binary
 To rehearse a binary update before a release exists, build an older and a newer binary
 (the newer from a checkout whose CLI version is bumped), install the older one, and serve
 the newer as a release from this machine. Two variables point the binary there instead of
-npm and GitHub:
+GitHub:
 
-- `KABANE_UPDATE_REGISTRY` answers `GET <registry>/-/package/kabane/dist-tags` with
-  `{ "latest": …, "beta": … }`.
+- `KABANE_UPDATE_API` stands for `https://api.github.com/repos/davidpp/kabane/releases`. It
+  answers `GET <api>/latest` with `{ "tag_name": "v<version>", "draft": false, "prerelease":
+  false }` and `GET <api>` with a list of those; a beta is a `"prerelease": true` entry there.
 - `KABANE_UPDATE_RELEASES` answers `GET <releases>/v<version>/SHA256SUMS` and
   `<releases>/v<version>/kabane-<os>-<arch>.tar.gz`.
 
