@@ -146,7 +146,9 @@ const listReleases = async (
 		.object({
 			id: z.number().int().positive().safe(),
 			full_name: z.literal("davidpp/kabane"),
-			permissions: z.object({ push: z.literal(true) }),
+			// A user token is told its permissions; an Actions GITHUB_TOKEN is not, and its job's
+			// `contents: write` is what lets it see drafts. Refuse only a token told it cannot push.
+			permissions: z.object({ push: z.literal(true) }).optional(),
 		})
 		.safeParse(authenticated.value.body);
 	// Public/read-only listings omit drafts. A successful empty response alone cannot prove absence.
