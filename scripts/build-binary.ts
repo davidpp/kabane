@@ -11,6 +11,7 @@ import {
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { err, ok, type Result } from "../packages/core/result";
+import { checkoutExtensions } from "./link-extensions";
 import { BinaryTargetSchema, sha256 } from "./release-artifact";
 import { queryRelease } from "./release-process";
 
@@ -18,6 +19,35 @@ const ROOT = resolve(import.meta.dir, "..");
 export const binaryFilename = (
 	target: z.infer<typeof BinaryTargetSchema>,
 ): string => `kabane-${target}.tar.gz`;
+
+/**
+ * Each first-party extension under `root`'s extensions/, built by its own `bun run build` and
+ * copied to `into/<name>`: the directory an install links `$KABANE_HOME/extensions/<name>` to.
+ */
+export const buildExtensions = (
+	root: string,
+	into: string,
+): Result<string[]> => {
+	const names = checkoutExtensions(root);
+	mkdirSync(into);
+	for (const name of names) {
+		const source = join(root, "extensions", name);
+		const built = Bun.spawnSync([process.execPath, "run", "build"], {
+			cwd: source,
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		if (built.exitCode !== 0)
+			return err(
+				new Error(
+					`Extension ${name} did not build: ${built.stderr.toString().trim().split("\n").slice(-3).join(" ")}`,
+				),
+			);
+		cpSync(join(source, "dist"), join(into, name), { recursive: true });
+	}
+	return ok(names);
+};
 
 /**
  * Native builds ensure Bun resolves the target's installed OpenTUI optional dependency. `stamp`,
@@ -91,6 +121,9 @@ export const buildBinary = async (
 		// directory with `templates/` beside the executable for an extracted release, and an archive
 		// without one is refused by the kabane that downloads it.
 		mkdirSync(join(contents, "templates"));
+		const extensions = buildExtensions(ROOT, join(contents, "extensions"));
+		if (!extensions.ok) return extensions;
+		console.error(`binary: extensions ${extensions.value.join(", ")}`);
 		for (const name of ["README.md", "LICENSE"])
 			cpSync(join(ROOT, name), join(contents, name));
 		const filename = binaryFilename(parsed.data);

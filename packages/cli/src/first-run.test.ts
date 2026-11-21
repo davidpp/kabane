@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@kabane/core";
@@ -11,6 +11,7 @@ import {
 	firstIssueBrief,
 	TRACKER_BLOCK,
 	type Installer,
+	offers,
 	outcomeOf,
 	setupDeps,
 	tildePath,
@@ -74,6 +75,7 @@ describe("setupDeps", () => {
 			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: [],
+			extensions: [],
 		};
 		const saved = await deps.save(plan);
 		expect(saved).toEqual({ ok: true, value: tildePath(configPath(home)) });
@@ -103,6 +105,7 @@ describe("setupDeps", () => {
 			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: ["claude"],
+			extensions: [],
 		});
 		const filed = await deps.fileFirstIssue("codex");
 		expect(filed.ok && filed.value.title).toBe("Add kabane to AGENTS.md");
@@ -124,6 +127,7 @@ describe("setupDeps", () => {
 			actor: "kabane://actor/human/ada",
 			deviceId: "mbp",
 			install: ["claude"],
+			extensions: [],
 		});
 		const filed = await deps.fileFirstIssue("claude");
 		expect(filed.ok).toBe(false);
@@ -209,5 +213,37 @@ describe("outcomeOf", () => {
 					"WARNING: proceeding\nError: failed to load\nCaused by: no home\n",
 			}).message,
 		).toBe("Caused by: no home");
+	});
+});
+
+describe("extensions", () => {
+	test("offers what the install ships, with each manifest's description", () => {
+		const root = join(ROOT, "shipped");
+		mkdirSync(join(root, "dispatch"), { recursive: true });
+		mkdirSync(join(root, "loop"), { recursive: true });
+		writeFileSync(
+			join(root, "dispatch/package.json"),
+			JSON.stringify({ description: "Serves the dispatch skills." }),
+		);
+		expect(offers(root)).toEqual([
+			{ name: "dispatch", description: "Serves the dispatch skills." },
+			{ name: "loop" },
+		]);
+		// A source checkout ships nothing beside its executable.
+		expect(offers(undefined)).toEqual([]);
+	});
+
+	test("enable writes the ticked names to the global layer, after save", async () => {
+		const home = join(ROOT, "home-enable");
+		const deps = await setupDeps(home, NOWHERE, installer);
+		await deps.save({
+			actor: "kabane://actor/human/ada",
+			deviceId: "mbp",
+			install: [],
+			extensions: ["dispatch"],
+		});
+		expect((await deps.enable(["dispatch"])).ok).toBe(true);
+		const config = loadConfig(home);
+		expect(config.ok && config.value.extensions).toEqual(["dispatch"]);
 	});
 });

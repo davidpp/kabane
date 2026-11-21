@@ -179,6 +179,7 @@ dylib/so path plus executable size in the log. Both x64 compilations use Bun's b
 Project bunfig preloads and dotenv autoload are disabled at compile time.
 
 Each `kabane-<os>-<arch>.tar.gz` contains `kabane/kabane`, an empty `kabane/templates/`,
+`kabane/extensions/{dispatch,loop,recipes}/` (each extension's build, from the same commit),
 `kabane/README.md` and `kabane/LICENSE`. `kabane update` in every release so far takes the
 `templates/` directory for the mark of an extracted release, on the archive it downloads and
 beside the executable it replaces, so the archive keeps it. Keep the directory intact when

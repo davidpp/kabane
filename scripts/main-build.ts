@@ -7,7 +7,7 @@
  *
  * It fetches origin and builds from a temporary worktree of origin/main, never from this
  * checkout's files, so uncommitted work cannot get in: the standalone binary, and each extension
- * of the repository the `extensions` setting enables. Once every build has succeeded it copies the
+ * of the repository the `extensions` setting enables, as the binary's archive ships it. Once every build has succeeded it copies the
  * tracker database to one backup file, then installs the binary at --bin (default
  * `$BUN_INSTALL/bin/kabane`, where Bun puts `kabane` on PATH) and the extensions into
  * `$KABANE_HOME/extensions/`. A symlink at any of those places is a contributor's own setup (`bun
@@ -214,15 +214,13 @@ const mainBuild = (argv: string[], env: NodeJS.ProcessEnv): string[] => {
 			["tar", "-xzf", join(work, "binary", `kabane-${target}.tar.gz`)],
 			unpacked,
 		);
-		for (const name of names)
-			run([process.execPath, "run", "build"], join(source, "extensions", name));
 
 		const backup = backupDatabase(home);
 		install([
 			...names.map(
 				(name) =>
 					[
-						join(source, "extensions", name, "dist"),
+						join(unpacked, "kabane/extensions", name),
 						join(home, "extensions", name),
 					] as const,
 			),

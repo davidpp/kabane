@@ -8,6 +8,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
+	extensions: [],
 	installOff: false,
 	configPath: "~/.kabane/config.json",
 };
@@ -46,6 +47,7 @@ describe("plan", () => {
 				actor: "kabane://actor/human/david",
 				deviceId: "mbp",
 				install: ["claude", "codex"],
+				extensions: [],
 			},
 		});
 	});
@@ -113,5 +115,57 @@ describe("the first issue", () => {
 			SetupPlan.firstIssueFor([{ id: "claude", status: "failed" }], inProject),
 		).toBe(undefined);
 		expect(SetupPlan.firstIssueFor(claudeFailed, DEFAULTS)).toBe(undefined);
+	});
+});
+
+describe("extensions", () => {
+	const OFFERED: SetupPlan.Defaults = {
+		...DEFAULTS,
+		extensions: [
+			{ name: "dispatch", description: "Serves the setup-dispatch skill." },
+			{ name: "loop" },
+		],
+	};
+
+	test("a step of their own after the form, one row each, none ticked", () => {
+		const form = SetupPlan.initialForm(OFFERED);
+		expect(SetupPlan.fields(OFFERED).map((f) => f.kind)).toEqual([
+			"name",
+			"harness",
+			"harness",
+		]);
+		const next = SetupPlan.nextStep({ ...form, focus: 2 }, OFFERED);
+		expect(next?.step).toBe("extensions");
+		expect(next?.focus).toBe(0);
+		expect(SetupPlan.fields(OFFERED, "extensions").map((f) => f.kind)).toEqual([
+			"extension",
+			"extension",
+		]);
+		expect(next && SetupPlan.nextStep(next, OFFERED)).toBeUndefined();
+		expect(SetupPlan.nextStep(form, DEFAULTS)).toBeUndefined();
+		const planned = SetupPlan.plan(form, OFFERED);
+		expect(planned.ok && planned.value.extensions).toEqual([]);
+	});
+
+	test("space ticks one, focus wraps within the step, and the plan names them in offer order", () => {
+		const step = SetupPlan.nextStep(SetupPlan.initialForm(OFFERED), OFFERED);
+		if (!step) throw new Error("no extensions step");
+		const loop = SetupPlan.toggle(
+			SetupPlan.moveFocus(step, OFFERED, 1),
+			OFFERED,
+		);
+		const both = SetupPlan.toggle(
+			SetupPlan.moveFocus(loop, OFFERED, 1),
+			OFFERED,
+		);
+		expect(both.focus).toBe(0);
+		const planned = SetupPlan.plan(both, OFFERED);
+		expect(planned.ok && planned.value.extensions).toEqual([
+			"dispatch",
+			"loop",
+		]);
+		expect(planned.ok && planned.value.install).toEqual(["claude", "codex"]);
+		const untick = SetupPlan.plan(SetupPlan.toggle(both, OFFERED), OFFERED);
+		expect(untick.ok && untick.value.extensions).toEqual(["loop"]);
 	});
 });

@@ -24,7 +24,7 @@ test("public target filenames omit the x64 compiler baseline suffix", () => {
 	]);
 });
 
-test("native compile archives executable, an empty templates/, docs and checksum; refuses replacement", async () => {
+test("native compile archives executable, an empty templates/, the first-party extensions, docs and checksum; refuses replacement", async () => {
 	const target = `${process.platform}-${process.arch}`;
 	const output = join(work, "native");
 	const result = await buildBinary(target, output);
@@ -41,6 +41,17 @@ test("native compile archives executable, an empty templates/, docs and checksum
 		expect(existsSync(join(root, name))).toBe(true);
 	// What an older kabane's `update` requires of an extracted release; nothing ships in it.
 	expect(readdirSync(join(root, "templates"))).toEqual([]);
+	expect(readdirSync(join(root, "extensions")).toSorted()).toEqual([
+		"dispatch",
+		"loop",
+		"recipes",
+	]);
+	for (const name of ["dispatch", "loop", "recipes"])
+		expect(
+			JSON.parse(
+				readFileSync(join(root, "extensions", name, "package.json"), "utf8"),
+			).kabane.extension,
+		).toBe("./index.js");
 	expect(statSync(join(root, "kabane")).mode & 0o111).not.toBe(0);
 	const smoke = Bun.spawnSync(
 		[process.execPath, "scripts/smoke.ts", "--binary", join(root, "kabane")],

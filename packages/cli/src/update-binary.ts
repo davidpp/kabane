@@ -429,56 +429,102 @@ export namespace UpdateBinary {
 	type Swap = {
 		/** The real path of the executable being replaced. */
 		executable: string;
-		/** The staged release: its `kabane` executable and `templates/`. */
+		/** The staged release: its `kabane` executable, `templates/` and, since 1.0, `extensions/`. */
 		staged: string;
 		installedVersion: string;
 		version: string;
 	};
 
+	/** The directories a release carries beside its executable, swapped in this order. */
+	const DIRECTORIES = ["templates", "extensions"] as const;
+
+	type Part = {
+		name: (typeof DIRECTORIES)[number];
+		/** Where it is installed, beside the executable. */
+		current: string;
+		/** Where the installed one waits until the executable's rename has succeeded. */
+		previous: string;
+		/** The release's, in the staging directory. */
+		incoming: string;
+	};
+
+	const present = (path: string): boolean => trySync(() => lstatSync(path)).ok;
+
 	/**
-	 * Templates first and the executable last, so every step leaves a runnable executable: at
-	 * worst the old one beside the new templates, which are text. The old `templates/` waits in
-	 * `templates.prev-<installed>` until the executable's rename, which is atomic and leaves the
-	 * old executable in place when it fails, has succeeded; only then is it removed. A failure
-	 * puts the old templates back, and a failure to do that names the `mv`s that would. The new
-	 * templates go back to the staging directory, which is removed afterwards.
-	 * `move` is the filesystem's rename unless a test passes one that fails.
+	 * The release's directories first and the executable last, so every step leaves a runnable
+	 * executable: at worst the old one beside the new templates and extensions, which it reads as
+	 * files. Each installed directory waits in `<name>.prev-<installed>` until the executable's
+	 * rename, which is atomic and leaves the old executable in place when it fails, has succeeded;
+	 * only then are they removed. A failure puts the old directories back, and a failure to do that
+	 * names the `mv`s that would. The new directories go back to the staging directory, which is
+	 * removed afterwards. A release without `extensions/` (one from before it shipped them) leaves
+	 * the installed one alone. The directories keep their paths, so a link to an extension in this
+	 * install resolves to the new one. `move` is the filesystem's rename unless a test passes one
+	 * that fails.
 	 */
 	export const swap = (
 		{ executable, staged, installedVersion, version }: Swap,
 		move: (from: string, to: string) => boolean = rename,
 	): Result<void, Failure> => {
 		const directory = dirname(executable);
-		const templates = join(directory, "templates");
-		const previous = join(directory, `templates.prev-${installedVersion}`);
-		const stagedTemplates = join(staged, "templates");
+		const parts: Part[] = DIRECTORIES.filter(
+			(name) => name === "templates" || isDirectory(join(staged, name)),
+		).map((name) => ({
+			name,
+			current: join(directory, name),
+			previous: join(directory, `${name}.prev-${installedVersion}`),
+			incoming: join(staged, name),
+		}));
 		const nothing = `Could not rename the new release into ${directory}; nothing was replaced.`;
-		if (trySync(() => lstatSync(previous)).ok)
+		const left = parts.find((part) => present(part.previous));
+		if (left)
 			return err({
-				text: `${previous} is left from an earlier update; remove it once ${templates} is complete. Nothing was replaced.`,
+				text: `${left.previous} is left from an earlier update; remove it once ${left.current} is complete. Nothing was replaced.`,
 			});
-		/** The old templates back where they were, or the commands that would put them back. */
+		const moved: (Part & { had: boolean })[] = [];
+		/** The old directories back where they were, or the commands that would put them back. */
 		const restore = (failure: string): Result<void, Failure> => {
-			const failed = join(directory, `templates.failed-${version}`);
-			const placed = trySync(() => lstatSync(templates)).ok;
-			if (placed && !move(templates, stagedTemplates))
-				return err({
-					text: `${failure}, nor move the new templates out. ${executable} is still ${installedVersion}; restore its templates with: mv ${quote(templates)} ${quote(failed)} && mv ${quote(previous)} ${quote(templates)}`,
-					partial: true,
-				});
-			if (!move(previous, templates))
-				return err({
-					text: `${failure}, nor put the old templates back. ${executable} is still ${installedVersion}; restore its templates with: mv ${quote(previous)} ${quote(templates)}`,
-					partial: true,
-				});
-			return err({ text: nothing });
+			const commands: string[] = [];
+			const stuck: string[] = [];
+			let reason = "";
+			for (const part of moved.toReversed()) {
+				const failed = join(directory, `${part.name}.failed-${version}`);
+				const back = part.had
+					? [`mv ${quote(part.previous)} ${quote(part.current)}`]
+					: [];
+				if (present(part.current) && !move(part.current, part.incoming)) {
+					commands.push(
+						[`mv ${quote(part.current)} ${quote(failed)}`, ...back].join(
+							" && ",
+						),
+					);
+					reason ||= `nor move the new ${part.name} out`;
+				} else if (part.had && !move(part.previous, part.current)) {
+					commands.push(...back);
+					reason ||= `nor put the old ${part.name} back`;
+				} else continue;
+				stuck.push(part.name);
+			}
+			if (commands.length === 0) return err({ text: nothing });
+			return err({
+				text: `${failure}, ${reason}. ${executable} is still ${installedVersion}; restore its ${stuck.toReversed().join(" and ")} with: ${commands.join(" && ")}`,
+				partial: true,
+			});
 		};
-		if (!move(templates, previous)) return err({ text: nothing });
-		if (!move(stagedTemplates, templates))
-			return restore("Could not rename the new templates into place");
+		for (const part of parts) {
+			const had = present(part.current);
+			if (had && !move(part.current, part.previous))
+				return moved.length === 0
+					? err({ text: nothing })
+					: restore(`Could not set the old ${part.name} aside`);
+			moved.push({ ...part, had });
+			if (!move(part.incoming, part.current))
+				return restore(`Could not rename the new ${part.name} into place`);
+		}
 		if (!move(join(staged, "kabane"), executable))
 			return restore(`Could not replace ${executable}`);
-		trySync(() => rmSync(previous, { recursive: true, force: true }));
+		for (const part of moved)
+			trySync(() => rmSync(part.previous, { recursive: true, force: true }));
 		return ok(undefined);
 	};
 
