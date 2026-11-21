@@ -315,7 +315,7 @@ const rowLabels = (
 
 type RowLabels = ReturnType<typeof rowLabels>;
 
-// Everything on the row but its title, which counts against the title so a badged row never wraps.
+// Everything on the row but its title, which counts against the title.
 const labelWidth = (labels: RowLabels): number =>
 	[
 		labels.caret,
@@ -332,6 +332,29 @@ const labelWidth = (labels: RowLabels): number =>
 		labels.input,
 		labels.decisions,
 	].join("").length;
+
+// The labels with the in-flight badge cut to the room left once the title is at its floor, so a
+// badged row never wraps: a card's label and detail can outrun forty columns on their own. The
+// badge is the one part cut, from its end, so its glyph and label outlast its detail; a short
+// title holds only its own width and gives the rest to the badge.
+const fitBadge = (
+	labels: RowLabels,
+	title: string,
+	available: number,
+): RowLabels => {
+	const { badge } = labels;
+	if (!badge) return labels;
+	const others = labelWidth({ ...labels, badge: null });
+	const room = available - others - Math.min(title.length, MIN_TITLE_WIDTH);
+	if (badge.text.length <= room) return labels;
+	// A cut at a gap reads `no…` and `research…`, not `no …` and `research ·…`.
+	const kept = badge.text
+		.slice(0, Math.max(0, room - 1))
+		.replace(/[\s·]+$/, "");
+	// With nothing of it left, a lone `…` would read as part of the meta (`in progress…`).
+	if (!kept) return { ...labels, badge: null };
+	return { ...labels, badge: { ...badge, text: `${kept}…` } };
+};
 
 // The badges after a row's meta, each in its hue: what waits on the human in the accent, work in
 // flight in the working hue, a complete checklist in the done hue and a partial one as chrome.
@@ -405,16 +428,20 @@ const Row = ({
 		theme,
 		touched,
 	);
-	const labels = rowLabels(row, {
-		marked,
-		linked,
-		touched,
-		columns,
-		activity,
-		parentShortId,
-		decisions,
-		progress,
-	});
+	const labels = fitBadge(
+		rowLabels(row, {
+			marked,
+			linked,
+			touched,
+			columns,
+			activity,
+			parentShortId,
+			decisions,
+			progress,
+		}),
+		task.title,
+		available,
+	);
 	const { caret, shortId, mark, link, ai, meta } = labels;
 	const title = truncate(
 		task.title,

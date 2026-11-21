@@ -467,6 +467,88 @@ test("Board keeps a badged row on a single line at a narrow (60-col) width", asy
 	}
 });
 
+// A card's label and detail alone can outrun forty columns (JCAB-623). Asserting on line widths is
+// not enough: a wrapped row splits into two lines that each fit, so the rows must stay adjacent.
+test("Board cuts a row's badge with … once its title is at its floor, so the row stays one line at forty columns", async () => {
+	const rows = ["JREP-1", "JREP-2", "JREP-3"].map((shortId) => ({
+		task: task({ id: shortId, shortId, title: "Probe the badge at forty" }),
+		children: [],
+	}));
+	const busy = (
+		taskShortId: string,
+		over: Partial<ActivityCard>,
+	): ActivityCard =>
+		activeLoop({ id: taskShortId, taskShortId, label: "busy", ...over });
+	const activity = activityWith([
+		busy("JREP-1", { status: "unreported", detail: ["live"] }),
+		busy("JREP-2", { status: "paused", detail: ["live"] }),
+		busy("JREP-3", { status: "running", detail: [] }),
+	]);
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[section("next", rows)]}
+			expanded={new Set()}
+			selectedId={null}
+			activity={activity}
+		/>,
+		{ width: 40, height: 16 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("JREP-3"),
+		);
+		const lines = frame.split("\n");
+		const at = lines.findIndex((line) => line.includes("JREP-1"));
+		expect(lines[at + 1]).toContain("JREP-2");
+		expect(lines[at + 2]).toContain("JREP-3");
+		expect(lines[at]?.trimEnd()).toEndWith("… · issue · ◌ busy · no…");
+		expect(lines[at + 1]?.trimEnd()).toEndWith("… · issue · ⏸ busy · pau…");
+		expect(lines[at + 2]?.trimEnd()).toEndWith("… · issue · ● busy · run…");
+	} finally {
+		destroy();
+	}
+});
+
+// A subtask row's caret, id and state leave a badge no room beside a checklist: it goes whole,
+// since a lone `…` would read as part of the state.
+test("Board drops a badge with no room left rather than glue a lone … to the row's state", async () => {
+	const parent = task({ id: "p", shortId: "JCAB-600", title: "Parent" });
+	const child = task({
+		id: "c",
+		shortId: "JCAB-623",
+		title: "Child row title",
+		parentTaskId: "p",
+		state: "in_progress",
+	});
+	const after = task({ id: "z", shortId: "JCAB-700", title: "After" });
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[
+				section("in_progress", [
+					{ task: parent, children: [child] },
+					{ task: after, children: [] },
+				]),
+			]}
+			expanded={new Set(["p"])}
+			selectedId={null}
+			activity={activityWith([activeLoop({ taskShortId: "JCAB-623" })])}
+			progress={new Map([["c", { done: 2, total: 5 }]])}
+		/>,
+		{ width: 40, height: 12 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("2/5"),
+		);
+		const lines = frame.split("\n");
+		const at = lines.findIndex((line) => line.includes("JCAB-623"));
+		expect(lines[at + 1]).toContain("JCAB-700");
+		expect(lines[at]?.trimEnd()).toEndWith("… · in progress · 2/5");
+	} finally {
+		destroy();
+	}
+});
+
 test("Board counts a row's checklist beside its decisions, in the done hue once every item is ticked", async () => {
 	const sections = [
 		section("next", [
