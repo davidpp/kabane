@@ -552,6 +552,20 @@ export namespace BoardTabs {
 	const freeform = (question: Question, settled: boolean): boolean =>
 		!settled && (question.choices.length === 0 || question.allowFreeform);
 
+	// `enter` sends a multi-select's toggled answers while it still waits.
+	const sends = (tabs: Tabs, question: Question, settled: boolean): boolean =>
+		!settled && question.multiSelect && pickedOf(tabs, question).length > 0;
+
+	/** Whether `enter` goes to the question in hand: to send its picks, or to type an answer. */
+	export const takesEnter = (state: State): boolean => {
+		const asked = inHand(state);
+		return (
+			asked !== undefined &&
+			(sends(state.tabs, asked.question, asked.settled) ||
+				freeform(asked.question, asked.settled))
+		);
+	};
+
 	/** The choices toggled on a multi-select question, by index, in the order they were picked. */
 	export const pickedOf = (tabs: Tabs, question: Question): readonly number[] =>
 		tabs.picked.get(question.id) ?? [];
@@ -626,7 +640,7 @@ export namespace BoardTabs {
 		if (key.ctrl || key.meta) return null;
 		if (key.name === "return" || key.name === "enter") {
 			const picked = pickedOf(state.tabs, question);
-			if (!settled && question.multiSelect && picked.length > 0)
+			if (sends(state.tabs, question, settled))
 				return answerWith(state, question, pickedAnswer(question, picked));
 			return freeform(question, settled) ? typeAnswer(state, question) : null;
 		}

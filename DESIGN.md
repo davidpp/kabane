@@ -349,6 +349,8 @@ against every glyph already here.
   an action aimed at a session. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
   session's log in place of the stream with its name over it, and `esc` closes the log before it
   goes back to the tracker.
+  The footer's `enter` says what it does on the cursor's row (`open issue`, `open` or `fold` a
+  step, `log`, or `pin log` in the split) and is gone where it does nothing.
   `g/G` and `⌃d/⌃u` scroll the stream. The `?` sheet lists what the card runs with after its
   keys, under the card's name: label muted, value in the text color.
 - **Left for you:** on a finished card, a blank row and `left for you · n` as a Label under the

@@ -5,6 +5,7 @@
 import type { Result } from "@kabane/core";
 import type { ActivityCard, ActivitySource, Header } from "@kabane/extension";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
+import { useTerminalDimensions } from "@opentui/react";
 import {
 	type ReactNode,
 	type RefObject,
@@ -18,6 +19,7 @@ import { anyActivityRunning, Board } from "./board";
 import type { BoardInput } from "./board-input";
 import { CardTab } from "./card-tab";
 import { BoardChecklist } from "./checklist";
+import { Cockpit } from "./cockpit";
 import { BoardContext } from "./context";
 import { CopilotLog } from "./copilot-log";
 import { CopilotPane, contextChip } from "./copilot-prompt";
@@ -185,6 +187,7 @@ export const Screen = (props: ScreenProps): ReactNode => {
 		(c) => c.id === state.tabs.active,
 	)?.kind;
 	const header = activeKind ? headers?.[activeKind] : undefined;
+	const { width } = useTerminalDimensions();
 	// Which keys are live and what they can act on, once for the footer and the `?` sheet alike.
 	const openTaskId = state.view.type === "detail" ? state.view.taskId : null;
 	const lifted = useMemo(
@@ -204,6 +207,7 @@ export const Screen = (props: ScreenProps): ReactNode => {
 					BoardNav.taskById(state, openTaskId)?.shortId,
 				) !== undefined,
 			lifted: lifted.map((entry) => entry.title),
+			split: Cockpit.split(width),
 		}),
 		host: [...CardTab.hints(state), ...DetailCard.hints(state)],
 	};

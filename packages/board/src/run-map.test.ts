@@ -5,6 +5,7 @@ import { describe, expect, it } from "bun:test";
 import type { ActivityCard, ActivityStep } from "@kabane/extension";
 import { CardTab } from "./card-tab";
 import { Cockpit } from "./cockpit";
+import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { RunMap } from "./run-map";
 import { BoardTabs } from "./tabs";
@@ -390,5 +391,90 @@ describe("what a finished card left", () => {
 		const opened = press(on, "enter");
 		expect(opened.tabs.active).toBeNull();
 		expect(opened.view).toEqual({ type: "detail", taskId: "01F1" });
+	});
+});
+
+describe("the enter hint", () => {
+	const finished = card({
+		status: "completed",
+		liveLanes: undefined,
+		steps: [
+			...STEPS.slice(0, 3).map((step) => ({ ...step, state: "done" as const })),
+			{ name: "land", state: "done", result: "none: kept for review" },
+		],
+		left: [
+			{ taskId: "01F1", taskShortId: "PROJ-22", how: "filed by docs" },
+			{ how: "branch proj-5", reason: "land: none" },
+		],
+	});
+	const at = (
+		s: BoardNav.BoardState,
+		cursorKey: string,
+	): BoardNav.BoardState => ({
+		...s,
+		tabs: {
+			...s.tabs,
+			views: new Map(s.tabs.views).set("loop:r1", {
+				...CardTab.view(s.tabs, "loop:r1"),
+				cursor: cursorKey,
+				follow: false,
+			}),
+		},
+	});
+	const hint = (s: BoardNav.BoardState, split = false): string | undefined =>
+		Keymap.footer(
+			"cardTab",
+			BoardNav.keySituation(s, { linked: new Set(), events: false, split }),
+		).find((h) => h.key === "enter")?.label;
+
+	it("names what enter does on the row under the cursor", () => {
+		const live = onTab();
+		expect(hint(live)).toBe("log");
+		expect(hint(live, true)).toBe("pin log");
+		expect(hint(at(live, "step:recheck"))).toBe("fold");
+		expect(hint(at(press(live, "h"), "step:recheck"))).toBe("open");
+		const over = onTab([finished]);
+		expect(hint(at(over, "left:01F1"))).toBe("open issue");
+	});
+
+	it("says nothing where enter does nothing, and enter does nothing there", () => {
+		const over = onTab([finished]);
+		const quiet = [
+			over, // no cursor: the run is over and nothing is live
+			at(over, "left:branch proj-5"), // a line with no issue
+			at(over, "step:land"), // a step with no sessions
+			press(onTab(), "enter"), // the session whose log is open
+		];
+		for (const s of quiet) {
+			expect(hint(s)).toBeUndefined();
+			const pressed = BoardNav.reduceKey(
+				BoardNav.sight(s, 0),
+				key("return"),
+				BoardNav.ARM_MS,
+			);
+			expect(pressed.effect).toEqual({ type: "none" });
+			expect(Bun.deepEquals(pressed.state, BoardNav.sight(s, 0))).toBe(true);
+		}
+	});
+
+	it("leaves enter to a question that takes a typed answer", () => {
+		const typed: BoardTabs.Question = {
+			id: "q1",
+			cardId: "loop:r1",
+			lane: "docs-recheck",
+			question: "which?",
+			choices: [],
+			multiSelect: false,
+			allowFreeform: true,
+			agent: "codex",
+			askedAt: "2026-11-20T09:16:40.000Z",
+		};
+		const s = onTab([card()], [typed]);
+		expect(
+			Keymap.footer(
+				"cardTab",
+				BoardNav.keySituation(s, { linked: new Set(), events: false }),
+			).filter((h) => h.key === "enter"),
+		).toEqual([{ key: "enter", label: "answer" }]);
 	});
 });
