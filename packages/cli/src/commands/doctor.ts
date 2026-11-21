@@ -18,10 +18,15 @@ import { activateHostRecord, hostHarnessMode } from "../host";
  * The repair of an enabled extension that is not installed but ships with this install: link it,
  * as enabling it did, which also re-points a link an earlier install left behind.
  */
-const relink = (home: string, name: string): Pick<Doctor.Finding, "fix"> =>
+const relink = (
+	home: string,
+	name: string,
+): Partial<Pick<Doctor.Finding, "fix" | "severity">> =>
 	Extensions.installed(home, name) || !Extensions.shipped().includes(name)
 		? {}
 		: {
+				// Safe and mechanical, so a bare `--fix` applies it.
+				severity: "auto",
 				fix: async () => {
 					const linked = Extensions.link(home, [name]);
 					return linked.ok
