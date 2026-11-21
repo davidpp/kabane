@@ -113,15 +113,27 @@ export namespace JobTick {
 		};
 	};
 
-	// `crontab -l` exits 1 with "no crontab for <user>" when there is none: that is an empty one.
-	const crontab = (): string => {
+	/**
+	 * This user's crontab. `crontab -l` exits 1 with "no crontab for <user>" when there is none:
+	 * that is an empty one. Any other failure is an `err`, so install never rewrites a crontab it
+	 * could not read.
+	 */
+	const crontab = (): Result<string> => {
 		const listed = trySync(() => run(["crontab", "-l"]));
-		return listed.ok && listed.value.code === 0 ? listed.value.stdout : "";
+		if (!listed.ok) return listed;
+		const { code, stdout, stderr } = listed.value;
+		if (code === 0) return ok(stdout);
+		return stderr.includes("no crontab")
+			? ok("")
+			: err(new Error(`crontab -l exited ${code}: ${stderr}`));
 	};
 
 	/** Whether something already runs the tick: kabane's launchd agent, or a crontab line. */
-	export const installed = (platform: Platform, home: string): boolean =>
-		platform === "darwin" ? existsSync(agentPath(home)) : inCrontab(crontab());
+	export const installed = (platform: Platform, home: string): boolean => {
+		if (platform === "darwin") return existsSync(agentPath(home));
+		const current = crontab();
+		return current.ok && inCrontab(current.value);
+	};
 
 	/** Writes the launchd agent under `home`; its path. Loading it is `load`'s. */
 	export const write = (target: Target, home: string): Result<string> => {
@@ -164,7 +176,9 @@ export namespace JobTick {
 					)
 				: loaded;
 		}
-		const current = crontab();
+		const read = crontab();
+		if (!read.ok) return read;
+		const current = read.value;
 		const next = `${current}${current === "" || current.endsWith("\n") ? "" : "\n"}${cronLine(target)}\n`;
 		const saved = trySync(() => run(["crontab", "-"], next));
 		if (!saved.ok) return saved;
