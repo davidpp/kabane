@@ -191,6 +191,26 @@ describe("the run map", () => {
 		expect(press(closed, "escape").tabs.active).toBeNull();
 	});
 
+	it("moves over a long map without rebuilding it for every row it passes", () => {
+		const sessions = Array.from({ length: 2000 }, (_, n) => ({
+			name: `s${n}`,
+			state: "done" as const,
+			lane: `lane-${n}`,
+		}));
+		const long = {
+			steps: [{ name: "implement", state: "done" as const, sessions }],
+		};
+		const view = {
+			folds: new Map([["implement", true]]),
+			cursor: "step:implement/lane-1999",
+			follow: false,
+		};
+		const start = performance.now();
+		expect(RunMap.move(long, view, -1)).toBe("step:implement/lane-1998");
+		// One rebuild per row searched took about 100ms here; one rebuild takes well under 1ms.
+		expect(performance.now() - start).toBeLessThan(25);
+	});
+
 	it("a card with no steps keeps its lanes on h/l", () => {
 		const plain = onTab([card({ steps: undefined })]);
 		expect(CardTab.view(press(plain, "l").tabs, "loop:r1").lane).toBe(

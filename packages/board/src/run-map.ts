@@ -145,7 +145,8 @@ export namespace RunMap {
 	): string | undefined => {
 		const all = rows(card, view);
 		if (all.length === 0) return undefined;
-		const from = all.findIndex((row) => row.key === cursor(card, view, asking));
+		const at = cursor(card, view, asking);
+		const from = all.findIndex((row) => row.key === at);
 		if (from === -1) return (delta === 1 ? all[0] : all.at(-1))?.key;
 		return all[Math.max(0, Math.min(all.length - 1, from + delta))]?.key;
 	};
