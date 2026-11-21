@@ -359,18 +359,21 @@ against every glyph already here.
   `✓ implement gates triage review`. Stacked, the map and its left-for-you list take at most half
   the tab's rows while the work goes and seven tenths once it is over, and keep the cursor in
   sight, counting the rows they leave out as `… n more`. Whatever the size, `now` keeps its title
-  and five rows, the map windows before it gives them up, and the footer keeps the bottom row.
+  and five rows and the footer keeps the bottom row: a question under the map gives up its blank
+  rows first, then the map windows, then the question holds its text to the rows left, down to one
+  that scrolls.
 - **Split:** from 160 columns the tab is two columns under the run row. The left one, 66 wide on
   raised, holds `map`, the question a session waits on, and `run`: what the card runs with (its
-  facts, the `?` sheet's list), whole facts as many to a row as fit, the first region to give way.
-  The right one, on the terminal's own background, holds `now` (as many rows as it has lines, up
-  to sixteen and half the column) over the log of the session under the cursor, named over it and
-  following the cursor with no key. The log stands alone while it is the one live session, or
-  once `enter` opened it (`esc` closes it); `now` fills the column when the cursor is on no
-  session. On a finished card `now` is the run trace, over `sessions · n`: every session the card
-  ran (a skipped lens is not one), one row each with its glyph, name, time and result, until the cursor is on one. `g/G` and
-  `⌃d/⌃u` scroll the log when one is on screen, else `now` or the trace. The raised column is the
-  only seam between them: the No-Line Rule holds.
+  facts, the `?` sheet's list), whole facts as many to a row as fit, in the rows the map and the
+  question leave, whole or not at all. The right one, on the terminal's own background, holds
+  `now` (as many rows as it has lines, up to sixteen and half the column) over the log of the
+  session under the cursor, named over it and following the cursor with no key. The log stands
+  alone while it is the one live session, or once `enter` pinned it (`esc` unpins it); `now` fills
+  the column when the cursor is on no session. On a finished card `now` is the run trace, over
+  `sessions · n`: every session the card ran (a skipped lens is not one), one row each with its
+  glyph, name, time and result, until the cursor is on one. `g/G` and `⌃d/⌃u` scroll the log when
+  one is on screen, else `now` or the trace. The raised column is the only seam between them: the
+  No-Line Rule holds.
 - **Without steps:** a card that gives none keeps its stream with a chip per lane under the
   header, `all <noun> · live` first, `h/l` walking them, each in its series hue.
 
