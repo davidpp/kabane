@@ -146,12 +146,11 @@ const listReleases = async (
 		.object({
 			id: z.number().int().positive().safe(),
 			full_name: z.literal("davidpp/kabane"),
-			// A user token is told its permissions; an Actions GITHUB_TOKEN is not, and its job's
-			// `contents: write` is what lets it see drafts. Refuse only a token told it cannot push.
-			permissions: z.object({ push: z.literal(true) }).optional(),
 		})
 		.safeParse(authenticated.value.body);
-	// Public/read-only listings omit drafts. A successful empty response alone cannot prove absence.
+	// Public/read-only listings omit drafts, so the listing must be authenticated. The repository's
+	// `permissions` can't prove push access: the Actions token that publishes, whose job holds
+	// `contents: write` and does see drafts, is told every permission is false.
 	if (authenticated.value.status !== 200 || !repository.success)
 		return fail(
 			"Authenticated push access is required to discover drafts; absence is not proven.",
