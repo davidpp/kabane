@@ -1,0 +1,40 @@
+# Generated from packaging/homebrew/kabane.rb.tmpl in https://github.com/davidpp/kabane for exactly
+# one release; that repository's release workflow commits it here. Edit the template there.
+class Kabane < Formula
+  desc "Local-first issue tracker and kanban for humans and AI agent runtimes"
+  homepage "https://github.com/davidpp/kabane"
+  version "{{version}}"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "{{url.darwin-arm64}}"
+      sha256 "{{sha256.darwin-arm64}}"
+    end
+    on_intel do
+      url "{{url.darwin-x64}}"
+      sha256 "{{sha256.darwin-x64}}"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "{{url.linux-arm64}}"
+      sha256 "{{sha256.linux-arm64}}"
+    end
+    on_intel do
+      url "{{url.linux-x64}}"
+      sha256 "{{sha256.linux-x64}}"
+    end
+  end
+
+  def install
+    # The archive's kabane/ directory stays whole: the executable with templates/ beside it.
+    libexec.install Dir["*"]
+    bin.install_symlink libexec/"kabane"
+  end
+
+  test do
+    assert_equal version.to_s, shell_output("#{bin}/kabane --version").strip
+  end
+end

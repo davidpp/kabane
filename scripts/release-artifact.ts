@@ -67,6 +67,8 @@ export const PublishManifestSchema = z
 			.strict(),
 	})
 	.passthrough();
+/** The curl installer's asset name, beside the archives it downloads. */
+export const INSTALLER = "install.sh";
 export const BinaryTargetSchema = z.enum([
 	"darwin-arm64",
 	"darwin-x64",
@@ -103,11 +105,17 @@ export const ReleaseManifestSchema = z
 			.length(4)
 			.refine((items) => new Set(items.map((item) => item.target)).size === 4)
 			.optional(),
+		/** The SHA-256 of `install.sh`, the curl installer a release with binaries carries. */
+		installerSha256: z
+			.string()
+			.regex(/^[a-f0-9]{64}$/)
+			.optional(),
 		notesSha256: z.string().regex(/^[a-f0-9]{64}$/),
 		bun: ReleaseVersionSchema,
 		npm: ReleaseVersionSchema,
 	})
-	.strict();
+	.strict()
+	.refine((record) => !record.binaries === !record.installerSha256);
 export type ReleaseManifest = z.infer<typeof ReleaseManifestSchema>;
 export const sha256 = (bytes: Uint8Array): string =>
 	createHash("sha256").update(bytes).digest("hex");
@@ -294,6 +302,26 @@ export const inspectArchive = async (
 	}
 };
 
+/** The binaries and the installer a release with binaries carries, against its manifest. */
+const verifyBinaryAssets = (
+	directory: string,
+	record: ReleaseManifest,
+): Result<void> => {
+	for (const binary of record.binaries ?? []) {
+		const bytes = readArtifactFile(
+			join(directory, binary.filename),
+			268_435_456,
+		);
+		if (!bytes.ok || sha256(bytes.value) !== binary.sha256)
+			return err(new Error(`Binary checksum mismatch: ${binary.filename}`));
+	}
+	if (!record.installerSha256) return ok(undefined);
+	const installer = readArtifactFile(join(directory, INSTALLER), 65_536);
+	return installer.ok && sha256(installer.value) === record.installerSha256
+		? ok(undefined)
+		: err(new Error(`Installer checksum mismatch: ${INSTALLER}`));
+};
+
 export const verifyReleaseFiles = (
 	directory: string,
 ): Result<ReleaseManifest> => {
@@ -322,15 +350,8 @@ export const verifyReleaseFiles = (
 			checksum.value.toString() !== releaseChecksums(record)
 		)
 			return err(new Error("Release archive/checksum/notes hash mismatch."));
-		for (const binary of record.binaries ?? []) {
-			const bytes = readArtifactFile(
-				join(directory, binary.filename),
-				268_435_456,
-			);
-			if (!bytes.ok || sha256(bytes.value) !== binary.sha256)
-				return err(new Error(`Binary checksum mismatch: ${binary.filename}`));
-		}
-		return ok(record);
+		const assets = verifyBinaryAssets(directory, record);
+		return assets.ok ? ok(record) : assets;
 	} catch {
 		return err(new Error("Could not verify release files."));
 	}

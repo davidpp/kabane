@@ -134,12 +134,16 @@ const readCandidate = async (
 type Details = {
 	installedVersion: string;
 	candidateVersion: string;
-	install?: "binary" | "mise";
+	install?: "binary" | UpdateBinary.Manager["name"];
 };
-/** What replaces the running kabane: Bun, with the candidate's registry metadata, or itself. */
+/**
+ * What replaces the running kabane: Bun, with the candidate's registry metadata, itself, or the
+ * package manager that owns it.
+ */
 type Install =
 	| { kind: "bun"; metadata: Metadata }
-	| { kind: "binary" | "mise" };
+	| { kind: "binary" }
+	| { kind: "managed"; manager: UpdateBinary.Manager };
 
 /** The Bun a Bun-installed candidate needs, when the running Bun is older; its engine range is ">=x.y.z". */
 const bunBelowEngine = (install: Install): string | undefined => {
@@ -150,9 +154,14 @@ const bunBelowEngine = (install: Install): string | undefined => {
 		: undefined;
 };
 
+const MANAGERS = { brew: "Homebrew", mise: "mise" };
+const managed = ({ name, upgrade }: UpdateBinary.Manager): string =>
+	`${MANAGERS[name]} owns this install, so kabane update does not replace it: run ${upgrade}.`;
+
 /**
  * The reply a candidate ends the command with before anything is installed: the channel and the
- * update policy held against it, then what `--check` reports, and for mise what to run instead.
+ * update policy held against it, then what `--check` reports, and for mise or Homebrew what to run
+ * instead.
  * Undefined when the update goes ahead.
  */
 const verdict = (
@@ -222,10 +231,10 @@ const verdict = (
 			details,
 		);
 	const named = `${isPrerelease(target) ? "Beta" : "Stable"} candidate ${target} (installed ${runningVersion})`;
-	if (install.kind === "mise")
+	if (install.kind === "managed")
 		return reply(
 			check ? "candidate" : "manual_only",
-			`${named}. mise owns this install, so kabane update does not replace it: run mise up kabane.`,
+			`${named}. ${managed(install.manager)}`,
 			manualExit,
 			details,
 		);
@@ -342,7 +351,7 @@ const installCandidate = async (
 /**
  * A standalone binary: the candidate from the GitHub releases under the same policy, then the release
  * archive for this target downloaded, verified and renamed over the real executable. A binary mise
- * installed is left to `mise up kabane`.
+ * or Homebrew installed is left to that manager's upgrade.
  */
 const updateBinary = async (
 	host: Host,
@@ -357,9 +366,8 @@ const updateBinary = async (
 			1,
 			{ install: "binary" },
 		);
-	const install = UpdateBinary.miseOwned(executable.value, host.env)
-		? "mise"
-		: "binary";
+	const manager = UpdateBinary.manager(executable.value, host.env);
+	const install = manager?.name ?? "binary";
 	const tags = await UpdateBinary.fetchReleases(
 		host.source.api,
 		runningVersion,
@@ -380,7 +388,11 @@ const updateBinary = async (
 		install,
 	};
 	const ended = verdict(
-		{ tag, target, install: { kind: install } },
+		{
+			tag,
+			target,
+			install: manager ? { kind: "managed", manager } : { kind: "binary" },
+		},
 		runningVersion,
 		check,
 		details,

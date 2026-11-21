@@ -3,7 +3,7 @@
 // `/$bunfs/root/<name>` in `process.argv[1]` and `Bun.main`, a virtual path nothing outside the
 // process can run, and resolves `import.meta.url` inside that same virtual root.
 // This belongs to the CLI host: it reads the Bun process.
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { trySync } from "@kabane/core/result";
 
@@ -45,14 +45,32 @@ export namespace Self {
 	export const compiled = (host: Host = HOST): boolean =>
 		EMBEDDED_ROOT.test(pathOf(host.moduleUrl));
 
+	// Homebrew's keg, `<prefix>/Cellar/kabane/<version>/`. Bun reports a binary's real path, and
+	// `brew upgrade` removes the old keg, while `<prefix>/bin/kabane` links whichever is installed.
+	const CELLAR = /^(.*)\/Cellar\/kabane\/[^/]+\//;
+
+	const realPath = (path: string): string | undefined => {
+		const real = trySync(() => realpathSync(path));
+		return real.ok ? real.value : undefined;
+	};
+
 	/**
 	 * An executable path that runs kabane with no interpreter in front of it: the binary, or the
 	 * entry script, whose hashbang finds bun on PATH. A source entry's hashbang also passes the
-	 * production NODE_ENV define, through `env -S`; the bundle has the define built in.
+	 * production NODE_ENV define, through `env -S`; the bundle has the define built in. A binary in
+	 * Homebrew's keg is named by Homebrew's link to it, so a path written down outlives an upgrade.
 	 */
-	export const executable = (host: Host = HOST): string => {
-		if (compiled(host)) return host.execPath;
-		return host.entry ? resolve(host.entry) : "kabane";
+	export const executable = (
+		host: Host = HOST,
+		real: (path: string) => string | undefined = realPath,
+	): string => {
+		if (!compiled(host)) return host.entry ? resolve(host.entry) : "kabane";
+		const prefix = CELLAR.exec(host.execPath)?.[1];
+		const linked =
+			prefix === undefined ? undefined : join(prefix, "bin/kabane");
+		return linked !== undefined && real(linked) === host.execPath
+			? linked
+			: host.execPath;
 	};
 
 	/**
@@ -74,14 +92,15 @@ export namespace Self {
 	/**
 	 * `launch` for a config that outlives this process, the harness MCP entry: a mise-installed bun
 	 * becomes mise's shim, which picks the pinned bun at each start, so a Bun bump leaves the entry
-	 * working. Any other bun, and a binary, stay as `launch` has them.
+	 * working. Any other bun stays as `launch` has it, and a binary is named as `executable` names it.
 	 */
 	export const lasting = (
 		host: Host = HOST,
 		exists: (path: string) => boolean = isFile,
+		real: (path: string) => string | undefined = realPath,
 	): Launch => {
 		const now = launch(host);
-		if (compiled(host)) return now;
+		if (compiled(host)) return { command: executable(host, real), args: [] };
 		const data = MISE_BUN.exec(now.command)?.[1];
 		const shim = data === undefined ? undefined : join(data, "shims/bun");
 		return shim !== undefined && exists(shim) ? { ...now, command: shim } : now;

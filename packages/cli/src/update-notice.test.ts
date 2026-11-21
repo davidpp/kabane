@@ -220,8 +220,10 @@ test("a releases API slower than the timeout, or not there at all, says nothing"
 test("the line names what this install runs to take the release", async () => {
 	const { install, line } = UpdateNotice;
 	const mise = join(home, "mise/installs/kabane/1.0.0/kabane");
+	const github = join(home, "mise/installs/github-davidpp-kabane/1.0.0/kabane");
+	const brew = join(home, "homebrew/Cellar/kabane/1.0.0/libexec");
 	const opt = join(home, "opt/kabane");
-	for (const dir of [mise, opt]) {
+	for (const dir of [mise, github, brew, opt]) {
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, "kabane"), "");
 	}
@@ -232,7 +234,22 @@ test("the line names what this install runs to take the release", async () => {
 			bun: process.execPath,
 			env: { HOME: home, MISE_DATA_DIR: join(home, "mise") },
 		});
-	expect(await binary(join(mise, "kabane"))).toBe("mise");
+	writeFileSync(
+		join(home, "mise/installs/github-davidpp-kabane/.mise.backend.toml"),
+		'short = "github:davidpp/kabane"\n',
+	);
+	expect(await binary(join(mise, "kabane"))).toEqual({
+		name: "mise",
+		upgrade: "mise up kabane",
+	});
+	expect(await binary(join(github, "kabane"))).toEqual({
+		name: "mise",
+		upgrade: "mise up github:davidpp/kabane",
+	});
+	expect(await binary(join(brew, "kabane"))).toEqual({
+		name: "brew",
+		upgrade: "brew upgrade kabane",
+	});
 	expect(await binary(join(opt, "kabane"))).toBe("binary");
 	// A script outside any verified Bun global layout: kabane update would refuse it.
 	expect(
@@ -247,8 +264,8 @@ test("the line names what this install runs to take the release", async () => {
 		"kabane 1.2.0 is out · run kabane update",
 	);
 	expect(line("1.2.0", "bun")).toBe("kabane 1.2.0 is out · run kabane update");
-	expect(line("1.2.0", "mise")).toBe(
-		"kabane 1.2.0 is out · run mise up kabane",
+	expect(line("1.2.0", { name: "brew", upgrade: "brew upgrade kabane" })).toBe(
+		"kabane 1.2.0 is out · run brew upgrade kabane",
 	);
 	expect(line("1.2.0", "manual")).toBe(
 		"kabane 1.2.0 is out · update it the way you installed it",
