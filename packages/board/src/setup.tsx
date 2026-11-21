@@ -66,22 +66,20 @@ type Phase =
 	  };
 
 // Paragraphs of the one welcome card, its first line bold. Every line fits 40 columns, so none
-// wraps in the pane. The last paragraph is the honest time estimate: one screen follows.
+// wraps in the pane. The last paragraph is a tip, set as an aside.
 export const WELCOME: readonly (readonly string[])[] = [
+	["your personal issue tracker, shared", "with the agents you run."],
 	[
-		"a tracker for you and your agents.",
-		"issues live in sqlite on this machine;",
-		"claude, codex and gemini work them",
-		"over mcp, and each write names who",
-		"made it.",
+		"claude code, codex and gemini cli pick",
+		"up issues, comment and close them over",
+		"mcp. it all lives in one sqlite file",
+		"on this machine.",
 	],
-	["not a team tracker: linear and github", "stay the team record."],
 	[
-		"on the board, press A for the copilot:",
-		'ask "how do I…" or change settings.',
-		"or use kabane config in a terminal.",
+		"on the board, press A and ask the",
+		"copilot how to do something, or have",
+		"it change a setting.",
 	],
-	["one screen of setup: your name and", "which agents get kabane."],
 ];
 
 // Each phase's keys, from the one registry. Space toggles a harness row, so with none detected it is
@@ -541,7 +539,7 @@ const WelcomeCard = (): ReactNode => {
 			)}
 			{WELCOME.map(([lead, ...rest], index) => (
 				<box key={lead} style={{ flexDirection: "column", marginTop: 1 }}>
-					{/* The lead in Title weight; the last paragraph is the time estimate, and reads as aside. */}
+					{/* The lead in Title weight; the last paragraph is a tip, and reads as aside. */}
 					<text
 						fg={index === last ? theme.muted : theme.text}
 						attributes={index === 0 ? TextAttributes.BOLD : undefined}
