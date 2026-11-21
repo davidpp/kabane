@@ -227,8 +227,9 @@ two sessions asking, both rows show `?`, and the log and an action aimed at a se
 one whose question is on screen. `h/l` fold and open the step under it, `enter` on a session opens
 its log and, on an issue the card left, opens that issue on the tracker (by `taskId`, else by a
 `taskShortId` the board holds). A click puts the cursor on a row and a second click is `enter`.
-The question its sessions wait on names the session's lane. A finished card that left an issue
-keeps an accent `?` as its tab's glyph until its tab has been on screen. A card without steps keeps
+The question its sessions wait on names the session's lane. A finished card that left anything
+(an issue, a kept branch) keeps an accent `?` as its tab's glyph until a line of that list has been
+in the map's window on its tab. A card without steps keeps
 the lanes below.
 
 The same regions and keys are arranged two ways (`src/cockpit.ts`):

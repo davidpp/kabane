@@ -200,6 +200,8 @@ export type EventViewProps = {
 		asking: ReadonlySet<string>;
 		asked?: string;
 		onRow?: (key: string) => void;
+		// The map's window has shown what the card left for the human.
+		onLeftShown?: () => void;
 	};
 };
 
@@ -550,6 +552,7 @@ const StackedCockpit = (props: CockpitProps): ReactNode => {
 				maxRows={mapRows}
 				spinnerFrame={spinnerFrame}
 				onRow={map.onRow}
+				onLeftShown={map.onLeftShown}
 			/>
 			<BannerRoomContext.Provider
 				value={{
@@ -673,6 +676,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 					spinnerFrame={spinnerFrame}
 					surface={raised}
 					onRow={map.onRow}
+					onLeftShown={map.onLeftShown}
 				/>
 				{/* Under the `map` heading, the rest of the column at most. */}
 				<BannerRoomContext.Provider

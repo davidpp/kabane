@@ -16,7 +16,7 @@ import {
 	type ColorInput,
 	TextAttributes,
 } from "@opentui/core";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { elapsed, took } from "./elapsed";
 import { RunMap } from "./run-map";
 import { type Theme, useTheme } from "./theme";
@@ -425,6 +425,7 @@ export const RunMapView = ({
 	spinnerFrame,
 	surface,
 	onRow,
+	onLeftShown,
 }: {
 	card: RunMap.Card;
 	view: RunMap.View;
@@ -438,6 +439,8 @@ export const RunMapView = ({
 	// The painted surface the map sits on, if any (the split's raised column).
 	surface?: string;
 	onRow?: (key: string) => void;
+	// Once the window, as laid out, shows a line of what the card left for the human.
+	onLeftShown?: () => void;
 }): ReactNode => {
 	const theme = useTheme();
 	const rows = RunMap.rows(card, view);
@@ -466,9 +469,20 @@ export const RunMapView = ({
 			: []),
 	];
 	// The header, question and footer take their actual height first. Window around the
-	// cursor using the rows flex layout leaves after the feed has its minimum.
-	const [height, setHeight] = useState(maxRows);
-	const { shown, above, below } = windowed(entries, cursor, height);
+	// cursor using the rows flex layout leaves after the feed has its minimum; until the layout
+	// has said, `maxRows`.
+	const [laidOut, setHeight] = useState<number | undefined>(undefined);
+	const { shown, above, below } = windowed(entries, cursor, laidOut ?? maxRows);
+	// What the card left counts as seen once a line of it is in the window the layout leaves, not in
+	// the first guess at it.
+	const leftShown =
+		laidOut !== undefined &&
+		shown.some((entry) => entry.kind === "line" && left.includes(entry.line));
+	const reportRef = useRef(onLeftShown);
+	reportRef.current = onLeftShown;
+	useEffect(() => {
+		if (leftShown) reportRef.current?.();
+	}, [leftShown]);
 	const issues = (card.left ?? []).filter(
 		(item) => item.taskId !== undefined || item.taskShortId !== undefined,
 	).length;

@@ -330,8 +330,9 @@ against every glyph already here.
 - **Motion:** only the tab on screen animates its spinner. A running card on another tab
   shows the still `●`. The glyph reads the state the tab's own poll last saw, so it stops the
   moment the run row says the run is over.
-- **Left for you:** a finished card that left issues for the human shows the accent `?` as its
-  glyph until its tab has been on screen.
+- **Left for you:** a finished card that left anything for the human (an issue, a kept branch)
+  shows the accent `?` as its glyph until its map has had a line of that list on screen; a short
+  pane that counts it under `… n more` has not shown it.
 
 ### Run map
 - **What:** a card tab whose card has steps opens on its map, under the run row: one row per

@@ -317,19 +317,22 @@ describe("what a finished card left", () => {
 		],
 	});
 
-	it("keeps its tab's `?` until the tab has been on screen", () => {
+	it("keeps its tab's `?` until the map's window has shown the list, not when the tab opens", () => {
 		const elsewhere = BoardTabs.withActivity(
 			BoardNav.init([], { scoped: false }),
 			[finished],
 			[],
 		);
 		expect(BoardTabs.unseen(elsewhere.tabs, "loop:r1")).toBe(true);
-		const seen = press(elsewhere, "}");
+		const onScreen = press(elsewhere, "}");
+		expect(BoardTabs.unseen(onScreen.tabs, "loop:r1")).toBe(true);
+		const seen = BoardTabs.seeLeft(onScreen, "loop:r1");
 		expect(BoardTabs.unseen(seen.tabs, "loop:r1")).toBe(false);
 		expect(BoardTabs.unseen(press(seen, "{").tabs, "loop:r1")).toBe(false);
+		expect(BoardTabs.seeLeft(seen, "loop:r1")).toBe(seen);
 	});
 
-	it("a branch alone is not something to come back for", () => {
+	it("a branch alone is something to come back for", () => {
 		const branchOnly = card({
 			status: "completed",
 			left: [{ how: "branch proj-5", reason: "land: none" }],
@@ -339,7 +342,7 @@ describe("what a finished card left", () => {
 			[branchOnly],
 			[],
 		);
-		expect(BoardTabs.unseen(s.tabs, "loop:r1")).toBe(false);
+		expect(BoardTabs.unseen(s.tabs, "loop:r1")).toBe(true);
 	});
 
 	it("enter on an issue known by its short id alone opens it, or says it is not on the board", () => {

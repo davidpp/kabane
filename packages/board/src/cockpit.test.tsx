@@ -5,6 +5,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ActivityCard, ActivityStep } from "@kabane/extension";
 import { Cockpit } from "./cockpit";
+import { RunMapView } from "./run-map-view";
 import { STORIES } from "./stories";
 import { pumpUntil, renderTest } from "./testing";
 
@@ -170,4 +171,60 @@ describe("a question on a short pane leaves now five rows", () => {
 				destroy();
 			}
 		});
+});
+
+describe("what a finished card left counts as seen", () => {
+	const FINISHED = {
+		steps: [
+			"implement",
+			"gates",
+			"triage",
+			"review",
+			"fixer",
+			"recheck",
+			"land",
+		].map((name): ActivityStep => ({ name, state: "done" })),
+		left: [
+			{ taskId: "01F1", taskShortId: "PROJ-22", how: "filed by docs" },
+			{ how: "branch proj-5", reason: "land: none" },
+		],
+	};
+
+	const seen = async (maxRows: number): Promise<[number, string]> => {
+		let reports = 0;
+		const { renderOnce, captureCharFrame, destroy } = await renderTest(
+			<RunMapView
+				card={FINISHED}
+				view={{}}
+				asking={new Set()}
+				width={100}
+				maxRows={maxRows}
+				spinnerFrame="⠋"
+				onLeftShown={() => reports++}
+			/>,
+			{ width: 100, height: 30 },
+		);
+		try {
+			const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("implement"),
+			);
+			await renderOnce();
+			return [reports, frame];
+		} finally {
+			destroy();
+		}
+	};
+
+	it("not while the window leaves the list out", async () => {
+		const [reports, frame] = await seen(4);
+		expect(frame).toContain("more");
+		expect(frame).not.toContain("PROJ-22");
+		expect(reports).toBe(0);
+	});
+
+	it("once the window shows it, reported once", async () => {
+		const [reports, frame] = await seen(20);
+		expect(frame).toContain("PROJ-22");
+		expect(reports).toBe(1);
+	});
 });

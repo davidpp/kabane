@@ -169,6 +169,8 @@ export type ScreenProps = {
 	input: BoardInput;
 	// The event view on a card's tab refreshes its card every second; the keys read the same card.
 	onCard: (card: ActivityCard) => void;
+	// The map on a card's tab has shown what the card left for the human.
+	onLeftSeen?: (cardId: string) => void;
 };
 
 // What a view gets beyond the screen's props: which keys are live, the card header on screen, and
@@ -359,6 +361,7 @@ const EventsScreen = ({
 	refs,
 	input,
 	onCard,
+	onLeftSeen,
 	keys,
 	header,
 	pane,
@@ -407,6 +410,7 @@ const EventsScreen = ({
 							asking: CardTab.asking(tabs, cardId),
 							asked: CardTab.asked(tabs, cardId),
 							onRow: (key) => input.dispatchMouse({ type: "mapRow", key }),
+							onLeftShown: () => onLeftSeen?.(cardId),
 						}
 					: undefined
 			}

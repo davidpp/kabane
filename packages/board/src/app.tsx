@@ -34,6 +34,7 @@ import { ProgramStatus } from "./program-status";
 import { isActivityEffect, useRunActivity } from "./run-activity";
 import { isScreenEffect, Screen, useScreenRefs } from "./screen";
 import { SettingsView } from "./settings-view";
+import { BoardTabs } from "./tabs";
 import { isTaskEffect, useTaskActions } from "./task-actions";
 import { useTheme } from "./theme";
 
@@ -314,6 +315,9 @@ export const App = ({
 			refs={refs}
 			input={input}
 			onCard={takeCard}
+			onLeftSeen={(cardId) =>
+				store.update((prev) => BoardTabs.seeLeft(prev, cardId))
+			}
 		/>
 	);
 };

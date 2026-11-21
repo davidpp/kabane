@@ -90,8 +90,8 @@ export namespace BoardTabs {
 		picked: ReadonlyMap<string, readonly number[]>;
 		// Each card tab's own reading state, by card id.
 		views: ReadonlyMap<string, CardView>;
-		// Finished cards whose left-for-you list has been on screen: until then the tab keeps the
-		// accent `?`.
+		// Cards whose left-for-you list the map's window has shown: until then a finished one's tab
+		// keeps the accent `?`.
 		seen: ReadonlySet<string>;
 		// The Jobs tab's rows; it is in the bar while there is one.
 		jobs: BoardJobs.Jobs;
@@ -191,23 +191,24 @@ export namespace BoardTabs {
 		...(card.facts && card.facts.length > 0 ? { facts: card.facts } : {}),
 	});
 
-	/** Whether what a finished card left for the human holds an issue: the tab's `?` waits on it. */
-	export const leavesIssues = (card: TabCard | undefined): boolean =>
-		card?.finished === true &&
-		(card.left ?? []).some(
-			(item) => item.taskId !== undefined || item.taskShortId !== undefined,
+	/** The finished card's tab still owes the human a look at what it left: issues, a branch. */
+	export const unseen = (tabs: Tabs, id: string): boolean => {
+		const card = tabs.cards.get(id);
+		return (
+			card?.finished === true &&
+			(card.left?.length ?? 0) > 0 &&
+			!tabs.seen.has(id)
 		);
-
-	/** The finished card's tab still owes the human a look at what it left. */
-	export const unseen = (tabs: Tabs, id: string): boolean =>
-		leavesIssues(tabs.cards.get(id)) && !tabs.seen.has(id);
-
-	// The tab on screen shows its card's left-for-you list under its map, so it counts as seen.
-	const seeing = (tabs: Tabs): Tabs => {
-		const id = tabs.active;
-		if (id === null || !unseen(tabs, id)) return tabs;
-		return { ...tabs, seen: new Set(tabs.seen).add(id) };
 	};
+
+	/**
+	 * The map's window on the card's tab has shown its left-for-you list. The same state when it was
+	 * already seen, so a render that reports it again changes nothing.
+	 */
+	export const seeLeft = (state: State, id: string): State =>
+		state.tabs.seen.has(id)
+			? state
+			: withTabs(state, { seen: new Set(state.tabs.seen).add(id) });
 
 	// Everything a poll can change that the bar or the keys read, as one comparable string.
 	const fingerprint = (tabs: Tabs): string =>
@@ -260,7 +261,7 @@ export namespace BoardTabs {
 			),
 		};
 		if (fingerprint(next) === fingerprint(tabs)) return state;
-		const moved = { ...state, tabs: seeing(next) };
+		const moved = { ...state, tabs: next };
 		return next.active !== null &&
 			next.active !== JOBS &&
 			!next.open.includes(next.active)
@@ -279,7 +280,7 @@ export namespace BoardTabs {
 		const next = { ...tabs, cards };
 		return fingerprint(next) === fingerprint(tabs)
 			? state
-			: { ...state, tabs: seeing(next) };
+			: { ...state, tabs: next };
 	};
 
 	// Leaving the tracker drops a banner whose question is settled, so the task reads as itself when
@@ -345,7 +346,7 @@ export namespace BoardTabs {
 			...state,
 			focus: "board",
 			view: { type: "events", cardId: id, fromView: "board" },
-			tabs: seeing({ ...tabs, active: id, tracker }),
+			tabs: { ...tabs, active: id, tracker },
 		};
 	};
 
