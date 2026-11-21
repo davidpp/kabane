@@ -4,6 +4,7 @@ import { configActor } from "./actor";
 import { checkout } from "./checkout";
 import { install } from "./install";
 import { project } from "./project";
+import { renamed } from "./renamed";
 import { settings } from "./settings";
 
 // Built-in checks share an owner, but their failures need distinct handles.
@@ -28,6 +29,7 @@ export const builtin = (
 });
 
 export const kabane: Doctor.Source[] = [
+	builtin("renamed", renamed),
 	builtin("settings", settings),
 	builtin("actor", configActor),
 	{ name: "project", doctor: project },

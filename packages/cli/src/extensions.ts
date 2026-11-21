@@ -182,8 +182,20 @@ export namespace Extensions {
 		return `${path} ${issue.message}`;
 	};
 	export type Refusal = { name: string; reason: string };
-	export const line = ({ name, reason }: Refusal): string =>
-		`Extension ${name}: ${reason}`.replace(/[\r\n]+/g, " ");
+	/**
+	 * Extensions kabane ships under a new name, old → new. A device that enabled one under the old
+	 * name still names it in its config, settings and link: `kabane doctor --fix` moves them
+	 * (`doctor/renamed.ts`), and the extension's own data module renames its tables.
+	 */
+	export const RENAMED: Readonly<Record<string, string>> = { recipes: "jobs" };
+	export const line = ({ name, reason }: Refusal): string => {
+		const to = RENAMED[name];
+		const renamed =
+			to === undefined
+				? ""
+				: `it is called ${to} now, and \`kabane doctor --fix\` renames it on this device. `;
+		return `Extension ${name}: ${renamed}${reason}`.replace(/[\r\n]+/g, " ");
+	};
 	export const report = (refused: readonly Refusal[]): void => {
 		for (const refusal of refused) {
 			if (refusal.name === stoppedBy) continue;
@@ -193,7 +205,7 @@ export namespace Extensions {
 			console.error(message);
 		}
 	};
-	const directory = (home: string, name: string): string =>
+	export const directory = (home: string, name: string): string =>
 		join(home, "extensions", name);
 	export const installed = (home: string, name: string): boolean => {
 		if (!Name.safeParse(name).success) return false;
