@@ -103,7 +103,7 @@ export namespace Brief {
 		[
 			location(tree),
 			subtask && tree.worktree && tree.isolation === "worktree"
-				? `This run made this worktree for ${label(subtask)}. Work and commit here. The gates run in this directory when you call kabane_done, and a green pass merges this branch into the run's branch \`${tree.runBranch}\`.`
+				? `This run made this worktree for ${label(subtask)}. Work and commit here. When you call kabane_done, the runner commits what you left uncommitted, merges the run's branch \`${tree.runBranch}\` into this one, and runs the gates in this directory on that merge; a green pass moves the run's branch to it. A merge that conflicts comes back to you to resolve before any gate runs.`
 				: `${review ? "Review here without changing files." : "Work and commit here; the configured gates run in this directory."}${tree.worktree ? " This is the run's one tree and branch." : ""}${concurrent ? " Sibling sessions edit the same tree: protect their work." : ""}`,
 			"Do not create a branch or a worktree and do not switch branches.",
 			...(subtask

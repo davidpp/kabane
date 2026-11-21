@@ -10,9 +10,10 @@
 // that attempt left either way. A subtask its own red gate reopened is claimed again in the session
 // that closed it, while `Retry` says that session has room, and in a new one told the gate's output
 // otherwise. A subtask closed with checklist items open gets no pass: it is reopened. With
-// isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, gates
-// and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
-// or cancelled while it held that worktree is settled there (`settleHeld`).
+// isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, checkpoint
+// and gates there, on the run's HEAD merged in, and a green pass fast-forwards the run's branch to
+// it; one the tracker closed or cancelled while it held that worktree is settled there
+// (`settleHeld`).
 import { Harnesses } from "@kabane/acp/harnesses";
 import { type Result, type Task } from "@kabane/core";
 import { Brief } from "./brief";
