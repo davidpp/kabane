@@ -118,7 +118,7 @@ export const RunFacts = ({
 };
 
 /**
- * Every session a finished run had, in the order its steps ran: glyph, name, time and result, one
+ * Every session a finished run ran, in the order its steps ran: glyph, name, time and result, one
  * row each. Where the split's log stands while the cursor is on no session.
  */
 export const SessionsTable = ({
@@ -131,7 +131,11 @@ export const SessionsTable = ({
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 }): ReactNode => {
 	const theme = useTheme();
-	const sessions = steps.flatMap((step) => step.sessions ?? []);
+	// Only the sessions that ran: each has a lane. A lens triage skipped and a group still waiting
+	// for a slot are listed on the map, without one.
+	const sessions = steps
+		.flatMap((step) => step.sessions ?? [])
+		.filter((session) => session.lane !== undefined);
 	const nameCols = Math.min(
 		Math.max(0, ...sessions.map((session) => session.name.length)),
 		Math.floor(width * NAME_SHARE),
