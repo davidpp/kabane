@@ -2,12 +2,13 @@
 /**
  * An ACP harness that does not want to stop, for tests that check closing one leaves nothing
  * running: it ignores stdin EOF and SIGTERM, and starts a child that ignores SIGTERM too, the way
- * an npx wrapper holds the adapter it launched. As soon as it runs it writes `<its pid> <child
- * pid>` to the file named by its first argument. Its second picks how far a start gets:
+ * an npx wrapper holds the adapter it launched. Its second argument picks how far a start gets,
+ * and once the start is there it writes `<its pid> <child pid>` to the file named by its first:
  *
- *   handshake   never answers `initialize`
- *   session     answers `initialize`, never `session/new`
- *   open        answers `initialize`, `session/new` and every prompt (an empty `end_turn`)
+ *   handshake   never answers `initialize`; written when `initialize` arrives
+ *   session     answers `initialize`, never `session/new`; written when `session/new` arrives
+ *   open        answers `initialize`, `session/new` and every prompt (an empty `end_turn`);
+ *               written when `session/new` arrives
  */
 import { renameSync } from "node:fs";
 import {
@@ -27,25 +28,29 @@ const child = Bun.spawn(["sh", "-c", "trap '' TERM; exec sleep 600"], {
 	stdio: ["ignore", "ignore", "ignore"],
 });
 // Renamed into place, so a reader never sees the file half written.
-await Bun.write(`${pidfile}.tmp`, `${process.pid} ${child.pid}`);
-renameSync(`${pidfile}.tmp`, pidfile);
+const reached = async (): Promise<void> => {
+	await Bun.write(`${pidfile}.tmp`, `${process.pid} ${child.pid}`);
+	renameSync(`${pidfile}.tmp`, pidfile);
+};
 // Kept alive after stdin closes.
 setInterval(() => {}, 1 << 30);
 
 const never = () => new Promise<never>(() => {});
 
 const app = agent({ name: "kabane-stubborn" })
-	.onRequest(methods.agent.initialize, () =>
-		stage === "handshake"
-			? never()
-			: {
-					protocolVersion: PROTOCOL_VERSION,
-					agentCapabilities: { loadSession: false },
-				},
-	)
-	.onRequest(methods.agent.session.new, () =>
-		stage === "session" ? never() : { sessionId: "stubborn" },
-	)
+	.onRequest(methods.agent.initialize, async () => {
+		if (stage !== "handshake")
+			return {
+				protocolVersion: PROTOCOL_VERSION,
+				agentCapabilities: { loadSession: false },
+			};
+		await reached();
+		return never();
+	})
+	.onRequest(methods.agent.session.new, async () => {
+		await reached();
+		return stage === "session" ? never() : { sessionId: "stubborn" };
+	})
 	.onRequest(methods.agent.session.prompt, () => ({
 		stopReason: "end_turn" as const,
 	}));

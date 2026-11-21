@@ -24,7 +24,7 @@ afterEach(() => {
 		rmSync(dir, { recursive: true, force: true });
 });
 
-const launch = (stage: "handshake" | "session", signal?: AbortSignal) => {
+const launch = (stage: "handshake" | "open", signal?: AbortSignal) => {
 	const dir = mkdtempSync(join(tmpdir(), "acp-stop-"));
 	dirs.push(dir);
 	const pidfile = join(dir, "pids");
@@ -37,14 +37,19 @@ const launch = (stage: "handshake" | "session", signal?: AbortSignal) => {
 		for (let i = 0; i < 1000 && !existsSync(pidfile); i++) await Bun.sleep(5);
 		return readFileSync(pidfile, "utf8").split(" ").map(Number);
 	};
-	return { connecting, pids };
+	return { dir, connecting, pids };
 };
 
 describe("AcpClient stopping a harness that ignores stdin EOF and SIGTERM", () => {
-	it("close settles once the harness and the child it started have exited", async () => {
-		const { connecting, pids } = launch("session");
+	it("close of an open session settles once the harness and the child it started have exited", async () => {
+		const { dir, connecting, pids } = launch("open");
 		const conn = await connecting;
 		if (!conn.ok) throw conn.error;
+		const session = await AcpClient.newSession(conn.value, {
+			cwd: dir,
+			mcpServers: [],
+		});
+		expect(session.ok).toBe(true);
 		const [harness = 0, child = 0] = await pids();
 		expect([running(harness), running(child)]).toEqual([true, true]);
 
