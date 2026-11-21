@@ -60,7 +60,7 @@ it("keeps scripted call ids unique across turns and matches their updates", asyn
 		expect(forms).toHaveLength(6);
 		expect(new Set([...calls, ...forms]).size).toBe(14);
 	} finally {
-		AcpClient.close(conn.value);
+		await AcpClient.close(conn.value);
 		await conn.value.closed;
 	}
 }, 15_000);

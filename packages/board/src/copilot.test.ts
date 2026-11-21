@@ -1122,7 +1122,7 @@ describe("BoardCopilot close during the harness's handshake", () => {
 				const close = opened.value.close;
 				opened.value.close = () => {
 					closes += 1;
-					close();
+					return close();
 				};
 				return opened;
 			},

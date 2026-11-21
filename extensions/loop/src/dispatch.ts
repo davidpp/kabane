@@ -1077,7 +1077,7 @@ export namespace Dispatch {
 			.finally(() => {
 				finished = true;
 				waiting.abort();
-				if (connection) AcpClient.close(connection);
+				if (connection) void AcpClient.close(connection);
 				const lost = steering.pending();
 				if (lost > 0)
 					sink.emit(
@@ -1097,7 +1097,7 @@ export namespace Dispatch {
 			},
 			close: () => {
 				waiting.abort();
-				if (connection) AcpClient.close(connection);
+				if (connection) void AcpClient.close(connection);
 			},
 			inject: async (text) => {
 				if (finished)

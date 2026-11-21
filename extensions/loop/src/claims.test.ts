@@ -349,7 +349,7 @@ describe("Claims.hooks", () => {
 			expect(text.join("")).toContain("Received: allow");
 		} finally {
 			stopped.abort();
-			AcpClient.close(connection.value);
+			await AcpClient.close(connection.value);
 			await connection.value.closed;
 		}
 

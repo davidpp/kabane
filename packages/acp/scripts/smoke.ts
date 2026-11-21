@@ -30,7 +30,7 @@ const session = await AcpClient.newSession(conn.value, {
 });
 if (!session.ok) {
 	console.error(session.error.message);
-	AcpClient.close(conn.value);
+	await AcpClient.close(conn.value);
 	process.exit(1);
 }
 console.log(`session ${session.value.id} on ${id}`);
@@ -41,5 +41,4 @@ for await (const update of AcpClient.prompt(session.value, [
 	else console.log(`\n[${update.type}] ${JSON.stringify(update)}`);
 }
 console.log();
-AcpClient.close(conn.value);
-await conn.value.closed;
+await AcpClient.close(conn.value);
