@@ -171,3 +171,41 @@ describe("a binary in Homebrew's keg", () => {
 		).toBe(KEG);
 	});
 });
+
+describe("a binary mise installed", () => {
+	const INSTALL =
+		"/home/me/.local/share/mise/installs/github-davidpp-kabane/1.0.0/kabane";
+	const LATEST =
+		"/home/me/.local/share/mise/installs/github-davidpp-kabane/latest/kabane";
+	const host = { ...BINARY, execPath: INSTALL };
+
+	it("is named by mise's latest link, which an upgrade and its prune keep", () => {
+		const real = (path: string) => (path === LATEST ? INSTALL : undefined);
+		expect(Self.executable(host, real)).toBe(LATEST);
+		expect(Self.lasting(host, () => true, real)).toEqual({
+			command: LATEST,
+			args: [],
+		});
+	});
+
+	it("follows a moved data directory and a binary below the version", () => {
+		const nested = "/data/mise/installs/kabane/1.0.0/bin/kabane";
+		const link = "/data/mise/installs/kabane/latest/bin/kabane";
+		expect(
+			Self.executable({ ...BINARY, execPath: nested }, (path) =>
+				path === link ? nested : undefined,
+			),
+		).toBe(link);
+	});
+
+	it("keeps its own path when latest is a newer kabane or missing", () => {
+		expect(
+			Self.executable(
+				host,
+				() =>
+					"/home/me/.local/share/mise/installs/github-davidpp-kabane/1.1.0/kabane",
+			),
+		).toBe(INSTALL);
+		expect(Self.executable(host, () => undefined)).toBe(INSTALL);
+	});
+});
