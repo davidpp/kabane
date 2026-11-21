@@ -1,8 +1,9 @@
 // A run's git worktree, and the checkpoints committed in it. On unless the run opts out: `git
 // worktree add` on a branch of its own beside the run's files, or the worktree of the parent's
 // last run when its work is not merged yet, recorded in run.json. Once its work is merged it is
-// removed, with its branch (`Prune`). A checkpoint is a commit of everything in the worktree
-// after a green gate; a rollback resets the worktree to one of them.
+// removed, with its branch (`Prune`). A checkpoint is a commit of everything in a worktree: in the
+// run's after a green gate, in a subtask's before its gates (`Checks`); a rollback resets the run's
+// worktree to one of them.
 //
 // Nothing here commits into, or resets, the user's own checkout but `mergeIntoCheckout`, which a
 // `merge` landing calls by name: `checkpoint`, `rollback` and the rest refuse any directory that
@@ -229,7 +230,9 @@ export namespace Worktree {
 
 	/**
 	 * Commit everything in the worktree at `dir` as a checkpoint: its sha, or undefined when there
-	 * was nothing to commit. The user's own git config and hooks apply, as to any commit of theirs.
+	 * was nothing to commit. A merge in progress there is always concluded, even when its resolution
+	 * changes nothing against HEAD. The user's own git config and hooks apply, as to any commit of
+	 * theirs.
 	 */
 	export const checkpoint = async (
 		dir: string,
@@ -242,7 +245,8 @@ export namespace Worktree {
 		if (!added.ok) return added;
 		const staged = await run(dir, ["status", "--porcelain"]);
 		if (!staged.ok) return staged;
-		if (staged.value.trim() === "") return ok(undefined);
+		if (staged.value.trim() === "" && (await mergeHead(dir, run)) === undefined)
+			return ok(undefined);
 		const committed = await run(dir, ["commit", "-q", "-m", message]);
 		if (!committed.ok) return committed;
 		const sha = await run(dir, ["rev-parse", "HEAD"]);
@@ -288,8 +292,11 @@ export namespace Worktree {
 		return cleaned.ok ? ok(undefined) : cleaned;
 	};
 
-	// The files a merge or rebase left conflicted in `dir`.
-	const conflicted = async (dir: string, run: Git): Promise<string[]> => {
+	/** The files a merge or rebase left conflicted in `dir` that are not resolved yet. */
+	export const unmerged = async (
+		dir: string,
+		run: Git = git,
+	): Promise<string[]> => {
 		const listed = await run(dir, ["diff", "--name-only", "--diff-filter=U"]);
 		return listed.ok
 			? listed.value.split("\n").filter((f) => f.trim() !== "")
@@ -309,7 +316,7 @@ export namespace Worktree {
 		if (!isLinked.ok) return isLinked;
 		const rebased = await run(dir, ["rebase", "-q", onto]);
 		if (rebased.ok) return ok(undefined);
-		const files = await conflicted(dir, run);
+		const files = await unmerged(dir, run);
 		await run(dir, ["rebase", "--abort"]);
 		return err(
 			files.length > 0
@@ -326,8 +333,8 @@ export namespace Worktree {
 	 * the checkout mid-merge, which the error says, with git's reason: `mergeHead` tells it apart.
 	 *
 	 * The one thing here that commits into the user's own checkout: only a `merge` landing calls it
-	 * there, once it has seen the checkout on the base with no changes to tracked files. Everything
-	 * else goes through `merge`, which takes a linked worktree only.
+	 * there, once it has seen the checkout on the base with no changes to tracked files. Every other
+	 * merge here takes a linked worktree only.
 	 */
 	export const mergeIntoCheckout = async (
 		dir: string,
@@ -344,7 +351,7 @@ export namespace Worktree {
 			branch,
 		]);
 		if (!merged.ok) {
-			const files = await conflicted(dir, run);
+			const files = await unmerged(dir, run);
 			const why =
 				files.length > 0
 					? `conflicts in ${files.join(", ")}`
@@ -373,33 +380,39 @@ export namespace Worktree {
 		return found.ok ? found.value.trim() : undefined;
 	};
 
-	/** `mergeIntoCheckout` into the linked worktree at `dir`, refused for any other checkout. */
-	export const merge = async (
+	/**
+	 * Fast-forward the linked worktree at `dir` to `branch`, which must hold its HEAD: the commit it
+	 * leaves HEAD at. Anything else is git's refusal, and HEAD is left as it was.
+	 */
+	export const fastForward = async (
 		dir: string,
 		branch: string,
-		message: string,
 		run: Git = git,
 	): Promise<Result<string>> => {
 		const isLinked = await linked(dir, run);
-		return isLinked.ok
-			? mergeIntoCheckout(dir, branch, message, run)
-			: isLinked;
+		if (!isLinked.ok) return isLinked;
+		const merged = await run(dir, ["merge", "-q", "--ff-only", branch]);
+		if (!merged.ok) return merged;
+		const sha = await run(dir, ["rev-parse", "HEAD"]);
+		return sha.ok ? ok(sha.value.trim()) : sha;
 	};
 
 	/**
-	 * Merge commit `sha` into the worktree at `dir` and leave a conflict for whoever works there
-	 * next to resolve: the files left conflicted, none when it merged cleanly.
+	 * Merge commit `sha` into the worktree at `dir`, as a commit of `message` when it cannot
+	 * fast-forward, and leave a conflict for whoever works there next to resolve: the files left
+	 * conflicted, none when it merged cleanly.
 	 */
 	export const mergeKeepingConflicts = async (
 		dir: string,
 		sha: string,
+		message: string,
 		run: Git = git,
 	): Promise<Result<string[]>> => {
 		const isLinked = await linked(dir, run);
 		if (!isLinked.ok) return isLinked;
-		const merged = await run(dir, ["merge", "-q", "--no-edit", sha]);
+		const merged = await run(dir, ["merge", "-q", "-m", message, sha]);
 		if (merged.ok) return ok([]);
-		const files = await conflicted(dir, run);
+		const files = await unmerged(dir, run);
 		return files.length > 0 ? ok(files) : merged;
 	};
 

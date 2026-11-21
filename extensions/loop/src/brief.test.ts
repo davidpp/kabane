@@ -123,6 +123,33 @@ describe("Brief after a red gate", () => {
 		expect(prompt).not.toContain("You are one implementing session");
 	});
 
+	const conflict = {
+		name: "merge",
+		command: "git merge kabane-loop/run-1",
+		ok: false,
+		exit: 1,
+		ms: 3,
+		tail: "conflicts left for you",
+		conflicts: ["a.ts", "b.ts"],
+	};
+
+	it("tells a session sent back for a merge conflict that no gate failed, and to resolve it", () => {
+		const resumed = Brief.retriedInSession(subject.task, conflict);
+		expect(resumed.split("\n")[0]).toBe(
+			"After you called kabane_done on P-2, the runner merged the run's branch into this subtask's before running the gates, and that merge conflicted in a.ts, b.ts, so P-2 is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. What the runner said:",
+		);
+		expect(resumed).toContain("```\nconflicts left for you\n```");
+		expect(resumed).toContain(
+			"Resolve the conflicts, then call kabane_done on P-2 again.",
+		);
+		expect(resumed).not.toContain("gate (`");
+		const fresh = Brief.opening({ ...subject, retry: conflict }, "ASSEMBLED");
+		expect(fresh).toContain(
+			"P-2 was closed before, then reopened: the runner merged the run's branch into this subtask's before running the gates, and that merge conflicted in a.ts, b.ts.",
+		);
+		expect(fresh).not.toContain("gate (`");
+	});
+
 	it("gives a new session the failure inside the full brief", () => {
 		const sections = Brief.opening(
 			{ ...subject, retry: gate },
@@ -538,7 +565,7 @@ describe("Brief working copy", () => {
 						);
 						expect(
 							prompt.includes(
-								"a green pass merges this branch into the run's branch `run-branch`",
+								"merges the run's branch `run-branch` into this one, and runs the gates in this directory on that merge",
 							),
 						).toBe(isolated);
 						if (!worktree) {
@@ -578,7 +605,7 @@ describe("Brief working copy", () => {
 				"You are in `/run/project`, a git worktree on branch `run-branch`",
 			);
 			expect(prompt).toContain("This is the run's one tree and branch.");
-			expect(prompt).not.toContain("a green pass merges this branch");
+			expect(prompt).not.toContain("merges the run's branch");
 		}
 		const review = Brief.lens(
 			{ ...target, tree: { ...tree, worktree: false } },

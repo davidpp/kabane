@@ -21,6 +21,11 @@ export namespace Gates {
 		ms: z.number().min(0),
 		/** The end of what it printed, stdout and stderr together: what the next brief quotes. */
 		tail: z.string(),
+		/**
+		 * On the `merge` step of a subtask's pass only: the files that merging the run's HEAD into
+		 * the subtask's worktree left conflicted there, for its next session to resolve.
+		 */
+		conflicts: z.array(z.string()).optional(),
 	});
 	export type Result = z.infer<typeof ResultSchema>;
 
@@ -43,7 +48,7 @@ export namespace Gates {
 		ticked: z.array(z.string()).optional(),
 		/** The subtask's own branch, when it ran in the subtask's own worktree (`ClaimTrees`). */
 		branch: z.string().optional(),
-		/** With a branch: the run's branch's commit once a green pass merged that branch into it. */
+		/** With a branch: the run's branch's commit once a green pass fast-forwarded it to that branch. */
 		merged: z.string().optional(),
 	});
 	export type Run = z.infer<typeof RunSchema>;

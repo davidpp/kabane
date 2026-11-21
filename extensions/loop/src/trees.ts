@@ -1,16 +1,18 @@
 // The worktrees a run's subtask claims work in, with `isolation: worktree` (`LoopConfig`): each
 // claim works in one of its own, on a branch of its own cut from the run's worktree's HEAD, under
 // the run's directory (`trees/<n>`), and its session and its gates run there. A subtask holds its
-// worktree from its claim until its work merges into the run's branch, so the claim after a red
-// gate, a conflict or a runner's death finds what the last one left. A green pass merges the
-// subtask's branch into the run's, one merge at a time (`Checks`); one that conflicts is aborted,
-// and the run's HEAD is merged into the subtask's worktree instead, its conflicts left for the
-// subtask's next session to resolve. A worktree whose work has merged is free: with `reuse`, kept
-// for the next subtask, reset to the run's HEAD with what git ignores (build output) left warm;
-// without, removed. The run keeps at most `maxWorktrees` (its concurrency when unset), and a
-// subtask waits for one. The user's `setup` command readies a worktree for a subtask; nothing else
-// is installed. When the run ends, the free ones are removed, and one still holding work that never
-// merged is left, with its branch, for a human.
+// worktree from its claim until its work lands on the run's branch, so the claim after a red gate,
+// a conflict or a runner's death finds what the last one left. When its session closes it, the
+// run's HEAD is merged into its worktree first (`catchUp`), and the gates run on that merge: one
+// that conflicts is left there, mid-merge, for the subtask's next session to resolve, before any
+// gate runs. A green pass then fast-forwards the run's branch to the subtask's (`land`), so what
+// the gates ran on is what lands. The whole pass holds the run's merge queue (`Checks`), so the
+// run's HEAD cannot move between the merge in and the landing. A worktree whose work has landed is
+// free: with `reuse`, kept for the next subtask, reset to the run's HEAD with what git ignores
+// (build output) left warm; without, removed. The run keeps at most `maxWorktrees` (its concurrency
+// when unset), and a subtask waits for one. The user's `setup` command readies a worktree for a
+// subtask; nothing else is installed. When the run ends, the free ones are removed, and one still
+// holding work that never landed is left, with its branch, for a human.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { type Result, type Task } from "@kabane/core";
@@ -193,49 +195,48 @@ export namespace ClaimTrees {
 	};
 
 	/**
-	 * Merge subtask `task`'s branch from `tree` into the run's, which it frees: the run's branch's
-	 * commit after. On a conflict the merge there is aborted and the run's HEAD is merged into
-	 * `tree` instead, with its conflicts left for the subtask's next session; the error says so, for
-	 * that session's brief.
+	 * Merge the run's HEAD into `tree`, as the commit `message` when it cannot fast-forward: the
+	 * files it left conflicted there, mid-merge, for the subtask's next session to resolve; none
+	 * when it merged cleanly or had nothing to bring in.
 	 */
-	export const merge = async (
+	export const catchUp = async (
 		ctx: Ctx,
 		tree: Tree,
-		task: { shortId?: string; id: string; title: string },
-	): Promise<Result<string>> => {
+		message: string,
+	): Promise<Result<string[]>> => {
 		const runTree = ctx.run.worktree;
 		if (runTree === undefined)
-			return err(new Error("the run has no worktree to merge into"));
+			return err(new Error("the run has no worktree to merge from"));
 		const git = gitOf(ctx);
-		const into = RunStore.branchOf(ctx.run);
-		const merged = await Worktree.merge(
-			runTree,
-			tree.branch,
-			`kabane loop ${ctx.run.id}: merge ${label(task)} ${task.title}`,
-			git,
-		);
-		if (merged.ok) {
-			await release(ctx, tree, true);
-			return merged;
-		}
-		const why = `${label(task)}'s branch ${tree.branch} did not merge into the run's branch ${into}: ${merged.error.message}.`;
 		const head = await git(runTree, ["rev-parse", "HEAD"]);
-		const left = head.ok
-			? await Worktree.mergeKeepingConflicts(tree.dir, head.value.trim(), git)
+		return head.ok
+			? Worktree.mergeKeepingConflicts(
+					tree.dir,
+					head.value.trim(),
+					message,
+					git,
+				)
 			: head;
-		if (!left.ok)
+	};
+
+	/**
+	 * Fast-forward the run's branch to `tree`'s, which `catchUp` brought the run's HEAD into, and
+	 * free `tree`: the run's branch's commit after. An error, `tree` still held, when the run's
+	 * branch has commits `tree`'s lacks.
+	 */
+	export const land = async (ctx: Ctx, tree: Tree): Promise<Result<string>> => {
+		const runTree = ctx.run.worktree;
+		if (runTree === undefined)
+			return err(new Error("the run has no worktree to land on"));
+		const landed = await Worktree.fastForward(runTree, tree.branch, gitOf(ctx));
+		if (!landed.ok)
 			return err(
 				new Error(
-					`${why} Merging ${into} into this worktree failed too: ${left.error.message}`,
+					`the run's branch ${RunStore.branchOf(ctx.run)} did not fast-forward to ${tree.branch}: ${landed.error.message}`,
 				),
 			);
-		return err(
-			new Error(
-				left.value.length > 0
-					? `${why} ${into} is now being merged into this worktree, with the conflicts in ${left.value.join(", ")} left for you: resolve them, keeping what both sides meant, then call kabane_done again. The runner commits the merge with your checkpoint.`
-					: `${why} ${into} has since merged into this worktree cleanly: check the result, then call kabane_done again.`,
-			),
-		);
+		await release(ctx, tree, true);
+		return landed;
 	};
 
 	/**
@@ -271,7 +272,7 @@ export namespace ClaimTrees {
 
 	/**
 	 * As the run ends: remove every worktree that holds nothing the run's branch lacks, free or held
-	 * by a subtask whose session never changed it, and say which still hold work that never merged,
+	 * by a subtask whose session never changed it, and say which still hold work that never landed,
 	 * left with their branches for a human.
 	 */
 	export const close = async (ctx: Ctx): Promise<void> => {

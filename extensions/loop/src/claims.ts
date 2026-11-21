@@ -10,9 +10,10 @@
 // that attempt left either way. A subtask its own red gate reopened is claimed again in the session
 // that closed it, while `Retry` says that session has room, and in a new one told the gate's output
 // otherwise. A subtask closed with checklist items open gets no pass: it is reopened. With
-// isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, gates
-// and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
-// or cancelled while it held that worktree is settled there (`settleHeld`).
+// isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, checkpoint
+// and gates there, on the run's HEAD merged in, and a green pass fast-forwards the run's branch to
+// it; one the tracker closed or cancelled while it held that worktree is settled there
+// (`settleHeld`).
 import { Harnesses } from "@kabane/acp/harnesses";
 import { type Result, type Task } from "@kabane/core";
 import { Brief } from "./brief";
@@ -799,7 +800,7 @@ export namespace Claims {
 				lane,
 				session: sessionId,
 				task: label(task),
-				summary: `${retryIn.lane}'s session not resumed for a gate retry (${retryIn.why}): a new session gets the full brief`,
+				summary: `${retryIn.lane}'s session not resumed${retry ? Retry.purpose(retry) : ""} (${retryIn.why}): a new session gets the full brief`,
 			});
 		return ok(true);
 	};
@@ -1047,6 +1048,16 @@ export namespace Claims {
 		return Stall.stalled(stall, ctx.run.config.stallAfter);
 	};
 
+	// How a session's end reads on the trace: its outcome, unless its pass reopened `label`.
+	const endedAs = (
+		outcome: Dispatch.Outcome,
+		reopened: string | undefined,
+		label: string,
+	): string =>
+		reopened
+			? `ended with ${label} open again: ${reopened}`
+			: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`;
+
 	/** Close the books on one ended session; true when the run has stalled. */
 	export const settle = async (
 		ctx: Ctx,
@@ -1062,24 +1073,27 @@ export namespace Claims {
 		if (claim && !onParent(claim)) await release(ctx, taskId, claim.harness);
 		// Recorded while the claim is still open: a runner that dies before the record leaves an
 		// open claim, and `recover` records the pass then.
-		if (gates)
-			await Checks.record(ctx, gates, {
-				taskId,
-				label: claim?.shortId ?? taskId,
-				assignee: claim?.harness,
-				...(claim ? { lane: claim.lane } : {}),
-			});
+		const reopened = gates
+			? await Checks.record(ctx, gates, {
+					taskId,
+					label: claim?.shortId ?? taskId,
+					assignee: claim?.harness,
+					...(claim ? { lane: claim.lane } : {}),
+				})
+			: undefined;
 		RunState.patchClaim(ctx, sessionId, {
 			endedAt: ctx.now().toISOString(),
 			outcome: outcome.outcome,
 			...(outcome.detail ? { detail: outcome.detail } : {}),
 		});
 		const ended = ctx.run.claims.find((c) => c.sessionId === sessionId);
+		// A session whose pass reopened its subtask did not leave it done, whatever its turn said:
+		// the claim keeps its outcome, which a retry resumes on (`Retry`), and the trace says why.
 		RunState.event(ctx, {
 			type: "session_end",
 			...(ended ? { lane: ended.lane, task: ended.shortId } : {}),
 			session: sessionId,
-			summary: `${outcome.outcome}${outcome.detail ? `: ${outcome.detail}` : ""}`,
+			summary: endedAs(outcome, reopened, ended?.shortId ?? taskId),
 		});
 		if (decided) planReview(ctx, decided, ended?.lane);
 		// A triage, a lens, and its recheck, runs once per run and files findings rather than closing work:

@@ -619,15 +619,17 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
 			]);
 			expect(RunStore.checkpoints(ended.value)).toEqual([head(worktree)]);
 			expect(GitFixture.run(worktree, ["status", "--porcelain"])).toBe("");
-			const checkpoint = isolation === "shared" ? "HEAD" : "HEAD^2";
-			expect(
-				GitFixture.run(worktree, [
-					"show",
-					"--name-only",
-					"--format=%b",
-					checkpoint,
-				]),
-			).toContain("No gates configured.");
+			// In a subtask's own tree the checkpoint comes before the gates, and the run's branch
+			// fast-forwards to it.
+			const body = GitFixture.run(worktree, [
+				"show",
+				"--name-only",
+				"--format=%b",
+				"HEAD",
+			]);
+			if (isolation === "shared")
+				expect(body).toContain("No gates configured.");
+			else expect(body).not.toContain("Gates");
 			expect(
 				GitFixture.run(worktree, ["show", "HEAD:feature.txt"]),
 			).toStartWith("made by ");

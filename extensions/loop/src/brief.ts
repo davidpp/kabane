@@ -103,7 +103,7 @@ export namespace Brief {
 		[
 			location(tree),
 			subtask && tree.worktree && tree.isolation === "worktree"
-				? `This run made this worktree for ${label(subtask)}. Work and commit here. The gates run in this directory when you call kabane_done, and a green pass merges this branch into the run's branch \`${tree.runBranch}\`.`
+				? `This run made this worktree for ${label(subtask)}. Work and commit here. When you call kabane_done, the runner commits what you left uncommitted, merges the run's branch \`${tree.runBranch}\` into this one, and runs the gates in this directory on that merge; a green pass moves the run's branch to it. A merge that conflicts comes back to you to resolve before any gate runs.`
 				: `${review ? "Review here without changing files." : "Work and commit here; the configured gates run in this directory."}${tree.worktree ? " This is the run's one tree and branch." : ""}${concurrent ? " Sibling sessions edit the same tree: protect their work." : ""}`,
 			"Do not create a branch or a worktree and do not switch branches.",
 			...(subtask
@@ -216,25 +216,40 @@ export namespace Brief {
 				]
 		).join("\n\n");
 
+	const RESUMED =
+		"This is the same session, resumed, so your instructions, the brief and what you did so far still hold.";
+
 	const failed = (gate: Gates.Result): string =>
 		`the \`${gate.name}\` gate (\`${gate.command}\`) failed ${gate.exit === null ? "to finish" : `with exit ${gate.exit}`}`;
 
-	// Why the subtask is open again: the gate its last session's work failed, and how.
+	// What the runner did before its gates, when merging the run's branch in conflicted.
+	const conflicted = (conflicts: readonly string[]): string =>
+		`the runner merged the run's branch into this subtask's before running the gates, and that merge conflicted in ${conflicts.join(", ")}`;
+
+	// Why the subtask is open again: the gate its last session's work failed, and how, or the merge
+	// of the run's branch that conflicted before any gate ran.
 	const retried = (task: Task, gate: Gates.Result): string =>
 		[
-			`${label(task)} was closed before, then reopened: ${failed(gate)} on that work. Make it pass before you call kabane_done again. The end of its output:`,
+			gate.conflicts
+				? `${label(task)} was closed before, then reopened: ${conflicted(gate.conflicts)}. Resolve the conflicts before you call kabane_done again. What the runner said:`
+				: `${label(task)} was closed before, then reopened: ${failed(gate)} on that work. Make it pass before you call kabane_done again. The end of its output:`,
 			`\`\`\`\n${gate.tail}\n\`\`\``,
 		].join("\n\n");
 
 	/**
-	 * The first prompt of the session that closed `task`, resumed because a gate failed on its work:
-	 * the conversation and its brief still hold, so it hears only the failure.
+	 * The first prompt of the session that closed `task`, resumed because a gate failed on its work,
+	 * or the merge of the run's branch before them conflicted: the conversation and its brief still
+	 * hold, so it hears only the failure.
 	 */
 	export const retriedInSession = (task: Task, gate: Gates.Result): string =>
 		[
-			`After you called kabane_done on ${label(task)}, the runner ran the gates and ${failed(gate)}, so ${label(task)} is open again. This is the same session, resumed, so your instructions, the brief and what you did so far still hold. The end of the gate's output:`,
+			gate.conflicts
+				? `After you called kabane_done on ${label(task)}, ${conflicted(gate.conflicts)}, so ${label(task)} is open again. ${RESUMED} What the runner said:`
+				: `After you called kabane_done on ${label(task)}, the runner ran the gates and ${failed(gate)}, so ${label(task)} is open again. ${RESUMED} The end of the gate's output:`,
 			`\`\`\`\n${gate.tail}\n\`\`\``,
-			`Make it pass, then call kabane_done on ${label(task)} again.`,
+			gate.conflicts
+				? `Resolve the conflicts, then call kabane_done on ${label(task)} again.`
+				: `Make it pass, then call kabane_done on ${label(task)} again.`,
 			STAY,
 		].join("\n\n");
 
