@@ -33,7 +33,7 @@ export namespace Recipe {
 		description?: string;
 		target: "issue" | "job" | "none";
 		inputs: Record<string, Input>;
-		/** The command this recipe starts, ahead of `recipes.harness`. */
+		/** The command this recipe starts, ahead of `jobs.harness`. */
 		harness?: string[];
 		/** sha256 of the recipe file's bytes, then its skill's when it uses one, first 12 hex characters. */
 		hash: string;

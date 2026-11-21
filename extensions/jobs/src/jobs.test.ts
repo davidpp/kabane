@@ -122,7 +122,7 @@ const value = <T>(result: Result<T>): T => {
 };
 
 it("reads a row written before the session column as a fresh job", async () => {
-	const home = mkdtempSync(join(tmpdir(), "recipes-jobs-"));
+	const home = mkdtempSync(join(tmpdir(), "jobs-jobs-"));
 	try {
 		const full = Jobs.module();
 		// The module as it shipped with JCAB-523: its first migration only.
@@ -136,7 +136,7 @@ it("reads a row written before the session column as a fresh job", async () => {
 		value(
 			await withDb(home, (db) =>
 				db.run(
-					`INSERT INTO recipes_jobs (id, task_id, schedule, recipe, inputs, created_at, updated_at)
+					`INSERT INTO jobs_jobs (id, task_id, schedule, recipe, inputs, created_at, updated_at)
 					 VALUES (?, ?, '0 9 * * *', 'wiki', '{}', ?, ?)`,
 					[task.id, task.id, at(8, 0).toISOString(), at(8, 0).toISOString()],
 				),
@@ -147,7 +147,7 @@ it("reads a row written before the session column as a fresh job", async () => {
 		const host = {
 			store: createHostStore(
 				() => home,
-				() => ["recipes_jobs"],
+				() => ["jobs_jobs"],
 				"jobs test",
 			),
 			z,
@@ -246,7 +246,7 @@ it("gives a recipe with its own prompt the preamble, then its body with the targ
 });
 
 it("stores a job with no recipe and reads it back with none", async () => {
-	const home = mkdtempSync(join(tmpdir(), "recipes-jobs-"));
+	const home = mkdtempSync(join(tmpdir(), "jobs-jobs-"));
 	try {
 		configureTestRuntime({ modules: [Jobs.module()] });
 		value(await Planner.init(home));
@@ -256,7 +256,7 @@ it("stores a job with no recipe and reads it back with none", async () => {
 		const host = {
 			store: createHostStore(
 				() => home,
-				() => ["recipes_jobs"],
+				() => ["jobs_jobs"],
 				"jobs test",
 			),
 			z,
@@ -293,7 +293,7 @@ it("an edit moves only the fields it names, and clears the job's harness on null
 });
 
 it("updates a job's row in place and reads the edit back", async () => {
-	const home = mkdtempSync(join(tmpdir(), "recipes-jobs-"));
+	const home = mkdtempSync(join(tmpdir(), "jobs-jobs-"));
 	try {
 		configureTestRuntime({ modules: [Jobs.module()] });
 		value(await Planner.init(home));
@@ -303,7 +303,7 @@ it("updates a job's row in place and reads the edit back", async () => {
 		const host = {
 			store: createHostStore(
 				() => home,
-				() => ["recipes_jobs"],
+				() => ["jobs_jobs"],
 				"jobs test",
 			),
 			z,

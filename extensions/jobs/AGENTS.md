@@ -1,40 +1,41 @@
-# @kabane/recipes (extensions/recipes)
+# @kabane/jobs (extensions/jobs)
 
-The recipes extension: recipes from a project's `.kabane/recipes/`, each naming a project skill or
+The jobs extension: recipes from a project's `.kabane/recipes/`, each naming a project skill or
 carrying its own prompt, `kabane run` to start
 one in an `hc` (herdr core) terminal, `kabane runs` to list, read, send to, attach to and stop
 those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is what a user reads.
 
 | Where | What it holds |
 |---|---|
-| `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), its commands, the `hc-missing` doctor finding, the job skill's and the tick's, the board ports |
+| `src/extension.ts` | the `(host) => Extension` factory: the `jobs` settings (`harness`, `onAttention`), its commands, the `hc-missing` doctor finding, the job skill's and the tick's, the board ports |
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`: the frontmatter (`skill` and `harness` among it), then either the skill's `SKILL.md` found in `.agents/skills/` or `.claude/skills/` (`Skilled`) or the body and its `{{...}}` placeholders (`Written`), and the errors that name the file, a skill and a body together among them; `render`, which fills a body's placeholders |
-| `src/harness.ts` | `Harness.choose`, the precedence (launch, job, recipe, `recipes.harness`, `claude`) and its source; `line` and `split`, the command line a human reads and types |
+| `src/harness.ts` | `Harness.choose`, the precedence (launch, job, recipe, `jobs.harness`, `claude`) and its source; `line` and `split`, the command line a human reads and types |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
-| `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `recipes.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets (the preamble, then "Use the <skill> skill.", the target and one line per input, or the rendered body), which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
+| `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `jobs.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets (the preamble, then "Use the <skill> skill.", the target and one line per input, or the rendered body), which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing (this project's, or every project's with `--all`; ended runs with `--ended`), `attach`, `read`, `send`, `stop` on a run found by id in this project first, then in every scope |
 | `src/job-skill.ts` | `JobSkill.check`: the user-level copy of the `job` skill (`skills/job/SKILL.md`, which `kabane mcp` also serves while the extension is enabled) at `~/.agents/skills/job` with a `~/.claude/skills/job` link, the `job-skill-missing` and `job-skill-behind` findings and their fix; `scripts/build.ts` ships `skills/` beside `index.js` |
 | `src/job-tick.ts` | `JobTick`: what runs `kabane job tick` every minute, a launchd agent at `~/Library/LaunchAgents/com.kabane.job-tick.plist` or a crontab line, written for `host.kabane.current`, the installing shell's `PATH` and `ctx.home`; `found` (none, a tick that runs, or one whose program is gone), `install` (write, then `launchctl bootout` and `bootstrap`, or replace the crontab's tick line), and the `job-tick-missing` finding while there is an open job and no tick that runs |
 | `src/job-command.ts` | `kabane job`: `add` (in the cwd's project or `--project`'s, then the tick's offer: a `[y/N]` at a terminal, else the fix command), `edit`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
-| `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
+| `src/jobs.ts` | the job row and its table, `jobs_jobs`, and this machine's folder per scope, `jobs_roots`, and what its tick last saw of each run, `jobs_attention`; the due rule, the fire decision and the attention rule |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, its harness row first and its skill, or "its own prompt", in the form's preview, and `dispatch` through `startRun`; on a job, `job:run`, which fires it as `kabane job run` does |
 | `src/job-source.ts` | `RecipeJobs`: the board's `JobSource`, each job's schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs |
-| `src/runs.ts` | the run row and its table, `recipes_runs`; the only file that knows where a run is stored; `reconcile` and `stop`, which `kabane runs` and the board share |
+| `src/runs.ts` | the run row and its table, `jobs_runs`; the only file that knows where a run is stored; `reconcile` and `stop`, which `kabane runs` and the board share |
 | `src/runtime.ts` | the `Runtime` interface: `start`, `get`, `stop`, and the optional terminal operations `read`, `send`, `attach` |
 | `src/runtime-hc.ts` | the hc runtime; the only file that runs `hc` |
-| `modules.ts` | the modules entry: registers the run and job tables, imports only `src/runs.ts` and `src/jobs.ts` |
+| `src/from-recipes.ts` | `FromRecipes`: the module whose one migration moves a device from the `recipes` names (tables, version tables, oplog, parked ops, declarations) to these |
+| `modules.ts` | the modules entry: registers the rename, then the run and job tables; imports only `src/from-recipes.ts`, `src/runs.ts` and `src/jobs.ts` |
 
 ## It takes types from kabane and no value
 
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/recipes"`) allows no runtime
+Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/jobs"`) allows no runtime
 dependency. Scope detection, records, storage, zod, outcomes and the result helpers arrive on
 `host`; the factory binds the result helpers through `src/result.ts`. Core, the contract and zod
 are development dependencies for types and for the tests' own result helpers.
 
 ## The run row is this extension's data module
 
-JCAB-444:1 put the run table in the extension's own module: it ships with `recipes`, is absent
+JCAB-444:1 put the run table in the extension's own module, `jobs-runs`: it ships with the extension, is absent
 when the extension is disabled, and a device without it, the hub included, parks its ops. It is
 `row-lww` on `updated_at` and not `childOfTasks`: a run names what it works on in `target_kind` and
 `target_id` without belonging to it, and a target is optional. Both columns are null or both are
@@ -62,8 +63,8 @@ show their last recorded state.
 ## A job is an item plus a row
 
 A job is an item of kind `job` (title, description as the standing request, scope, state:
-`next` active, `someday` paused) created through `kabane_add`, plus its `recipes_jobs` row
-(`childOfTasks`, keyed by the item's id): schedule, recipe (`""` for none: the column is
+`next` active, `someday` paused) created through `kabane_add`, plus its `jobs_jobs` row in the
+`jobs` module (`childOfTasks`, keyed by the item's id): schedule, recipe (`""` for none: the column is
 `NOT NULL`, a read gives no `recipe`, and the prompt is `requestPromptOf`, the job preamble then
 the item's description as it reads at the fire, never rendered; the run row records recipe
 `request` and the request's hash), inputs, harness, `session`
@@ -79,17 +80,37 @@ the job's `check` with `sh -c` in the root with `KABANE_JOB` and `KABANE_JOB_TIT
 exit starts nothing, prints one line with the check's last stderr line, and still sets
 `last_fired_at`, so the slot is spent. `job run` and the board's `job:run` skip the check. A wake writes no run row: one row per terminal, so
 `kabane runs` lists the session once, and `last_fired_at` records the fire. `tick` has no cwd:
-it reads the root from `recipes_roots`, which every `kabane job` command run inside a project
+it reads the root from `jobs_roots`, which every `kabane job` command run inside a project
 writes and which is left out of `syncTables`, since a path belongs to one machine.
 
 Before it fires anything, `tick` reads each open job's newest run on this machine and runs
-`recipes.onAttention`, when set, once when that run enters `waiting` and once when it finishes
-(`idle` or `ended`): `Jobs.attention` is the rule, and `recipes_attention`, machine-local like
-`recipes_roots`, holds the state the tick last saw each run in. It is written whether or not the
+`jobs.onAttention`, when set, once when that run enters `waiting` and once when it finishes
+(`idle` or `ended`): `Jobs.attention` is the rule, and `jobs_attention`, machine-local like
+`jobs_roots`, holds the state the tick last saw each run in. It is written whether or not the
 hook is set, so setting it later does not replay old finishes. The hook runs with `sh -c` in the
 run's folder with `KABANE_JOB`, `KABANE_JOB_TITLE`, `KABANE_RUN`, `KABANE_RUN_STATE`,
 `KABANE_ATTENTION`, `KABANE_FOLDER` and `KABANE_ATTACH`; a nonzero exit is one line of the tick's
 output and is not retried. A run has one id, so there is no separate run short id.
+
+## It was called recipes
+
+The extension, its package, settings namespace, modules and tables were `recipes` until JCAB-646;
+the commands and recipe files kept their names. Moving a device is two steps, because nothing of
+an extension runs until `extensions` names it:
+
+- Base kabane's `kabane/extension-renamed-recipes` doctor finding (`packages/cli/src/doctor/renamed.ts`,
+  from `Extensions.RENAMED`) renames the `extensions` entry, the `recipes` namespace in
+  `config.json` and the settings files, and the `$KABANE_HOME/extensions/recipes` link.
+- `FromRecipes` (`src/from-recipes.ts`), registered before the run and job modules, renames the
+  tables, the two version tables (`schema_migrations_recipes` to `schema_migrations_jobs_runs`,
+  `schema_migrations_recipes_jobs` to `schema_migrations_jobs`), the table and module names in
+  `sync_oplog`, `sync_parked`, `sync_parked_deletes` and `sync_quarantine`, and drops the old
+  modules' declarations. The two modules after it then read the versions the old names recorded
+  and run nothing. It writes core's bookkeeping with raw SQL because core cannot rename a module.
+  Op ids are kept: they are the log's identities, not table names.
+
+The run and job modules' migration lists keep their length and order (3 and 5); a shorter list
+would refuse a migrated database as newer.
 
 ## State is read from hc
 
@@ -132,7 +153,7 @@ job's run, is not on the issue board (JCAB-426). A job's runs are on the board's
 through `RecipeJobs`: what `kabane job show` prints, as data, and for each of the newest five runs
 its state and `kabane runs attach <id>`. Its runs are reconciled on each call, as `kabane job list`
 does. `a` on a job offers `job:run`, which fires it now in its scope's folder from
-`recipes_roots`, whatever the board's project; pause and resume are the item's state, which the
+`jobs_roots`, whatever the board's project; pause and resume are the item's state, which the
 board writes itself.
 
 | Run state | `ActivityStatus` | Why |
@@ -162,10 +183,10 @@ missing `hc` makes a trigger unsatisfiable.
 ## Verify
 
 ```bash
-bun test extensions/recipes                 # parsing, inputs, the hc mapping, the board ports, the real kabane entry
-bun run --cwd extensions/recipes build      # dist/ is installed as a directory extension
-bun run sandbox config set extensions recipes --layer global
-bun run sandbox config set recipes.harness 'sh,-c,printf "%s\n" "$0"; read line; echo "got: $line"; sleep 600' --layer global
+bun test extensions/jobs                 # parsing, inputs, the hc mapping, the board ports, the real kabane entry
+bun run --cwd extensions/jobs build      # dist/ is installed as a directory extension
+bun run sandbox config set extensions jobs --layer global
+bun run sandbox config set jobs.harness 'sh,-c,printf "%s\n" "$0"; read line; echo "got: $line"; sleep 600' --layer global
 # write a recipe into <repo>/.kabane/recipes/ and its skill into <repo>/.agents/skills/<skill>/SKILL.md;
 # the sandbox prints <repo> on its first line
 bun run sandbox add "Probe" --kind issue
@@ -191,7 +212,7 @@ bun run sandbox job tick                   # skips it while it is live
 ```
 
 The sandbox sets `KABANE_JOB_TICK=print`, so `job add`'s tick offer and `--fix
-recipes/job-tick-missing` print the plist or crontab line they would install and install nothing:
+jobs/job-tick-missing` print the plist or crontab line they would install and install nothing:
 `launchctl bootstrap` and `crontab` act on your real session whatever `HOME` says. Never unset it in
 a check. `extension.test.ts` installs through stand-in `launchctl` and `crontab` on PATH.
 

@@ -52,7 +52,7 @@ export namespace RecipeDispatcher {
 		id: `${PREFIX}${recipe.name}`,
 		label: recipe.name,
 		...(recipe.description ? { description: recipe.description } : {}),
-		source: "recipes",
+		source: "jobs",
 		inputs: {
 			[HARNESS]: {
 				type: "string",
@@ -102,7 +102,7 @@ export namespace RecipeDispatcher {
 		return {
 			id: `${PREFIX}${name}`,
 			label: name,
-			source: "recipes",
+			source: "jobs",
 			inputs: {},
 			satisfiable: false,
 			hint: error.message,
@@ -114,7 +114,7 @@ export namespace RecipeDispatcher {
 		id: RUN_JOB,
 		label: "run now",
 		description: "fire this job now, as kabane job run does",
-		source: "recipes",
+		source: "jobs",
 		inputs: {},
 		satisfiable: blocked === undefined,
 		...(blocked === undefined ? {} : { hint: blocked }),

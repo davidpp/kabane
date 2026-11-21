@@ -637,26 +637,26 @@ it("gives standalone extension commands the host's cached harness mode", async (
 it("links a shipped extension the home lacks, and leaves the user's own install alone", () => {
 	const home = makeHome();
 	const root = join(home, "shipped");
-	for (const name of ["dispatch", "loop", "recipes"])
+	for (const name of ["dispatch", "jobs", "loop"])
 		mkdirSync(join(root, name), { recursive: true });
 	writeFileSync(join(root, "not-a-dir"), "");
-	expect(Extensions.shipped(root)).toEqual(["dispatch", "loop", "recipes"]);
+	expect(Extensions.shipped(root)).toEqual(["dispatch", "jobs", "loop"]);
 	expect(Extensions.shipped(undefined)).toEqual([]);
 	// The user's own loop, a directory, is never replaced.
 	mkdirSync(join(home, "extensions/loop"), { recursive: true });
 	// A link that resolves nowhere holds nothing, so it is re-pointed.
-	symlinkSync(join(home, "gone"), join(home, "extensions/recipes"));
+	symlinkSync(join(home, "gone"), join(home, "extensions/jobs"));
 	const linked = Extensions.link(
 		home,
-		["dispatch", "loop", "recipes", "absent"],
+		["dispatch", "jobs", "loop", "absent"],
 		root,
 	);
-	expect(linked.ok && linked.value).toEqual(["dispatch", "recipes"]);
+	expect(linked.ok && linked.value).toEqual(["dispatch", "jobs"]);
 	expect(realpathSync(join(home, "extensions/dispatch"))).toBe(
 		realpathSync(join(root, "dispatch")),
 	);
-	expect(realpathSync(join(home, "extensions/recipes"))).toBe(
-		realpathSync(join(root, "recipes")),
+	expect(realpathSync(join(home, "extensions/jobs"))).toBe(
+		realpathSync(join(root, "jobs")),
 	);
 	const again = Extensions.link(home, ["dispatch"], root);
 	expect(again.ok && again.value).toEqual([]);

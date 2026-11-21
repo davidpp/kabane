@@ -27,7 +27,7 @@ const STOP = { id: "stop", key: "x", label: "stop" };
 
 // A recipe run on MILL-1: no tab, still going, offering stop.
 const run = (over: Partial<ActivityCard> = {}): ActivityCard => ({
-	id: "recipes:run-1",
+	id: "jobs:run-1",
 	kind: "runs",
 	label: "review",
 	status: "running",
@@ -71,7 +71,7 @@ describe("X on an issue's detail", () => {
 	it("stops the task's card that has no tab, as OpenTUI and a bare sequence both send it", () => {
 		const act: BoardNav.Effect = {
 			type: "act",
-			cardId: "recipes:run-1",
+			cardId: "jobs:run-1",
 			actionId: "stop",
 		};
 		expect(press(onDetail(), SHIFT_X).effect).toEqual(act);
@@ -82,7 +82,7 @@ describe("X on an issue's detail", () => {
 		const idle = onDetail([run({ status: "completed" })]);
 		expect(press(idle, SHIFT_X).effect).toEqual({
 			type: "act",
-			cardId: "recipes:run-1",
+			cardId: "jobs:run-1",
 			actionId: "stop",
 		});
 		expect(DetailCard.stoppable(idle)).toBe("review");
@@ -91,7 +91,7 @@ describe("X on an issue's detail", () => {
 	it("stops the newest card that offers stop, past a newer one that offers none", () => {
 		const state = onDetail([
 			run({
-				id: "recipes:run-2",
+				id: "jobs:run-2",
 				status: "stopped",
 				actions: [{ id: "open", key: "p", label: "open" }],
 			}),
@@ -99,7 +99,7 @@ describe("X on an issue's detail", () => {
 		]);
 		expect(press(state, SHIFT_X).effect).toEqual({
 			type: "act",
-			cardId: "recipes:run-1",
+			cardId: "jobs:run-1",
 			actionId: "stop",
 		});
 	});
@@ -141,12 +141,12 @@ describe("the card's other actions on the detail", () => {
 		const state = onDetail([run({ actions })]);
 		expect(press(state, typed("p")).effect).toEqual({
 			type: "act",
-			cardId: "recipes:run-1",
+			cardId: "jobs:run-1",
 			actionId: "open",
 		});
 		const prompted = press(state, typed("c")).state;
 		expect(prompted.prompt.open).toMatchObject({
-			target: { type: "act", cardId: "recipes:run-1", actionId: "note" },
+			target: { type: "act", cardId: "jobs:run-1", actionId: "note" },
 			placeholder: "what to add",
 		});
 	});

@@ -184,7 +184,7 @@ const LOOSE: BoardTabs.Tabs = {
 	...BoardTabs.NONE,
 	loose: new Map([
 		[
-			"recipes:run-1",
+			"jobs:run-1",
 			{
 				label: "review",
 				finished: false,

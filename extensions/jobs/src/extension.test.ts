@@ -49,14 +49,14 @@ const skill = (root: string, name: string) => {
 	);
 };
 
-const setup = (extensions: readonly string[] = ["recipes"]) => {
-	const folder = realpathSync(mkdtempSync(join(tmpdir(), "recipes-ext-")));
+const setup = (extensions: readonly string[] = ["jobs"]) => {
+	const folder = realpathSync(mkdtempSync(join(tmpdir(), "jobs-ext-")));
 	folders.push(folder);
 	const root = join(folder, "project");
 	const home = join(folder, "home");
 	mkdirSync(join(root, ".kabane/recipes"), { recursive: true });
 	mkdirSync(join(home, "extensions"), { recursive: true });
-	symlinkSync(EXTENSION, join(home, "extensions/recipes"));
+	symlinkSync(EXTENSION, join(home, "extensions/jobs"));
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({ actor: "test", deviceId: "test", extensions }),
@@ -115,7 +115,7 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 		const db = new Database(join(home, "kabane.db"));
 		try {
 			db.run(
-				`INSERT INTO recipes_runs (id, recipe, recipe_hash, target_kind, target_id, scope_uri,
+				`INSERT INTO jobs_runs (id, recipe, recipe_hash, target_kind, target_id, scope_uri,
 				   dir, machine, cwd, runtime, session, inputs, state, started_at, ended_at, updated_at)
 				 VALUES (?, 'research', 'abc', NULL, NULL, ?, '', ?, ?, ?, ?, '{}', ?, ?, NULL, ?)`,
 				[
@@ -163,7 +163,7 @@ test("kabane run with no recipe names each recipe's harness and where it comes f
 		kabane([
 			"config",
 			"set",
-			"recipes.harness",
+			"jobs.harness",
 			"sh,-c,echo hi",
 			"--layer",
 			"global",
@@ -175,7 +175,7 @@ test("kabane run with no recipe names each recipe's harness and where it comes f
 		"    harness codex exec  (from the recipe)",
 		"research --target <issue>  Research an issue",
 		"    skill research  (.agents/skills/research/SKILL.md)",
-		"    harness sh -c 'echo hi'  (from recipes.harness)",
+		"    harness sh -c 'echo hi'  (from jobs.harness)",
 		"    --input depth=<quick|medium|thorough> (default medium)",
 		"    --input focus=<string> (required)",
 	]);
@@ -282,7 +282,7 @@ test("a run with every input but no hc on PATH fails with one line naming hc, an
 	);
 	expect(doctor.findings).toContainEqual(
 		expect.objectContaining({
-			source: "recipes",
+			source: "jobs",
 			id: "hc-missing",
 			severity: "mention",
 		}),
@@ -584,7 +584,7 @@ test("job add --project makes the job in that folder's project from anywhere, an
 		harness: ["codex"],
 		session: "keep",
 	});
-	// --inputs replaces the set; --harness none hands the choice back to recipes.harness.
+	// --inputs replaces the set; --harness none hands the choice back to jobs.harness.
 	expect(
 		kabane(
 			[
@@ -613,13 +613,13 @@ test("doctor offers the user-level job skill, and --fix installs it for every ha
 		JSON.parse(kabane(["doctor", "--json"], { home: user }).stdout).findings;
 	expect(findings()).toContainEqual(
 		expect.objectContaining({
-			source: "recipes",
+			source: "jobs",
 			id: "job-skill-missing",
 			severity: "suggest",
 			fixable: true,
 		}),
 	);
-	const fixed = kabane(["doctor", "--fix", "recipes/job-skill-missing"], {
+	const fixed = kabane(["doctor", "--fix", "jobs/job-skill-missing"], {
 		home: user,
 	});
 	expect(fixed.code).toBe(0);
@@ -659,11 +659,11 @@ test("with nothing ticking this machine, job add says how to install the tick an
 	expect(added.code).toBe(0);
 	// stdin is not a terminal, as in an agent's shell: a line to relay, and nothing installed.
 	expect(added.stdout).toContain(
-		"Nothing runs kabane job tick on this machine yet, so no job fires: `kabane doctor --fix recipes/job-tick-missing` installs a",
+		"Nothing runs kabane job tick on this machine yet, so no job fires: `kabane doctor --fix jobs/job-tick-missing` installs a",
 	);
 	expect(tickFindings()).toEqual([
 		expect.objectContaining({
-			source: "recipes",
+			source: "jobs",
 			severity: "suggest",
 			fixable: true,
 		}),
@@ -711,10 +711,7 @@ test("with KABANE_JOB_TICK=print, as the sandbox sets it, the tick's fix says wh
 	const { user, path, called } = tickTools(home);
 	const options = { home: user, path, env: { KABANE_JOB_TICK: "print" } };
 	expect(kabane(ADD_TIDY, options).code).toBe(0);
-	const fixed = kabane(
-		["doctor", "--fix", "recipes/job-tick-missing"],
-		options,
-	);
+	const fixed = kabane(["doctor", "--fix", "jobs/job-tick-missing"], options);
 	expect(fixed.code).toBe(0);
 	expect(fixed.stdout).toContain("KABANE_JOB_TICK=print: would");
 	expect(fixed.stdout).toContain("job tick");
@@ -741,10 +738,7 @@ test("a tick whose program is gone is reported, and doctor --fix points it at th
 	expect(kabane(ADD_TIDY, options).code).toBe(0);
 	const doctor = kabane(["doctor"], options).stdout;
 	expect(doctor).toContain(`runs ${gone}, which is gone`);
-	const fixed = kabane(
-		["doctor", "--fix", "recipes/job-tick-missing"],
-		options,
-	);
+	const fixed = kabane(["doctor", "--fix", "jobs/job-tick-missing"], options);
 	expect(fixed.code).toBe(0);
 	const written = readFileSync(
 		process.platform === "darwin" ? agent : table,

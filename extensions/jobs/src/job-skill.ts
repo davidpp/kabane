@@ -53,7 +53,7 @@ export namespace JobSkill {
 					path,
 					severity: "suggest",
 					summary:
-						"No job skill in ~/.agents/skills/job, so a harness outside a project with one does not know how to make a kabane job. --fix recipes/job-skill-missing writes it and links ~/.claude/skills/job to it.",
+						"No job skill in ~/.agents/skills/job, so a harness outside a project with one does not know how to make a kabane job. --fix jobs/job-skill-missing writes it and links ~/.claude/skills/job to it.",
 					fix: async () => trySync(() => install(home)),
 				},
 			];
@@ -64,7 +64,7 @@ export namespace JobSkill {
 				path,
 				severity: "mention",
 				summary:
-					"~/.agents/skills/job/SKILL.md differs from the job skill the recipes extension ships. --fix recipes/job-skill-behind copies the template over it, replacing any edits of your own.",
+					"~/.agents/skills/job/SKILL.md differs from the job skill the jobs extension ships. --fix jobs/job-skill-behind copies the template over it, replacing any edits of your own.",
 				fix: async () => trySync(() => install(home)),
 			},
 		];

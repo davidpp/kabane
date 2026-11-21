@@ -261,11 +261,7 @@ test("update replaces the real executable behind a symlink, and its templates an
 		readdirSync(join(WORK, `repack-${NEXT}/kabane/templates`)).sort(),
 	);
 	const extensions = join(installed.directory, "extensions");
-	expect(readdirSync(extensions).sort()).toEqual([
-		"dispatch",
-		"loop",
-		"recipes",
-	]);
+	expect(readdirSync(extensions).sort()).toEqual(["dispatch", "jobs", "loop"]);
 	expect(existsSync(join(linked, "retired.js"))).toBe(false);
 	expect(readFileSync(join(linked, "package.json"), "utf8")).toBe(
 		readFileSync(

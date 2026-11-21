@@ -43,10 +43,10 @@ test("native compile archives executable, an empty templates/, the first-party e
 	expect(readdirSync(join(root, "templates"))).toEqual([]);
 	expect(readdirSync(join(root, "extensions")).toSorted()).toEqual([
 		"dispatch",
+		"jobs",
 		"loop",
-		"recipes",
 	]);
-	for (const name of ["dispatch", "loop", "recipes"])
+	for (const name of ["dispatch", "jobs", "loop"])
 		expect(
 			JSON.parse(
 				readFileSync(join(root, "extensions", name, "package.json"), "utf8"),

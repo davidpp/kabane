@@ -1,7 +1,7 @@
 {
-	"name": "@kabane/recipes",
+	"name": "@kabane/jobs",
 	"version": "0.1.0",
-	"description": "Named prompt recipes from a project's .kabane/recipes/, started with `kabane run` in hc terminals and listed with `kabane runs`.",
+	"description": "Agent sessions in hc terminals: started from a project's .kabane/recipes/ with `kabane run`, listed with `kabane runs`, and run on a schedule with `kabane job`.",
 	"license": "MIT",
 	"private": true,
 	"type": "module",

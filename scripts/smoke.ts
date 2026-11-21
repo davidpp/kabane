@@ -307,7 +307,7 @@ const checkShippedLens = (): void => {
 /** The extensions a release archive ships beside its executable. */
 const shippedExtensions = (): string => join(dirname(BIN), "extensions");
 
-const SHIPPED = ["dispatch", "loop", "recipes"];
+const SHIPPED = ["dispatch", "jobs", "loop"];
 
 const checkShipped = (): void => {
 	const missing = SHIPPED.filter(

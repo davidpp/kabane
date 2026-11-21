@@ -1,7 +1,7 @@
 import type { KabaneModule } from "@kabane/extension";
 
 /**
- * A recipes table's migration for the actor scheme's rename: `cabane://actor/` became
+ * A jobs table's migration for the actor scheme's rename: `cabane://actor/` became
  * `kabane://actor/` (kabane's core migration 12, JCAB-607). An extension imports no value from
  * kabane's packages, so the prefixes are written here.
  */

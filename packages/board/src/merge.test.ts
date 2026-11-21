@@ -241,7 +241,7 @@ describe("JobSources.merge", () => {
 
 	test("joins what each contributor knows, unprefixed, and a failing one hides nothing", async () => {
 		const merged = JobSources.merge({
-			recipes: source({ a: facts("wiki") }),
+			jobs: source({ a: facts("wiki") }),
 			other: source({ b: facts("watch") }),
 			broken: { facts: async () => err(new Error("down")) },
 		});

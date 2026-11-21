@@ -38,16 +38,16 @@ export namespace Runs {
 		endedAt?: string;
 	};
 
-	const TABLE = "recipes_runs";
+	const TABLE = "jobs_runs";
 
 	/** What the store reads and writes with. */
 	type Store = Pick<Host, "store" | "z">;
 
 	export const module = (): KabaneModule => ({
-		name: "recipes",
+		name: "jobs-runs",
 		migrations: [
 			{
-				name: "create-recipes-runs",
+				name: "create-jobs-runs",
 				up: (db) =>
 					db.run(
 						`CREATE TABLE IF NOT EXISTS ${TABLE} (
@@ -74,7 +74,7 @@ export namespace Runs {
 					),
 			},
 			{
-				name: "add-recipes-runs-harness",
+				name: "add-jobs-runs-harness",
 				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN harness TEXT`),
 			},
 			actorScheme(TABLE),

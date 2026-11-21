@@ -224,7 +224,7 @@ export namespace Fixtures {
 	});
 
 	/**
-	 * A recipe run on `on` whose harness waits on the human: the recipes extension draws its
+	 * A recipe run on `on` whose harness waits on the human: the jobs extension draws its
 	 * `waiting` as paused, and its detail ends with the command that attaches to it.
 	 */
 	export const waitingRun = (on: Task): ActivityCard => ({
@@ -245,7 +245,7 @@ export namespace Fixtures {
 	});
 
 	/**
-	 * The same run while its harness has reported no status (`live`): the recipes extension draws
+	 * The same run while its harness has reported no status (`live`): the jobs extension draws
 	 * it unreported, neither working nor paused.
 	 */
 	export const silentRun = (on: Task): ActivityCard => ({
@@ -666,7 +666,7 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 		],
 	};
 
-	/** A recipe's launcher as the recipes extension builds it: the harness, then its inputs. */
+	/** A recipe's launcher as the jobs extension builds it: the harness, then its inputs. */
 	export const RECIPE_RUN: TriggerDescriptor = {
 		id: "recipe:preliminary-research",
 		label: "preliminary-research",

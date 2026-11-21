@@ -22,7 +22,7 @@ export namespace Jobs {
 		/** The recipe it runs; absent, its prompt is the job's request (its item's description). */
 		recipe?: string;
 		inputs: Record<string, unknown>;
-		/** The command this job starts instead of `recipes.harness`. */
+		/** The command this job starts instead of `jobs.harness`. */
 		harness?: string[];
 		session: Session;
 		/** A shell command a due fire runs first: the run starts only when it exits 0. */
@@ -31,9 +31,9 @@ export namespace Jobs {
 		createdAt: string;
 	};
 
-	const TABLE = "recipes_jobs";
-	const ROOTS = "recipes_roots";
-	const SEEN = "recipes_attention";
+	const TABLE = "jobs_jobs";
+	const ROOTS = "jobs_roots";
+	const SEEN = "jobs_attention";
 
 	type Store = Pick<Host, "store" | "z">;
 
@@ -41,10 +41,10 @@ export namespace Jobs {
 	const NO_RECIPE = "";
 
 	export const module = (): KabaneModule => ({
-		name: "recipes-jobs",
+		name: "jobs",
 		migrations: [
 			{
-				name: "create-recipes-jobs",
+				name: "create-jobs-jobs",
 				up: (db) => {
 					db.run(
 						`CREATE TABLE IF NOT EXISTS ${TABLE} (
@@ -73,14 +73,14 @@ export namespace Jobs {
 				},
 			},
 			{
-				name: "add-recipes-jobs-session",
+				name: "add-jobs-jobs-session",
 				up: (db) =>
 					db.run(
 						`ALTER TABLE ${TABLE} ADD COLUMN session TEXT NOT NULL DEFAULT 'fresh'`,
 					),
 			},
 			{
-				name: "create-recipes-attention",
+				name: "create-jobs-attention",
 				// Machine-local, like the folders: the state this machine's tick last saw each run
 				// in, so the attention hook runs once per change. Not in syncTables.
 				up: (db) =>
@@ -93,7 +93,7 @@ export namespace Jobs {
 					),
 			},
 			{
-				name: "add-recipes-jobs-check",
+				name: "add-jobs-jobs-check",
 				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN "check" TEXT`),
 			},
 			actorScheme(TABLE),

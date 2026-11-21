@@ -9,8 +9,8 @@ A kabane job runs a request, or a project's recipe, on a schedule, in a project'
 background terminal: each fire starts a harness there and gives it the job. It is an item of kind
 `job` plus its schedule, made and changed only with the `kabane job` CLI; there is no MCP tool for
 it. This skill turns one prompt from the human into the right `kabane job` command and reports what
-it made. If `kabane job` is not a command here (`kabane job --help` says it is unknown), the recipes
-extension is not enabled: say so, give `kabane config set extensions recipes --layer global` (with
+it made. If `kabane job` is not a command here (`kabane job --help` says it is unknown), the jobs
+extension is not enabled: say so, give `kabane config set extensions jobs --layer global` (with
 the extensions already listed by `kabane config get extensions`), and stop.
 
 ## Make a job
@@ -36,7 +36,7 @@ the extensions already listed by `kabane config get extensions`), and stop.
 4. **The title.** `--title`: a few words that name the job, written as what it does.
 5. **The harness.** Only when the human named one: `--harness` takes the command as a
    comma-separated list, `--harness codex` or `--harness claude,--model,opus`. Otherwise leave it
-   out; the recipe's harness, then `recipes.harness`, then `claude` applies.
+   out; the recipe's harness, then `jobs.harness`, then `claude` applies.
 6. **The session.** `--session keep` when the human wants one conversation that remembers earlier
    fires; otherwise leave it out, and each fire starts a fresh session.
 7. **The check.** Only when the human says to run "only when …", "only if there is …", or "skip
@@ -59,7 +59,7 @@ It prints `Added job <id> (…); it fires next at <time>.` Run `kabane job show 
 human, in one or two lines: the job's id and title, when it fires next, the folder, and the harness
 the `harness` line names. When `job add` also prints that nothing runs `kabane job tick` on this
 machine, the job will not fire until something does: tell the human, and ask whether to install
-it. Run the `kabane doctor --fix recipes/job-tick-missing` it names only on their yes.
+it. Run the `kabane doctor --fix jobs/job-tick-missing` it names only on their yes.
 
 When `job add` fails, its error says which flag is wrong: fix that flag and run it again, and ask
 the human only when the fix needs their choice.

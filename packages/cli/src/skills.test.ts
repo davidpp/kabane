@@ -345,9 +345,9 @@ it("kabane mcp lists and serves an enabled extension's skill over stdio", async 
 	}
 });
 
-it("the recipes extension serves its job skill, the same file its doctor fix installs for the user", () => {
-	const directory = join(import.meta.dir, "../../../extensions/recipes");
-	const read = Skills.read([{ name: "recipes", directory }]);
+it("the jobs extension serves its job skill, the same file its doctor fix installs for the user", () => {
+	const directory = join(import.meta.dir, "../../../extensions/jobs");
+	const read = Skills.read([{ name: "jobs", directory }]);
 	expect(read.refused).toEqual([]);
 	expect(read.skills.map((skill) => skill.name)).toEqual(["kabane", "job"]);
 	const got = Skills.get(read.skills, "job", undefined, "KABANE");
@@ -355,9 +355,7 @@ it("the recipes extension serves its job skill, the same file its doctor fix ins
 	expect(got.value.text).toBe(
 		readFileSync(join(directory, "skills/job/SKILL.md"), "utf8"),
 	);
-	expect(got.value.text).toContain(
-		"kabane doctor --fix recipes/job-tick-missing",
-	);
+	expect(got.value.text).toContain("kabane doctor --fix jobs/job-tick-missing");
 });
 
 it("the loop's loop-run skill sets up and starts a run with the kabane this server runs", () => {
@@ -505,6 +503,8 @@ describe("base kabane's kabane skill", () => {
 		const got = Skills.get(skills, "kabane", undefined, kabane);
 		if (!got.ok) throw got.error;
 		for (const path of [undefined, ...got.value.files])
-			expect(file(path)).not.toMatch(/dispatch|grill|\bloop\b|recipes/i);
+			expect(file(path)).not.toMatch(
+				/dispatch|grill|\bloop\b|\bjobs\b|recipes/i,
+			);
 	});
 });

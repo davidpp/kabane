@@ -1,6 +1,6 @@
 // What runs `kabane job tick` every minute on this machine: a per-user launchd agent on macOS, a
 // crontab line on Linux. It is installed only on the human's yes: `job add` asks at a terminal, and
-// `kabane doctor --fix recipes/job-tick-missing` is the yes an agent relays. It runs the kabane
+// `kabane doctor --fix jobs/job-tick-missing` is the yes an agent relays. It runs the kabane
 // that installed it (`host.kabane.current`, which Homebrew and mise keep across upgrades), with that
 // process's PATH, so the tick finds hc and the harnesses the human's shell finds, and with its
 // KABANE_HOME. A tick whose program is gone counts as missing, and installing replaces it.
@@ -296,7 +296,7 @@ export namespace JobTick {
 				id: "job-tick-missing",
 				...(platform === "darwin" ? { path: agentPath(home) } : {}),
 				severity: "suggest",
-				summary: `${reason}, so ${whose} ${jobs === 1 ? "job never fires" : `${jobs} jobs never fire`}. --fix recipes/job-tick-missing installs ${what(platform)}.`,
+				summary: `${reason}, so ${whose} ${jobs === 1 ? "job never fires" : `${jobs} jobs never fire`}. --fix jobs/job-tick-missing installs ${what(platform)}.`,
 				fix: async () => install(platform, target, home),
 			},
 		];
