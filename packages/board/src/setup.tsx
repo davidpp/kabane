@@ -1,6 +1,7 @@
 /** @jsxImportSource @opentui/react */
 // The first-run screen `kabane` shows on a device with no config: one welcome card on what kabane
-// is, then who you are and which detected harnesses get the MCP server. Enter writes the config
+// is, then who you are, which detected harnesses get the MCP server and which of the extensions this
+// install ships to turn on, none ticked until the human ticks one. Enter writes the config
 // through the host, runs the installs, files a first issue for an agent inside a project, and shows
 // each outcome with the next step; enter again hands over to the board. Everything it decides lives
 // in SetupPlan. Each phase groups its parts on raised panels, the welcome under a block wordmark.
@@ -42,11 +43,15 @@ export type SetupDeps = {
 	save: (plan: SetupPlan.Plan) => Promise<Result<string>>;
 	// Registers the MCP server in each named harness, one outcome per id.
 	install: (ids: readonly string[]) => Promise<SetupPlan.InstallOutcome[]>;
+	// Turns on the named extensions the install ships, once the config is written.
+	enable: (names: readonly string[]) => Promise<Result<void>>;
 	// Files the issue that has the named agent add kabane to the project's instruction file.
 	fileFirstIssue: (harness: string) => Promise<Result<SetupPlan.FirstIssue>>;
 };
 
 type FiledIssue = { harness: string; result: Result<SetupPlan.FirstIssue> };
+
+type Enabled = { names: readonly string[]; result: Result<void> };
 
 type Phase =
 	| { kind: "welcome" }
@@ -56,6 +61,7 @@ type Phase =
 			kind: "done";
 			configPath: string;
 			outcomes: SetupPlan.InstallOutcome[];
+			enabled?: Enabled;
 			firstIssue?: FiledIssue;
 	  };
 
@@ -92,7 +98,7 @@ const footerFor = (
 	defaults: SetupPlan.Defaults,
 ): readonly Keymap.Hint[] =>
 	Keymap.footer(SETUP_CONTEXT[phase.kind], {
-		harnesses: defaults.harnesses.length > 0,
+		harnesses: defaults.harnesses.length + defaults.extensions.length > 0,
 	});
 
 // Each field's one-line purpose, dim under it. At 40 columns a note has 31 after the label column.
@@ -102,18 +108,23 @@ export const NO_AGENTS = "none found on PATH";
 export const NO_AGENTS_NOTE = "add later: kabane mcp install";
 export const AGENTS_OFF = "install off";
 export const AGENTS_OFF_NOTE = "KABANE_HARNESSES is set";
+export const EXTENSIONS_NOTE = "ticked ones are turned on";
 
 const agentCount = (count: number): string =>
 	`${count} agent${count === 1 ? "" : "s"}`;
+
+const extensionList = (names: readonly string[]): string => names.join(", ");
 
 /** What enter will do, one change a line, so nothing it touches goes unsaid. */
 export const enterLines = (
 	configPath: string,
 	agents: number,
 	firstAgent?: string,
+	extensions: readonly string[] = [],
 ): readonly string[] => [
 	`saves ${configPath}`,
 	...(agents > 0 ? [`adds kabane to ${agentCount(agents)}`] : []),
+	...(extensions.length > 0 ? [`turns on ${extensionList(extensions)}`] : []),
 	...(firstAgent ? [`files one issue for ${firstAgent}`] : []),
 	"opens the board",
 ];
@@ -237,6 +248,7 @@ export const SetupScreen = ({
 	defaults,
 	save,
 	install,
+	enable,
 	fileFirstIssue,
 	onComplete,
 	onQuit,
@@ -253,15 +265,14 @@ export const SetupScreen = ({
 	const spinnerFrame = useSpinnerFrame(phase.kind === "working");
 	const theme = useTheme();
 
+	const working = (step: string): void => setPhase({ kind: "working", step });
+
 	const fileFor = async (
 		outcomes: readonly SetupPlan.InstallOutcome[],
 	): Promise<FiledIssue | undefined> => {
 		const harness = SetupPlan.firstIssueFor(outcomes, defaults);
 		if (harness === undefined) return undefined;
-		setPhase({
-			kind: "working",
-			step: `filing the first issue for ${harness}`,
-		});
+		working(`filing the first issue for ${harness}`);
 		return { harness, result: await fileFirstIssue(harness) };
 	};
 
@@ -271,24 +282,31 @@ export const SetupScreen = ({
 			setPhase({ kind: "form", error: planned.error.message });
 			return;
 		}
-		setPhase({ kind: "working", step: "writing the config" });
+		working("writing the config");
 		const saved = await save(planned.value);
 		if (!saved.ok) {
 			setPhase({ kind: "form", error: saved.error.message });
 			return;
 		}
+		const names = planned.value.extensions;
+		if (names.length > 0) working(`turning on ${extensionList(names)}`);
+		const enabled: Enabled | undefined =
+			names.length > 0 ? { names, result: await enable(names) } : undefined;
 		// Nothing to show but the path: straight on to the board.
-		if (planned.value.install.length === 0) {
+		if (planned.value.install.length === 0 && enabled?.result.ok !== false) {
 			onComplete();
 			return;
 		}
-		setPhase({
-			kind: "working",
-			step: `adding kabane to ${agentCount(planned.value.install.length)}`,
-		});
+		working(`adding kabane to ${agentCount(planned.value.install.length)}`);
 		const outcomes = await install(planned.value.install);
 		const firstIssue = await fileFor(outcomes);
-		setPhase({ kind: "done", configPath: saved.value, outcomes, firstIssue });
+		setPhase({
+			kind: "done",
+			configPath: saved.value,
+			outcomes,
+			enabled,
+			firstIssue,
+		});
 	};
 
 	useKeyboard((key) => {
@@ -315,7 +333,7 @@ export const SetupScreen = ({
 		else if (key.name === "return") {
 			key.preventDefault();
 			void confirm();
-		} else if (key.name === "space" && field?.kind === "harness") {
+		} else if (key.name === "space" && SetupPlan.ticks(field)) {
 			key.preventDefault();
 			update(SetupPlan.toggle(current.current, defaults));
 		}
@@ -379,6 +397,7 @@ const DoneCard = ({
 						/>
 					))}
 				</box>
+				{done.enabled ? <EnabledLine enabled={done.enabled} /> : null}
 			</Panel>
 			{done.firstIssue ? <FirstIssuePanel filed={done.firstIssue} /> : null}
 		</>
@@ -412,6 +431,7 @@ const ConfirmPanel = ({
 				configPath={defaults.configPath}
 				agents={form.checked.length}
 				firstAgent={SetupPlan.firstAgent(form, defaults)}
+				extensions={form.accepted}
 			/>
 			{phase.error ? (
 				<text fg={theme.failed} style={{ marginTop: 1 }}>
@@ -558,9 +578,21 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 						focused={focused}
 					/>
 				);
+			case "extension":
+				return (
+					<ExtensionRow
+						key={field.extension.name}
+						label=""
+						offer={field.extension}
+						checked={form.accepted.includes(field.extension.name)}
+						focused={focused}
+					/>
+				);
 		}
 	};
-	const [name, ...agents] = SetupPlan.fields(defaults).map(row);
+	const [name, ...rows] = SetupPlan.fields(defaults).map(row);
+	const agents = rows.slice(0, defaults.harnesses.length);
+	const extensions = rows.slice(defaults.harnesses.length);
 	return (
 		<Panel first gutter>
 			{name}
@@ -583,6 +615,14 @@ const SetupForm = ({ defaults, form, onName }: SetupFormProps): ReactNode => {
 					</>
 				)}
 			</box>
+			{extensions.length > 0 ? (
+				<box style={{ flexDirection: "column", marginTop: 1 }}>
+					{/* Wider than the label column, so it heads its rows on a line of its own. */}
+					<text fg={theme.text}>{"  extensions"}</text>
+					{extensions}
+					<Note text={EXTENSIONS_NOTE} />
+				</box>
+			) : null}
 		</Panel>
 	);
 };
@@ -599,30 +639,35 @@ const EnterPanel = ({
 	configPath,
 	agents,
 	firstAgent,
+	extensions,
 }: {
 	configPath: string;
 	agents: number;
 	firstAgent?: string;
+	extensions: readonly string[];
 }): ReactNode => {
 	const theme = useTheme();
 	const { width } = useTerminalDimensions();
 	const room = width - LABEL_WIDTH - "saves ".length;
 	return (
 		<Panel gutter>
-			{enterLines(elidePath(configPath, room), agents, firstAgent).map(
-				(line, index) => (
-					<text key={line} fg={theme.text}>
-						{index === 0 ? (
-							<span attributes={TextAttributes.BOLD}>
-								{`  ${"enter".padEnd(LABEL_WIDTH - 2)}`}
-							</span>
-						) : (
-							" ".repeat(LABEL_WIDTH)
-						)}
-						{line}
-					</text>
-				),
-			)}
+			{enterLines(
+				elidePath(configPath, room),
+				agents,
+				firstAgent,
+				extensions,
+			).map((line, index) => (
+				<text key={line} fg={theme.text}>
+					{index === 0 ? (
+						<span attributes={TextAttributes.BOLD}>
+							{`  ${"enter".padEnd(LABEL_WIDTH - 2)}`}
+						</span>
+					) : (
+						" ".repeat(LABEL_WIDTH)
+					)}
+					{line}
+				</text>
+			))}
 		</Panel>
 	);
 };
@@ -859,6 +904,59 @@ const CheckRow = ({
 				</span>
 			</text>
 		</FieldRow>
+	);
+};
+
+// An extension row is a check row with what the extension does under it, dim: one line cut to the
+// panel, the whole of it while the row has focus.
+const ExtensionRow = ({
+	label,
+	offer,
+	checked,
+	focused,
+}: {
+	label: string;
+	offer: SetupPlan.Offer;
+	checked: boolean;
+	focused: boolean;
+}): ReactNode => {
+	const theme = useTheme();
+	const room = usePanelWidth() + 2 * PANEL_PAD - LABEL_WIDTH - 4;
+	const about = offer.description ?? "";
+	const shown =
+		focused || about.length <= room ? about : `${about.slice(0, room - 1)}…`;
+	return (
+		<box style={{ flexDirection: "column" }}>
+			<CheckRow
+				label={label}
+				harness={offer.name}
+				checked={checked}
+				focused={focused}
+			/>
+			{shown === "" ? null : (
+				<box style={{ paddingLeft: LABEL_WIDTH + 4 }}>
+					<text fg={theme.muted}>{shown}</text>
+				</box>
+			)}
+		</box>
+	);
+};
+
+// What turning on the ticked extensions did: their names, or why it failed.
+const EnabledLine = ({ enabled }: { enabled: Enabled }): ReactNode => {
+	const theme = useTheme();
+	const head = `${enabled.result.ok ? "✓" : "✗"} ${extensionList(enabled.names)}`;
+	return (
+		<box style={{ marginTop: 1 }}>
+			<NotedLine
+				head={
+					<span fg={enabled.result.ok ? theme.done : theme.failed}>{head}</span>
+				}
+				headLength={head.length}
+				note={enabled.result.ok ? "turned on" : enabled.result.error.message}
+				noteFg={enabled.result.ok ? theme.muted : theme.failed}
+			/>
+		</box>
 	);
 };
 

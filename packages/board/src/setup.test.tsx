@@ -10,6 +10,7 @@ import {
 	AGENTS_NOTE,
 	AGENTS_OFF,
 	AGENTS_OFF_NOTE,
+	EXTENSIONS_NOTE,
 	elidePath,
 	enterLines,
 	NAME_NOTE,
@@ -35,6 +36,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
+	extensions: [],
 	installOff: false,
 	configPath: "~/.kabane/config.json",
 	project: "repo",
@@ -55,6 +57,7 @@ const SANDBOX_PATH =
 type Seen = {
 	saved: SetupPlan.Plan[];
 	installed: (readonly string[])[];
+	enabled: (readonly string[])[];
 	filed: string[];
 	completed: number;
 	quit: number;
@@ -80,6 +83,7 @@ const mount = async (
 	const seen: Seen = {
 		saved: [],
 		installed: [],
+		enabled: [],
 		filed: [],
 		completed: 0,
 		quit: 0,
@@ -103,6 +107,10 @@ const mount = async (
 								}
 							: { id, status: "installed" as const },
 					);
+				}}
+				enable={async (names) => {
+					seen.enabled.push(names);
+					return ok(undefined);
 				}}
 				fileFirstIssue={async (harness) => {
 					seen.filed.push(harness);
@@ -321,9 +329,11 @@ describe("SetupScreen form", () => {
 					actor: "kabane://actor/human/david",
 					deviceId: "mbp",
 					install: ["claude", "codex"],
+					extensions: [],
 				},
 			]);
 			expect(seen.installed).toEqual([["claude", "codex"]]);
+			expect(seen.enabled).toEqual([]);
 			expect(seen.completed).toBe(0);
 			mockInput.pressEnter();
 			await until(() => seen.completed === 1);
@@ -397,6 +407,44 @@ describe("SetupScreen form", () => {
 		}
 	});
 
+	it("offers the shipped extensions unticked; space ticks one and enter turns it on, with no agent found", async () => {
+		const about =
+			"Serves the setup-dispatch and grill skills, writes a project's dispatch skill from its own template.";
+		const { mockInput, toForm, until, seen, destroy } = await mount(
+			{
+				...DEFAULTS,
+				harnesses: [],
+				extensions: [
+					{ name: "dispatch", description: about },
+					{ name: "loop" },
+				],
+			},
+			{ width: 40 },
+		);
+		try {
+			const frame = await toForm();
+			expect(frame).toContain("  extensions");
+			expect(frame).toContain("[ ] dispatch");
+			expect(frame).toContain("[ ] loop");
+			expect(frame).toContain(EXTENSIONS_NOTE);
+			expect(frame).toContain("space toggle");
+			expect(frame).not.toContain("turns on");
+			// Unfocused, the description is one line cut to the pane.
+			expect(frame).toContain("             Serves the setup-dispatch …");
+			mockInput.pressTab();
+			mockInput.pressKey(" ");
+			const ticked = await until((f) => f.includes("[x] dispatch"));
+			expect(ticked).toContain("turns on dispatch");
+			mockInput.pressEnter();
+			await until(() => seen.completed === 1);
+			expect(seen.saved[0]?.extensions).toEqual(["dispatch"]);
+			expect(seen.enabled).toEqual([["dispatch"]]);
+			expect(seen.installed).toEqual([]);
+		} finally {
+			destroy();
+		}
+	});
+
 	it("a long install error wraps under its row, indented, at 40 columns", async () => {
 		const reason =
 			'Caused by: CODEX_HOME points to "/tmp/x/.codex", but that path does not exist';
@@ -407,6 +455,7 @@ describe("SetupScreen form", () => {
 				install={async (ids) =>
 					ids.map((id) => ({ id, status: "failed" as const, message: reason }))
 				}
+				enable={async () => ok(undefined)}
 				fileFirstIssue={async () => ok(FIRST_ISSUE)}
 				onComplete={() => {}}
 				onQuit={() => {}}

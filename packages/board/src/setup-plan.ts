@@ -1,6 +1,6 @@
 // The first-run setup screen's logic, without a renderer: which rows the form has, how focus and
 // the checkboxes move, and what the answers become — an actor URI, a device id, the harnesses to
-// wire and the agent the first issue goes to. The device id is the short hostname, never asked: it
+// wire, the extensions to turn on and the agent the first issue goes to. The device id is the short hostname, never asked: it
 // only names the machine once sync is set up (docs/deploy.md), and it can be renamed in the config
 // until the first push. setup.tsx is a thin layer over this; the host turns a Plan into its own
 // config (the board cannot see the CLI's schema), runs the installs and files the first issue.
@@ -10,6 +10,9 @@ export namespace SetupPlan {
 	/** A harness the host found on this machine, by the id its installer takes. */
 	export type Harness = { id: string; label: string };
 
+	/** An extension this install ships, offered unticked, with its manifest's description. */
+	export type Offer = { name: string; description?: string };
+
 	export type Defaults = {
 		/** Prefilled name: the OS username. */
 		name: string;
@@ -17,6 +20,8 @@ export namespace SetupPlan {
 		device: string;
 		/** Detected harnesses, checked by default. */
 		harnesses: readonly Harness[];
+		/** Extensions this install ships that are not on yet: none is ticked until the human ticks it. */
+		extensions: readonly Offer[];
 		/** No harnesses because the host turned install off, not because none are installed. */
 		installOff: boolean;
 		/** Where confirming writes the config, as the screen says it before enter. */
@@ -25,11 +30,16 @@ export namespace SetupPlan {
 		project?: string;
 	};
 
-	export type Field = { kind: "name" } | { kind: "harness"; harness: Harness };
+	export type Field =
+		| { kind: "name" }
+		| { kind: "harness"; harness: Harness }
+		| { kind: "extension"; extension: Offer };
 
 	export type Form = {
 		name: string;
 		checked: readonly string[];
+		/** The extensions ticked, by name. */
+		accepted: readonly string[];
 		focus: number;
 	};
 
@@ -37,6 +47,7 @@ export namespace SetupPlan {
 		actor: string;
 		deviceId: string;
 		install: readonly string[];
+		extensions: readonly string[];
 	};
 
 	export type InstallStatus = "installed" | "already" | "failed";
@@ -59,12 +70,18 @@ export namespace SetupPlan {
 			kind: "harness",
 			harness,
 		})),
+		...defaults.extensions.map((extension): Field => ({
+			kind: "extension",
+			extension,
+		})),
 	];
 
 	// Every detected harness starts checked: wiring the agents is why most people run setup at all.
+	// No extension does: setup suggests one, it never turns one on unasked.
 	export const initialForm = (defaults: Defaults): Form => ({
 		name: defaults.name,
 		checked: defaults.harnesses.map((h) => h.id),
+		accepted: [],
 		focus: 0,
 	});
 
@@ -81,17 +98,20 @@ export namespace SetupPlan {
 	export const focused = (form: Form, defaults: Defaults): Field | undefined =>
 		fields(defaults)[form.focus];
 
+	/** Whether `field` is a checkbox row, which space flips. */
+	export const ticks = (field: Field | undefined): boolean =>
+		field?.kind === "harness" || field?.kind === "extension";
+
 	/** Space on a checkbox row flips it; on a text row it does nothing. */
 	export const toggle = (form: Form, defaults: Defaults): Form => {
 		const field = focused(form, defaults);
-		if (field?.kind !== "harness") return form;
-		const id = field.harness.id;
-		return {
-			...form,
-			checked: form.checked.includes(id)
-				? form.checked.filter((c) => c !== id)
-				: [...form.checked, id],
-		};
+		const flip = (list: readonly string[], id: string): string[] =>
+			list.includes(id) ? list.filter((c) => c !== id) : [...list, id];
+		if (field?.kind === "harness")
+			return { ...form, checked: flip(form.checked, field.harness.id) };
+		if (field?.kind === "extension")
+			return { ...form, accepted: flip(form.accepted, field.extension.name) };
+		return form;
 	};
 
 	/**
@@ -140,6 +160,9 @@ export namespace SetupPlan {
 			install: defaults.harnesses
 				.map((h) => h.id)
 				.filter((id) => form.checked.includes(id)),
+			extensions: defaults.extensions
+				.map((e) => e.name)
+				.filter((name) => form.accepted.includes(name)),
 		});
 	};
 }

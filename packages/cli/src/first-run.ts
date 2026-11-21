@@ -2,13 +2,15 @@
  * Bare `kabane` in a terminal: the board, after the setup screen when this
  * device has no config yet. The screen lives in `@kabane/board` and cannot see
  * the CLI's config schema or the MCP installer, so this module hands it all of
- * that as deps: the defaults to prefill, the detected harnesses, `save` (which
- * builds the config through `init`'s `buildConfig`), `install`, and
+ * that as deps: the defaults to prefill, the detected harnesses, the extensions this install
+ * ships, `save` (which builds the config through `init`'s `buildConfig`), `install`, `enable`
+ * (which turns the ticked extensions on as `kabane config set extensions` does), and
  * `fileFirstIssue`, which files the one issue that gets an agent working here.
  */
 
 import { existsSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
+import { join } from "node:path";
 import { type SetupDeps, type SetupPlan, startSetup } from "@kabane/board";
 import { err, ok, Planner, type Result } from "@kabane/core";
 import { failure, type Outcome, parseArgs, success } from "@kabane/extension";
@@ -16,7 +18,9 @@ import { board } from "./commands/board";
 import { buildConfig } from "./commands/init";
 import { McpInstall } from "./commands/mcp-install";
 import { configPath, defaultDeviceId, saveConfig } from "./config";
+import { ConfigSettings } from "./config-settings";
 import { detectProject, openContext, resolveScope } from "./context";
+import { Extensions } from "./extensions";
 import { McpClients } from "./mcp-clients";
 
 /**
@@ -139,6 +143,35 @@ const fileFirstIssue = async (
 	});
 };
 
+/** The extensions this install ships, each with what its manifest says it adds. */
+export const offers = (root = Extensions.shippedRoot()): SetupPlan.Offer[] =>
+	Extensions.shipped(root).map((name) => {
+		const description =
+			root === undefined
+				? undefined
+				: Extensions.descriptionAt(join(root, name));
+		return description === undefined ? { name } : { name, description };
+	});
+
+/**
+ * Turns on the ticked extensions through the global layer, as `kabane config set extensions
+ * <names> --layer global` does, which links each one this install ships. Runs after `save`: the
+ * config it writes to is the one setup just created, so nothing else is in `extensions` yet.
+ */
+const enable = async (
+	home: string,
+	names: readonly string[],
+): Promise<Result<void>> => {
+	const changed = await ConfigSettings.set(
+		home,
+		{},
+		"extensions",
+		JSON.stringify(names),
+		"global",
+	);
+	return changed.ok ? ok(undefined) : changed;
+};
+
 /** `/Users/alex/.kabane/config.json` as `~/.kabane/config.json`: the screen has 40 columns. */
 export const tildePath = (path: string, home = homedir()): string =>
 	path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
@@ -155,6 +188,7 @@ export const setupDeps = async (
 			name: userInfo().username,
 			device: defaultDeviceId(),
 			harnesses,
+			extensions: offers(),
 			installOff: harnesses.length === 0 && installer.narrowed(),
 			configPath: tildePath(configPath(home)),
 			project: project?.name,
@@ -172,6 +206,7 @@ export const setupDeps = async (
 			return saved.ok ? ok(tildePath(saved.value)) : saved;
 		},
 		install: installer.install,
+		enable: (names) => enable(home, names),
 		fileFirstIssue: (harness) => fileFirstIssue(home, cwd, harness),
 	};
 };

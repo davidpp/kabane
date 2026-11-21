@@ -8,6 +8,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
+	extensions: [],
 	installOff: false,
 	configPath: "~/.kabane/config.json",
 };
@@ -46,6 +47,7 @@ describe("plan", () => {
 				actor: "kabane://actor/human/david",
 				deviceId: "mbp",
 				install: ["claude", "codex"],
+				extensions: [],
 			},
 		});
 	});
@@ -113,5 +115,46 @@ describe("the first issue", () => {
 			SetupPlan.firstIssueFor([{ id: "claude", status: "failed" }], inProject),
 		).toBe(undefined);
 		expect(SetupPlan.firstIssueFor(claudeFailed, DEFAULTS)).toBe(undefined);
+	});
+});
+
+describe("extensions", () => {
+	const OFFERED: SetupPlan.Defaults = {
+		...DEFAULTS,
+		extensions: [
+			{ name: "dispatch", description: "Serves the setup-dispatch skill." },
+			{ name: "loop" },
+		],
+	};
+	const at = (focus: number): SetupPlan.Form => ({
+		...SetupPlan.initialForm(OFFERED),
+		focus,
+	});
+
+	test("one row each after the harnesses, none ticked", () => {
+		expect(SetupPlan.fields(OFFERED).map((f) => f.kind)).toEqual([
+			"name",
+			"harness",
+			"harness",
+			"extension",
+			"extension",
+		]);
+		const planned = SetupPlan.plan(SetupPlan.initialForm(OFFERED), OFFERED);
+		expect(planned.ok && planned.value.extensions).toEqual([]);
+	});
+
+	test("space ticks one, and the plan names them in offer order", () => {
+		const form = SetupPlan.toggle(
+			{ ...SetupPlan.toggle(at(4), OFFERED), focus: 3 },
+			OFFERED,
+		);
+		const planned = SetupPlan.plan(form, OFFERED);
+		expect(planned.ok && planned.value.extensions).toEqual([
+			"dispatch",
+			"loop",
+		]);
+		expect(planned.ok && planned.value.install).toEqual(["claude", "codex"]);
+		const untick = SetupPlan.plan(SetupPlan.toggle(form, OFFERED), OFFERED);
+		expect(untick.ok && untick.value.extensions).toEqual(["loop"]);
 	});
 });
