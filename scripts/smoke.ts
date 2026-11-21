@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Pack-and-install smoke test of the published `kabane` package, run by CI and before a release
- * (docs/release.md): build, `npm pack`, check what the tarball holds, install it with
- * `bun add -g` the way a user would, then drive the installed bin.
+ * Pack-and-install smoke test of the bundled `kabane` package, run by CI: build, `npm pack`, check
+ * what the tarball holds, install it with `bun add -g`, then drive the installed bin. A release
+ * ships no package; `--binary` drives a release's standalone executable instead (docs/release.md).
  *
  * Everything happens in one temp directory with its own HOME, BUN_INSTALL and KABANE_HOME, and
  * KABANE_HARNESSES empty, so neither the real tracker nor a harness config is ever touched. The
@@ -18,21 +18,18 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { build as buildLoop } from "../extensions/loop/scripts/build";
 import { ContextPageSchema } from "../packages/core/context-output";
 import { TaskCommentSchema, TaskWorkLogSchema } from "../packages/core/schemas";
 import { build, DIST } from "./build";
-import {
-	inspectArchive,
-	PackOutputSchema,
-	verifyReleaseFiles,
-} from "./release-artifact";
+import { inspectArchive, PackOutputSchema } from "./release-artifact";
 
 const binaryMode = process.argv[2] === "--binary";
 const ROOT = resolve(import.meta.dir, "..");
@@ -292,7 +289,10 @@ const checkShippedLens = (): void => {
 	const refused = start();
 	if (refused.code === 0 || !refused.stderr.includes("No lens smoke"))
 		fail("kabane loop start did not read the shipped quality lens", refused);
-	const lens = join(KABANE_HOME, "extensions/loop/lenses/quality.md");
+	// Through a linked install's link: the loop names the file where it found it.
+	const lens = realpathSync(
+		join(KABANE_HOME, "extensions/loop/lenses/quality.md"),
+	);
 	const contents = readFileSync(lens);
 	rmSync(lens);
 	const missing = start();
@@ -302,6 +302,22 @@ const checkShippedLens = (): void => {
 			"kabane loop start did not read quality from the installed directory",
 			missing,
 		);
+};
+
+/** The extensions a release archive ships beside its executable. */
+const shippedExtensions = (): string => join(dirname(BIN), "extensions");
+
+const SHIPPED = ["dispatch", "loop", "recipes"];
+
+const checkShipped = (): void => {
+	const missing = SHIPPED.filter(
+		(name) => !existsSync(join(shippedExtensions(), name, "package.json")),
+	);
+	if (missing.length)
+		fail(
+			`the archive ships no ${missing.join(", ")} in ${shippedExtensions()}`,
+		);
+	pass(`archive ships extensions ${SHIPPED.join(", ")}`);
 };
 
 // Exercise the base artifact before installing the separately built directory extension.
@@ -331,11 +347,25 @@ const checkLoopExtension = async (version: string): Promise<void> => {
 		fail("enabled missing loop printed no installation diagnostic", missing);
 	const contextId = checkCommands(version);
 	await checkMcp(version, contextId);
-	const output = join(WORK, "loop-build");
-	const built = await buildLoop(output);
-	if (!built.success) fail(`loop build failed: ${built.logs.join("\n")}`);
-	cpSync(output, join(extensions, "loop"), { recursive: true });
-	rmSync(output, { recursive: true });
+	if (binaryMode) {
+		// Enabling a shipped extension links it from the archive's extensions/.
+		const enabled = kabane(
+			"config",
+			"set",
+			"extensions",
+			"loop",
+			"--layer",
+			"global",
+		);
+		if (!enabled.stdout.includes("linked loop from this install"))
+			fail("enabling the shipped loop did not link it", enabled);
+	} else {
+		const output = join(WORK, "loop-build");
+		const built = await buildLoop(output);
+		if (!built.success) fail(`loop build failed: ${built.logs.join("\n")}`);
+		cpSync(output, join(extensions, "loop"), { recursive: true });
+		rmSync(output, { recursive: true });
+	}
 	if (!kabane("loop", "--help").stdout.includes("kabane loop status"))
 		fail("kabane loop --help printed no loop usage");
 	const status = kabane("loop", "status");
@@ -644,15 +674,12 @@ const checkMcp = async (version: string, taskId: string): Promise<void> => {
 
 const [mode, input, ...extra] = process.argv.slice(2);
 if (
-	(mode !== undefined &&
-		mode !== "--tarball" &&
-		mode !== "--artifact-dir" &&
-		mode !== "--binary") ||
+	(mode !== undefined && mode !== "--tarball" && mode !== "--binary") ||
 	(mode !== undefined && !input) ||
 	extra.length
 )
 	fail(
-		"usage: bun run smoke [--tarball <existing.tgz> | --artifact-dir <retained-release> | --binary <extracted-executable>]",
+		"usage: bun run smoke [--tarball <existing.tgz> | --binary <extracted-executable>]",
 	);
 if (binaryMode && input) {
 	BIN = resolve(input);
@@ -689,6 +716,7 @@ if (binaryMode && input) {
 		existsSync(join(WORK, "dotenv-home"))
 	)
 		fail("standalone loaded project dotenv");
+	checkShipped();
 	checkCommands(version);
 	await checkLoopExtension(version);
 	await checkMcp(version, "");
@@ -697,18 +725,7 @@ if (binaryMode && input) {
 	process.exit(0);
 }
 let tarball: string;
-let expectedVersion: string | undefined;
-let artifactDir: string | undefined;
-if (mode === "--artifact-dir" && input) {
-	artifactDir = resolve(input);
-	const verified = verifyReleaseFiles(artifactDir);
-	const record = verified.ok ? verified.value : fail(verified.error.message);
-	if (process.env.GITHUB_SHA && record.commit !== process.env.GITHUB_SHA)
-		fail("artifact/event source commit mismatch");
-	tarball = join(artifactDir, record.filename);
-	expectedVersion = record.version;
-	pass("retained artifact hashes verified; no build/pack");
-} else if (mode === "--tarball" && input) {
+if (mode === "--tarball" && input) {
 	tarball = resolve(input);
 	pass("using existing archive; no build/pack");
 } else {
@@ -718,8 +735,6 @@ if (mode === "--artifact-dir" && input) {
 }
 const version = await inspect(tarball);
 checkHashbang();
-if (expectedVersion && version !== expectedVersion)
-	fail("archive/release manifest version mismatch");
 install(tarball);
 mkdirSync(REPO);
 runOk(["git", "init", "-q"], REPO, isolated);
@@ -727,9 +742,5 @@ const contextId = checkCommands(version);
 checkListImports();
 await checkMcp(version, contextId);
 await checkLoopExtension(version);
-if (artifactDir) {
-	const verified = verifyReleaseFiles(artifactDir);
-	if (!verified.ok) fail("retained artifact changed during installed smoke");
-}
 rmSync(WORK, { recursive: true, force: true });
 console.error("smoke: passed");

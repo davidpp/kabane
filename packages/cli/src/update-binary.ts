@@ -1,9 +1,11 @@
 /**
- * Where a release is read from, and how a standalone binary replaces itself with one. npm's
- * `latest` and `beta` dist-tags name the release, read over `fetch` because a binary has no Bun to
- * run `bun info` with; the GitHub release of that tag carries `kabane-<os>-<arch>.tar.gz` and the
- * `SHA256SUMS` that covers it. `KABANE_UPDATE_REGISTRY` and `KABANE_UPDATE_RELEASES` point both
- * somewhere else, such as a mirror, over https; plain http only reaches this machine's loopback.
+ * Where a release is read from, and how a standalone binary replaces itself with one. The GitHub
+ * releases API names the release, the same place its bytes come from, so a release reaches a
+ * binary or a brew install without npm: `latest` is the latest release, which GitHub never makes a
+ * draft or a prerelease, and `beta` the highest `X.Y.Z-beta.N` prerelease. The GitHub release of
+ * that tag carries `kabane-<os>-<arch>.tar.gz` and the `SHA256SUMS` that covers it.
+ * `KABANE_UPDATE_API` and `KABANE_UPDATE_RELEASES` point both somewhere else, such as a mirror, over
+ * https; plain http only reaches this machine's loopback, at every redirect.
  */
 
 import { createHash } from "node:crypto";
@@ -19,19 +21,28 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { err, ok, type Result, tryCatch, trySync } from "@kabane/core";
+import { z } from "zod";
 import { runUpdateProcess } from "./update-process";
-import { type DistTags, DistTagsSchema } from "./update-version";
+import {
+	ChannelVersionSchema,
+	compareVersions,
+	type DistTags,
+	isPrerelease,
+	SemverSchema,
+} from "./update-version";
 
 export namespace UpdateBinary {
 	export type Source = {
-		/** The npm registry whose dist-tags name the release. */
-		registry: string;
+		/** The releases API that names the release: `<api>/latest` and `<api>`, GitHub's shape. */
+		api: string;
 		/** The base the release assets hang off: `<releases>/v<version>/<asset>`. */
 		releases: string;
 	};
 
 	export const source = (env: NodeJS.ProcessEnv): Source => ({
-		registry: env.KABANE_UPDATE_REGISTRY ?? "https://registry.npmjs.org",
+		api:
+			env.KABANE_UPDATE_API ??
+			"https://api.github.com/repos/davidpp/kabane/releases",
 		releases:
 			env.KABANE_UPDATE_RELEASES ??
 			"https://github.com/davidpp/kabane/releases/download",
@@ -64,69 +75,157 @@ export namespace UpdateBinary {
 
 	const insecure = (url: string): Error =>
 		new Error(
-			`refusing ${url}: releases are read over https only (http only from 127.0.0.1, ::1 or localhost); check KABANE_UPDATE_REGISTRY and KABANE_UPDATE_RELEASES`,
+			`refusing ${url}: releases are read over https only (http only from 127.0.0.1, ::1 or localhost); check KABANE_UPDATE_API and KABANE_UPDATE_RELEASES`,
 		);
 
+	/** One request of a redirect chain, never following it: `fetch` unless a test passes another. */
+	export type Hop = (url: string, init: RequestInit) => Promise<Response>;
+
+	/** GitHub's release downloads take one redirect, to its asset storage. */
+	const REDIRECT_LIMIT = 5;
+	const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
 	/**
-	 * A GET of `url` that only `secure` URLs answer: the one asked for and the one its redirects
-	 * end at, refused before any of the body is read.
+	 * A GET of `url` that follows its redirects itself, so that every hop is `secure`, not only
+	 * the first and the last; an insecure one is refused before it is requested. One timeout
+	 * covers the whole chain.
 	 */
-	const get = async (
+	export const get = async (
 		url: string,
 		runningVersion: string,
 		timeoutMs: number,
+		hop: Hop = fetch,
 	): Promise<Result<Response>> => {
-		if (!secure(url)) return err(insecure(url));
-		const response = await tryCatch(() =>
-			fetch(url, {
-				headers: { "user-agent": `kabane/${runningVersion}` },
-				signal: AbortSignal.timeout(timeoutMs),
-			}),
+		const signal = AbortSignal.timeout(timeoutMs);
+		let current = url;
+		for (let redirects = 0; redirects <= REDIRECT_LIMIT; redirects++) {
+			if (!secure(current)) return err(insecure(current));
+			const response = await tryCatch(() =>
+				hop(current, {
+					headers: { "user-agent": `kabane/${runningVersion}` },
+					redirect: "manual",
+					signal,
+				}),
+			);
+			if (!response.ok) return response;
+			const location = response.value.headers.get("location");
+			if (!REDIRECTS.has(response.value.status) || location === null)
+				return response;
+			await response.value.body?.cancel().catch(() => {});
+			const next = trySync(() => new URL(location, current).href);
+			if (!next.ok)
+				return err(
+					new Error(`${current} redirected to an unreadable ${location}`),
+				);
+			current = next.value;
+		}
+		return err(
+			new Error(`${url} redirected more than ${REDIRECT_LIMIT} times`),
 		);
-		if (!response.ok || secure(response.value.url)) return response;
-		await response.value.body?.cancel().catch(() => {});
-		return err(insecure(response.value.url));
 	};
 
-	export const fetchTags = async (
-		registry: string,
-		version: string,
+	const ReleaseSchema = z.object({
+		tag_name: z.string(),
+		draft: z.boolean(),
+		prerelease: z.boolean(),
+	});
+
+	const getJson = async (
+		url: string,
+		runningVersion: string,
 		timeoutMs: number,
-	): Promise<Result<DistTags>> => {
-		const response = await get(
-			`${registry}/-/package/kabane/dist-tags`,
-			version,
-			timeoutMs,
-		);
+	): Promise<Result<unknown>> => {
+		const response = await get(url, runningVersion, timeoutMs);
 		if (!response.ok) return response;
-		if (!response.value.ok)
-			return err(new Error(`registry answered ${response.value.status}`));
-		const body = await tryCatch((): Promise<unknown> => response.value.json());
-		if (!body.ok) return body;
-		const parsed = DistTagsSchema.safeParse(body.value);
-		return parsed.success
-			? ok(parsed.data)
-			: err(new Error("registry dist-tags are not kabane's"));
+		if (!response.value.ok) {
+			await response.value.body?.cancel().catch(() => {});
+			return err(new Error(`${url} answered ${response.value.status}`));
+		}
+		return tryCatch((): Promise<unknown> => response.value.json());
 	};
+
+	/** The version a release's `v<version>` tag names. */
+	const tagVersion = (tag: string): string => tag.replace(/^v/, "");
 
 	/**
-	 * Whether mise installed the executable at real path `executable`: it sits under a mise
-	 * installs directory, which `mise up kabane` owns and this updater must not replace.
+	 * The `latest` and `beta` releases from releases API `api`: `latest` from `<api>/latest`,
+	 * `beta` the highest published `X.Y.Z-beta.N` prerelease on the first page of `<api>`. Either
+	 * read failing fails both, so a half-read never stands in for a day's check.
 	 */
-	export const miseOwned = (
+	export const fetchReleases = async (
+		api: string,
+		runningVersion: string,
+		timeoutMs: number,
+	): Promise<Result<DistTags>> => {
+		const latest = await getJson(`${api}/latest`, runningVersion, timeoutMs);
+		if (!latest.ok) return latest;
+		const release = ReleaseSchema.safeParse(latest.value);
+		const latestVersion = release.success
+			? SemverSchema.safeParse(tagVersion(release.data.tag_name))
+			: undefined;
+		if (!latestVersion?.success)
+			return err(new Error("the latest release is not a kabane release"));
+		const listed = await getJson(api, runningVersion, timeoutMs);
+		if (!listed.ok) return listed;
+		const releases = z.array(z.unknown()).safeParse(listed.value);
+		if (!releases.success)
+			return err(new Error("the releases list is not a list"));
+		const betas = releases.data.flatMap((entry) => {
+			const parsed = ReleaseSchema.safeParse(entry);
+			if (!parsed.success || parsed.data.draft || !parsed.data.prerelease)
+				return [];
+			const version = tagVersion(parsed.data.tag_name);
+			return ChannelVersionSchema.safeParse(version).success &&
+				isPrerelease(version)
+				? [version]
+				: [];
+		});
+		const beta = betas.sort(compareVersions).at(-1);
+		return ok({
+			latest: latestVersion.data,
+			...(beta === undefined ? {} : { beta }),
+		});
+	};
+
+	/** A package manager that owns an install, and the command that takes a release there. */
+	export type Manager = { name: "mise" | "brew"; upgrade: string };
+
+	/** `short = "github:davidpp/kabane"` in the `.mise.backend.toml` mise keeps beside a tool's versions. */
+	const MISE_SHORT = /^short\s*=\s*"([^"]+)"\s*$/m;
+	/** Homebrew's keg for kabane: `<prefix>/Cellar/kabane/<version>/`. */
+	const CELLAR = /\/Cellar\/kabane\/[^/]+\//;
+
+	/**
+	 * Who owns the executable at real path `executable`, when it is not this updater: mise, when it
+	 * sits under a mise installs directory, named as mise names the tool (`kabane` from its registry,
+	 * `github:davidpp/kabane` from its github backend); Homebrew, when it sits in kabane's keg.
+	 */
+	export const manager = (
 		executable: string,
 		env: NodeJS.ProcessEnv,
-	): boolean => {
+	): Manager | undefined => {
+		if (CELLAR.test(executable))
+			return { name: "brew", upgrade: "brew upgrade kabane" };
 		const home = env.HOME ?? homedir();
 		const roots = [
 			env.MISE_DATA_DIR,
 			env.XDG_DATA_HOME && join(env.XDG_DATA_HOME, "mise"),
 			join(home, ".local/share/mise"),
 		].flatMap((root) => (root ? [join(root, "installs")] : []));
-		return roots.some((root) => {
+		for (const root of roots) {
 			const real = trySync(() => realpathSync(root));
-			return executable.startsWith(`${real.ok ? real.value : root}${sep}`);
-		});
+			const prefix = `${real.ok ? real.value : root}${sep}`;
+			if (!executable.startsWith(prefix)) continue;
+			const tool = executable.slice(prefix.length).split(sep)[0] ?? "";
+			const backend = trySync(() =>
+				readFileSync(join(prefix, tool, ".mise.backend.toml"), "utf8"),
+			);
+			const short = backend.ok
+				? MISE_SHORT.exec(backend.value)?.[1]
+				: undefined;
+			return { name: "mise", upgrade: `mise up ${short ?? tool}` };
+		}
+		return undefined;
 	};
 
 	/** Why a replacement stopped; `partial` when the install may no longer be the one it found. */
@@ -330,56 +429,102 @@ export namespace UpdateBinary {
 	type Swap = {
 		/** The real path of the executable being replaced. */
 		executable: string;
-		/** The staged release: its `kabane` executable and `templates/`. */
+		/** The staged release: its `kabane` executable, `templates/` and, since 1.0, `extensions/`. */
 		staged: string;
 		installedVersion: string;
 		version: string;
 	};
 
+	/** The directories a release carries beside its executable, swapped in this order. */
+	const DIRECTORIES = ["templates", "extensions"] as const;
+
+	type Part = {
+		name: (typeof DIRECTORIES)[number];
+		/** Where it is installed, beside the executable. */
+		current: string;
+		/** Where the installed one waits until the executable's rename has succeeded. */
+		previous: string;
+		/** The release's, in the staging directory. */
+		incoming: string;
+	};
+
+	const present = (path: string): boolean => trySync(() => lstatSync(path)).ok;
+
 	/**
-	 * Templates first and the executable last, so every step leaves a runnable executable: at
-	 * worst the old one beside the new templates, which are text. The old `templates/` waits in
-	 * `templates.prev-<installed>` until the executable's rename, which is atomic and leaves the
-	 * old executable in place when it fails, has succeeded; only then is it removed. A failure
-	 * puts the old templates back, and a failure to do that names the `mv`s that would. The new
-	 * templates go back to the staging directory, which is removed afterwards.
-	 * `move` is the filesystem's rename unless a test passes one that fails.
+	 * The release's directories first and the executable last, so every step leaves a runnable
+	 * executable: at worst the old one beside the new templates and extensions, which it reads as
+	 * files. Each installed directory waits in `<name>.prev-<installed>` until the executable's
+	 * rename, which is atomic and leaves the old executable in place when it fails, has succeeded;
+	 * only then are they removed. A failure puts the old directories back, and a failure to do that
+	 * names the `mv`s that would. The new directories go back to the staging directory, which is
+	 * removed afterwards. A release without `extensions/` (one from before it shipped them) leaves
+	 * the installed one alone. The directories keep their paths, so a link to an extension in this
+	 * install resolves to the new one. `move` is the filesystem's rename unless a test passes one
+	 * that fails.
 	 */
 	export const swap = (
 		{ executable, staged, installedVersion, version }: Swap,
 		move: (from: string, to: string) => boolean = rename,
 	): Result<void, Failure> => {
 		const directory = dirname(executable);
-		const templates = join(directory, "templates");
-		const previous = join(directory, `templates.prev-${installedVersion}`);
-		const stagedTemplates = join(staged, "templates");
+		const parts: Part[] = DIRECTORIES.filter(
+			(name) => name === "templates" || isDirectory(join(staged, name)),
+		).map((name) => ({
+			name,
+			current: join(directory, name),
+			previous: join(directory, `${name}.prev-${installedVersion}`),
+			incoming: join(staged, name),
+		}));
 		const nothing = `Could not rename the new release into ${directory}; nothing was replaced.`;
-		if (trySync(() => lstatSync(previous)).ok)
+		const left = parts.find((part) => present(part.previous));
+		if (left)
 			return err({
-				text: `${previous} is left from an earlier update; remove it once ${templates} is complete. Nothing was replaced.`,
+				text: `${left.previous} is left from an earlier update; remove it once ${left.current} is complete. Nothing was replaced.`,
 			});
-		/** The old templates back where they were, or the commands that would put them back. */
+		const moved: (Part & { had: boolean })[] = [];
+		/** The old directories back where they were, or the commands that would put them back. */
 		const restore = (failure: string): Result<void, Failure> => {
-			const failed = join(directory, `templates.failed-${version}`);
-			const placed = trySync(() => lstatSync(templates)).ok;
-			if (placed && !move(templates, stagedTemplates))
-				return err({
-					text: `${failure}, nor move the new templates out. ${executable} is still ${installedVersion}; restore its templates with: mv ${quote(templates)} ${quote(failed)} && mv ${quote(previous)} ${quote(templates)}`,
-					partial: true,
-				});
-			if (!move(previous, templates))
-				return err({
-					text: `${failure}, nor put the old templates back. ${executable} is still ${installedVersion}; restore its templates with: mv ${quote(previous)} ${quote(templates)}`,
-					partial: true,
-				});
-			return err({ text: nothing });
+			const commands: string[] = [];
+			const stuck: string[] = [];
+			let reason = "";
+			for (const part of moved.toReversed()) {
+				const failed = join(directory, `${part.name}.failed-${version}`);
+				const back = part.had
+					? [`mv ${quote(part.previous)} ${quote(part.current)}`]
+					: [];
+				if (present(part.current) && !move(part.current, part.incoming)) {
+					commands.push(
+						[`mv ${quote(part.current)} ${quote(failed)}`, ...back].join(
+							" && ",
+						),
+					);
+					reason ||= `nor move the new ${part.name} out`;
+				} else if (part.had && !move(part.previous, part.current)) {
+					commands.push(...back);
+					reason ||= `nor put the old ${part.name} back`;
+				} else continue;
+				stuck.push(part.name);
+			}
+			if (commands.length === 0) return err({ text: nothing });
+			return err({
+				text: `${failure}, ${reason}. ${executable} is still ${installedVersion}; restore its ${stuck.toReversed().join(" and ")} with: ${commands.join(" && ")}`,
+				partial: true,
+			});
 		};
-		if (!move(templates, previous)) return err({ text: nothing });
-		if (!move(stagedTemplates, templates))
-			return restore("Could not rename the new templates into place");
+		for (const part of parts) {
+			const had = present(part.current);
+			if (had && !move(part.current, part.previous))
+				return moved.length === 0
+					? err({ text: nothing })
+					: restore(`Could not set the old ${part.name} aside`);
+			moved.push({ ...part, had });
+			if (!move(part.incoming, part.current))
+				return restore(`Could not rename the new ${part.name} into place`);
+		}
 		if (!move(join(staged, "kabane"), executable))
 			return restore(`Could not replace ${executable}`);
-		trySync(() => rmSync(previous, { recursive: true, force: true }));
+		for (const part of moved)
+			trySync(() => rmSync(part.previous, { recursive: true, force: true }));
 		return ok(undefined);
 	};
 

@@ -256,15 +256,16 @@ which is the RFC 9728 pointer ChatGPT and Claude.ai follow.
 
 ### 2.1 Install the CLI
 
-Bun 1.4.4 or later is required. The CLI installs independently of the hub clone:
+The CLI installs independently of the hub clone, from GitHub Releases
+([getting started](getting-started.md#install) lists the other installs):
 
 ```bash
-bun add -g kabane
+brew install davidpp/tap/kabane
 kabane --help
 ```
 
-Expected: `kabane` is on PATH (`~/.bun/bin` for a standard Bun install) and `--help`
-lists the commands. Install globally before registering coding agents: their MCP entries
+Expected: `kabane` is on PATH and `--help` lists the commands. Install before registering
+coding agents: their MCP entries
 point at the installed file. For working on Kabane from source, see the
 [README's clone path](../README.md#install).
 
@@ -673,7 +674,8 @@ So a release that adds a migration goes out in this order:
 
 1. The hub: redeploy the Worker (§5.7). The cloud device migrates on its next boot, and
    browser clients (Claude.ai, ChatGPT) stay current throughout.
-2. Each device: `bun add -g kabane@<version>`, then run any `kabane` command once. Until
+2. Each device: update kabane (`brew upgrade kabane`, or `kabane update` for an installer
+   or extracted binary), then run any `kabane` command once. Until
    a device updates, its scheduled pull logs the
    "update kabane" error and holds its place.
 

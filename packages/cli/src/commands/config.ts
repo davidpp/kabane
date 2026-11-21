@@ -170,7 +170,7 @@ type Change = Extract<
 const changeText = (change: Change, where: ConfigSettings.Where): string => {
 	const { key, layer, from, unset, shadowedBy, fallsBackTo, unresolved } =
 		change;
-	const written = `${key} ${unset ? "unset" : `= ${display(change.value)}`} (${layer === "global" ? layer : `${layer}: ${from}`})`;
+	const written = `${key} ${unset ? "unset" : `= ${display(change.value)}`} (${layer === "global" ? layer : `${layer}: ${from}`})${change.linked ? `; linked ${change.linked.join(", ")} from this install` : ""}`;
 	if (unresolved !== undefined)
 		return `${written}, but these settings no longer resolve, so every read of them fails until it is fixed: ${unresolved}`;
 	if (shadowedBy !== undefined)

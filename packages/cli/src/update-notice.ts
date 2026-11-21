@@ -1,11 +1,13 @@
 /**
- * The board's word that a newer kabane is out. npm's `latest` and `beta` dist-tags are read at
- * most once a day into `KABANE_HOME/update-check.json`, and the release named is the one
- * `kabane update` would take: the install's channel and version policy, from update-version.ts.
- * Over `fetch` rather than `bun info`, so an install without Bun can read it too, which also means
- * Bun's registry and proxy settings do not apply. Every failure says nothing: a notice is never
- * worth an error on screen. The hint is the install's own: `kabane update`, `mise up kabane`, or
- * a manual update where `kabane update` would refuse.
+ * The board's word that a newer kabane is out. The `latest` and `beta` releases on GitHub, where
+ * the binaries download from (update-binary.ts), are read at most once a day into
+ * `KABANE_HOME/update-check.json`, and the release named is the one the install's channel and
+ * version policy take, from update-version.ts. Over `fetch`, so an install without Bun can read it
+ * too, which also means Bun's registry and proxy settings do not apply. Every failure says
+ * nothing: a notice is never worth an error on screen. The hint is the install's own:
+ * `kabane update`, `brew upgrade kabane`, mise's `mise up <tool>`, or a manual update where
+ * `kabane update` would refuse. A release the human skipped at the offer before the board
+ * (upgrade-offer.ts) is kept in the cache as `skipped` and never named again.
  *
  * A main build hears of main instead (update-main.ts): how many commits main has past its stamp,
  * cached for an hour in `KABANE_HOME/update-check-main.json`, since main moves more often than
@@ -41,6 +43,8 @@ export namespace UpdateNotice {
 
 	const CacheSchema = DistTagsSchema.extend({
 		checkedAt: z.iso.datetime(),
+		/** The release the human chose to skip; kept across each day's read. */
+		skipped: z.string().optional(),
 	});
 	type Cache = z.infer<typeof CacheSchema>;
 
@@ -95,35 +99,58 @@ export namespace UpdateNotice {
 		/** The running release. */
 		version: string;
 		now?: number;
-		registry?: string;
+		/** The releases API, as `UpdateBinary.Source` names it. */
+		api?: string;
 		timeoutMs?: number;
+	};
+
+	// The candidate, unless it is the release the human skipped.
+	const unskipped = (
+		version: string,
+		cache: DistTags & { skipped?: string },
+	): string | undefined => {
+		const release = candidate(version, cache);
+		return release === cache.skipped ? undefined : release;
 	};
 
 	/**
 	 * The release to tell the human about, read from the cache while it is under a day old, else
-	 * from the registry and written back. A registry that cannot be read leaves the cache as it was
-	 * and falls back on it; with nothing usable either way, undefined.
+	 * from the releases API and written back. An API that cannot be read leaves the cache as it was
+	 * and falls back on it; with nothing usable either way, undefined. A skipped release is none.
 	 */
 	export const check = async ({
 		home,
 		version,
 		now = Date.now(),
-		registry = UpdateBinary.source(process.env).registry,
+		api = UpdateBinary.source(process.env).api,
 		timeoutMs = TIMEOUT_MS,
 	}: Options): Promise<string | undefined> => {
 		const cached = await readCache(home);
-		if (cached && fresh(cached, now)) return candidate(version, cached);
-		const fetched = await UpdateBinary.fetchTags(registry, version, timeoutMs);
-		if (!fetched.ok) return cached && candidate(version, cached);
-		await writeCache(cachePath(home), {
+		if (cached && fresh(cached, now)) return unskipped(version, cached);
+		const fetched = await UpdateBinary.fetchReleases(api, version, timeoutMs);
+		if (!fetched.ok) return cached && unskipped(version, cached);
+		const written = {
 			...fetched.value,
 			checkedAt: new Date(now).toISOString(),
-		});
-		return candidate(version, fetched.value);
+			...(cached?.skipped === undefined ? {} : { skipped: cached.skipped }),
+		};
+		await writeCache(cachePath(home), written);
+		return unskipped(version, written);
+	};
+
+	/** Never name `release` again, on the board or before it; a later release clears it. */
+	export const skip = async (
+		home: string,
+		release: string,
+	): Promise<Result<void>> => {
+		// The offer only follows a check, which wrote the cache it named the release from.
+		const cached = await readCache(home);
+		if (!cached) return ok(undefined);
+		return writeCache(cachePath(home), { ...cached, skipped: release });
 	};
 
 	/** How this install takes a release, as `kabane update` would judge it. */
-	type Install = "binary" | "mise" | "bun" | "manual";
+	export type Install = "binary" | "bun" | "manual" | UpdateBinary.Manager;
 
 	/** What the process says about itself; tests pass their own. */
 	type Host = {
@@ -142,15 +169,15 @@ export namespace UpdateNotice {
 	};
 
 	/**
-	 * A binary replaces itself unless mise owns it; a Bun install updates when `kabane update`
+	 * A binary replaces itself unless mise or Homebrew owns it; a Bun install updates when `kabane update`
 	 * verifies its layout, which spawns `bun pm bin -g`, so it is asked only once a release is out.
 	 */
 	export const install = async (host: Host = HOST): Promise<Install> => {
 		if (host.compiled) {
 			const real = trySync(() => realpathSync(host.executable));
-			return real.ok && UpdateBinary.miseOwned(real.value, host.env)
-				? "mise"
-				: "binary";
+			return (
+				(real.ok && UpdateBinary.manager(real.value, host.env)) || "binary"
+			);
 		}
 		const registry = await inspectRegistryInstall({
 			bin: host.executable,
@@ -160,15 +187,15 @@ export namespace UpdateNotice {
 		return registry.ok ? "bun" : "manual";
 	};
 
-	const HINTS: Record<Install, string> = {
+	const HINTS = {
 		binary: "run kabane update",
-		bun: "run kabane update",
-		mise: "run mise up kabane",
+		// Releases stopped going to npm; kabane update names the GitHub-release installs.
+		bun: "releases moved to GitHub, run kabane update",
 		manual: "update it the way you installed it",
 	};
 
 	export const line = (release: string, from: Install): string =>
-		`kabane ${release} is out · ${HINTS[from]}`;
+		`kabane ${release} is out · ${typeof from === "string" ? HINTS[from] : `run ${from.upgrade}`}`;
 
 	const MAIN_FILE = "update-check-main.json";
 	const MAIN_MAX_AGE_MS = 60 * 60 * 1000;
@@ -241,9 +268,10 @@ export namespace UpdateNotice {
 	 * The board's announcer for this device. Only the published bundle hears of a release: a run
 	 * from source is ahead of the release its package.json names, and `kabane update` does not
 	 * replace it. That is the build's flag, not a look at git. The line ends with what this install
-	 * runs to take the release (`install`).
+	 * runs to take the release (`install`). `declined` is the release the human was just offered
+	 * before the board and turned down: the board does not name it again in this start.
 	 */
-	export const announcer = (home: string): Announcer => ({
+	export const announcer = (home: string, declined?: string): Announcer => ({
 		announce: async () => {
 			if (!bundled) return ok(null);
 			if (mainBuild) {
@@ -253,7 +281,11 @@ export namespace UpdateNotice {
 				);
 			}
 			const release = await check({ home, version });
-			return ok(release === undefined ? null : line(release, await install()));
+			return ok(
+				release === undefined || release === declined
+					? null
+					: line(release, await install()),
+			);
 		},
 	});
 }

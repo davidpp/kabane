@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
-	cpSync,
 	existsSync,
 	lstatSync,
 	mkdirSync,
@@ -20,33 +19,18 @@ import { runUpdateProcess } from "./update-process";
 
 export const UPDATE_SOURCE = sourceVersion;
 /** The next release on the source's own channel: the next patch, or the next beta.N. */
-export const UPDATE_TARGET = sourceVersion.replace(
+const UPDATE_TARGET = sourceVersion.replace(
 	/\d+$/,
 	(last) => `${Number(last) + 1}`,
 );
 const ROOT = resolve(import.meta.dir, "../../..");
 type FixtureOptions = {
 	isolated?: boolean;
-	age?: number;
-	young?: boolean;
-	failScript?: boolean;
-	removeBinTarget?: boolean;
 	configured?: boolean;
 	/** The version `archive` carries, installed first; the target is what the registry offers. */
 	source?: string;
 	target?: string;
 };
-/** A target install script that fails, or that deletes the file its global bin points to. */
-const targetScripts = (options: FixtureOptions) =>
-	options.failScript
-		? { scripts: { postinstall: "bun -e 'process.exit(7)'" } }
-		: options.removeBinTarget
-			? {
-					scripts: {
-						postinstall: `bun -e 'require("node:fs").rmSync("bin/kabane.js")'`,
-					},
-				}
-			: {};
 /** Files a correct update never opens: the tracker's database and config, and a harness config. */
 const writeSentinels = (tracker: string, home: string): void => {
 	writeFileSync(join(tracker, "config.json"), "NOT_VALID_JSON_DO_NOT_READ");
@@ -56,8 +40,8 @@ const writeSentinels = (tracker: string, home: string): void => {
 	writeFileSync(join(home, ".claude.json"), "HARNESS_CONFIG_SENTINEL");
 };
 
-/** The target release, packed: a bin that prints its version, and the scripts `options` asks for. */
-const packTarget = (work: string, target: string, options: FixtureOptions) => {
+/** The target release, packed: a bin that prints its version. */
+const packTarget = (work: string, target: string) => {
 	const targetDir = join(work, "target/package");
 	mkdirSync(join(targetDir, "bin"), { recursive: true });
 	const manifest = {
@@ -66,7 +50,6 @@ const packTarget = (work: string, target: string, options: FixtureOptions) => {
 		type: "module",
 		bin: { kabane: "bin/kabane.js" },
 		engines: { bun: ">=1.4.0" },
-		...targetScripts(options),
 	};
 	writeFileSync(join(targetDir, "package.json"), JSON.stringify(manifest));
 	writeFileSync(
@@ -92,7 +75,6 @@ const startRegistry = (
 	{ source, target }: { source: string; target: string },
 	tarballs: Record<string, Buffer<ArrayBuffer>>,
 	targetManifest: Record<string, unknown>,
-	young: boolean,
 ) => {
 	const requests: string[] = [];
 	const prefix = `/${randomUUID()}`;
@@ -138,7 +120,7 @@ const startRegistry = (
 		"dist-tags": { latest: target },
 		time: {
 			[source]: "2020-01-01T00:00:00Z",
-			[target]: young ? new Date().toISOString() : "2020-01-01T00:00:00Z",
+			[target]: "2020-01-01T00:00:00Z",
 		},
 		versions: { [source]: entry(source), [target]: entry(target) },
 	};
@@ -146,9 +128,6 @@ const startRegistry = (
 		url,
 		requests,
 		stop: (): Promise<void> => server.stop(true),
-		setMetadata: (value: unknown): void => {
-			metadata = value;
-		},
 		setDistTags: (tags: Record<string, string>, engine = ">=1.4.0"): void => {
 			metadata = {
 				name: "kabane",
@@ -225,17 +204,16 @@ export const createUpdateFixture = async (
 	for (const path of [home, globalDir, tracker])
 		mkdirSync(path, { recursive: true });
 	writeSentinels(tracker, home);
-	const packed = packTarget(work, target, options);
+	const packed = packTarget(work, target);
 	if (!packed) return { ok: false as const, error: "fixture tar failed" };
 	const registry = startRegistry(
 		{ source, target },
 		{ [source]: readFileSync(archive), [target]: readFileSync(packed.tarball) },
 		packed.manifest,
-		options.young === true,
 	);
 	writeFileSync(
 		join(home, ".bunfig.toml"),
-		`[install]\nregistry = "${registry.url}/"\nminimumReleaseAge = ${options.age ?? 0}\nlinker = "${options.isolated ? "isolated" : "hoisted"}"\n${options.configured ? `globalDir = "${globalDir}"\nglobalBinDir = "${binDir}"\n` : ""}`,
+		`[install]\nregistry = "${registry.url}/"\nminimumReleaseAge = 0\nlinker = "${options.isolated ? "isolated" : "hoisted"}"\n${options.configured ? `globalDir = "${globalDir}"\nglobalBinDir = "${binDir}"\n` : ""}`,
 	);
 	const env = fixtureEnv(
 		work,
@@ -295,18 +273,6 @@ export const createUpdateFixture = async (
 			rmSync(work, { recursive: true, force: true });
 		},
 		setDistTags: registry.setDistTags,
-		stopRegistry: (): void => {
-			void registry.stop();
-		},
-		setMetadata: registry.setMetadata,
-		copyBundle: (): void => {
-			const extracted = join(work, "original");
-			mkdirSync(extracted, { recursive: true });
-			Bun.spawnSync(["tar", "-xzf", archive, "-C", extracted]);
-			cpSync(join(extracted, "package/bin"), dirname(packageBin), {
-				recursive: true,
-			});
-		},
 	};
 };
 

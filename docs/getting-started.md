@@ -10,36 +10,58 @@ Syncing several machines through a Cloudflare hub is optional and lives in
 
 ## Prerequisites
 
-- **Bun 1.4.4 or later**, the version the repo pins in `.bun-version`. `bun --version` to check.
+- **Bun 1.4.4 or later** only to build an extension or run kabane from source, the version the
+  repo pins in `.bun-version`. A release binary carries its own Bun.
 - **git**, for detecting project scopes. You do not need to clone Kabane for local use.
 - **Optional: a coding harness.** Claude Code, Codex or Gemini CLI on your PATH, logged in.
   Setup wires any it finds, and the board's copilot runs one.
 
 ## Install
 
-Install the npm package with Bun:
+Install kabane one of these ways. Each installs the standalone binary from
+[GitHub Releases](https://github.com/davidpp/kabane/releases), which carries its own Bun.
 
 ```bash
-bun add -g kabane
+brew install davidpp/tap/kabane                  # Homebrew (recommended)
+curl -fsSL https://github.com/davidpp/kabane/releases/latest/download/install.sh | sh
+mise use -g github:davidpp/kabane                # mise's GitHub backend
 kabane --help | head -1
 ```
 
 The last line prints `kabane — local-first tracker for humans and agent runtimes`. If it
-prints `command not found` instead, add `~/.bun/bin` to your PATH. Install globally before
-setup registers coding agents: their MCP entries point at the installed file. To work on
-Kabane itself from source, use the [clone and `bun link` path](../README.md#install).
+prints `command not found` instead, add the directory the install used to your PATH:
+`$(brew --prefix)/bin`, or `~/.local/bin` for the installer (it says so when it is missing).
+Install before setup registers coding agents: their MCP entries point at the
+installed file. A Homebrew install registers `$(brew --prefix)/bin/kabane`, which
+`brew upgrade` keeps. To work on Kabane itself from source, use the
+[clone and `bun link` path](../README.md#install).
 
-`bun add -g kabane@beta` installs the current beta, which updates along its own channel
+Homebrew installs stable releases only. For a beta, run that release's installer,
+`curl -fsSL https://github.com/davidpp/kabane/releases/download/vX.Y.Z-beta.N/install.sh | sh -s -- --version X.Y.Z-beta.N`,
+or use `mise use -g github:davidpp/kabane@X.Y.Z-beta.N`. A beta updates along its own channel
 ([beta installs](#beta-installs)).
 
-Standalone binaries arrive with the first release that ships binary assets; until then,
-install with Bun as above. From such a release, download its `kabane-<os>-<arch>.tar.gz` and
-`SHA256SUMS` from that [GitHub release](https://github.com/davidpp/kabane/releases), verify and
-extract it following [the README](../README.md#install), and add the extracted directory to
-PATH. macOS arm64/x64 and Linux arm64/x64 are planned; Linux x64 uses Bun's baseline CPU
-target. Keep the extracted directory whole: `kabane update` knows a release by the
-`templates/` directory beside the executable. A binary does not need the Bun prerequisite
-above; git and your chosen harness's runtime requirements still apply.
+The README's [install section](../README.md#install) says what the installer and mise check
+and how to install a release archive by hand. Binaries cover macOS arm64/x64 and Linux
+arm64/x64 with glibc; Linux x64 uses Bun's baseline CPU target. git and your chosen harness's
+runtime requirements still apply.
+
+### Moving from a Bun install
+
+`1.0.0-beta.0` and earlier were published to npm, and `bun add -g kabane` installed them. Later
+releases are on GitHub only, so a Bun install gets no newer release, and `kabane update` on it
+says so and prints the commands below. Move to one of the installs above:
+
+```bash
+brew install davidpp/tap/kabane    # or the curl installer above
+bun remove -g kabane
+kabane --version                   # the new install, from its own directory
+kabane mcp install --force         # point your coding agents' MCP entries at it
+```
+
+Your tracker in `~/.kabane` stays as it is. Extensions you built and installed under
+`KABANE_HOME/extensions` stay too; rebuild them from the tag of the release you installed
+([extensions](extensions.md#build-them-from-a-kabane-checkout)).
 
 ## Run `kabane`
 
@@ -76,14 +98,22 @@ space toggle · enter confirm · esc quit
   `none found on PATH`; install one, then run `kabane mcp install`. With `KABANE_HARNESSES`
   set and nothing it names on your PATH, the row reads `install off` instead (that is what
   `bun run sandbox` shows).
+- **extensions** lists the [extensions](extensions.md) that come with a release install (the
+  standalone binary from Homebrew, mise or the installer): `dispatch`, `loop` and `recipes`,
+  each with what it adds, cut to one line until its row has focus. None is checked; space
+  checks the ones you want on, and enter adds them to `extensions` and links each into
+  `~/.kabane/extensions/`. Run from a source checkout, kabane ships none, and the section is
+  not there.
 - The lines under **enter** follow the form: uncheck every agent and the `adds` and
-  `files` lines go. Outside a project, there is no `files` line. A long config path is cut
+  `files` lines go, and a checked extension adds a `turns on` line. Outside a project, there
+  is no `files` line. A long config path is cut
   from the left, `…/.kabane/config.json`, to fit the pane.
 
 The screen does not ask for a device name: setup saves the short hostname. It only matters
 once sync is set up, and [deploy.md](deploy.md) says how to change it before the first push.
 To change your name later, edit `actor` in `~/.kabane/config.json`; to add an agent later,
-run `kabane mcp install`.
+run `kabane mcp install`; to turn on an extension later, see
+[extensions.md](extensions.md#turn-on-the-ones-that-came-with-kabane).
 
 Enter saves the config, adds kabane to each checked harness, and files your first issue.
 What happened and the first issue each get a panel, with the phrase to say highlighted:
@@ -358,23 +388,47 @@ a silent UTC.
 
 ## Updating
 
+Each install updates with its own command:
+
+| Installed with | Update with |
+|---|---|
+| Homebrew | `brew upgrade kabane` |
+| the installer, or an extracted release archive | `kabane update` |
+| mise | `mise up github:davidpp/kabane` |
+| `bun add -g` (up to `1.0.0-beta.0`) | move to another install ([moving from a Bun install](#moving-from-a-bun-install)) |
+
 ### Hearing about a release
 
 The board says when a release your install would update to is out: a line over its footer,
-`kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A binary mise
-installed says `run mise up kabane` instead, and an install `kabane update` would refuse says
-`update it the way you installed it`. It is the release
-`kabane update --check` would name, on your channel and within your major (minor for `0.x`).
-The board reads npm's `latest` and `beta` dist-tags at most once a day, after its first
-frame, and keeps them in `KABANE_HOME/update-check.json`. Bun's registry and proxy settings
-do not apply to that read. When the registry cannot be reached, nothing is shown and the board
-carries on. Only the board checks: `kabane mcp`, a piped command and every other command never
-do, and a run from a source checkout never shows the line. The check installs nothing. To turn
+`kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A
+Homebrew install says `run brew upgrade kabane` instead, a binary mise installed names mise's
+upgrade for the tool as mise knows it (`run mise up github:davidpp/kabane`), a Bun install says
+`releases moved to GitHub, run kabane update`, and an install `kabane update` would refuse says
+`update it the way you installed it`. It is the newest release on your channel and within your
+major (minor for `0.x`), the one `kabane update --check` names on a binary.
+The board reads the latest release and the betas from
+[GitHub releases](https://github.com/davidpp/kabane/releases), where the binaries download
+from, at most once a day, after its first frame, and keeps them in
+`KABANE_HOME/update-check.json`.
+When GitHub cannot be reached, nothing is shown and the board carries on. Only the board
+checks: `kabane mcp`, a piped command and every other command never do, and a run from a
+source checkout never shows the line. The check itself installs nothing. To turn
 it off:
 
 ```bash
 kabane config set updates.check false
 ```
+
+Before the board opens, `kabane` and `kabane board` ask about the same release, as a plain
+question: `kabane 1.0.1 is out (you have 1.0.0). Upgrade now with "brew upgrade kabane"? [Y]es /
+[n]o, continue / [s]kip this version`. `y` or Enter runs that command, its output on screen, and
+opens the board on the new version; if it fails, kabane says how and opens the board on the
+version you have. `n` opens the board and the line over its footer stays away for that start.
+`s` records the version in `update-check.json`, and kabane names it neither here nor on the board
+again; a later release is offered as usual. An install kabane cannot update names the release
+page instead. It asks only at a terminal, never under `CI`, never from a source checkout or a main
+build, and not at all with `updates.check` false. It gives GitHub 1.5 seconds a request rather than 5; a
+slower answer reaches the board's line instead.
 
 ### Keeping kabane current
 
@@ -418,44 +472,32 @@ Use `--force` or the named doctor repair only when you want to re-point it.
 
 ### Standalone binaries
 
-This applies once a release ships binaries ([install](#install)).
+This applies to a binary the installer put in place or one you extracted yourself.
 
 ```bash
-kabane update --check        # metadata only: the candidate from npm's dist-tags
+kabane update --check        # metadata only: the candidate from GitHub releases
 kabane update               # download, verify and replace this binary
 ```
 
-A binary follows the same channel and version policy as a Bun install
-([subsequent updates](#subsequent-updates), [beta installs](#beta-installs)); it reads npm's
-dist-tags over HTTPS, so Bun's registry and proxy settings do not apply. `kabane update`
+A binary follows the channel and version policy in [subsequent updates](#subsequent-updates) and
+[beta installs](#beta-installs). It reads the candidate from the GitHub releases API over HTTPS:
+`latest` is the latest release, `beta` the highest `X.Y.Z-beta.N` prerelease. `kabane update`
 downloads `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from that version's
 [GitHub release](https://github.com/davidpp/kabane/releases) and refuses on any checksum
 mismatch. It extracts into a temporary directory beside the executable, runs the new
-`kabane --version` and requires the candidate version, then renames the new executable and
-`templates/` (empty now that kabane ships no template) over the old ones. A symlink on PATH is followed to the real executable, so
+`kabane --version` and requires the candidate version, then renames the new executable,
+`templates/` (empty now that kabane ships no template) and `extensions/` over the old ones. An
+archive from a release before extensions shipped leaves the installed `extensions/` as it is. A symlink on PATH is followed to the real executable, so
 harness MCP entries that point at it keep working. A failure before the rename leaves the old
 install as it was. The executable needs `templates/` beside it, as extracted from the release,
 and its directory must be writable; otherwise replace the directory with a verified download
 by hand. Restart running board/MCP sessions afterwards.
 
-When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
-`~/.local/share/mise`), `kabane update` reports the candidate and leaves the file to mise: run
-`mise up kabane`. No tracker DB is opened and no harness entry is rewired.
-
-### Upgrading: kabane needs Bun 1.4.4
-
-Releases before this one declared `engines.bun` `>=1.4.0`. This one declares `engines.bun` `>=1.4.4`, and each
-release now asks for the Bun the repo pins in `.bun-version`. On an older Bun, `kabane update`
-installs nothing: `--check` answers `manual_only` with the Bun it needs, and `--json` gives it
-as `requiredBun`:
-
-```text
-Latest stable <version> needs Bun 1.4.4 or later; this Bun is 1.4.1. Run bun upgrade, then kabane update again. Eligibility is policy-unverified.
-```
-
-Upgrade Bun first, then update kabane. If a version manager such as mise installed that Bun,
-upgrade it there, and see [subsequent updates](#subsequent-updates) for harness entries that
-still point at the old Bun. The standalone binary carries its own Bun and is not affected.
+When Homebrew or mise owns the executable, `kabane update` reports the candidate and leaves the
+file to them: `brew upgrade kabane` for one in Homebrew's `Cellar/kabane/`, and `mise up <tool>`
+for one under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
+`~/.local/share/mise`), with the tool named as mise names it (`github:davidpp/kabane`, or
+`kabane` from mise's registry). No tracker DB is opened and no harness entry is rewired.
 
 ### Upgrading from 1.0.0-beta.0: settings layers and scope pins
 
@@ -651,10 +693,10 @@ start them again, harness sessions included, so each `kabane mcp` starts with it
 ### Upgrading from 1.0.0-beta.0: the loop and dispatch are extensions you install
 
 In 1.0.0-beta.0 the loop came inside kabane, and `"extensions": ["loop"]` in `config.json` turned
-it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Kabane now
-bundles neither: the loop and the [dispatch extension](../extensions/dispatch/README.md), which
-holds the dispatch and grill skills and `/setup-dispatch`, are directories you build and install
-yourself. Updating kabane does not install them. The grill skill is now served by `kabane mcp`
+it on. The dispatch skill's template and `/setup-dispatch` came with the copilot. Now the loop
+and the [dispatch extension](../extensions/dispatch/README.md), which holds the dispatch and grill
+skills and `/setup-dispatch`, are extensions: a release install ships them beside the binary, and
+from npm or a checkout you build and install them yourself. Updating kabane turns neither on. The grill skill is now served by `kabane mcp`
 rather than copied into a project: a copy under a project's `.agents/skills/grill/` is no longer
 checked and drifts from the served one, so delete it.
 
@@ -683,7 +725,8 @@ exits with status 1:
 Error: Unknown config key: loop.model. Run `kabane config list` or call kabane_configGet without a key for known keys.
 ```
 
-`kabane doctor` reports the missing directory as `loop/extension-refused` under `mention`. The
+`kabane doctor` reports the missing directory as `loop/extension-refused`: under `auto` on a
+release install, which ships the loop, and under `mention` otherwise. The
 board writes nothing on stderr; it shows `Extension loop refused: not installed` over its footer
 until you press `esc`. On the board, `a` starts no run, and the copilot no longer offers
 `/setup-dispatch`.
@@ -693,8 +736,12 @@ in a project included, and are read again once the loop is installed and enabled
 under `KABANE_HOME/loops/`. Stop a loop runner the old version started before you update, as the
 sections above say for every process of the old version.
 
-To get the loop back, build it from a clone of this repository. This needs git and
-[Bun](https://bun.sh) 1.4 or later, also when you run the npm package or the standalone binary.
+On a release install (Homebrew, mise, the installer or an extracted archive), `kabane doctor
+--fix` links the loop it ships, and `kabane config set extensions loop,dispatch --layer global`
+links each one it names; the build below is not needed.
+
+From a checkout, get the loop back by building it from a clone of this repository. This needs git
+and [Bun](https://bun.sh) 1.4 or later.
 Build from the tag of the kabane you run: `kabane --version` prints its version, and every
 release is tagged `v<version>`. Stop the board first. From the directory you want the clone in:
 
@@ -747,95 +794,24 @@ every extension:
 kabane config set extensions "" --layer global
 ```
 
-### One-time upgrade from 0.1.0
-
-Version 0.1.0 predates `kabane update`. For an existing **Bun global registry install**, stop
-running board/MCP sessions, read the new release's compatibility notes, then install that
-published version once:
-
-```bash
-version='<published-version>'  # replace with the version from the new release
-bun add --global --exact "kabane@$version"
-kabane --version              # must print the selected version
-kabane update --check
-```
-
-Do not run this against a source `bun link` installation: it would replace your development
-link. Keep source-linked installations on the contributor checkout/build/link path. No
-tracker reset or `mcp install --force` is needed for an existing registry installation whose
-harness command still points to the same global executable; restart its board/MCP processes.
-
-If the selected version is still registry `latest`, `update --check` reports **current**;
-`kabane update` is then a no-op, not an upgrade. A later eligible release produces a
-**candidate**, and `kabane update` performs the policy preflight and verified installation.
-`--check` never installs and does not certify that Bun's policy will allow installation.
-
-### Try the registry flow without replacing a development link
-
-After the new version is published, run this in a subshell. It installs into disposable
-Bun directories while preserving your registry/auth/release-age configuration. It does
-not use your real tracker, change PATH, register harnesses or replace your existing bin.
-
-```bash
-(
-  set -eu
-  version='<published-version>'  # replace before running
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
-  export BUN_INSTALL="$work/bun"
-  export BUN_INSTALL_GLOBAL_DIR="$work/global"
-  export BUN_INSTALL_BIN="$work/bin"
-  export BUN_INSTALL_CACHE_DIR="$work/cache"
-  export BUN_RUNTIME_TRANSPILER_CACHE_PATH="$work/transpile-cache"
-  export KABANE_HOME="$work/tracker"
-  export KABANE_HARNESSES=
-  mkdir -p "$work/bin"
-  bun add --global --exact "kabane@$version" --linker hoisted
-  "$work/bin/kabane" --version
-  "$work/bin/kabane" update --check
-  "$work/bin/kabane" update
-)
-```
-
-Installing the current latest tests bootstrap, ownership detection and the current/no-op
-path. It cannot demonstrate a real version transition until a newer eligible release exists.
-If Bun blocks a fresh release under your release-age policy, wait; do not weaken the policy.
-
 ### Subsequent updates
 
 ```bash
-kabane update --check        # metadata-only candidate, eligibility unknown/policy-unverified
-kabane update               # explicit policy preflight, exact install, owned-bin verification
+kabane update --check        # the candidate from GitHub releases; installs nothing
+kabane update               # download, verify and replace this binary
 ```
 
-Supported: positively identified **hoisted Bun global registry installs**, including proven
-explicit global-directory overrides. Source `bun link`, development, local-tarball,
-other-manager and unknown/missing-global-bin layouts are refused with manual guidance, and
-`--check` is refused with them: it reads registry metadata only for an install `kabane update`
-could replace, so on these layouts both commands print `Unsupported installation; ...` (status
-`unsupported` in `--json`), exit 1 and make no registry request. A tarball installed with
-`bun add -g ./kabane-<version>.tgz`, as the release smoke test does, is one of them.
-No internal-bin/PATH fallback or link repair is performed. This is not a claim that every
-Bun isolated layout is broken; unverified layouts are simply outside this updater's support.
-
-A stable install selects registry `latest`, stable only, within the installed major; `0.x`
-stays within its minor. A beta install follows its own channel ([beta installs](#beta-installs)).
-The installed version picks the channel: no historical fallback, prerelease/channel/force
-option, implicit downgrade or major/pre-1.0 minor jump. Crossing that boundary requires
-reviewing compatibility notes and choosing an explicit manual `bun add -g kabane@<version>`;
-do not overwrite a source link.
-Check and current/no-op results do **not** validate installation eligibility. Update uses
-Bun's exact-target policy-enforcing dry-run before installation; exact requests honor release
-age but bypass Bun's range-resolution stability heuristic. Metadata/runtime caches may be
-maintained; preflight can download/extract into external package-manager cache. No age,
-integrity, registry/proxy settings or user config are weakened. A configured Bun dry-run
-requests no installation and is conservatively refused by explicit update.
+A stable install takes the latest stable release, within the installed major; `0.x` stays
+within its minor. A beta install follows its own channel ([beta installs](#beta-installs)). The
+installed version picks the channel: there is no channel option, force, implicit downgrade or
+major (pre-1.0 minor) jump. Crossing that boundary means reading the compatibility notes and
+installing the release you chose by hand. A Homebrew or mise install is left to its manager, and
+`kabane update` names the command. Source links and installs it does not recognize are refused,
+with `Unsupported installation; ...` (status `unsupported` in `--json`) and exit 1.
 
 No tracker config/DB is opened, migrated or deleted by check/update, and no harness entry
 is rewired. `kabane mcp` makes no network check; the board's release notice is the only
-check that runs on its own ([hearing about a release](#hearing-about-a-release)). A manager failure, timeout, missing bin
-or mismatched installed version is nonzero and may have changed the executable partially;
-inspect the installation manually, without automatic rollback/repair.
+check that runs on its own ([hearing about a release](#hearing-about-a-release)).
 
 **Data compatibility is separate from installing the executable.** Before the first normal
 open of a release with schema changes, stop board/MCP and all other shared-data writers,
@@ -854,14 +830,13 @@ review and explicitly run `kabane mcp install --force` when you want to re-point
 
 ### Beta installs
 
-A `kabane@beta` install runs a `X.Y.Z-beta.N` version. `kabane update` reads both registry
-`beta` and `latest` and takes the higher by SemVer precedence, so `1.0.0-beta.0` moves to
-`1.0.0-beta.1` and then to `1.0.0` when it ships; from there it follows `latest` like any
-stable install. When neither tag is newer than the installed beta, the reply is **current**.
-The same major boundary, Bun engine check, policy preflight and verified exact install apply,
-and nothing older than the installed version is installed. A prerelease on either tag other
-than `beta.N` is refused with manual guidance. A stable install never reads `beta`; to move
-one onto the beta, install it explicitly with `bun add -g kabane@beta`.
+A beta install runs a `X.Y.Z-beta.N` version. `kabane update` reads the newest beta and the latest
+release and takes the higher by SemVer precedence, so `1.0.0-beta.1` moves to `1.0.0-beta.2` and
+then to `1.0.0` when it ships; from there it follows the latest release like any stable install.
+When neither is newer than the installed beta, the reply is **current**. The same major
+boundary and verified replacement apply, and nothing older than the installed version is
+installed. A prerelease other than `beta.N` is refused with manual guidance. A stable install
+never takes a beta; to try one, install it by its version ([install](#install)).
 
 ## Starting over
 

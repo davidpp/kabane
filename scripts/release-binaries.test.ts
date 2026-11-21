@@ -10,8 +10,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	BinaryTargetSchema,
-	integrity,
-	releaseChecksums,
 	sha256,
 	verifyReleaseFiles,
 	type ReleaseManifest,
@@ -27,24 +25,17 @@ const artifacts = () => {
 	const directory = join(root, "release");
 	const producers = join(root, "producers");
 	mkdirSync(directory, { recursive: true });
-	const npm = Buffer.from("retained npm archive"),
-		notes = Buffer.from("release notes");
+	const notes = Buffer.from("release notes");
 	const record: ReleaseManifest = {
 		version: "1.2.3",
 		tag: "v1.2.3",
 		dirty: false,
 		commit: "a".repeat(40),
-		filename: "kabane-1.2.3.tgz",
-		sha256: sha256(npm),
-		integrity: integrity(npm),
 		notesSha256: sha256(notes),
 		bun: "1.4.0",
-		npm: "12.2.0",
 	};
-	writeFileSync(join(directory, record.filename), npm);
 	writeFileSync(join(directory, "release-notes.md"), notes);
 	writeFileSync(join(directory, "manifest.json"), JSON.stringify(record));
-	writeFileSync(join(directory, "SHA256SUMS"), releaseChecksums(record));
 	for (const target of BinaryTargetSchema.options) {
 		const dir = producers;
 		mkdirSync(dir, { recursive: true });
@@ -73,15 +64,25 @@ test("assembly retains bytes, hashes every archive, rejects corruption and repla
 	expect(verified.ok).toBe(true);
 	if (!verified.ok) return;
 	expect(verified.value.binaries?.length).toBe(4);
+	expect(readFileSync(join(directory, "install.sh"))).toEqual(
+		readFileSync(join(import.meta.dir, "../packaging/install.sh")),
+	);
 	expect(
 		readFileSync(join(directory, "SHA256SUMS"), "utf8").trim().split("\n"),
-	).toHaveLength(5);
+	).toHaveLength(4);
 	for (const binary of verified.value.binaries ?? [])
 		expect(readFileSync(join(directory, binary.filename))).toEqual(
 			readFileSync(join(producers, binary.filename)),
 		);
 	expect(attachBinaries(directory, producers).ok).toBe(false);
 	writeFileSync(join(directory, "kabane-linux-x64.tar.gz"), "changed");
+	expect(verifyReleaseFiles(directory).ok).toBe(false);
+});
+
+test("a changed installer fails verification", () => {
+	const { directory, producers } = artifacts();
+	expect(attachBinaries(directory, producers).ok).toBe(true);
+	writeFileSync(join(directory, "install.sh"), "#!/bin/sh\n");
 	expect(verifyReleaseFiles(directory).ok).toBe(false);
 });
 
@@ -93,7 +94,7 @@ for (const mutation of [
 	"missing",
 	"bytes",
 ])
-	test(`assembly refuses ${mutation} mismatch before changing npm manifest`, () => {
+	test(`assembly refuses ${mutation} mismatch before changing the manifest`, () => {
 		const { directory, producers, record } = artifacts();
 		const native = producers;
 		const metadata = join(native, "linux-arm64.json");

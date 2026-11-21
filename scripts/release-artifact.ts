@@ -39,13 +39,6 @@ export const PackOutputSchema = z
 			.transform((byName) => Object.values(byName)),
 	])
 	.refine((packed) => packed.length === 1, "Expected exactly one archive.");
-/**
- * What `npm view --json` prints for one value or one version: npm 11 prints it bare, npm 12
- * wraps it in a one-element array. An error (`{ error: { code: "E404" } }`) stays bare in both,
- * so callers read it without this.
- */
-export const npmViewSchema = <T extends z.ZodType>(value: T) =>
-	z.union([value, z.tuple([value]).transform(([only]) => only)]);
 export const PublishManifestSchema = z
 	.object({
 		name: z.literal("kabane"),
@@ -67,6 +60,8 @@ export const PublishManifestSchema = z
 			.strict(),
 	})
 	.passthrough();
+/** The curl installer's asset name, beside the archives it downloads. */
+export const INSTALLER = "install.sh";
 export const BinaryTargetSchema = z.enum([
 	"darwin-arm64",
 	"darwin-x64",
@@ -81,11 +76,16 @@ export const BinaryArtifactSchema = z
 	})
 	.strict()
 	.refine((value) => value.filename === `kabane-${value.target}.tar.gz`);
+/** `SHA256SUMS`: one line per platform archive, the file the installer, mise and a person check. */
 export const releaseChecksums = (record: ReleaseManifest): string =>
-	`${record.sha256}  ${record.filename}\n` +
 	(record.binaries ?? [])
 		.map((binary) => `${binary.sha256}  ${binary.filename}\n`)
 		.join("");
+/**
+ * What a release is: its version and source, and once the native jobs' archives are attached, their
+ * SHA-256s and the installer's. A release is those archives, the installer, `SHA256SUMS` and its
+ * notes; nothing is published to npm.
+ */
 export const ReleaseManifestSchema = z
 	.object({
 		version: ChannelVersionSchema,
@@ -95,19 +95,21 @@ export const ReleaseManifestSchema = z
 			.regex(/^v\d+\.\d+\.\d+(?:-beta\.\d+)?$/)
 			.nullable(),
 		dirty: z.boolean(),
-		filename: ReleaseFilenameSchema,
-		sha256: z.string().regex(/^[a-f0-9]{64}$/),
-		integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
 		binaries: z
 			.array(BinaryArtifactSchema)
 			.length(4)
 			.refine((items) => new Set(items.map((item) => item.target)).size === 4)
 			.optional(),
+		/** The SHA-256 of `install.sh`, the curl installer a release with binaries carries. */
+		installerSha256: z
+			.string()
+			.regex(/^[a-f0-9]{64}$/)
+			.optional(),
 		notesSha256: z.string().regex(/^[a-f0-9]{64}$/),
 		bun: ReleaseVersionSchema,
-		npm: ReleaseVersionSchema,
 	})
-	.strict();
+	.strict()
+	.refine((record) => !record.binaries === !record.installerSha256);
 export type ReleaseManifest = z.infer<typeof ReleaseManifestSchema>;
 export const sha256 = (bytes: Uint8Array): string =>
 	createHash("sha256").update(bytes).digest("hex");
@@ -294,6 +296,26 @@ export const inspectArchive = async (
 	}
 };
 
+/** The binaries and the installer a release with binaries carries, against its manifest. */
+const verifyBinaryAssets = (
+	directory: string,
+	record: ReleaseManifest,
+): Result<void> => {
+	for (const binary of record.binaries ?? []) {
+		const bytes = readArtifactFile(
+			join(directory, binary.filename),
+			268_435_456,
+		);
+		if (!bytes.ok || sha256(bytes.value) !== binary.sha256)
+			return err(new Error(`Binary checksum mismatch: ${binary.filename}`));
+	}
+	if (!record.installerSha256) return ok(undefined);
+	const installer = readArtifactFile(join(directory, INSTALLER), 65_536);
+	return installer.ok && sha256(installer.value) === record.installerSha256
+		? ok(undefined)
+		: err(new Error(`Installer checksum mismatch: ${INSTALLER}`));
+};
+
 export const verifyReleaseFiles = (
 	directory: string,
 ): Result<ReleaseManifest> => {
@@ -305,32 +327,18 @@ export const verifyReleaseFiles = (
 		);
 		if (!parsed.success) return err(new Error("Invalid release manifest."));
 		const record = parsed.data;
-		if (
-			record.filename !== `kabane-${record.version}.tgz` ||
-			(record.tag !== null && record.tag !== `v${record.version}`)
-		)
-			return err(new Error("Release filename/version/tag mismatch."));
-		const archive = readArtifactFile(join(directory, record.filename));
+		if (record.tag !== null && record.tag !== `v${record.version}`)
+			return err(new Error("Release version/tag mismatch."));
 		const notes = readArtifactFile(join(directory, "release-notes.md"), 32_768);
+		if (!notes.ok) return err(new Error("Missing release notes."));
+		if (sha256(notes.value) !== record.notesSha256)
+			return err(new Error("Release notes hash mismatch."));
+		if (!record.binaries) return ok(record);
 		const checksum = readArtifactFile(join(directory, "SHA256SUMS"), 1024);
-		if (!archive.ok || !notes.ok || !checksum.ok)
-			return err(new Error("Missing release archive/checksum/notes."));
-		if (
-			sha256(archive.value) !== record.sha256 ||
-			integrity(archive.value) !== record.integrity ||
-			sha256(notes.value) !== record.notesSha256 ||
-			checksum.value.toString() !== releaseChecksums(record)
-		)
-			return err(new Error("Release archive/checksum/notes hash mismatch."));
-		for (const binary of record.binaries ?? []) {
-			const bytes = readArtifactFile(
-				join(directory, binary.filename),
-				268_435_456,
-			);
-			if (!bytes.ok || sha256(bytes.value) !== binary.sha256)
-				return err(new Error(`Binary checksum mismatch: ${binary.filename}`));
-		}
-		return ok(record);
+		if (!checksum.ok || checksum.value.toString() !== releaseChecksums(record))
+			return err(new Error("SHA256SUMS does not match the release manifest."));
+		const assets = verifyBinaryAssets(directory, record);
+		return assets.ok ? ok(record) : assets;
 	} catch {
 		return err(new Error("Could not verify release files."));
 	}

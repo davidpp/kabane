@@ -10,7 +10,10 @@ import {
 	AGENTS_NOTE,
 	AGENTS_OFF,
 	AGENTS_OFF_NOTE,
+	cutAtWord,
+	EXTENSIONS_NOTE,
 	elidePath,
+	NEXT_STEP_LINE,
 	enterLines,
 	NAME_NOTE,
 	NEXT_PHRASE,
@@ -35,6 +38,7 @@ const DEFAULTS: SetupPlan.Defaults = {
 		{ id: "claude", label: "Claude Code" },
 		{ id: "codex", label: "Codex" },
 	],
+	extensions: [],
 	installOff: false,
 	configPath: "~/.kabane/config.json",
 	project: "repo",
@@ -55,6 +59,7 @@ const SANDBOX_PATH =
 type Seen = {
 	saved: SetupPlan.Plan[];
 	installed: (readonly string[])[];
+	enabled: (readonly string[])[];
 	filed: string[];
 	completed: number;
 	quit: number;
@@ -62,6 +67,7 @@ type Seen = {
 
 type MountOptions = {
 	saveResult?: Result<string>;
+	enableResult?: Result<void>;
 	fileResult?: Result<SetupPlan.FirstIssue>;
 	width?: number;
 	// Without one the screen gets the dark ramp, as a provider-less mount always has.
@@ -72,6 +78,7 @@ const mount = async (
 	defaults: SetupPlan.Defaults,
 	{
 		saveResult = ok("~/.kabane/config.json"),
+		enableResult = ok(undefined),
 		fileResult = ok(FIRST_ISSUE),
 		width = 120,
 		theme = Theme.DARK,
@@ -80,6 +87,7 @@ const mount = async (
 	const seen: Seen = {
 		saved: [],
 		installed: [],
+		enabled: [],
 		filed: [],
 		completed: 0,
 		quit: 0,
@@ -103,6 +111,10 @@ const mount = async (
 								}
 							: { id, status: "installed" as const },
 					);
+				}}
+				enable={async (names) => {
+					seen.enabled.push(names);
+					return enableResult;
 				}}
 				fileFirstIssue={async (harness) => {
 					seen.filed.push(harness);
@@ -321,9 +333,11 @@ describe("SetupScreen form", () => {
 					actor: "kabane://actor/human/david",
 					deviceId: "mbp",
 					install: ["claude", "codex"],
+					extensions: [],
 				},
 			]);
 			expect(seen.installed).toEqual([["claude", "codex"]]);
+			expect(seen.enabled).toEqual([]);
 			expect(seen.completed).toBe(0);
 			mockInput.pressEnter();
 			await until(() => seen.completed === 1);
@@ -397,6 +411,110 @@ describe("SetupScreen form", () => {
 		}
 	});
 
+	it("offers the shipped extensions unticked; space ticks one and enter turns it on, with no agent found", async () => {
+		const about =
+			"Serves the setup-dispatch and grill skills, writes a project's dispatch skill from its own template.";
+		const { mockInput, toForm, until, seen, destroy } = await mount(
+			{
+				...DEFAULTS,
+				harnesses: [],
+				extensions: [
+					{ name: "dispatch", description: about },
+					{ name: "loop" },
+				],
+			},
+			{ width: 40 },
+		);
+		try {
+			const first = await toForm();
+			expect(first).toContain(NEXT_STEP_LINE);
+			expect(first).not.toContain("[ ] dispatch");
+			mockInput.pressEnter();
+			const frame = await until((f) => f.includes("[ ] dispatch"));
+			expect(seen.saved).toEqual([]);
+			expect(frame).toContain("kabane · setup · extensions");
+			expect(frame).toContain("[ ] loop");
+			expect(frame).toContain(EXTENSIONS_NOTE);
+			expect(frame).toContain("space toggle");
+			expect(frame).not.toContain("turns on");
+			// Focused, three lines' worth of its description wraps under it.
+			expect(frame).toContain("             Serves the setup-dispatch");
+			expect(frame).toContain("             project's dispatch skill…");
+			mockInput.pressKey(" ");
+			const ticked = await until((f) => f.includes("[x] dispatch"));
+			expect(ticked).toContain("turns on dispatch");
+			mockInput.pressEnter();
+			await until(() => seen.completed === 1);
+			expect(seen.saved[0]?.extensions).toEqual(["dispatch"]);
+			expect(seen.enabled).toEqual([["dispatch"]]);
+			expect(seen.installed).toEqual([]);
+		} finally {
+			destroy();
+		}
+	});
+
+	for (const width of [40, 80])
+		it(`${width} columns, 24 rows: two agents and three extensions, one focused and ticked, keep the enter panel and the footer`, async () => {
+			const about = (name: string): string =>
+				`${name}: drives an issue, or a parent issue's subtasks, to done through coding harnesses, and adds run activity and dispatch to the board, where a on an issue opens its run form.`;
+			const { mockInput, toForm, until, destroy } = await mount(
+				{
+					...DEFAULTS,
+					extensions: ["dispatch", "loop", "recipes"].map((name) => ({
+						name,
+						description: about(name),
+					})),
+				},
+				{ width },
+			);
+			try {
+				const first = await toForm();
+				expect(first).not.toContain("dispatch");
+				expect(first).toContain(NEXT_STEP_LINE);
+				mockInput.pressEnter();
+				await until((f) => f.includes("[ ] dispatch"));
+				mockInput.pressKey(" ");
+				const frame = await until((f) => f.includes("[x] dispatch"));
+				expect(frame).toContain("turns on dispatch");
+				expect(frame).toContain("opens the board");
+				expect(frame).toContain("enter confirm");
+			} finally {
+				destroy();
+			}
+		});
+
+	it("the done card says which extensions were turned on, or why not even with no agent", async () => {
+		const offered = { ...DEFAULTS, extensions: [{ name: "dispatch" }] };
+		const on = await mount(offered);
+		try {
+			await on.toForm();
+			on.mockInput.pressEnter();
+			await on.until((f) => f.includes("[ ] dispatch"));
+			on.mockInput.pressKey(" ");
+			on.mockInput.pressEnter();
+			const frame = await on.until((f) => f.includes("✓ filed"));
+			expect(frame).toContain("✓ dispatch turned on");
+		} finally {
+			on.destroy();
+		}
+		const off = await mount(
+			{ ...offered, harnesses: [] },
+			{ enableResult: err(new Error("cannot link dispatch")) },
+		);
+		try {
+			await off.toForm();
+			off.mockInput.pressEnter();
+			await off.until((f) => f.includes("[ ] dispatch"));
+			off.mockInput.pressKey(" ");
+			off.mockInput.pressEnter();
+			const frame = await off.until((f) => f.includes("✗ dispatch"));
+			expect(frame).toContain("✗ dispatch cannot link dispatch");
+			expect(off.seen.completed).toBe(0);
+		} finally {
+			off.destroy();
+		}
+	});
+
 	it("a long install error wraps under its row, indented, at 40 columns", async () => {
 		const reason =
 			'Caused by: CODEX_HOME points to "/tmp/x/.codex", but that path does not exist';
@@ -407,6 +525,7 @@ describe("SetupScreen form", () => {
 				install={async (ids) =>
 					ids.map((id) => ({ id, status: "failed" as const, message: reason }))
 				}
+				enable={async () => ok(undefined)}
 				fileFirstIssue={async () => ok(FIRST_ISSUE)}
 				onComplete={() => {}}
 				onQuit={() => {}}
@@ -694,5 +813,14 @@ describe("SetupScreen copy", () => {
 	it("keeps JCAB-82's next step word for word", () => {
 		expect(nextLines("claude", "REPO-1")[1]).toBe(`say ${NEXT_PHRASE} and`);
 		expect(NEXT_PHRASE).toBe('"take the next kabane issue"');
+	});
+});
+
+describe("cutAtWord", () => {
+	it("cuts at the last whole word that fits, ellipsis included", () => {
+		expect(cutAtWord("Drives an issue, or a parent issue", 27)).toBe(
+			"Drives an issue, or a…",
+		);
+		expect(cutAtWord("unbreakablewordthatislong", 10)).toBe("unbreakab…");
 	});
 });

@@ -3,8 +3,8 @@
 // `/$bunfs/root/<name>` in `process.argv[1]` and `Bun.main`, a virtual path nothing outside the
 // process can run, and resolves `import.meta.url` inside that same virtual root.
 // This belongs to the CLI host: it reads the Bun process.
-import { existsSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { trySync } from "@kabane/core/result";
 
 export namespace Self {
@@ -45,14 +45,70 @@ export namespace Self {
 	export const compiled = (host: Host = HOST): boolean =>
 		EMBEDDED_ROOT.test(pathOf(host.moduleUrl));
 
+	// Homebrew's keg, `<prefix>/Cellar/kabane/<version>/<path>`. Bun reports a binary's real path,
+	// and `brew upgrade` removes the old keg, while `<prefix>/bin/kabane` links whichever executable
+	// is installed and `<prefix>/opt/kabane` the keg itself.
+	const CELLAR = /^(.*)\/Cellar\/kabane\/[^/]+\/(.+)$/;
+
+	// mise's install, `<mise data>/installs/<tool>/<version>/<path>`. `mise up` installs the next
+	// version beside it and prunes this one, while `<tool>/latest` links the newest installed.
+	// Not mise's shim: it picks a version per working directory and fails where none is set.
+	const MISE_INSTALL = /^(.*\/installs\/[^/]+)\/[^/]+\/(.+)$/;
+
+	// The path a package manager keeps to `path`, inside its versioned install, across upgrades.
+	const keptPath = (path: string): string | undefined => {
+		const keg = CELLAR.exec(path);
+		if (keg) return join(keg[1] ?? "", "opt/kabane", keg[2] ?? "");
+		const mise = MISE_INSTALL.exec(path);
+		return mise ? join(mise[1] ?? "", "latest", mise[2] ?? "") : undefined;
+	};
+
+	// The link a package manager keeps to the binary at real path `execPath` across upgrades.
+	const linkTo = (execPath: string): string | undefined => {
+		const keg = CELLAR.exec(execPath);
+		return keg ? join(keg[1] ?? "", "bin/kabane") : keptPath(execPath);
+	};
+
+	const realPath = (path: string): string | undefined => {
+		const real = trySync(() => realpathSync(path));
+		return real.ok ? real.value : undefined;
+	};
+
 	/**
 	 * An executable path that runs kabane with no interpreter in front of it: the binary, or the
 	 * entry script, whose hashbang finds bun on PATH. A source entry's hashbang also passes the
-	 * production NODE_ENV define, through `env -S`; the bundle has the define built in.
+	 * production NODE_ENV define, through `env -S`; the bundle has the define built in. A binary in
+	 * Homebrew's keg or a mise install is named by the link its manager keeps to it, so a path
+	 * written down outlives an upgrade.
 	 */
-	export const executable = (host: Host = HOST): string => {
-		if (compiled(host)) return host.execPath;
-		return host.entry ? resolve(host.entry) : "kabane";
+	export const executable = (
+		host: Host = HOST,
+		real: (path: string) => string | undefined = realPath,
+	): string => {
+		if (!compiled(host)) return host.entry ? resolve(host.entry) : "kabane";
+		const linked = linkTo(host.execPath);
+		return linked !== undefined && real(linked) === host.execPath
+			? linked
+			: host.execPath;
+	};
+
+	/**
+	 * The extensions a release ships in `extensions/` beside its executable, named by a path that
+	 * outlives an upgrade, so a link to one of them follows the install: Homebrew's
+	 * `<prefix>/opt/kabane/...` or mise's `latest/...` when it is the same directory, else the
+	 * directory itself (an installer's prefix, replaced in place, or a plain extracted release).
+	 * Undefined when this is no compiled binary, or nothing ships beside it.
+	 */
+	export const extensions = (
+		host: Host = HOST,
+		real: (path: string) => string | undefined = realPath,
+	): string | undefined => {
+		if (!compiled(host)) return undefined;
+		const beside = join(dirname(host.execPath), "extensions");
+		const actual = real(beside);
+		if (actual === undefined) return undefined;
+		const kept = keptPath(beside);
+		return kept !== undefined && real(kept) === actual ? kept : beside;
 	};
 
 	/**
@@ -74,14 +130,15 @@ export namespace Self {
 	/**
 	 * `launch` for a config that outlives this process, the harness MCP entry: a mise-installed bun
 	 * becomes mise's shim, which picks the pinned bun at each start, so a Bun bump leaves the entry
-	 * working. Any other bun, and a binary, stay as `launch` has them.
+	 * working. Any other bun stays as `launch` has it, and a binary is named as `executable` names it.
 	 */
 	export const lasting = (
 		host: Host = HOST,
 		exists: (path: string) => boolean = isFile,
+		real: (path: string) => string | undefined = realPath,
 	): Launch => {
 		const now = launch(host);
-		if (compiled(host)) return now;
+		if (compiled(host)) return { command: executable(host, real), args: [] };
 		const data = MISE_BUN.exec(now.command)?.[1];
 		const shim = data === undefined ? undefined : join(data, "shims/bun");
 		return shim !== undefined && exists(shim) ? { ...now, command: shim } : now;
@@ -101,5 +158,21 @@ export namespace Self {
 		return recorded !== "kabane" && exists(recorded)
 			? recorded
 			: which("kabane");
+	};
+
+	/**
+	 * The kabane to start once its install has taken a release: the link Homebrew or mise keeps,
+	 * which now names the new version, else `current`. Not `executable`, which names the link only
+	 * while it still points at this binary, and after an upgrade it no longer does.
+	 */
+	export const upgraded = (
+		host: Host = HOST,
+		exists: (path: string) => boolean = isFile,
+		which: (name: string) => string | null = (name) => Bun.which(name),
+	): string | null => {
+		const linked = compiled(host) ? linkTo(host.execPath) : undefined;
+		return linked !== undefined && exists(linked)
+			? linked
+			: current(host, exists, which);
 	};
 }

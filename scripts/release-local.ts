@@ -1,745 +1,493 @@
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	rmSync,
-	renameSync,
-	writeFileSync,
-} from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { runUpdateProcess } from "../packages/cli/src/update-process";
 import {
 	ChannelVersionSchema,
-	channelOf,
 	compareVersions,
 } from "../packages/cli/src/update-version";
 import { err, ok, type Result } from "../packages/core/result";
-import { prepareRelease } from "./release";
-import {
-	npmViewSchema,
-	readArtifactFile,
-	sha256,
-	verifyReleaseFiles,
-} from "./release-artifact";
+import { readArtifactFile } from "./release-artifact";
+import { readHighestStableRelease } from "./release-github";
 import {
 	queryRelease as query,
 	runReleaseInteractive,
 } from "./release-process";
-import { publishLocalRelease } from "./release-publish";
-import {
-	SemanticBumpSchema,
-	StableReleaseVersionSchema as StableVersionSchema,
-	selectReleaseVersion,
-} from "./release-version";
+import { SemanticBumpSchema, selectReleaseVersion } from "./release-version";
 
 const ROOT = resolve(import.meta.dir, "..");
-export const LOCAL_RELEASE_HELP = `Usage: bun run release:local prepare|publish [--bump auto|major|minor|patch | --version X.Y.Z[-beta.N]] [--notes-file path] [--source-root path]
+const REPOSITORY = "davidpp/kabane";
+export const RELEASE_HELP = `Usage: bun run release [--version X.Y.Z[-beta.N] | --bump auto|major|minor|patch] [--notes-file path] [--dry-run]
 
-prepare: require clean main, commit the version/lock, run the gates, build/pack once,
-         smoke and retain .releases/X.Y.Z, enable GitHub release immutability,
-         create an annotated tag (honoring configured signing), push source/tag.
-         No npm login, publication or global-bin replacement.
-publish: require that verified original archive, use local npm authentication,
-         publish once and complete the matching GitHub release. Never rebuild.
+From a clean main that matches origin: set packages/cli/package.json to the version, run the
+gate on that tree, commit it with bun.lock, tag v<version>, push main and the tag, start release.yml
+with publish=true on that tag, and watch the run. The run publishes the GitHub release, its
+four binaries, the installer and SHA256SUMS, and for a stable version the davidpp/tap formula.
+Nothing goes to npm, so no npm login.
 
-prepare defaults to auto: inspect Conventional Commits since npm latest's tag/gitHead.
-Breaking -> major (minor during 0.x), feat -> minor, fix/perf -> patch.
-Maintenance-only or unclear history requires an explicit --bump. --bump major is
-an explicit decision to enter stable 1.0.0 during initial development.
---version X.Y.Z-beta.N is the only way to a beta: it publishes on npm beta, newer
-than npm latest and beta, as a GitHub prerelease, and never moves npm latest.
-publish and repeated prepare reuse .releases/current.json, never bump again.
-Run npm login between phases if needed. Only prepare accepts --notes-file.
-Only publish accepts --source-root: use fixed tooling with an original clean source
-checkout and its retained archive. All source/tag/byte/tool/auth guards still apply.
-Human-run only; agents must not execute these release operations.`;
+--bump defaults to auto: the Conventional Commits since the highest published stable release's
+tag. Breaking -> major (minor during 0.x), feat -> minor, fix/perf -> patch; maintenance-only or
+unclear history needs an explicit --bump. Auto never selects 1.0.0 during 0.x: pass
+--version 1.0.0. --version X.Y.Z-beta.N is the only way to a beta, published as a prerelease.
+--notes-file holds the release notes (32KiB at most); without it they list the commits since
+the previous release. --dry-run prints every step and any unmet precondition, and runs none.
+Human-run only; agents must not run it without --dry-run.`;
 
-const LocalReleaseArgsSchema = z
+const ReleaseArgsSchema = z
 	.object({
-		mode: z.enum(["prepare", "publish"]),
 		version: ChannelVersionSchema.optional(),
 		bump: z.enum(["auto", ...SemanticBumpSchema.options]).optional(),
 		notesFile: z.string().min(1).optional(),
-		sourceRoot: z.string().min(1).optional(),
+		dryRun: z.boolean(),
 	})
 	.strict()
-	.refine(
-		(args) =>
-			!(args.version && args.bump) &&
-			!(args.mode === "publish" && args.notesFile) &&
-			!(args.mode === "prepare" && args.sourceRoot),
-	);
-type LocalReleaseArgs = z.infer<typeof LocalReleaseArgsSchema>;
-type SelectedReleaseArgs = LocalReleaseArgs & { version: string };
-export const parseLocalReleaseArgs = (
-	argv: string[],
-): Result<LocalReleaseArgs> => {
-	const [mode, ...flags] = argv;
+	.refine((args) => !(args.version && args.bump));
+type ReleaseArgs = z.infer<typeof ReleaseArgsSchema>;
+
+export const parseReleaseArgs = (argv: string[]): Result<ReleaseArgs> => {
 	const values: Record<string, string> = {};
-	for (let index = 0; index < flags.length; index += 2) {
-		const flag = flags[index],
-			value = flags[index + 1];
+	let dryRun = false;
+	for (let index = 0; index < argv.length; index++) {
+		const flag = argv[index];
+		if (flag === "--dry-run" && !dryRun) {
+			dryRun = true;
+			continue;
+		}
+		const value = argv[index + 1];
 		if (
 			!flag ||
 			!value ||
 			value.startsWith("--") ||
-			!["--version", "--bump", "--notes-file", "--source-root"].includes(
-				flag,
-			) ||
+			!["--version", "--bump", "--notes-file"].includes(flag) ||
 			flag in values
 		)
-			return err(new Error(LOCAL_RELEASE_HELP));
+			return err(new Error(RELEASE_HELP));
 		values[flag] = value;
+		index++;
 	}
-	const parsed = LocalReleaseArgsSchema.safeParse({
-		mode,
+	const parsed = ReleaseArgsSchema.safeParse({
 		version: values["--version"],
 		bump: values["--bump"],
 		notesFile: values["--notes-file"],
-		sourceRoot: values["--source-root"],
+		dryRun,
 	});
-	return parsed.success ? ok(parsed.data) : err(new Error(LOCAL_RELEASE_HELP));
+	return parsed.success ? ok(parsed.data) : err(new Error(RELEASE_HELP));
 };
 
-const Source = z
-	.object({
-		name: z.literal("kabane"),
-		private: z.literal(true),
-		version: ChannelVersionSchema,
-	})
-	.passthrough();
-const Immutable = z.object({ enabled: z.boolean() });
-const fail = (message: string): Result<never> => err(new Error(message));
-const ReleaseChoiceSchema = z
-	.object({
-		version: ChannelVersionSchema,
-		selector: z.enum(["auto", ...SemanticBumpSchema.options, "version"]),
-		commit: z.string().regex(/^[a-f0-9]{40}$/),
-		state: z.enum(["preparing", "prepared", "published"]),
-		immutableEnableAccepted: z.literal(true).optional(),
-	})
-	.strict();
-type ReleaseChoice = z.infer<typeof ReleaseChoiceSchema>;
+/** One step of a release: what it runs, and what it says it does. */
+type Step = { say: string; argv: string[] };
 
-const readReleaseChoice = (root: string): Result<ReleaseChoice | undefined> => {
-	const path = join(root, ".releases/current.json");
-	if (!existsSync(path)) return ok(undefined);
-	try {
-		const file = readArtifactFile(path, 1024);
-		if (!file.ok) return file;
-		const choice = ReleaseChoiceSchema.safeParse(
-			JSON.parse(file.value.toString()),
-		);
-		return choice.success
-			? ok(choice.data)
-			: fail(
-					"Invalid .releases/current.json; inspect it before resuming. Original artifacts were not modified.",
-				);
-	} catch {
-		return fail(
-			"Could not decode .releases/current.json; inspect it before resuming.",
-		);
-	}
-};
-
-const saveReleaseChoice = (
-	root: string,
-	choice: ReleaseChoice,
-): Result<void> => {
-	const temporary = join(root, ".releases/current.json.tmp");
-	try {
-		writeFileSync(temporary, `${JSON.stringify(choice, null, 2)}\n`);
-		renameSync(temporary, join(root, ".releases/current.json"));
-		return ok(undefined);
-	} catch {
-		return fail(
-			"Could not retain the selected version in .releases/current.json; inspect source and artifacts before resuming.",
-		);
-	}
-};
-
-const resumeReleaseChoice = async (
-	args: LocalReleaseArgs,
-	current: ReleaseChoice,
-	head: string,
-	root: string,
-	env: NodeJS.ProcessEnv,
-): Promise<Result<ReleaseChoice>> => {
-	if (
-		(args.version && args.version !== current.version) ||
-		(args.bump && args.bump !== "auto" && args.bump !== current.selector)
-	)
-		return fail(
-			"A different release is already selected; omit the selector to resume its original version. Never bump again during handoff.",
-		);
-	if (args.mode === "prepare" && current.commit !== head) {
-		if (
-			current.state !== "preparing" ||
-			existsSync(join(root, ".releases", current.version))
-		)
-			return fail(
-				"Source changed after preparation. Restore its original source/artifact; no replacement or new bump attempted.",
-			);
-		const reselected =
-			current.selector === "version"
-				? ok(current.version)
-				: await selectReleaseVersion(current.selector, root, env);
-		if (!reselected.ok) return reselected;
-		if (reselected.value !== current.version)
-			return fail(
-				"Source changes require a different bump. Inspect the pending choice before deliberately selecting a new release; no artifact was replaced.",
-			);
-	}
-	return ok({
-		...current,
-		commit: args.mode === "prepare" ? head : current.commit,
-	});
-};
-
-const resolveReleaseChoice = async (
-	args: LocalReleaseArgs,
-	head: string,
-	root: string,
-	env: NodeJS.ProcessEnv,
-): Promise<Result<ReleaseChoice>> => {
-	const saved = readReleaseChoice(root);
-	if (!saved.ok) return saved;
-	const current = saved.value;
-	if (current && (current.state !== "published" || args.mode === "publish"))
-		return resumeReleaseChoice(args, current, head, root, env);
-	if (args.mode === "publish" && !args.version)
-		return fail(
-			"No release has been selected. Run prepare first, or pass --version for an existing verified archive.",
-		);
-	const selected = args.version
-		? ok(args.version)
-		: await selectReleaseVersion(args.bump ?? "auto", root, env);
-	return selected.ok
-		? ok({
-				version: selected.value,
-				selector: args.version ? "version" : (args.bump ?? "auto"),
-				commit: head,
-				state: "preparing",
-			})
-		: selected;
-};
-
-const sourceState = async (
-	root: string,
-	env: NodeJS.ProcessEnv,
-): Promise<Result<string>> => {
-	const dirty = await query(["git", "status", "--porcelain"], root, env);
-	const branch = await query(["git", "branch", "--show-current"], root, env);
-	const origin = await query(
-		["git", "config", "--get", "remote.origin.url"],
-		root,
-		env,
-	);
-	if (!dirty.ok || !branch.ok || !origin.ok)
-		return fail("Could not establish clean source/repository identity.");
-	if (dirty.value || branch.value !== "main")
-		return fail(
-			"Local release requires clean main. Commit/integrate your work first; nothing was stashed or reset.",
-		);
-	if (
-		![
-			"git@github.com:davidpp/kabane.git",
-			"https://github.com/davidpp/kabane.git",
-			"ssh://git@github.com/davidpp/kabane.git",
-		].includes(origin.value)
-	)
-		return fail(
-			"Local release is only for origin davidpp/kabane; no remote was changed.",
-		);
-	return query(["git", "rev-parse", "HEAD"], root, env);
-};
-
-const readImmutability = async (
-	root: string,
-	env: NodeJS.ProcessEnv,
-): Promise<Result<boolean>> => {
-	const result = await query(
-		["gh", "api", "repos/davidpp/kabane/immutable-releases"],
-		root,
-		env,
-	);
-	if (!result.ok) return result;
-	try {
-		const parsed = Immutable.safeParse(JSON.parse(result.value));
-		if (parsed.success) return ok(parsed.data.enabled);
-	} catch {
-		// Malformed JSON is not a delayed setting value.
-	}
-	return fail(
-		"Invalid GitHub immutability response; no publication authorized.",
-	);
-};
-
-const immutable = async (
-	root: string,
-	env: NodeJS.ProcessEnv,
-	choice: ReleaseChoice | undefined,
-	wait: (milliseconds: number) => Promise<void>,
-): Promise<Result<void>> => {
-	const preparationFailure = (reason: string) =>
-		fail(
-			`Release preparation incomplete: ${reason} Original source and verified archive retained; confirm the setting in GitHub read-only with gh api repos/davidpp/kabane/immutable-releases, then rerun prepare with the same source and bytes. No publication authorized.`,
-		);
-	if (!choice?.immutableEnableAccepted) {
-		const initial = await readImmutability(root, env);
-		if (!initial.ok)
-			return choice ? preparationFailure(initial.error.message) : initial;
-		if (initial.value) return ok(undefined);
-		if (!choice)
-			return fail(
-				"GitHub release immutability is disabled; run prepare to enable it before publication.",
-			);
-		const enabled = await query(
-			[
+/**
+ * Every step a release runs, in order, once the version is written to the CLI manifest: the gate
+ * runs on that tree, which is the one the tag names. The dispatch names the tag as its ref, so
+ * the run publishes exactly the tagged commit.
+ */
+export const releaseSteps = (version: string, notes: string): Step[] => {
+	const tag = `v${version}`;
+	return [
+		{
+			say: "Refresh bun.lock for the new CLI version",
+			argv: ["bun", "install", "--lockfile-only", "--ignore-scripts"],
+		},
+		...["check", "typecheck", "test"].map((gate) => ({
+			say: "Run the gate",
+			argv: ["bun", "run", gate],
+		})),
+		{
+			say: "Stage the version",
+			argv: ["git", "add", "--", "packages/cli/package.json", "bun.lock"],
+		},
+		{
+			say: "Commit it",
+			argv: ["git", "commit", "-m", `chore: release kabane ${version}`],
+		},
+		{
+			say: "Tag the release commit",
+			argv: ["git", "tag", "-a", tag, "-m", `kabane ${version}`],
+		},
+		{
+			say: "Push main and the tag together",
+			argv: [
+				"git",
+				"push",
+				"--atomic",
+				"origin",
+				"HEAD:refs/heads/main",
+				`refs/tags/${tag}`,
+			],
+		},
+		{
+			say: "Start the publishing run on the tag",
+			argv: [
 				"gh",
-				"api",
-				"--method",
-				"PUT",
-				"repos/davidpp/kabane/immutable-releases",
+				"workflow",
+				"run",
+				"release.yml",
+				"--repo",
+				REPOSITORY,
+				"--ref",
+				tag,
+				"-f",
+				"publish=true",
+				"-f",
+				`notes=${notes}`,
 			],
-			root,
-			env,
-		);
-		if (!enabled.ok) return preparationFailure(enabled.error.message);
-		choice.immutableEnableAccepted = true;
-		const saved = saveReleaseChoice(root, choice);
-		if (!saved.ok) return preparationFailure(saved.error.message);
-	}
-	// Only valid false readbacks can be retried, never the accepted setting write.
-	for (let attempt = 0; attempt < 5; attempt++) {
-		if (attempt > 0) await wait(1_000);
-		const readback = await readImmutability(root, env);
-		if (!readback.ok) return preparationFailure(readback.error.message);
-		if (readback.value) return ok(undefined);
-	}
-	return preparationFailure(
-		"GitHub accepted the enable request, but enabled=true was not observed in five readbacks.",
-	);
-};
-
-const verifyArtifactSource = (
-	directory: string,
-	version: string,
-	commit: string,
-): Result<void> => {
-	const record = verifyReleaseFiles(directory);
-	if (!record.ok) return record;
-	if (
-		record.value.dirty ||
-		record.value.tag !== `v${version}` ||
-		record.value.version !== version ||
-		record.value.commit !== commit
-	)
-		return fail(
-			"Prepared artifact/source/version/tag mismatch. Retain original bytes; do not rebuild a recovery artifact.",
-		);
-	return ok(undefined);
-};
-
-const verifiedPreparation = (
-	directory: string,
-	version: string,
-	commit: string,
-): Result<void> => {
-	const source = verifyArtifactSource(directory, version, commit);
-	if (!source.ok) return source;
-	const manifest = readArtifactFile(join(directory, "manifest.json"), 65_536);
-	const proof = readArtifactFile(join(directory, "verified.sha256"), 128);
-	return manifest.ok &&
-		proof.ok &&
-		proof.value.toString() === `${sha256(manifest.value)}\n`
-		? ok(undefined)
-		: fail(
-				"Artifact has no matching successful local gate/smoke record. Run prepare, not publish.",
-			);
-};
-
-const verifyExistingTag = async (
-	version: string,
-	sourceVersion: string,
-	commit: string,
-	root: string,
-	env: NodeJS.ProcessEnv,
-): Promise<Result<boolean>> => {
-	const tag = `v${version}`;
-	const tagged = await query(["git", "tag", "--list", tag], root, env);
-	if (!tagged.ok) return tagged;
-	if (tagged.value) {
-		const local = await query(
-			["git", "rev-parse", `${tag}^{commit}`],
-			root,
-			env,
-		);
-		if (!local.ok || local.value !== commit || sourceVersion !== version)
-			return fail(
-				"Existing local tag conflicts with this source/version; never move it.",
-			);
-	}
-	const remote = await query(
-		["git", "ls-remote", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`],
-		root,
-		env,
-	);
-	if (!remote.ok) return remote;
-	const refs = new Map(
-		remote.value.split("\n").map((line) => {
-			const [sha, ref] = line.split("\t");
-			return [ref ?? "", sha ?? ""];
-		}),
-	);
-	if (
-		remote.value &&
-		(!tagged.value ||
-			(refs.get(`refs/tags/${tag}^{}`) ?? refs.get(`refs/tags/${tag}`)) !==
-				commit)
-	)
-		return fail(
-			"Existing remote tag needs original-source/artifact recovery; no version/tag replacement attempted.",
-		);
-	return ok(tagged.value !== "");
-};
-
-/** Newer than npm latest and, for a beta, npm beta; never older than the source. */
-const newerThanPublished = async (
-	version: string,
-	sourceVersion: string,
-	root: string,
-	env: NodeJS.ProcessEnv,
-): Promise<Result<void>> => {
-	const distTag = (tag: "latest" | "beta") =>
-		query(
-			[
-				"npm",
-				"view",
-				"kabane",
-				`dist-tags.${tag}`,
-				"--json",
-				"--registry",
-				"https://registry.npmjs.org/",
-			],
-			root,
-			env,
-		);
-	const latest = await distTag("latest");
-	if (!latest.ok) return latest;
-	const beta = channelOf(version) === "beta";
-	// An absent dist-tag prints nothing.
-	const previousBeta = beta ? await distTag("beta") : ok("");
-	if (!previousBeta.ok) return previousBeta;
-	const floors = [
-		npmViewSchema(StableVersionSchema).safeParse(JSON.parse(latest.value)),
-		...(previousBeta.value
-			? [
-					npmViewSchema(ChannelVersionSchema).safeParse(
-						JSON.parse(previousBeta.value),
-					),
-				]
-			: []),
+		},
 	];
-	return floors.some(
-		(floor) => !floor.success || compareVersions(version, floor.data) <= 0,
-	) || compareVersions(version, sourceVersion) < 0
-		? fail(
-				beta
-					? "Select a beta newer than npm latest and npm beta and not older than the source. No version fallback/downgrade."
-					: "Select a stable version newer than npm latest and not older than the source. No version fallback/downgrade.",
-			)
-		: ok(undefined);
 };
 
-type PreparedSource = { commit: string; tagged: boolean; notes?: string };
+const fail = (message: string): Result<never> => err(new Error(message));
+const ORIGINS = [
+	"git@github.com:davidpp/kabane.git",
+	"https://github.com/davidpp/kabane.git",
+	"ssh://git@github.com/davidpp/kabane.git",
+];
 
-const prepareSource = async (
-	args: SelectedReleaseArgs,
-	root: string,
-	env: NodeJS.ProcessEnv,
-	directory: string,
-): Promise<Result<PreparedSource>> => {
-	const source = Source.safeParse(
-		JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")),
-	);
-	if (!source.success) return fail("Invalid source CLI manifest.");
-	const newer = await newerThanPublished(
-		args.version,
-		source.data.version,
-		root,
-		env,
-	);
-	if (!newer.ok) return newer;
-	let notes: string | undefined;
-	if (args.notesFile) {
-		if (existsSync(directory))
-			return fail(
-				"Retained release notes cannot be replaced; resume with no --notes-file.",
-			);
-		const read = readArtifactFile(resolve(args.notesFile), 32_768);
-		if (!read.ok) return read;
-		notes = read.value.toString();
-	}
-	const fetch = await runReleaseInteractive(
-		["git", "fetch", "origin", "main"],
-		root,
-		env,
-	);
-	if (!fetch.ok) return fetch;
-	const ancestor = await query(
-		["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"],
-		root,
-		env,
-	);
-	if (!ancestor.ok)
-		return fail(
-			"Remote main is ahead or diverged; integrate it deliberately before release.",
-		);
-	const head = await query(["git", "rev-parse", "HEAD"], root, env);
-	if (!head.ok) return head;
-	if (existsSync(directory)) {
-		const retained = verifyArtifactSource(directory, args.version, head.value);
-		if (!retained.ok) return retained;
-		if (source.data.version !== args.version)
-			return fail(
-				"Source version conflicts with the retained archive; no version write attempted.",
-			);
-	}
-	const tagged = await verifyExistingTag(
-		args.version,
-		source.data.version,
-		head.value,
-		root,
-		env,
-	);
-	if (!tagged.ok) return tagged;
-	if (source.data.version !== args.version) {
-		writeFileSync(
-			join(root, "packages/cli/package.json"),
-			`${JSON.stringify({ ...source.data, version: args.version }, null, "\t")}\n`,
-		);
-		for (const argv of [
-			[process.execPath, "install", "--lockfile-only", "--ignore-scripts"],
-			["git", "add", "--", "packages/cli/package.json", "bun.lock"],
-			["git", "commit", "-m", `chore: release kabane ${args.version}`],
-		]) {
-			const changed = await runReleaseInteractive(argv, root, env);
-			if (!changed.ok) return changed;
-		}
-	}
-	const committed = await sourceState(root, env);
-	return committed.ok
-		? ok({ commit: committed.value, tagged: tagged.value, notes })
-		: committed;
-};
-
-const prepareArchive = async (
+/** The checkout: clean main at origin's main, with no tag for this version, older than it. */
+const sourcePreconditions = async (
 	version: string,
-	source: PreparedSource,
 	root: string,
 	env: NodeJS.ProcessEnv,
-	directory: string,
-): Promise<Result<void>> => {
+): Promise<string[]> => {
 	const tag = `v${version}`;
-	if (!existsSync(join(directory, "verified.sha256"))) {
-		for (const gate of ["check", "typecheck", "test"]) {
-			const checked = await runReleaseInteractive(
-				[process.execPath, "run", gate],
+	const [dirty, branch, origin, head, remote, localTag, remoteTag] =
+		await Promise.all([
+			query(["git", "status", "--porcelain"], root, env),
+			query(["git", "branch", "--show-current"], root, env),
+			query(["git", "config", "--get", "remote.origin.url"], root, env),
+			query(["git", "rev-parse", "HEAD"], root, env),
+			query(["git", "ls-remote", "origin", "refs/heads/main"], root, env),
+			query(["git", "tag", "--list", tag], root, env),
+			query(
+				["git", "ls-remote", "--tags", "origin", `refs/tags/${tag}`],
 				root,
 				env,
-			);
-			if (!checked.ok) return checked;
-		}
-		if (!existsSync(directory)) {
-			let notes = source.notes;
-			if (notes === undefined) {
-				const history = await query(
-					["git", "log", "-12", "--format=- %s"],
-					root,
-					env,
-				);
-				if (!history.ok) return history;
-				notes = `# kabane ${version}\n\nRecent source changes (review before publishing):\n\n${history.value}\n\nSource commit: ${source.commit}\n\nRead compatibility notes and restart board/MCP sessions after upgrading. Executable rollback is not database rollback.\n`;
-			}
-			const packed = await prepareRelease(
-				directory,
-				`refs/tags/${tag}`,
-				source.commit,
-				notes,
-				root,
-			);
-			if (!packed.ok) return packed;
-		}
-		const retained = verifyArtifactSource(directory, version, source.commit);
-		if (!retained.ok) return retained;
-		const smoke = await runReleaseInteractive(
-			[process.execPath, "scripts/smoke.ts", "--artifact-dir", directory],
-			root,
-			env,
+			),
+		]);
+	const source = z
+		.object({ version: ChannelVersionSchema })
+		.safeParse(
+			JSON.parse(readFileSync(join(root, "packages/cli/package.json"), "utf8")),
 		);
-		if (!smoke.ok) return smoke;
-		const manifest = readArtifactFile(join(directory, "manifest.json"), 65_536);
-		if (!manifest.ok) return manifest;
-		writeFileSync(
-			join(directory, "verified.sha256"),
-			`${sha256(manifest.value)}\n`,
-		);
-	}
-	return verifiedPreparation(directory, version, source.commit);
+	const onBranch = branch.ok ? branch.value || "a detached HEAD" : "unknown";
+	return [
+		[!dirty.ok || dirty.value !== "", "The working tree is not clean."],
+		[
+			!branch.ok || branch.value !== "main",
+			`The checkout is on ${onBranch}, not main.`,
+		],
+		[
+			!origin.ok || !ORIGINS.includes(origin.value),
+			`origin is not ${REPOSITORY}.`,
+		],
+		[
+			!head.ok || !remote.ok || remote.value.split("\t")[0] !== head.value,
+			"HEAD is not origin's main; pull or push first.",
+		],
+		[
+			!localTag.ok ||
+				localTag.value !== "" ||
+				!remoteTag.ok ||
+				remoteTag.value !== "",
+			`Tag ${tag} already exists, here or on origin.`,
+		],
+		[
+			!source.success || compareVersions(version, source.data.version) <= 0,
+			`${version} is not newer than the source's ${source.success ? source.data.version : "version"}.`,
+		],
+	]
+		.filter(([unmet]) => unmet)
+		.map(([, say]) => String(say));
 };
 
-const prepare = async (
-	args: SelectedReleaseArgs,
+/** GitHub: the version passes the published releases, immutability is on, the environment exists. */
+const githubPreconditions = async (
+	version: string,
 	root: string,
 	env: NodeJS.ProcessEnv,
-	choice: ReleaseChoice,
-	wait: (milliseconds: number) => Promise<void>,
-): Promise<Result<string>> => {
-	const directory = join(root, ".releases", choice.version);
-	const source = await prepareSource(args, root, env, directory);
-	if (!source.ok) return source;
-	choice = {
-		...choice,
-		commit: source.value.commit,
-		state: "preparing",
-	};
-	const saved = saveReleaseChoice(root, choice);
-	if (!saved.ok) return saved;
-	const archive = await prepareArchive(
-		args.version,
-		source.value,
+): Promise<string[]> => {
+	const unmet: string[] = [];
+	const published = await readHighestStableRelease((endpoint) =>
+		runUpdateProcess(["gh", "api", "--include", endpoint], root, env, 30_000),
+	);
+	if (!published.ok)
+		unmet.push(`Cannot read the GitHub releases: ${published.error.message}`);
+	else if (
+		published.value !== null &&
+		compareVersions(version, published.value) <= 0
+	)
+		unmet.push(`${version} does not pass the published ${published.value}.`);
+	const immutable = await query(
+		["gh", "api", `repos/${REPOSITORY}/immutable-releases`, "--jq", ".enabled"],
 		root,
 		env,
-		directory,
 	);
-	if (!archive.ok) return archive;
-	const setting = await immutable(root, env, choice, wait);
-	if (!setting.ok) return setting;
-	const tag = `v${args.version}`;
-	if (!source.value.tagged) {
-		const created = await runReleaseInteractive(
-			["git", "tag", "-a", tag, "-m", `kabane ${args.version}`],
-			root,
-			env,
+	if (!immutable.ok || immutable.value !== "true")
+		unmet.push(
+			`Release immutability is not enabled: gh api --method PUT repos/${REPOSITORY}/immutable-releases.`,
 		);
-		if (!created.ok) return created;
+	// A job naming a missing environment creates it, unprotected and without the tap's key.
+	const environment = await query(
+		["gh", "api", `repos/${REPOSITORY}/environments/release`, "--jq", ".name"],
+		root,
+		env,
+	);
+	if (!environment.ok || environment.value !== "release")
+		unmet.push(
+			`The release environment does not exist on ${REPOSITORY} (docs/release.md, "One-time setup").`,
+		);
+	return unmet;
+};
+
+const NOTED = /^(?:feat|fix|perf)(?:\([^()]+\))?!?: +\S/i;
+const NOTES_LINES = 60;
+
+/**
+ * Notes drafted from history: the feat, fix and perf subjects since the previous tag, at most
+ * NOTES_LINES of them, with the compare view for the rest. Pass --notes-file for reviewed notes.
+ */
+export const draftNotes = (
+	version: string,
+	previous: string | null,
+	subjects: string[],
+): string => {
+	const noted = subjects.filter((subject) => NOTED.test(subject));
+	const shown = noted.slice(0, NOTES_LINES).map((subject) => `- ${subject}`);
+	const more = noted.length - shown.length;
+	const compare = previous
+		? `https://github.com/${REPOSITORY}/compare/${previous}...v${version}`
+		: null;
+	return [
+		`# kabane ${version}`,
+		"",
+		previous ? `Changes since ${previous}:` : "Changes:",
+		"",
+		...shown,
+		...(more > 0 ? [`- and ${more} more`] : []),
+		...(compare ? ["", `Every commit: ${compare}`] : []),
+		"",
+		"Read compatibility notes and restart board/MCP sessions after upgrading. Executable rollback is not database rollback.",
+		"",
+	].join("\n");
+};
+
+const releaseNotes = async (
+	version: string,
+	notesFile: string | undefined,
+	root: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<string>> => {
+	if (notesFile) {
+		const read = readArtifactFile(resolve(notesFile), 32_768);
+		return read.ok ? ok(read.value.toString()) : read;
 	}
-	const pushed = await runReleaseInteractive(
+	const previous = await query(
+		["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"],
+		root,
+		env,
+	);
+	const history = await query(
 		[
 			"git",
-			"push",
-			"--atomic",
-			"origin",
-			"HEAD:refs/heads/main",
-			`refs/tags/${tag}`,
+			"log",
+			"--format=%s",
+			...(previous.ok ? [`${previous.value}..HEAD`] : ["-200"]),
 		],
 		root,
 		env,
 	);
-	if (!pushed.ok) return pushed;
-	const completed = saveReleaseChoice(root, {
-		...choice,
-		commit: source.value.commit,
-		state: "prepared",
-	});
-	if (!completed.ok) return completed;
+	if (!history.ok) return history;
 	return ok(
-		`Verified archive retained at ${directory}. No npm publication attempted.\nReview release-notes.md and perform the manual board check, then:\n  npm login\n  bun run release:local publish\nPublishing will reuse these bytes without running gates, building or packing again.`,
+		draftNotes(
+			version,
+			previous.ok ? previous.value : null,
+			history.value.split("\n"),
+		),
 	);
 };
 
-export const runLocalRelease = async (
-	args: LocalReleaseArgs,
+/** The dispatch run for the tag's commit: the pushed tag also starts a nonpublishing run. */
+const findDispatchRun = async (
+	commit: string,
+	root: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<{ id: number; url: string }>> => {
+	const Runs = z.array(z.object({ databaseId: z.number(), url: z.string() }));
+	for (let attempt = 0; attempt < 12; attempt++) {
+		if (attempt > 0) await Bun.sleep(5_000);
+		const listed = await query(
+			[
+				"gh",
+				"run",
+				"list",
+				"--repo",
+				REPOSITORY,
+				"--workflow",
+				"release.yml",
+				"--event",
+				"workflow_dispatch",
+				"--commit",
+				commit,
+				"--json",
+				"databaseId,url",
+				"--limit",
+				"1",
+			],
+			root,
+			env,
+		);
+		const runs = listed.ok ? Runs.safeParse(JSON.parse(listed.value)) : null;
+		const run = runs?.success ? runs.data[0] : undefined;
+		if (run) return ok({ id: run.databaseId, url: run.url });
+	}
+	return fail(
+		`The dispatch was accepted but its run did not appear within a minute; find it with gh run list --repo ${REPOSITORY} --workflow release.yml --event workflow_dispatch.`,
+	);
+};
+
+const printPlan = (
+	{
+		version,
+		steps,
+		notes,
+		unmet,
+		root,
+	}: {
+		version: string;
+		steps: Step[];
+		notes: string;
+		unmet: string[];
+		root: string;
+	},
+	print: (line: string) => void,
+): Result<string> => {
+	print(`kabane ${version}, from ${root}. A real run would:`);
+	print(`  Set packages/cli/package.json to ${version}`);
+	for (const step of steps)
+		print(
+			`  ${step.say}: ${step.argv
+				.map((arg) =>
+					arg.startsWith("notes=")
+						? "notes=<the release notes below>"
+						: /[\s"']/.test(arg)
+							? JSON.stringify(arg)
+							: arg,
+				)
+				.join(" ")}`,
+		);
+	print("  Watch that run: gh run watch <its id> --exit-status");
+	print(`Release notes:\n${notes}`);
+	if (!unmet.length) return ok("Dry run: nothing was run.");
+	print("It would stop before any write, because:");
+	for (const line of unmet) print(`  - ${line}`);
+	return fail("Dry run: preconditions unmet; nothing was run.");
+};
+
+/** The version, its gate, commit, tag, push and dispatch, stopping at the first failure. */
+const cutRelease = async (
+	version: string,
+	steps: Step[],
+	root: string,
+	env: NodeJS.ProcessEnv,
+): Promise<Result<void>> => {
+	const manifest = join(root, "packages/cli/package.json");
+	const source = JSON.parse(readFileSync(manifest, "utf8")) as Record<
+		string,
+		unknown
+	>;
+	writeFileSync(
+		manifest,
+		`${JSON.stringify({ ...source, version }, null, "\t")}\n`,
+	);
+	for (const step of steps) {
+		const argv =
+			step.argv[0] === "bun"
+				? [process.execPath, ...step.argv.slice(1)]
+				: step.argv;
+		const ran = await runReleaseInteractive(argv, root, env);
+		if (!ran.ok)
+			return fail(
+				`${ran.error.message}\nStopped at: ${step.argv.join(" ")}. Earlier steps stay done; inspect git and GitHub before rerunning.`,
+			);
+	}
+	return ok(undefined);
+};
+
+/** Finds the publishing run the dispatch started and watches it to its end. */
+const watchRelease = async (
+	version: string,
+	root: string,
+	env: NodeJS.ProcessEnv,
+	print: (line: string) => void,
+): Promise<Result<string>> => {
+	const commit = await query(["git", "rev-parse", "HEAD"], root, env);
+	if (!commit.ok) return commit;
+	const run = await findDispatchRun(commit.value, root, env);
+	if (!run.ok) return run;
+	print(`Publishing run: ${run.value.url}`);
+	const watched = await runReleaseInteractive(
+		[
+			"gh",
+			"run",
+			"watch",
+			String(run.value.id),
+			"--repo",
+			REPOSITORY,
+			"--exit-status",
+		],
+		root,
+		env,
+	);
+	return watched.ok
+		? ok(
+				`kabane ${version} is published: https://github.com/${REPOSITORY}/releases/tag/v${version}`,
+			)
+		: fail(
+				`The publishing run failed: ${run.value.url}. The tag and main are pushed; fix and rerun that run, or release the next version.`,
+			);
+};
+
+export const runRelease = async (
+	args: ReleaseArgs,
 	root = ROOT,
 	env: NodeJS.ProcessEnv = process.env,
-	wait: (milliseconds: number) => Promise<void> = async (milliseconds) => {
-		await Bun.sleep(milliseconds);
-	},
+	print: (line: string) => void = console.log,
 ): Promise<Result<string>> => {
-	const validated = LocalReleaseArgsSchema.safeParse(args);
-	if (!validated.success) return fail(LOCAL_RELEASE_HELP);
-	args = validated.data;
-	if (args.sourceRoot) root = resolve(args.sourceRoot);
 	if (env.GITHUB_ACTIONS === "true")
 		return fail(
-			"Use the protected OIDC workflow in CI; local release is human-run.",
+			"bun run release is human-run; CI publishes through its dispatch.",
 		);
-	let lock: string | undefined;
-	try {
-		const head = await sourceState(root, env);
-		if (!head.ok) return head;
-		// Checking GitHub access before version writes avoids preparing a release that cannot be finished.
-		const access = await query(
-			["gh", "api", "repos/davidpp/kabane/immutable-releases"],
-			root,
-			env,
+	const selected = args.version
+		? ok(args.version)
+		: await selectReleaseVersion(args.bump ?? "auto", root, env);
+	if (!selected.ok) return selected;
+	const version = selected.value;
+	const notes = await releaseNotes(version, args.notesFile, root, env);
+	if (!notes.ok) return notes;
+	if (Buffer.byteLength(notes.value) > 32_768)
+		return fail("Release notes exceed 32KiB.");
+	const unmet = [
+		...(await sourcePreconditions(version, root, env)),
+		...(await githubPreconditions(version, root, env)),
+	];
+	const steps = releaseSteps(version, notes.value);
+	if (args.dryRun)
+		return printPlan(
+			{ version, steps, notes: notes.value, unmet, root },
+			print,
 		);
-		if (!access.ok) return access;
-		const parent = join(root, ".releases");
-		mkdirSync(parent, { recursive: true });
-		const candidate = join(parent, "release.lock");
-		if (existsSync(candidate))
-			return fail(
-				`Release lock exists at ${candidate}; another local release may be running. Investigate before removing a stale lock.`,
-			);
-		mkdirSync(candidate);
-		lock = candidate;
-		const selected = await resolveReleaseChoice(args, head.value, root, env);
-		if (!selected.ok) return selected;
-		const choice = selected.value;
-		const directory = join(parent, choice.version);
-		if (args.mode === "prepare")
-			return await prepare(
-				{ ...args, version: choice.version },
-				root,
-				env,
-				choice,
-				wait,
-			);
-		const proven = verifiedPreparation(directory, choice.version, head.value);
-		if (!proven.ok) return proven;
-		const selectedArchive = saveReleaseChoice(root, {
-			...choice,
-			commit: head.value,
-			state: choice.state,
-		});
-		if (!selectedArchive.ok) return selectedArchive;
-		const setting = await immutable(root, env, undefined, wait);
-		if (!setting.ok) return setting;
-		const authenticated = await query(
-			["npm", "whoami", "--registry", "https://registry.npmjs.org/"],
-			root,
-			env,
-		);
-		if (!authenticated.ok)
-			return fail(
-				`Run npm login, then retry publish. Selected version ${choice.version} and original archive retained; no draft or npm publication attempted.`,
-			);
-		const published = await publishLocalRelease(directory, env, root);
-		if (!published.ok) return published;
-		const retained = saveReleaseChoice(root, {
-			...choice,
-			commit: head.value,
-			state: "published",
-		});
-		return retained.ok ? published : retained;
-	} catch {
-		return fail(
-			"Local release stopped; source/settings may have changed. Inspect the retained .releases directory and git state. No automatic rollback, tag movement or artifact replacement.",
-		);
-	} finally {
-		if (lock) rmSync(lock, { recursive: true, force: true });
-	}
+	if (unmet.length)
+		return fail(`Nothing was changed, because:\n  - ${unmet.join("\n  - ")}`);
+	const cut = await cutRelease(version, steps, root, env);
+	return cut.ok ? watchRelease(version, root, env, print) : cut;
 };
 
 if (import.meta.main) {
 	const argv = process.argv.slice(2);
-	if (argv.length === 1 && argv[0] === "--help")
-		console.log(LOCAL_RELEASE_HELP);
+	if (argv.length === 1 && argv[0] === "--help") console.log(RELEASE_HELP);
 	else {
-		const parsed = parseLocalReleaseArgs(argv);
-		const result = parsed.ok ? await runLocalRelease(parsed.value) : parsed;
+		const parsed = parseReleaseArgs(argv);
+		const result = parsed.ok ? await runRelease(parsed.value) : parsed;
 		if (result.ok) console.log(result.value);
 		else {
 			console.error(result.error.message);

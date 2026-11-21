@@ -1,13 +1,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { runUpdateProcess } from "../packages/cli/src/update-process";
 import { err, ok, type Result } from "../packages/core/result";
 import {
-	inspectArchive,
-	integrity,
-	PackOutputSchema,
 	ReleaseManifestSchema,
 	sha256,
 	verifyReleaseFiles,
@@ -39,9 +35,8 @@ const verifySource = async (
 	if (!source.success) return err(new Error("Invalid source CLI manifest."));
 	const commit = await command(["git", "rev-parse", "HEAD"], root);
 	const status = await command(["git", "status", "--porcelain"], root);
-	const npm = await command(["npm", "--version"], root);
-	if (!commit.ok || !status.ok || !npm.ok)
-		return err(new Error("Could not establish source/tool identity."));
+	if (!commit.ok || !status.ok)
+		return err(new Error("Could not establish source identity."));
 	if (expectedCommit && commit.value !== expectedCommit)
 		return err(new Error("Checkout/event commit mismatch."));
 	const tag = ref?.startsWith("refs/tags/")
@@ -53,11 +48,14 @@ const verifySource = async (
 		version: source.data.version,
 		commit: commit.value,
 		dirty: status.value !== "",
-		npm: npm.value,
 		tag,
 	});
 };
 
+/**
+ * The release's identity and notes, before the native jobs' archives are attached
+ * (`release-binaries.ts`). Nothing is built here: the archives are the whole release.
+ */
 export const prepareRelease = async (
 	output: string,
 	ref?: string,
@@ -68,36 +66,7 @@ export const prepareRelease = async (
 	try {
 		const source = await verifySource(root, ref, expectedCommit);
 		if (!source.ok) return source;
-		const { version, commit, dirty, npm, tag } = source.value;
-		const built = await command([process.execPath, "scripts/build.ts"], root);
-		if (!built.ok) return built;
-		mkdirSync(output);
-		const packed = await command(
-			[
-				"npm",
-				"pack",
-				"--json",
-				"--ignore-scripts",
-				"--pack-destination",
-				output,
-			],
-			join(root, "packages/cli/dist"),
-		);
-		if (!packed.ok) return packed;
-		const pack = PackOutputSchema.safeParse(JSON.parse(packed.value));
-		const first = pack.success ? pack.data[0] : undefined;
-		if (!first) return err(new Error("Invalid pack result."));
-		const archive = join(output, first.filename);
-		const inspected = await inspectArchive(
-			archive,
-			join(output, "inspection"),
-			[root, homedir()],
-		);
-		if (!inspected.ok || inspected.value.version !== version)
-			return err(
-				new Error("Packed/source version or artifact inspection failed."),
-			);
-		const bytes = readFileSync(archive);
+		const { version, commit, dirty, tag } = source.value;
 		const body =
 			notes?.trim() ||
 			`# kabane ${version}\n\nSource commit: ${commit}\n\nReview compatibility, consistent database backups, restart/rewiring instructions and the manual terminal smoke before publishing.\n`;
@@ -109,28 +78,21 @@ export const prepareRelease = async (
 			commit,
 			tag,
 			dirty,
-			filename: first.filename,
-			sha256: sha256(bytes),
-			integrity: integrity(bytes),
 			notesSha256: sha256(noteBytes),
 			bun: Bun.version,
-			npm,
 		});
 		if (!manifest.success)
 			return err(new Error("Invalid release identity/tool metadata."));
+		mkdirSync(output);
 		writeFileSync(
 			join(output, "manifest.json"),
 			`${JSON.stringify(manifest.data, null, 2)}\n`,
-		);
-		writeFileSync(
-			join(output, "SHA256SUMS"),
-			`${manifest.data.sha256}  ${first.filename}\n`,
 		);
 		writeFileSync(join(output, "release-notes.md"), noteBytes);
 		const checked = verifyReleaseFiles(output);
 		return checked.ok
 			? ok(
-					`Verified archive ${first.filename}; tag=${tag ?? "none"}, dirty=${manifest.data.dirty}. Nonpublishing preparation does not prove OIDC.`,
+					`Prepared release ${version}; tag=${tag ?? "none"}, dirty=${manifest.data.dirty}. The native archives attach next.`,
 				)
 			: checked;
 	} catch {
@@ -173,7 +135,7 @@ if (import.meta.main) {
 		const verified = verifyReleaseFiles(resolve(directory));
 		result = verified.ok
 			? ok(
-					`Artifact hashes verified for ${verified.value.version}; no publication/OIDC operation performed.`,
+					`Artifact hashes verified for ${verified.value.version}; nothing published.`,
 				)
 			: verified;
 	} else if (mode === "publish")

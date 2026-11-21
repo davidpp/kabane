@@ -23,6 +23,7 @@ const Job = z
 const Workflow = z.object({
 	on: z
 		.object({
+			push: z.object({ tags: z.array(z.string()) }).strict(),
 			workflow_dispatch: z.object({
 				inputs: z
 					.object({
@@ -41,15 +42,64 @@ const Workflow = z.object({
 			"native-binaries": Job,
 			prepare: Job,
 			"installed-smoke": Job,
+			attest: Job,
 			publish: Job,
+			homebrew: Job,
 		})
 		.strict(),
 });
-test("release workflow default is nonpublishing, exact-artifact and permission-separated", () => {
-	const raw = readFileSync(
+/** The contexts a publication gate reads, for a pushed tag and for a tag-ref dispatch. */
+const TAG = {
+	"github.ref_type": "tag",
+	"github.ref": "refs/tags/v1.2.3",
+	"github.ref_name": "v1.2.3",
+	"github.repository": "davidpp/kabane",
+};
+const EVENTS = {
+	push: { ...TAG, "github.event_name": "push", "inputs.publish": null },
+	dryRun: {
+		...TAG,
+		"github.event_name": "workflow_dispatch",
+		"inputs.publish": false,
+	},
+	dispatch: {
+		...TAG,
+		"github.event_name": "workflow_dispatch",
+		"inputs.publish": true,
+	},
+};
+
+/**
+ * A gate of the workflow evaluated for one event: a conjunction of `path == 'value'`,
+ * `startsWith(path, 'value')` and bare `path` clauses, the shape its publication gates keep. Any
+ * other clause, an `||` included, fails the test rather than being guessed at.
+ */
+const gate = (
+	expression: string | undefined,
+	context: Record<string, unknown>,
+): boolean =>
+	(expression ?? "")
+		.replace(/^\$\{\{\s*|\s*\}\}$/g, "")
+		.split(" && ")
+		.every((clause) => {
+			const equals = /^([\w.]+) == '([^']*)'$/.exec(clause);
+			if (equals?.[1]) return context[equals[1]] === equals[2];
+			const starts = /^startsWith\(([\w.]+), '([^']*)'\)$/.exec(clause);
+			if (starts?.[1])
+				return String(context[starts[1]]).startsWith(starts[2] ?? "");
+			if (!/^[\w.]+$/.test(clause) || !(clause in context))
+				throw new Error(`unsupported gate clause: ${clause}`);
+			return Boolean(context[clause]);
+		});
+
+const workflow = () =>
+	readFileSync(
 		join(import.meta.dir, "../.github/workflows/release.yml"),
 		"utf8",
 	);
+
+test("release workflow default is nonpublishing, exact-artifact and permission-separated", () => {
+	const raw = workflow();
 	const parsed = Workflow.safeParse(Bun.YAML.parse(raw));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
@@ -70,9 +120,6 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 		smoke.steps.some((step) => step.run?.includes("release.ts verify")),
 	).toBe(true);
 	expect(
-		smoke.steps.some((step) => step.run?.includes("smoke.ts --artifact-dir")),
-	).toBe(true);
-	expect(
 		smoke.steps.some(
 			(step) => step.run?.includes("build") || step.run?.includes("pack"),
 		),
@@ -86,13 +133,9 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 			"merge-multiple": true,
 		});
 	}
-	expect(publish.environment).toBe("npm-release");
-	expect(publish.permissions).toEqual({
-		contents: "write",
-		"id-token": "write",
-		actions: "read",
-	});
-	expect(publish.if).toContain("inputs.publish");
+	expect(publish.environment).toBe("release");
+	// Writing the release is all it does: no OIDC token, since nothing goes to npm.
+	expect(publish.permissions).toEqual({ contents: "write" });
 	expect(publish.if).toContain("github.ref_type == 'tag'");
 	expect(publish.if).toContain("github.repository == 'davidpp/kabane'");
 	expect(publish.concurrency).toEqual({
@@ -101,33 +144,20 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 	});
 	expect(
 		publish.steps.find((step) => step.run?.includes("release.ts publish"))?.env,
-	).toMatchObject({
-		RELEASE_PUBLISH: "${{ inputs.publish }}",
-		RELEASE_SETUP_CONFIRMED: "${{ vars.RELEASE_SETUP_CONFIRMED }}",
+	).toEqual({
+		GH_TOKEN: "${{ github.token }}",
+		RELEASE_PUBLISH:
+			"${{ github.event_name == 'workflow_dispatch' && inputs.publish }}",
 	});
-	for (const job of [
-		parsed.data.jobs["native-binaries"],
-		prepare,
-		smoke,
-		publish,
-	])
-		for (const step of job.steps) {
+	for (const job of Object.values(parsed.data.jobs))
+		for (const step of job.steps)
 			if (step.uses) expect(step.uses).toMatch(/^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
-			expect(step.env?.NODE_AUTH_TOKEN).toBeUndefined();
-		}
-	expect(raw).toContain('node-version: "24.21.0"');
-	expect(raw).toContain("npm@12.2.0");
+	// A release builds, checks and publishes with Bun and gh alone.
+	expect(raw).not.toMatch(/setup-node|npm |\.tgz/);
 });
 
 test("native matrix retains four archives and smoke consumes the assembled bytes", () => {
-	const parsed = Workflow.safeParse(
-		Bun.YAML.parse(
-			readFileSync(
-				join(import.meta.dir, "../.github/workflows/release.yml"),
-				"utf8",
-			),
-		),
-	);
+	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
 	const native = parsed.data.jobs["native-binaries"];
@@ -173,4 +203,78 @@ test("native matrix retains four archives and smoke consumes the assembled bytes
 			step.run?.includes("smoke.ts --binary"),
 		),
 	).toBe(true);
+});
+
+test("only a publish=true dispatch publishes; a pushed tag and a dry run verify and attest", () => {
+	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
+	expect(parsed.success).toBe(true);
+	if (!parsed.success) return;
+	const { attest, publish, prepare } = parsed.data.jobs;
+	expect(parsed.data.on.push.tags).toEqual([
+		"v[0-9]+.[0-9]+.[0-9]+",
+		"v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+",
+	]);
+	const gates = [
+		publish.if,
+		prepare.steps.find((step) => step.run?.includes("release.ts prepare"))?.env
+			?.RELEASE_PUBLISH,
+		publish.steps.find((step) => step.run?.includes("release.ts publish"))?.env
+			?.RELEASE_PUBLISH,
+	];
+	for (const expression of gates) {
+		expect(gate(expression, EVENTS.push)).toBe(false);
+		expect(gate(expression, EVENTS.dryRun)).toBe(false);
+		expect(gate(expression, EVENTS.dispatch)).toBe(true);
+	}
+	// Attestation runs whatever the event, so a tag push still proves the attest job works.
+	expect(attest.if).toBe("github.repository == 'davidpp/kabane'");
+	expect(publish.needs).toEqual(["prepare", "installed-smoke", "attest"]);
+	expect(attest.permissions).toEqual({
+		contents: "read",
+		"id-token": "write",
+		attestations: "write",
+	});
+	const subjects = attest.steps.find((step) =>
+		step.uses?.startsWith("actions/attest-build-provenance@"),
+	)?.with?.["subject-path"];
+	for (const subject of ["*.tar.gz", "install.sh"])
+		expect(subjects).toContain(`release/${subject}`);
+	expect(
+		prepare.steps.some((step) => step.run?.includes("release-formula.ts")),
+	).toBe(true);
+	const upload = prepare.steps.find((step) =>
+		step.uses?.startsWith("actions/upload-artifact@"),
+	);
+	expect(upload?.with?.path).toContain("release/kabane.rb");
+	expect(upload?.with?.path).toContain("release/install.sh");
+	for (const job of Object.values(parsed.data.jobs))
+		for (const step of job.steps)
+			if (step.uses?.startsWith("oven-sh/setup-bun@"))
+				expect(step.with?.["no-cache"]).toBe(true);
+});
+
+test("the tap takes a stable release's formula once its GitHub release is public, with the release environment's key", () => {
+	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
+	expect(parsed.success).toBe(true);
+	if (!parsed.success) return;
+	const { homebrew } = parsed.data.jobs;
+	expect(homebrew.needs).toEqual(["prepare", "publish"]);
+	// Its deploy key is an environment secret: only a job in that environment reads it.
+	expect(homebrew.environment).toBe("release");
+	expect(homebrew.if).toContain("!contains(github.ref_name, '-')");
+	expect(homebrew.permissions).toEqual({});
+	const runs = homebrew.steps.map((step) => step.run ?? "").join("\n");
+	expect(runs).toContain(
+		"https://github.com/davidpp/kabane/releases/download/$TAG/SHA256SUMS",
+	);
+	expect(runs).toContain("cmp published-SHA256SUMS release/SHA256SUMS");
+	expect(runs).toContain("cp release/kabane.rb tap/Formula/kabane.rb");
+	expect(runs).not.toMatch(/npm|gh release/);
+	expect(
+		homebrew.steps.find((step) => step.uses?.startsWith("actions/checkout@"))
+			?.with,
+	).toMatchObject({
+		repository: "davidpp/homebrew-tap",
+		"ssh-key": "${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}",
+	});
 });

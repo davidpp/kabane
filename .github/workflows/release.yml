@@ -1,10 +1,18 @@
 name: verified release
 
+# Only a dispatch on an existing vX.Y.Z or vX.Y.Z-beta.N tag ref with publish=true publishes, in the
+# release environment: the GitHub release with its four archives, the installer and SHA256SUMS,
+# then for a stable release the davidpp/tap formula. Nothing goes to npm. `bun run release` pushes
+# the tag and starts that dispatch. A pushed tag alone and a dispatch with publish=false are
+# verification runs: the same builds, checks and attestations, retained as a workflow artifact,
+# with nothing published.
 on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+"]
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish after protected-environment approval (existing vX.Y.Z or vX.Y.Z-beta.N tag ref only)"
+        description: "Publish the GitHub release and the tap formula (existing vX.Y.Z or vX.Y.Z-beta.N tag ref only); a pushed tag never publishes"
         type: boolean
         default: false
       notes:
@@ -31,6 +39,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: .bun-version
+          no-cache: true # a release takes nothing from a cache
       - run: bun install --frozen-lockfile
       - name: Compile once with the native OpenTUI dependency and retain archive
         run: bun scripts/build-binary.ts "${{ matrix.target }}" "$RUNNER_TEMP/native"
@@ -55,19 +64,15 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: .bun-version
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24.21.0"
-          package-manager-cache: false
-      - run: npm install --global npm@12.2.0 --ignore-scripts
+          no-cache: true # a release takes nothing from a cache
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run typecheck
       - run: bun run test
-      - name: Build and pack the retained artifact once
+      - name: Record the release's identity and notes
         run: bun scripts/release.ts prepare "$RUNNER_TEMP/release"
         env:
-          RELEASE_PUBLISH: ${{ inputs.publish }}
+          RELEASE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
           RELEASE_NOTES: ${{ inputs.notes }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -76,14 +81,17 @@ jobs:
           path: ${{ runner.temp }}/native
       - name: Verify producer identities and assemble original bytes with one checksum list
         run: bun scripts/release-binaries.ts "$RUNNER_TEMP/release" "$RUNNER_TEMP/native"
+      - name: Generate the Homebrew formula for these archives
+        run: bun scripts/release-formula.ts "$RUNNER_TEMP/release"
       - id: upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: kabane-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/release/*.tgz
             ${{ runner.temp }}/release/*.tar.gz
+            ${{ runner.temp }}/release/install.sh
+            ${{ runner.temp }}/release/kabane.rb
             ${{ runner.temp }}/release/manifest.json
             ${{ runner.temp }}/release/SHA256SUMS
             ${{ runner.temp }}/release/release-notes.md
@@ -102,11 +110,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: .bun-version
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24.21.0"
-          package-manager-cache: false
-      - run: npm install --global npm@12.2.0 --ignore-scripts
+          no-cache: true # a release takes nothing from a cache
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -114,26 +118,43 @@ jobs:
           path: ${{ runner.temp }}/release
           merge-multiple: true
       - run: bun scripts/release.ts verify "$RUNNER_TEMP/release"
-      - name: Install and drive exactly the downloaded archive (no build or pack)
-        run: bun scripts/smoke.ts --artifact-dir "$RUNNER_TEMP/release"
       - name: Drive the retained standalone binary without Bun on PATH
         run: |
           mkdir "$RUNNER_TEMP/standalone"
           tar -xzf "$RUNNER_TEMP/release/kabane-${{ matrix.target }}.tar.gz" -C "$RUNNER_TEMP/standalone"
           bun scripts/smoke.ts --binary "$RUNNER_TEMP/standalone/kabane/kabane"
 
-  publish:
-    if: inputs.publish && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'davidpp/kabane'
-    needs: [prepare, installed-smoke]
+  attest:
+    needs: prepare
+    if: github.repository == 'davidpp/kabane'
     runs-on: ubuntu-24.04
-    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write # build provenance (Sigstore)
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+      # install.sh checks the archive it downloads with `gh attestation verify`.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/*.tar.gz
+            ${{ runner.temp }}/release/install.sh
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'davidpp/kabane'
+    needs: [prepare, installed-smoke, attest]
+    runs-on: ubuntu-24.04
+    environment: release
     concurrency:
       group: release-kabane-stable
       cancel-in-progress: false
     permissions:
       contents: write
-      id-token: write
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -141,11 +162,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: .bun-version
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24.21.0"
-          package-manager-cache: false
-      - run: npm install --global npm@12.2.0 --ignore-scripts
+          no-cache: true # a release takes nothing from a cache
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -153,11 +170,53 @@ jobs:
           path: ${{ runner.temp }}/release
           merge-multiple: true
       - run: bun scripts/release.ts verify "$RUNNER_TEMP/release"
-      # No NODE_AUTH_TOKEN/npm secret: OIDC only. Setup confirmation is a human
-      # assertion, not proof of environment protection or a trusted-publisher exchange.
-      - name: Complete the verified exact-archive publication
+      - name: Publish these exact assets as the immutable GitHub release
         run: bun scripts/release.ts publish "$RUNNER_TEMP/release"
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_PUBLISH: ${{ inputs.publish }}
-          RELEASE_SETUP_CONFIRMED: ${{ vars.RELEASE_SETUP_CONFIRMED }}
+          RELEASE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+
+  homebrew:
+    name: Commit the formula to davidpp/homebrew-tap
+    needs: [prepare, publish]
+    # A stable release only: the tap's formula is what `brew install` gives everyone.
+    if: github.repository == 'davidpp/kabane' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-24.04
+    # The deploy key is a release environment secret, so only a job in that environment reads it.
+    environment: release
+    # The repository token is not used: the tap is written with a deploy key that can write to
+    # davidpp/homebrew-tap only.
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: release
+          merge-multiple: true
+      # Drafts are not public: the download answers only once the GitHub release is final.
+      - name: The published GitHub release serves these archives' checksums
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          curl -fsSL -o published-SHA256SUMS "https://github.com/davidpp/kabane/releases/download/$TAG/SHA256SUMS"
+          cmp published-SHA256SUMS release/SHA256SUMS
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: davidpp/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+          persist-credentials: true # pushes the formula below; nothing in this job uploads `tap`
+      - name: Commit the formula
+        run: |
+          version=$(jq -r .version release/manifest.json)
+          cp release/kabane.rb tap/Formula/kabane.rb
+          cd tap
+          git add Formula/kabane.rb
+          if git diff --cached --quiet; then
+            echo "Formula/kabane.rb already matches $version"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "kabane $version"
+          git push origin HEAD:main
