@@ -96,9 +96,13 @@ const seedRepo = (): void => {
 	]);
 };
 
-// Claude Code reads CLAUDE_CONFIG_DIR before HOME: a contributor's own would take setup's install
-// out of the sandbox and into their real Claude config.
-const { CLAUDE_CONFIG_DIR: _own, ...inherited } = process.env;
+// Claude Code reads CLAUDE_CONFIG_DIR, and Gemini CLI GEMINI_CLI_HOME, before HOME: a contributor's
+// own would point setup's install, or a harness the sandbox starts, at their real config.
+const {
+	CLAUDE_CONFIG_DIR: _claude,
+	GEMINI_CLI_HOME: _gemini,
+	...inherited
+} = process.env;
 
 const sandboxEnv = (harnesses: boolean): NodeJS.ProcessEnv =>
 	harnesses
