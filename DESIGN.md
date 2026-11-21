@@ -205,8 +205,9 @@ color in the board comes from there; a hex literal anywhere else fails a test.
 
 **The Ink Rule.** Ink is the author's structure, never the board's. It appears only inside
 rendered markdown (a brief, a comment): a heading, inline code, a link's label. Chrome,
-strips, badges and the footer never take it, so it cannot be misread as a state. A checked
-task box takes `{colors.done}`, because a checked box is done.
+strips, badges and the footer never take it, so it cannot be misread as a state. A task box,
+checked or not, takes its list marker's `{colors.text-muted}`: the glyph (☑, ☐) carries the state,
+and OpenTUI draws the bullet and the box as one marker that no style key can split.
 
 **Open.** Priority is color-only today (an urgent id is tinted `{colors.failed}`, a high one
 `{colors.accent}`), which breaks "never color-only" and collides with two meanings above.
