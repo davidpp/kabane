@@ -628,9 +628,40 @@ export namespace RunSteps {
 		steps.findLast((s) => s.state === "running") ??
 		steps.find((s) => s.state === "pending");
 
-	/** What the run has spent where a harness priced its work, in the run's currency. */
-	export const spend = (run: RunStore.Run): number =>
-		Budget.spent(run.usage, run.config.budget.currency, run.claims).amount;
+	/**
+	 * What the run has spent where a harness priced its work, in the run's currency, and the harnesses
+	 * of its sessions that priced none of theirs in it (no cost reported, or another currency), whose
+	 * spend is unknown. `priced` says whether any session did, so an unknown spend is not read as
+	 * a measured zero.
+	 */
+	export const spend = (
+		run: RunStore.Run,
+	): { amount: number; priced: boolean; unpriced: string[] } => {
+		const { currency } = run.config.budget;
+		const isPriced = (claim: RunStore.Claim): boolean =>
+			run.usage[claim.sessionId]?.cost?.currency === currency;
+		return {
+			amount: Budget.spent(run.usage, currency, run.claims).amount,
+			priced: run.claims.some(isPriced),
+			unpriced: [
+				...new Set(
+					run.claims.filter((c) => !isPriced(c)).map((c) => c.harness),
+				),
+			],
+		};
+	};
+
+	// The spend fact: `$17.50`, `$17.50 (codex unpriced)`, or `unknown (codex unpriced)` when no
+	// session priced its work; a spend limit after the amount. Not `·` before the harnesses: the
+	// board joins facts with it.
+	const spendFact = (run: RunStore.Run): string => {
+		const { amount, priced, unpriced } = spend(run);
+		const limit = run.config.budget.spend;
+		const spent =
+			priced || unpriced.length === 0 ? money(run, amount) : "unknown";
+		const of = limit === undefined ? spent : `${spent} of ${money(run, limit)}`;
+		return unpriced.length > 0 ? `${of} (${unpriced.join("·")} unpriced)` : of;
+	};
 
 	/**
 	 * What the run runs with, in words, for the board's `?` sheet: its slots and continuations as
@@ -643,7 +674,6 @@ export namespace RunSteps {
 		const live = RunStore.isLive(run.status)
 			? run.claims.filter((c) => c.endedAt === undefined).length
 			: 0;
-		const spent = spend(run);
 		const list = (names: readonly string[]): string =>
 			names.length > 0 ? names.join("·") : "none";
 		return [
@@ -652,13 +682,7 @@ export namespace RunSteps {
 				label: "continuations",
 				value: `${run.continuationsUsed}/${budget.continuations}`,
 			},
-			{
-				label: "spend",
-				value:
-					budget.spend === undefined
-						? money(run, spent)
-						: `${money(run, spent)} of ${money(run, budget.spend)}`,
-			},
+			{ label: "spend", value: spendFact(run) },
 			{
 				label: "implementer",
 				value: `${config.implementer}${config.model ? ` ${config.model}` : ""}`,

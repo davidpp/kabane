@@ -599,3 +599,45 @@ describe("LoopActivity.card", () => {
 		expect("left" in landed).toBe(false);
 	});
 });
+
+describe("RunSteps' spend fact", () => {
+	const spendOf = (run: RunStore.Run) =>
+		RunSteps.facts(run).find((fact) => fact.label === "spend")?.value;
+	const priced = (amount: number) => ({
+		used: 1,
+		size: 10,
+		cost: { amount, currency: "USD" },
+	});
+
+	it("names the harnesses whose sessions priced nothing beside what the others spent", () => {
+		expect(spendOf(finished())).toBe("$17.50 (codex unpriced)");
+	});
+
+	it("tells a spend nobody priced from a measured zero", () => {
+		expect(spendOf(finished({ usage: {} }))).toBe(
+			"unknown (codex·claude unpriced)",
+		);
+		const claims = finished().claims.filter((c) => c.harness === "claude");
+		expect(
+			spendOf(
+				finished({
+					claims,
+					usage: Object.fromEntries(
+						claims.map((c) => [c.sessionId, priced(0)]),
+					),
+				}),
+			),
+		).toBe("$0.00");
+		expect(spendOf(finished({ claims: [], usage: {} }))).toBe("$0.00");
+	});
+
+	it("keeps the limit after the amount", () => {
+		const limited = finished({
+			config: {
+				...RUN_JSON.config,
+				budget: { ...RUN_JSON.config.budget, spend: 20 },
+			},
+		});
+		expect(spendOf(limited)).toBe("$17.50 of $20.00 (codex unpriced)");
+	});
+});
