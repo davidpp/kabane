@@ -79,6 +79,15 @@ tag drops away. Between sessions, the feed shows the run’s own work, including
 and claims. Once the run ends, the feed becomes a trace of the steps it reached, the landing
 and any later pruning.
 
+From 160 columns wide the tab splits in two. The left column holds the map, the question a
+session asks you, and what the run runs with: its slots, continuations, spend, harnesses, gates,
+lenses and landing, which narrower panes list in the `?` sheet. The right column holds `now` over
+the log of the session under the cursor, so moving the cursor shows another session's log
+without a key; with one session live, its log stands alone. Once the run is over, the right
+column shows the trace over a list of every session the run had, with its time and result. The
+keys are the same at every width, and on a short pane the map gives up rows before the feed and
+the key hints do.
+
 Once the run is over, the map lists what it left for you: each finding still open, reopened by a
 lens's recheck or filed by one, and the branch when it did not land. `enter` on a finding opens
 it. The run's tab keeps an orange `?` until you have looked at that list.
