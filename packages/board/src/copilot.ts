@@ -450,7 +450,8 @@ export namespace BoardCopilot {
 	// harness still in its handshake, or its connection closed once the handshake answered. A newer
 	// start lets go of the ones before it without waiting on them, so a start the human cancelled
 	// and prompted past is not left running; `stop` lets go of every start and settles once every
-	// harness halted so far has exited, a cancel's the board did not wait for included.
+	// harness halted so far has exited, a cancel's the board did not wait for included. `close` is
+	// `stop` for good: a prompt that reaches the copilot while the board quits starts nothing.
 	const createStarts = (options: Options) => {
 		type Start = {
 			stop: AbortController;
@@ -458,6 +459,7 @@ export namespace BoardCopilot {
 		};
 		const inFlight = new Set<Start>();
 		const halting = new Set<Promise<void>>();
+		let closed = false;
 
 		const halt = async (start: Start): Promise<void> => {
 			start.stop.abort();
@@ -480,10 +482,16 @@ export namespace BoardCopilot {
 			await Promise.all(halting);
 		};
 
+		const close = (): Promise<void> => {
+			closed = true;
+			return stop();
+		};
+
 		const open = async (
 			launch: Launch,
 			handlers: Omit<Handlers, "signal">,
 		): Promise<Result<Opened>> => {
+			if (closed) return stopped(options);
 			letGo();
 			const stopping = new AbortController();
 			const start: Start = {
@@ -505,7 +513,7 @@ export namespace BoardCopilot {
 			return opened.ok && stopping.signal.aborted ? stopped(options) : opened;
 		};
 
-		return { open, stop };
+		return { open, stop, close };
 	};
 
 	// The session the copilot holds, and the closes a quit waits on. A harness that exits by itself
@@ -691,7 +699,7 @@ export namespace BoardCopilot {
 				CopilotInstructions.shortcuts(options.setup),
 			close: async () => {
 				questions.unblockAll();
-				await starts.stop();
+				await starts.close();
 				instructed = false;
 				await held.close();
 			},
