@@ -419,6 +419,7 @@ export const RunMapView = ({
 	card,
 	view,
 	asking,
+	asked,
 	width,
 	maxRows,
 	spinnerFrame,
@@ -428,6 +429,8 @@ export const RunMapView = ({
 	card: RunMap.Card;
 	view: RunMap.View;
 	asking: ReadonlySet<string>;
+	// The lane of the question the tab shows, which the cursor follows.
+	asked?: string;
 	width: number;
 	// The rows the steps and what was left may take, the cursor kept in sight within them.
 	maxRows: number;
@@ -438,7 +441,7 @@ export const RunMapView = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const rows = RunMap.rows(card, view);
-	const cursor = RunMap.cursor(card, view, asking);
+	const cursor = RunMap.cursor(card, view, asked);
 	// The gutter's three cells come out of the row, which stops at MAX_COLS so a wide pane keeps
 	// each result near its time.
 	const inner = Math.max(20, Math.min(width, MAX_COLS) - 3);

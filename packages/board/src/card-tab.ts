@@ -113,7 +113,7 @@ export namespace CardTab {
 	const isMap = (tabs: BoardTabs.Tabs, id: string): boolean =>
 		(tabs.cards.get(id)?.steps?.length ?? 0) > 0;
 
-	/** The lanes the card's questions wait on, which the map's cursor goes to first. */
+	/** The lanes the card's questions wait on: every one of their rows on the map shows `?`. */
 	export const asking = (
 		tabs: BoardTabs.Tabs,
 		id: string,
@@ -124,8 +124,15 @@ export namespace CardTab {
 			),
 		);
 
+	/**
+	 * The lane of the question the card's tab shows (the one `!` landed on, else its oldest): the map
+	 * follows it, so the log and an action aimed at a lane go where the banner asks from.
+	 */
+	export const asked = (tabs: BoardTabs.Tabs, id: string): string | undefined =>
+		tabs.active === id ? BoardTabs.cardQuestion(tabs)?.lane : undefined;
+
 	const mapRow = (tabs: BoardTabs.Tabs, id: string): RunMap.Row | undefined =>
-		RunMap.at(tabs.cards.get(id) ?? {}, view(tabs, id), asking(tabs, id));
+		RunMap.at(tabs.cards.get(id) ?? {}, view(tabs, id), asked(tabs, id));
 
 	/**
 	 * The lanes an action aimed at a lane can go to from the tab: the one on screen, else on a map the
@@ -257,7 +264,7 @@ export namespace CardTab {
 		const card = state.tabs.cards.get(id) ?? {};
 		const current = view(state.tabs, id);
 		const moveBy = (delta: 1 | -1): Step | null => {
-			const cursor = RunMap.move(card, current, delta, asking(state.tabs, id));
+			const cursor = RunMap.move(card, current, delta, asked(state.tabs, id));
 			return cursor === undefined
 				? null
 				: {
@@ -314,7 +321,7 @@ export namespace CardTab {
 			return { state, effect: NOTHING };
 		const card = state.tabs.cards.get(id) ?? {};
 		if (
-			RunMap.cursor(card, view(state.tabs, id), asking(state.tabs, id)) === key
+			RunMap.cursor(card, view(state.tabs, id), asked(state.tabs, id)) === key
 		)
 			return enter(state, id) ?? { state, effect: NOTHING };
 		return {

@@ -193,11 +193,12 @@ export type EventViewProps = {
 	// row against it, and pressing `t` again starts every row afresh.
 	toolDetails?: boolean;
 	// A card with steps, on its own tab only: the map's cursor and folds, the lanes its questions wait
-	// on, and a click on a row by its key. The map stands in for the lane chips, and the question
-	// sits under it.
+	// on, the lane of the one the tab shows, which the cursor follows, and a click on a row by its key.
+	// The map stands in for the lane chips, and the question sits under it.
 	map?: {
 		view: RunMap.View;
 		asking: ReadonlySet<string>;
+		asked?: string;
 		onRow?: (key: string) => void;
 	};
 };
@@ -544,6 +545,7 @@ const StackedCockpit = (props: CockpitProps): ReactNode => {
 				card={card}
 				view={map.view}
 				asking={map.asking}
+				asked={map.asked}
 				width={width - 1}
 				maxRows={mapRows}
 				spinnerFrame={spinnerFrame}
@@ -593,7 +595,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 	const raised = theme.surface.raised;
 	const right = width - Cockpit.LEFT_COLS - 1;
 	const live = isInFlight(card);
-	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asking);
+	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asked);
 	const [leftRows, onLeftSize] = useLaidOutRows(height - CHROME_ROWS);
 	const now = (keys: boolean, rows?: number): ReactNode => (
 		<NowFeed
@@ -665,6 +667,7 @@ const SplitCockpit = (props: CockpitProps): ReactNode => {
 					card={card}
 					view={map.view}
 					asking={map.asking}
+					asked={map.asked}
 					width={Cockpit.LEFT_COLS - 1}
 					maxRows={height}
 					spinnerFrame={spinnerFrame}

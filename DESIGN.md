@@ -343,8 +343,10 @@ against every glyph already here.
   them), `✓` done, `○` to come, `✗` failed, `⏹` stopped, and the accent `?` on a session a
   question waits on and on its step, whose result then starts `asks you`.
 - **Cursor:** one row on selected under the Selection Rule, behind a `›`. It starts on and
-  follows the newest live session, or the session that asks, until the human moves it; `f` gives
-  it back to the run. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
+  follows the newest live session, or the session whose question the banner shows, until the human
+  moves it; `f` gives it back to the run, and so does `!`, which also closes a log `enter` opened.
+  Every session a question waits on keeps its `?`; the banner's alone has the cursor, the log and
+  an action aimed at a session. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
   session's log in place of the stream with its name over it, and `esc` closes the log before it
   goes back to the tracker.
   `g/G` and `⌃d/⌃u` scroll the stream. The `?` sheet lists what the card runs with after its

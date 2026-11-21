@@ -221,8 +221,10 @@ tab lists after the keys, under the card's name, and which the split (below) sho
 
 A card with steps has a map on its tab in place of the lane chips, under the header: one row per
 step, a running step opened to its sessions, finished ones folded. A cursor follows the newest
-live session, or the session a question waits on, until the human moves it with `j/k` or `↑↓`;
-`f` hands it back to the run. `h/l` fold and open the step under it, `enter` on a session opens
+live session, or the session whose question the tab shows, until the human moves it with `j/k` or
+`↑↓`; `f` hands it back to the run, and so does `!`, which also closes a log `enter` opened. With
+two sessions asking, both rows show `?`, and the log and an action aimed at a session go to the
+one whose question is on screen. `h/l` fold and open the step under it, `enter` on a session opens
 its log and, on an issue the card left, opens that issue on the tracker (by `taskId`, else by a
 `taskShortId` the board holds). A click puts the cursor on a row and a second click is `enter`.
 The question its sessions wait on names the session's lane. A finished card that left an issue

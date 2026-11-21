@@ -67,7 +67,8 @@ subtasks), the gates, triage, the lenses' review, the fixer, the rechecks of its
 landing, each with its result and how long it took. A step that is not configured is left out,
 and a step still to come is listed with `○`. The step under way opens to one row per session; a
 lens triage skipped is listed as done with its reason. A cursor follows the newest live session,
-or the one that asks you something, until you move it with `j/k`; `f` makes it follow again.
+or the one whose question is on screen, until you move it with `j/k`; `f` makes it follow again,
+and `!` moves it to the session of the next question.
 `h/l` fold and open a step, and `enter` on a session shows its own events under the map in
 place of the feed; `esc` goes back. A question waits under the map, naming the session
 that asked, and its digits answer it.

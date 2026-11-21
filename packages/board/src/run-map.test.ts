@@ -4,6 +4,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ActivityCard, ActivityStep } from "@kabane/extension";
 import { CardTab } from "./card-tab";
+import { Cockpit } from "./cockpit";
 import { BoardNav } from "./nav";
 import { RunMap } from "./run-map";
 import { BoardTabs } from "./tabs";
@@ -110,7 +111,7 @@ const cursor = (state: BoardNav.BoardState): string | undefined =>
 	RunMap.cursor(
 		state.tabs.cards.get("loop:r1") ?? {},
 		CardTab.view(state.tabs, "loop:r1"),
-		CardTab.asking(state.tabs, "loop:r1"),
+		CardTab.asked(state.tabs, "loop:r1"),
 	);
 
 const keys = (state: BoardNav.BoardState): string[] =>
@@ -153,6 +154,72 @@ describe("the run map", () => {
 			askedAt: "2026-11-20T09:16:40.000Z",
 		};
 		expect(cursor(onTab([card()], [asked]))).toBe("step:recheck/docs-recheck");
+	});
+
+	describe("with two sessions asking at once", () => {
+		const question = (
+			id: string,
+			lane: string,
+			askedAt: string,
+		): BoardTabs.Question => ({
+			id,
+			cardId: "loop:r1",
+			lane,
+			question: `${lane}?`,
+			choices: ["yes", "no"],
+			multiSelect: false,
+			allowFreeform: false,
+			agent: "codex",
+			askedAt,
+		});
+		const both = [
+			question("q1", "docs-recheck", "2026-11-20T09:16:40.000Z"),
+			question("q2", "architecture-recheck", "2026-11-20T09:16:50.000Z"),
+		];
+		const inject = {
+			id: "inject",
+			key: "i",
+			label: "message",
+			lane: true,
+			input: "a message",
+		};
+		const asking = () => onTab([card({ actions: [inject] })], both);
+		const logOf = (s: BoardNav.BoardState) =>
+			Cockpit.logLane(
+				s.tabs.cards.get("loop:r1") ?? {},
+				CardTab.view(s.tabs, "loop:r1"),
+				CardTab.asked(s.tabs, "loop:r1"),
+			);
+
+		it("follows the question the banner shows, and `!` takes the map, the log and `i` to the next", () => {
+			const first = asking();
+			expect(BoardTabs.cardQuestion(first.tabs)?.id).toBe("q1");
+			expect(cursor(first)).toBe("step:recheck/docs-recheck");
+			const next = press(first, "!");
+			expect(BoardTabs.cardQuestion(next.tabs)?.id).toBe("q2");
+			expect(cursor(next)).toBe("step:recheck/architecture-recheck");
+			expect(logOf(next)).toBe("architecture-recheck");
+			const message = press(next, "i");
+			expect(message.prompt.open?.target).toEqual({
+				type: "act",
+				cardId: "loop:r1",
+				actionId: "inject",
+				lane: "architecture-recheck",
+			});
+			// Both still wait, so both rows keep their `?`.
+			expect([...CardTab.asking(next.tabs, "loop:r1")]).toEqual([
+				"docs-recheck",
+				"architecture-recheck",
+			]);
+		});
+
+		it("`!` gives a cursor the human moved, and a log they pinned, back to the run", () => {
+			const pinned = press(asking(), "k", "enter");
+			expect(CardTab.view(pinned.tabs, "loop:r1").lane).toBe("quality-recheck");
+			const next = press(pinned, "!");
+			expect(CardTab.view(next.tabs, "loop:r1").lane).toBeNull();
+			expect(cursor(next)).toBe("step:recheck/architecture-recheck");
+		});
 	});
 
 	it("stays where the human moves it until f hands it back to the run", () => {

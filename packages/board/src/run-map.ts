@@ -6,8 +6,9 @@
 // unless the human opened or folded it (`l`/`h`), which holds. The cursor is a row's key, never an
 // index: the card and the rows under the cursor change between polls.
 //
-// Until the human moves it, the cursor follows the run: onto a session that waits on the human, else
-// onto the live session that started last. Once moved, it stays on its row until `f` hands it back.
+// Until the human moves it, the cursor follows the run: onto the session whose question the human has
+// in hand, else onto the live session that started last. Once moved, it stays on its row until `f`
+// hands it back.
 import type {
 	ActivityLeft,
 	ActivitySession,
@@ -87,15 +88,19 @@ export namespace RunMap {
 	};
 
 	/**
-	 * The row the run is at: the session a question waits on, else the live session that started
-	 * last, else nowhere. A session in a step the human folded gives its step's row.
+	 * The row the run is at: the session that asked the question the human has in hand (`asked`, its
+	 * lane), else the live session that started last, else nowhere. A session in a step the human
+	 * folded gives its step's row.
 	 */
 	const followed = (
 		card: Card,
 		view: View,
-		asking: ReadonlySet<string>,
+		asked: string | undefined,
 	): string | undefined => {
-		const lanes = [...asking, ...(card.liveLanes ?? [])];
+		const lanes = [
+			...(asked === undefined ? [] : [asked]),
+			...(card.liveLanes ?? []),
+		];
 		for (const lane of lanes)
 			for (const step of card.steps ?? []) {
 				const session = step.sessions?.find((s) => s.lane === lane);
@@ -112,9 +117,9 @@ export namespace RunMap {
 	export const cursor = (
 		card: Card,
 		view: View,
-		asking: ReadonlySet<string> = new Set(),
+		asked?: string,
 	): string | undefined => {
-		if (view.follow !== false) return followed(card, view, asking);
+		if (view.follow !== false) return followed(card, view, asked);
 		const all = rows(card, view);
 		const at = view.cursor;
 		if (at === undefined || all.some((row) => row.key === at)) return at;
@@ -127,9 +132,9 @@ export namespace RunMap {
 	export const at = (
 		card: Card,
 		view: View,
-		asking?: ReadonlySet<string>,
+		asked?: string,
 	): Row | undefined => {
-		const key = cursor(card, view, asking);
+		const key = cursor(card, view, asked);
 		return rows(card, view).find((row) => row.key === key);
 	};
 
@@ -141,11 +146,11 @@ export namespace RunMap {
 		card: Card,
 		view: View,
 		delta: 1 | -1,
-		asking?: ReadonlySet<string>,
+		asked?: string,
 	): string | undefined => {
 		const all = rows(card, view);
 		if (all.length === 0) return undefined;
-		const at = cursor(card, view, asking);
+		const at = cursor(card, view, asked);
 		const from = all.findIndex((row) => row.key === at);
 		if (from === -1) return (delta === 1 ? all[0] : all.at(-1))?.key;
 		return all[Math.max(0, Math.min(all.length - 1, from + delta))]?.key;

@@ -410,6 +410,15 @@ export namespace BoardTabs {
 		};
 	};
 
+	// A map's cursor given back to the run, and its log unpinned, so the map, the log and an action
+	// aimed at a lane go to the session whose question `!` just landed on.
+	const following = (tabs: Tabs, id: string): Tabs["views"] => {
+		const view = tabs.views.get(id);
+		return view && tabs.cards.get(id)?.steps
+			? new Map(tabs.views).set(id, { ...view, follow: true, lane: null })
+			: tabs.views;
+	};
+
 	// `!`: the next question after the one in hand, oldest first, wrapping. The one on screen, alone in
 	// the queue, says so rather than landing where the human already is with nothing moved.
 	const nextQuestion = (state: State): Step => {
@@ -425,7 +434,10 @@ export namespace BoardTabs {
 			const landed =
 				owner === undefined
 					? pin(state, next)
-					: withTabs(show(state, owner), { landed: next.id });
+					: withTabs(show(state, owner), {
+							landed: next.id,
+							views: following(state.tabs, owner),
+						});
 			if (landed === state) {
 				skipped++;
 				continue;

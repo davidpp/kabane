@@ -401,6 +401,7 @@ const EventsScreen = ({
 					? {
 							view: CardTab.view(tabs, cardId),
 							asking: CardTab.asking(tabs, cardId),
+							asked: CardTab.asked(tabs, cardId),
 							onRow: (key) => input.dispatchMouse({ type: "mapRow", key }),
 						}
 					: undefined
