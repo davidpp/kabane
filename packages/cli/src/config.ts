@@ -76,7 +76,7 @@ const UpdatesConfigSchema = z.object({
 		.boolean()
 		.optional()
 		.describe(
-			"Whether the board says when a newer kabane release is out (npm, checked daily); absent is true.",
+			"Whether kabane offers a newer release before the board opens and names it in the board (GitHub releases, checked daily); absent is true.",
 		),
 });
 

@@ -74,7 +74,7 @@ To install a release archive by hand, download its `kabane-<os>-<arch>.tar.gz` a
 from the same release, check it with `shasum -a 256 --check --ignore-missing SHA256SUMS`
 (`sha256sum` on Linux) and extract it with `tar -xzf`. Keep the extracted `kabane/` directory
 whole: `kabane update` knows an extracted release by the `templates/` directory beside the
-executable. Put that directory on PATH or symlink its `kabane` into one that is.
+executable, and the shipped extensions live in its `extensions/`. Put that directory on PATH or symlink its `kabane` into one that is.
 The binary includes Bun; git is still used for project scopes, and coding harness adapters
 still need their own runtime (currently Node/npx). Windows and notarization are not provided.
 
@@ -92,8 +92,8 @@ pushes, and starts the workflow that publishes the GitHub release and, for a sta
 `davidpp/tap` formula. See [`docs/release.md`](docs/release.md).
 For a standalone binary, `kabane update --check` reports a candidate from GitHub releases,
 and, unless Homebrew or mise owns the install, `kabane update` downloads that release's archive for your platform, verifies it against
-its `SHA256SUMS`, checks that the new executable prints the candidate version, then renames it
-and `templates/` over the real executable (symlinks followed); any failure before that leaves
+its `SHA256SUMS`, checks that the new executable prints the candidate version, then renames it,
+`templates/` and `extensions/` over the real executable (symlinks followed); any failure before that leaves
 the old install as it was. On a Bun global install, both say releases moved to GitHub and print
 the brew and installer commands. A stable install follows GitHub's latest release; a beta
 install takes the higher of the newest beta and latest. Updates
