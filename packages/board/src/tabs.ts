@@ -1,8 +1,8 @@
 // The tab bar and the attention queue, as plain functions over the board's state, beside the rest of
 // the key routing in nav.ts rather than inside it.
 //
-// The tracker is always the first tab. The Jobs tab follows it while this device has an open job
-// (jobs.ts). Every other tab is a host card that asked for one (`ActivityCard.tab`), in the order it
+// The tracker is always the first tab. The Jobs tab follows it while the host hands the board a job
+// source, or else while this device has an open job (jobs.ts). Every other tab is a host card that asked for one (`ActivityCard.tab`), in the order it
 // appeared; a finished card keeps its tab until `w` closes it,
 // and a closed one does not come back this session. While a card's tab is on screen the tracker's
 // own view is kept aside, so returning to it lands where the human left.
@@ -93,8 +93,10 @@ export namespace BoardTabs {
 		// Cards whose left-for-you list the map's window has shown: until then a finished one's tab
 		// keeps the accent `?`.
 		seen: ReadonlySet<string>;
-		// The Jobs tab's rows; it is in the bar while there is one.
+		// The Jobs tab's rows; it is in the bar while there is one, or while `jobSource` is set.
 		jobs: BoardJobs.Jobs;
+		// The host handed a JobSource: jobs can be made here, so the tab shows before the first one.
+		jobSource: boolean;
 	};
 
 	/** The Jobs tab's id in `active`, which no card id takes: a host's ids carry its name first. */
@@ -123,6 +125,7 @@ export namespace BoardTabs {
 		views: new Map(),
 		seen: new Set<string>(),
 		jobs: BoardJobs.NONE,
+		jobSource: false,
 	};
 
 	const NOTHING: BoardNav.Effect = { type: "none" };
@@ -294,16 +297,24 @@ export namespace BoardTabs {
 				}
 			: view;
 
-	/** Every tab in bar order: the tracker (null), the Jobs tab while it has rows, then the cards. */
+	/**
+	 * Every tab in bar order: the tracker (null), the Jobs tab while the host has a job source or
+	 * there is a job, then the cards.
+	 */
 	export const order = (tabs: Tabs): (string | null)[] => [
 		null,
-		...(tabs.jobs.list.length > 0 ? [JOBS] : []),
+		...(tabs.jobSource || tabs.jobs.list.length > 0 ? [JOBS] : []),
 		...tabs.open,
 	];
 
+	/** The host handed a job source: the Jobs tab stays in the bar with no job in it. */
+	export const withJobSource = (state: State): State =>
+		state.tabs.jobSource ? state : withTabs(state, { jobSource: true });
+
 	/**
-	 * The poll's jobs, into the Jobs tab: it appears with the first job and goes with the last, the
-	 * tracker coming back if it was on screen. The same state when nothing moved.
+	 * The poll's jobs, into the Jobs tab. Without a job source it appears with the first job and
+	 * goes with the last, the tracker coming back if it was on screen. The same state when nothing
+	 * moved.
 	 */
 	export const withJobs = (
 		state: State,
@@ -312,7 +323,7 @@ export namespace BoardTabs {
 		const jobs = BoardJobs.withList(state.tabs.jobs, list);
 		if (jobs === state.tabs.jobs) return state;
 		const moved = withTabs(state, { jobs });
-		return jobs.list.length === 0 && state.tabs.active === JOBS
+		return state.tabs.active === JOBS && !order(moved.tabs).includes(JOBS)
 			? show(moved, null)
 			: moved;
 	};

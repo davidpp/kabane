@@ -143,6 +143,28 @@ const JobsHeader = ({ jobs }: { jobs: BoardJobs.Jobs }): ReactNode => {
 	);
 };
 
+/**
+ * What the tab says before the first job: what a job is, and that you get one by asking an agent.
+ * Only a board with a job source shows the tab empty.
+ */
+const JOBS_EMPTY: readonly string[] = [
+	"a job is a request your agent runs on a schedule, in one of your projects.",
+	"to make one, ask your agent, or press A and ask the copilot.",
+];
+
+const JobsEmpty = (): ReactNode => {
+	const theme = useTheme();
+	const [what, how] = JOBS_EMPTY;
+	return (
+		<box style={{ flexDirection: "column", flexShrink: 0 }}>
+			<text fg={theme.defaultFg}>{what}</text>
+			<text fg={theme.muted} style={{ marginTop: 1 }}>
+				{how}
+			</text>
+		</box>
+	);
+};
+
 export const JobsView = ({
 	jobs,
 	scrollRef,
@@ -165,7 +187,7 @@ export const JobsView = ({
 			<JobsHeader jobs={jobs} />
 			<scrollbox ref={scrollRef} style={{ flexGrow: 1, marginTop: 1 }}>
 				{jobs.list.length === 0 ? (
-					<text fg={theme.muted}>no jobs</text>
+					<JobsEmpty />
 				) : (
 					BoardJobs.byScope(jobs.list).map((group) => (
 						<box

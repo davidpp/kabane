@@ -7,14 +7,15 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 
 | Where | What it holds |
 |---|---|
-| `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), its commands, the `hc-missing` doctor finding and the job skill's, the board ports |
+| `src/extension.ts` | the `(host) => Extension` factory: the `recipes` settings (`harness`, `onAttention`), its commands, the `hc-missing` doctor finding, the job skill's and the tick's, the board ports |
 | `src/recipe.ts` | `Recipe.parse`, `load`, `all`: the frontmatter (`skill` and `harness` among it), then either the skill's `SKILL.md` found in `.agents/skills/` or `.claude/skills/` (`Skilled`) or the body and its `{{...}}` placeholders (`Written`), and the errors that name the file, a skill and a body together among them; `render`, which fills a body's placeholders |
 | `src/harness.ts` | `Harness.choose`, the precedence (launch, job, recipe, `recipes.harness`, `claude`) and its source; `line` and `split`, the command line a human reads and types |
 | `src/inputs.ts` | `Inputs.resolve`: `--input` pairs, the JSON object, defaults, the terminal prompts, validation with `host.z` |
 | `src/run-command.ts` | `startRun`, which starts a run from explicit inputs (scope, root, dir, recipe name and hash, prompt, target, inputs, harness, actor) and reads no cwd, TTY or setting; `harnessOf`, which reads `recipes.harness` and calls `Harness.choose`; `promptOf`, the text a recipe's run gets (the preamble, then "Use the <skill> skill.", the target and one line per input, or the rendered body), which a kept job's wake sends, and `requestPromptOf`, a recipe-less job's; `kabane run`, which resolves those and calls it; the dispatcher calls it too; `shortIdOf`, which `kabane runs` and the board share |
 | `src/runs-command.ts` | `kabane runs`: the listing (this project's, or every project's with `--all`; ended runs with `--ended`), `attach`, `read`, `send`, `stop` on a run found by id in this project first, then in every scope |
-| `src/job-skill.ts` | `JobSkill.check`: the user-level `job` skill (`templates/job/SKILL.md`) at `~/.agents/skills/job` with a `~/.claude/skills/job` link, the `job-skill-missing` and `job-skill-behind` findings and their fix; `scripts/build.ts` ships `templates/` beside `index.js` |
-| `src/job-command.ts` | `kabane job`: `add` (in the cwd's project or `--project`'s), `edit`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
+| `src/job-skill.ts` | `JobSkill.check`: the user-level copy of the `job` skill (`skills/job/SKILL.md`, which `kabane mcp` also serves while the extension is enabled) at `~/.agents/skills/job` with a `~/.claude/skills/job` link, the `job-skill-missing` and `job-skill-behind` findings and their fix; `scripts/build.ts` ships `skills/` beside `index.js` |
+| `src/job-tick.ts` | `JobTick`: what runs `kabane job tick` every minute, a launchd agent at `~/Library/LaunchAgents/com.kabane.job-tick.plist` or a crontab line, written for `host.kabane.current`, the installing shell's `PATH` and `ctx.home`; `found` (none, a tick that runs, or one whose program is gone), `install` (write, then `launchctl bootout` and `bootstrap`, or replace the crontab's tick line), and the `job-tick-missing` finding while there is an open job and no tick that runs |
+| `src/job-command.ts` | `kabane job`: `add` (in the cwd's project or `--project`'s, then the tick's offer: a `[y/N]` at a terminal, else the fix command), `edit`, `list`, `show`, `pause`, `resume`, `run`, and `tick`, which runs the attention hook, then fires the due jobs through `startRun`, or wakes a kept job's idle terminal |
 | `src/jobs.ts` | the job row and its table, `recipes_jobs`, and this machine's folder per scope, `recipes_roots`, and what its tick last saw of each run, `recipes_attention`; the due rule, the fire decision and the attention rule |
 | `src/activity.ts` | `RecipeActivity`: the board's cards, one per run with a target, and the stop action |
 | `src/dispatcher.ts` | `RecipeDispatcher`: `a`'s triggers, one per recipe with `target: issue`, its harness row first and its skill, or "its own prompt", in the form's preview, and `dispatch` through `startRun`; on a job, `job:run`, which fires it as `kabane job run` does |
@@ -188,6 +189,11 @@ bun run sandbox job tick                   # after the minute turns: starts a ru
 hc label <terminal> kabane.sandbox=1        # at once
 bun run sandbox job tick                   # skips it while it is live
 ```
+
+The sandbox sets `KABANE_JOB_TICK=print`, so `job add`'s tick offer and `--fix
+recipes/job-tick-missing` print the plist or crontab line they would install and install nothing:
+`launchctl bootstrap` and `crontab` act on your real session whatever `HOME` says. Never unset it in
+a check. `extension.test.ts` installs through stand-in `launchctl` and `crontab` on PATH.
 
 The board in the sandbox, on your own tmux socket: start a run as above, then
 `tmux -L <yours> new-session -d -s board -x 100 -y 30 'bun run sandbox board'`; `enter` on the

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/** Build the directory extension: its main entry and its modules entry, beside a built manifest and its templates. */
+/** Build the directory extension: its main entry and its modules entry, beside a built manifest and its skills. */
 import { cpSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -16,13 +16,13 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 		target: "bun",
 		plugins: [
 			{
-				name: "relocate-templates",
+				name: "relocate-skills",
 				setup(builder) {
 					// Flattening src/ into index.js moves the module one directory up.
 					builder.onLoad({ filter: /\/src\/job-skill\.ts$/ }, ({ path }) => ({
 						contents: readFileSync(path, "utf8").replace(
-							'new URL("../templates/", import.meta.url)',
-							'new URL("./templates/", import.meta.url)',
+							'new URL("../skills/", import.meta.url)',
+							'new URL("./skills/", import.meta.url)',
 						),
 						loader: "ts",
 					}));
@@ -43,7 +43,8 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 		join(into, "package.json"),
 		`${JSON.stringify(manifest, null, "\t")}\n`,
 	);
-	cpSync(join(ROOT, "templates"), join(into, "templates"), { recursive: true });
+	// What kabane mcp serves to any session, and what the job skill's doctor fix copies.
+	cpSync(join(ROOT, "skills"), join(into, "skills"), { recursive: true });
 	return result;
 };
 

@@ -325,7 +325,8 @@ against every glyph already here.
 - **Style:** `{components.tab-bar}`, one row across the top of every view. Each tab is its
   number muted, then for a card its state glyph in the state's hue, then its name; the tab on
   screen sits on selected in Label weight, the others secondary, split by a faint `│`.
-- **Content:** `tracker` first, then `jobs` while the device has a job, then one tab per host
+- **Content:** `tracker` first, then `jobs` while the host has a job source (empty, it says what a
+  job is and how to get one) or the device has a job, then one tab per host
   card that asked for one, named by its task's short id. `?n` in the accent counts the questions
   waiting there; the tracker's counts them all, and the Jobs tab's the jobs whose run waits on
   the human.

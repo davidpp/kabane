@@ -691,6 +691,20 @@ const JobsStory = (): ReactNode => (
 	</box>
 );
 
+// The Jobs tab a board with a job source shows before the first job.
+const EMPTY_JOBS_TABS: BoardTabs.Tabs = {
+	...BoardTabs.NONE,
+	active: BoardTabs.JOBS,
+	jobSource: true,
+};
+
+const EmptyJobsStory = (): ReactNode => (
+	<box style={{ flexDirection: "column", flexGrow: 1 }}>
+		<TabBar tabs={EMPTY_JOBS_TABS} cards={[]} spinnerFrame={SPINNER_IDLE} />
+		<JobsView jobs={EMPTY_JOBS_TABS.jobs} now={Fixtures.JOBS_NOW} />
+	</box>
+);
+
 const [WIKI_JOB] = Fixtures.JOBS;
 
 // The top of a loop run's tab with its map: the tab bar, the run row, the map and what needs the
@@ -1263,6 +1277,14 @@ export const STORIES: readonly Story[] = [
 		width: 100,
 		height: 14,
 		render: () => <JobsStory />,
+	},
+	{
+		name: "jobs-empty",
+		about:
+			"the Jobs tab before the first job, on a board whose host has a job source",
+		width: 40,
+		height: 12,
+		render: () => <EmptyJobsStory />,
 	},
 	{
 		name: "job-detail",

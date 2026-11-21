@@ -2,11 +2,12 @@
 // A host asking a running board to open an issue (OpenRequests), against a real tracker: the board
 // scoped to one project opens a done issue filed in another, from a search being typed, and `esc`
 // lands on its row with every scope shown. The board only listens once it has loaded, and stops when
-// it comes down.
+// it comes down. A host's job source puts the Jobs tab in the bar before the device has a job.
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@kabane/core";
+import { ok, Planner, type Task } from "@kabane/core";
+import type { JobSource } from "@kabane/extension";
 import { App } from "./app";
 import { noActivity, type OpenRequests } from "./ports";
 import { dropDb, freshDb } from "./test-db";
@@ -83,4 +84,30 @@ it("opens a done issue from another scope over a search being typed, and esc lan
 		destroy();
 	}
 	expect(unsubscribed).toBe(true);
+});
+
+it("shows the Jobs tab with no job when the host has a job source, and not without one", async () => {
+	const frameOf = async (jobs: JobSource | undefined) => {
+		const { renderOnce, captureCharFrame, destroy } = await renderTest(
+			<App
+				cwd={BASE}
+				basePath={BASE}
+				activity={noActivity}
+				{...(jobs ? { jobs } : {})}
+				resolveScope={async () => ({ scopeUri: HERE, label: "here" })}
+			/>,
+			{ width: 40, height: 20 },
+		);
+		try {
+			return await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("Work in this project"),
+			);
+		} finally {
+			destroy();
+		}
+	};
+	expect(await frameOf({ facts: async () => ok({}) })).toContain(
+		"1 tracker │ 2 jobs",
+	);
+	expect(await frameOf(undefined)).not.toContain("2 jobs");
 });

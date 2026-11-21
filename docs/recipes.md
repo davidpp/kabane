@@ -415,8 +415,11 @@ one fits, a harness only when you named one), then reads the job back with `kaba
 tells you when it fires next, in which folder, with which harness. It asks only for what the prompt
 leaves open, such as the time of day.
 
-The skill is installed for your user, not for one project: `kabane doctor` reports
-`recipes/job-skill-missing` while `~/.agents/skills/job/SKILL.md` is absent, and
+While the extension is enabled, `kabane mcp` serves the skill to every session that has kabane's
+tools (`kabane_skillList` names it, `kabane_skillGet` returns it), the board's copilot included,
+with nothing to install. A harness also reads it on its own, without asking kabane, once it is
+installed for your user: `kabane doctor` reports `recipes/job-skill-missing` while
+`~/.agents/skills/job/SKILL.md` is absent, and
 
 ```bash
 kabane doctor --fix recipes/job-skill-missing
@@ -455,14 +458,16 @@ kabane config set recipes.onAttention \
 ```
 
 A hook that exits nonzero is reported on the tick's output with its last line of stderr, and
-changes nothing else: it is not retried. Under launchd, the command must be on the plist's
-`PATH`.
+changes nothing else: it is not retried. The tick runs it with the `PATH` it was installed with
+([Tick on a schedule](#tick-on-a-schedule)).
 
 ### Jobs on the board
 
-While this device has a job, the board has a Jobs tab after the tracker (tab 2; `2`, `{` and `}`
-reach it, or click it). It lists the jobs of every project on this device, not only the
-board's, one section per project named after its folder. Each row shows the state of the
+With the recipes extension enabled, the board has a Jobs tab after the tracker (tab 2; `2`, `{`
+and `}` reach it, or click it), from before the first job. Until there is one, the tab says what a
+job is and that you make one by asking your agent, or by pressing `A` and asking the copilot. It
+lists the jobs of every project on this device, not only the board's, one section per project
+named after its folder. Each row shows the state of the
 job's latest run, its id and title, then as much as fits of: `? waiting` when that run waits on
 you, `paused`, when it fires next, its schedule, its recipe and its harness. A waiting run is
 in the accent color, and the tab counts them (`jobs ?1`), so you see from any tab that a job
@@ -477,14 +482,30 @@ needs you.
 
 Each run in the detail shows its state, when it started and `kabane runs attach <id>`, which
 opens its session in hc; the board does not show the session. A board without the recipes
-extension still lists the jobs, with only their id, title, project and whether they are paused.
+extension shows the tab only while this device has a job, and lists the jobs with only their id,
+title, project and whether they are paused.
 
 ### Tick on a schedule
 
-On macOS, `docs/schedule/com.kabane.job-tick.plist` runs `kabane job tick` every minute with
-launchd; the comment at its top says how to install and remove it. On Linux,
-`docs/schedule/kabane-job-tick.cron` is the same as a crontab line. A tick with nothing due does
-nothing, so ticking every minute is cheap.
+A job fires only when something runs `kabane job tick`. When nothing does on this machine,
+`kabane job add` at a terminal asks whether to install it: on macOS a launchd agent,
+`~/Library/LaunchAgents/com.kabane.job-tick.plist`, and on Linux a crontab line, each running the
+tick every minute. Run elsewhere, as an agent runs it, `job add` prints the command that installs it
+instead, and `kabane doctor` reports `recipes/job-tick-missing` while this machine has a job and
+nothing ticks it:
+
+```bash
+kabane doctor --fix recipes/job-tick-missing
+```
+
+The tick runs the kabane that installed it, with that shell's `PATH`, so it finds `hc`, the
+harnesses and the `recipes.onAttention` command as your shell does, and with its `KABANE_HOME`.
+When the kabane a tick runs is gone, such as an old install removed after a move to Homebrew,
+`job add` and `kabane doctor` report it as they report a missing one, and the fix replaces it with
+one for the kabane you run. After you change your `PATH`, remove the tick and install it again. To remove it on
+macOS, `launchctl bootout gui/$(id -u)/com.kabane.job-tick` and delete the file; on Linux, delete
+the line with `crontab -e`. Its output goes to `job-tick.log` and `job-tick.error.log` in
+`KABANE_HOME`. A tick with nothing due does nothing, so ticking every minute is cheap.
 
 ## Settings
 

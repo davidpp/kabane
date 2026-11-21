@@ -80,13 +80,18 @@ const loadFeed = async (
 		counts: counts.ok ? counts.value : undefined,
 		progress: progress.ok ? progress.value : undefined,
 		jobs,
+		jobSource: jobSource !== undefined,
 	};
 };
 
+// A host with a job source keeps the Jobs tab in the bar, a job or none.
 const withJobs = (
 	state: BoardNav.BoardState,
-	jobs: readonly BoardJobs.Job[] | undefined,
-): BoardNav.BoardState => (jobs ? BoardTabs.withJobs(state, jobs) : state);
+	{ jobs, jobSource }: Awaited<ReturnType<typeof loadFeed>>,
+): BoardNav.BoardState => {
+	const sourced = jobSource ? BoardTabs.withJobSource(state) : state;
+	return jobs ? BoardTabs.withJobs(sourced, jobs) : sourced;
+};
 
 // A reload's rows, badges and jobs, merged into the state on screen.
 const withFeed = (
@@ -99,14 +104,14 @@ const withFeed = (
 			BoardNav.withSections(prev, sections, feed.counts),
 			feed.progress,
 		),
-		feed.jobs,
+		feed,
 	);
 
-// The first state over the first load's rows: the copilot's port in, the badges counted, and open on
-// the host's issue when it named one.
+// The first state over the first load's rows: the copilot's port in, the badges counted, the Jobs tab
+// in the bar when the host has a job source, and open on the host's issue when it named one.
 const firstState = (
 	sections: BoardData.BoardSection[],
-	{ counts, progress, jobs }: Awaited<ReturnType<typeof loadFeed>>,
+	feed: Awaited<ReturnType<typeof loadFeed>>,
 	scoped: boolean,
 	copilot: Copilot | undefined,
 	open: { taskId: string } | undefined,
@@ -118,11 +123,11 @@ const firstState = (
 					shortcuts: copilot?.shortcuts() ?? [],
 					actor: copilot?.actor ?? null,
 				}),
-				counts,
+				feed.counts,
 			),
-			progress,
+			feed.progress,
 		),
-		jobs,
+		feed,
 	);
 	return open ? BoardNav.openTask(first, open.taskId) : first;
 };

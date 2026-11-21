@@ -43,8 +43,9 @@ export type BoardDeps = {
 	// A host's own header for its cards, by card kind. Default: none, every card tab heads with its
 	// one-line title.
 	headers?: Readonly<Record<string, Header>>;
-	// Facts about the device's jobs for the Jobs tab. Default: none, the tab lists each job with its
-	// title, scope and state only.
+	// Facts about the device's jobs for the Jobs tab, which keeps the tab in the bar before the first
+	// job. Default: none, the tab shows only while there is a job and lists each with its title,
+	// scope and state only.
 	jobs?: JobSource;
 	// One line to show over the board's footer once it is up. Default: none, nothing announced.
 	announcer?: Announcer;

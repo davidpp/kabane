@@ -177,7 +177,7 @@ const list = async (
 };
 
 /** Bun's line prompt at a terminal; no prompts when either end is not one. */
-const terminalAsk = (): Inputs.Ask | undefined =>
+export const terminalAsk = (): Inputs.Ask | undefined =>
 	process.stdin.isTTY && process.stdout.isTTY
 		? (question) => prompt(question.replace(/\s+$/, ""))
 		: undefined;

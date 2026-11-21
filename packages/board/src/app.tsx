@@ -51,7 +51,8 @@ export type AppProps = {
 	resolveScope?: BoardData.ScopeResolver;
 	// A host's own header for its cards, by card kind. Absent → every card tab heads with its title.
 	headers?: Readonly<Record<string, Header>>;
-	// Absent → the Jobs tab lists each job with its title, scope and state only.
+	// Present → the Jobs tab is in the bar before the first job. Absent → it shows only while there
+	// is a job, and lists each with its title, scope and state only.
 	jobs?: JobSource;
 	// Absent → nothing is announced.
 	announcer?: Announcer;

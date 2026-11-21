@@ -5,6 +5,7 @@ import { Database } from "bun:sqlite";
 // sessions, so a started run is checked in the sandbox (AGENTS.md, "Verify").
 import { afterEach, expect, test } from "bun:test";
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -66,7 +67,12 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 	skill(root, "research");
 	const kabane = (
 		args: string[],
-		options: { cwd?: string; path?: string; home?: string } = {},
+		options: {
+			cwd?: string;
+			path?: string;
+			home?: string;
+			env?: Record<string, string>;
+		} = {},
 	) => {
 		const result = Bun.spawnSync([process.execPath, CLI, ...args], {
 			cwd: options.cwd ?? root,
@@ -76,6 +82,7 @@ const setup = (extensions: readonly string[] = ["recipes"]) => {
 				KABANE_HARNESSES: "",
 				...(options.path === undefined ? {} : { PATH: options.path }),
 				...(options.home === undefined ? {} : { HOME: options.home }),
+				...options.env,
 			},
 			stdin: "ignore",
 		});
@@ -620,9 +627,139 @@ test("doctor offers the user-level job skill, and --fix installs it for every ha
 		"Wrote ~/.agents/skills/job/SKILL.md and linked ~/.claude/skills/job to it",
 	);
 	expect(readFileSync(join(user, ".claude/skills/job/SKILL.md"), "utf8")).toBe(
-		readFileSync(join(EXTENSION, "templates/job/SKILL.md"), "utf8"),
+		readFileSync(join(EXTENSION, "skills/job/SKILL.md"), "utf8"),
 	);
 	expect(
 		findings().filter((f: { id: string }) => f.id.startsWith("job-skill")),
 	).toEqual([]);
+});
+
+test("with nothing ticking this machine, job add says how to install the tick and doctor offers it once a job exists", () => {
+	const { kabane, home } = setup();
+	const user = join(home, "user");
+	mkdirSync(user);
+	const tickFindings = () =>
+		JSON.parse(
+			kabane(["doctor", "--json"], { home: user }).stdout,
+		).findings.filter((f: { id: string }) => f.id === "job-tick-missing");
+	expect(tickFindings()).toEqual([]);
+	const added = kabane(
+		[
+			"job",
+			"add",
+			"--title",
+			"Tidy",
+			"--schedule",
+			"0 9 * * *",
+			"--request",
+			"Tidy the inbox",
+		],
+		{ home: user },
+	);
+	expect(added.code).toBe(0);
+	// stdin is not a terminal, as in an agent's shell: a line to relay, and nothing installed.
+	expect(added.stdout).toContain(
+		"Nothing runs kabane job tick on this machine yet, so no job fires: `kabane doctor --fix recipes/job-tick-missing` installs a",
+	);
+	expect(tickFindings()).toEqual([
+		expect.objectContaining({
+			source: "recipes",
+			severity: "suggest",
+			fixable: true,
+		}),
+	]);
+});
+
+/**
+ * A user home and a PATH whose `launchctl` and `crontab` only record their calls, so a check that
+ * installs the tick never reaches the real launchd session or crontab, whatever HOME says.
+ */
+const tickTools = (home: string) => {
+	const user = join(home, "user");
+	const tools = join(home, "tools");
+	mkdirSync(user);
+	mkdirSync(tools);
+	const calls = join(tools, "calls");
+	writeFileSync(
+		join(tools, "launchctl"),
+		`#!/bin/sh\necho "launchctl $*" >> '${calls}'\n`,
+		{ mode: 0o755 },
+	);
+	writeFileSync(
+		join(tools, "crontab"),
+		`#!/bin/sh\necho "crontab $*" >> '${calls}'\nif [ "$1" = -l ]; then cat '${tools}/table' 2>/dev/null || { echo "no crontab for test" >&2; exit 1; }; else cat > '${tools}/table'; fi\n`,
+		{ mode: 0o755 },
+	);
+	const called = (): string[] =>
+		existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [];
+	return { user, path: `${tools}:${NO_HC}`, called };
+};
+
+const ADD_TIDY = [
+	"job",
+	"add",
+	"--title",
+	"Tidy",
+	"--schedule",
+	"0 9 * * *",
+	"--request",
+	"Tidy the inbox",
+];
+
+test("with KABANE_JOB_TICK=print, as the sandbox sets it, the tick's fix says what it would install and installs nothing", () => {
+	const { kabane, home } = setup();
+	const { user, path, called } = tickTools(home);
+	const options = { home: user, path, env: { KABANE_JOB_TICK: "print" } };
+	expect(kabane(ADD_TIDY, options).code).toBe(0);
+	const fixed = kabane(
+		["doctor", "--fix", "recipes/job-tick-missing"],
+		options,
+	);
+	expect(fixed.code).toBe(0);
+	expect(fixed.stdout).toContain("KABANE_JOB_TICK=print: would");
+	expect(fixed.stdout).toContain("job tick");
+	// Detection may read the crontab; nothing may write it or load an agent.
+	expect(called().filter((call) => call !== "crontab -l")).toEqual([]);
+	expect(existsSync(join(user, "Library/LaunchAgents"))).toBe(false);
+	expect(existsSync(join(home, "tools/table"))).toBe(false);
+});
+
+test("a tick whose program is gone is reported, and doctor --fix points it at the running kabane", () => {
+	const { kabane, home } = setup();
+	const { user, path, called } = tickTools(home);
+	const gone = join(home, "old-install/kabane");
+	const agent = join(user, "Library/LaunchAgents/com.kabane.job-tick.plist");
+	const table = join(home, "tools/table");
+	if (process.platform === "darwin") {
+		mkdirSync(dirname(agent), { recursive: true });
+		writeFileSync(
+			agent,
+			`<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>com.kabane.job-tick</string><key>ProgramArguments</key><array><string>${gone}</string><string>job</string><string>tick</string></array></dict></plist>\n`,
+		);
+	} else writeFileSync(table, `* * * * * ${gone} job tick\n`);
+	const options = { home: user, path };
+	expect(kabane(ADD_TIDY, options).code).toBe(0);
+	const doctor = kabane(["doctor"], options).stdout;
+	expect(doctor).toContain(`runs ${gone}, which is gone`);
+	const fixed = kabane(
+		["doctor", "--fix", "recipes/job-tick-missing"],
+		options,
+	);
+	expect(fixed.code).toBe(0);
+	const written = readFileSync(
+		process.platform === "darwin" ? agent : table,
+		"utf8",
+	);
+	expect(written).not.toContain(gone);
+	expect(written).toContain(CLI);
+	if (process.platform === "darwin")
+		expect(called()).toEqual([
+			expect.stringMatching(
+				/^launchctl bootout gui\/\d+\/com\.kabane\.job-tick$/,
+			),
+			expect.stringMatching(
+				/^launchctl bootstrap gui\/\d+ .*com\.kabane\.job-tick\.plist$/,
+			),
+		]);
+	expect(kabane(["doctor"], options).stdout).not.toContain("job-tick-missing");
 });

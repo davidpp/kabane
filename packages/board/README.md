@@ -86,7 +86,7 @@ closes them all; a click still opens or closes one row against it.
 #### Tabs and the questions waiting on you
 
 The top row is the tab bar. Tab 1 is the tracker (the board and every view pushed over it); then,
-while the device has an open job (`kind: job`), the Jobs tab (below); then
+while the host has a job source or the device has an open job (`kind: job`), the Jobs tab (below); then
 one tab per card with `tab: true`, a new one opening at the end, several at once oldest first by
 `startedAt`, labelled with the card's state glyph
 and its `taskShortId` (else its `label`). The tab is the card's event log. A finished card keeps its
@@ -191,8 +191,9 @@ has several, `esc` drops it, and a click on the board closes it.
 #### The Jobs tab
 
 The Jobs tab lists every open job on the device, whatever the board's scope, in one section per
-scope, and is in the bar only while there is one. A host's optional `JobSource` (`deps.jobs`,
-`BoardPorts.jobs` for an extension) gives each job's facts, the `JobFacts` of
+scope. A host's optional `JobSource` (`deps.jobs`, `BoardPorts.jobs` for an extension) keeps the
+tab in the bar before the first job, where it says what a job is and that an agent makes one;
+without a source the tab is in the bar only while there is a job. The source gives each job's facts, the `JobFacts` of
 `@kabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
 with its state and the command that opens it. A row leads with its newest run's state; a
 `waiting` run reads `? waiting` in the accent, and the tab's `?n` counts those jobs. A section is

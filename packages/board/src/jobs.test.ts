@@ -129,6 +129,21 @@ describe("the Jobs tab", () => {
 		expect(gone.view).toEqual({ type: "board" });
 	});
 
+	test("with a job source it is in the bar before the first job, and stays after the last", () => {
+		const sourced = BoardTabs.withJobSource(base);
+		expect(BoardTabs.order(sourced.tabs)).toEqual([null, BoardTabs.JOBS]);
+		const onJobs = key(sourced, "2").state;
+		expect(onJobs.view).toEqual({ type: "jobs" });
+		// Nothing to open, run, pause or resume on the empty tab.
+		for (const name of ["return", "a", "s", "n"])
+			expect(key(onJobs, name).effect).toEqual({ type: "none" });
+		const one = BoardTabs.withJobs(onJobs, [{ task: job("a") }]);
+		const none = BoardTabs.withJobs(one, []);
+		expect(none.tabs.active).toBe(BoardTabs.JOBS);
+		expect(none.view).toEqual({ type: "jobs" });
+		expect(BoardTabs.order(none.tabs)).toEqual([null, BoardTabs.JOBS]);
+	});
+
 	test("its number opens it from the tracker, and the tracker's from the tab", () => {
 		const onJobs = key(withTwo, "2").state;
 		expect(onJobs.view).toEqual({ type: "jobs" });
