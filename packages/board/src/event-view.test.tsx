@@ -1113,6 +1113,23 @@ const Opening = (): ReactNode => {
 	);
 };
 
+// The trace's event rows under its title, read from its own column: each a step's line
+// (`✓ implement · ok`, `✓ recheck`) or the run's ending. The split's sessions table under it does not count.
+const traceEvents = (frame: string, from: number): number => {
+	const rows = frame.split("\n").map((row) => row.slice(from));
+	const title = rows.findIndex((row) =>
+		row.trimStart().startsWith("run trace"),
+	);
+	if (title === -1) return 0;
+	let count = 0;
+	for (const row of rows.slice(title + 1)) {
+		// A row may end on the trace's scrollbar.
+		if (!/✓ \w+( · ok)?\s*[█▄▀]?\s*$|completed: plan-done/.test(row)) break;
+		count++;
+	}
+	return count;
+};
+
 describe("a card tab's footer keeps the bottom row", () => {
 	for (const [width, height] of [
 		[100, 22],
@@ -1124,16 +1141,21 @@ describe("a card tab's footer keeps the bottom row", () => {
 				<Opening />,
 				{ width, height },
 			);
+			// Split, the map is the left 66 columns and the trace the right ones.
+			const split = width >= 160;
 			try {
+				// The step is open once its session shows in the map's own column.
 				const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-					f.includes("functional"),
+					f
+						.split("\n")
+						.some((row) =>
+							(split ? row.slice(0, 66) : row).includes("✓ functional"),
+						),
 				);
 				const rows = frame.split("\n");
 				expect(rows[height - 1]).toContain("? help");
-				// "Now" keeps its title and at least five rows above it.
-				const title = rows.findIndex((row) => row.includes("run trace"));
-				expect(title).toBeGreaterThan(-1);
-				expect(title).toBeLessThanOrEqual(height - 1 - 1 - 5);
+				// "Now" keeps its title and five of the trace's own events.
+				expect(traceEvents(frame, split ? 66 : 0)).toBeGreaterThanOrEqual(5);
 			} finally {
 				destroy();
 			}
