@@ -1191,6 +1191,37 @@ describe("BoardCopilot close leaves no harness running", () => {
 		done();
 	}, 10_000);
 
+	it("a harness that died by itself is let go of: the next prompt starts a new one, and quit stops it", async () => {
+		const { copilot, started, done } = stubborn("open");
+		expect(types(await collect(copilot.run("go", context())))).toContain(
+			"done",
+		);
+		const [harness = 0, child = 0] = await started();
+
+		process.kill(harness, "SIGKILL");
+		for (let i = 0; i < 300 && running(child); i++) await Bun.sleep(10);
+		expect(running(child)).toBe(false);
+		const again = await collect(copilot.run("again", context()));
+		expect(types(again)).toContain("done");
+		const pids = await started();
+
+		await copilot.close();
+		expect(pids.map(running)).toEqual([false, false]);
+		done();
+	}, 10_000);
+
+	it("quit right after a harness died by itself settles once the child it left is gone", async () => {
+		const { copilot, started, done } = stubborn("open");
+		await collect(copilot.run("go", context()));
+		const [harness = 0, child = 0] = await started();
+
+		process.kill(harness, "SIGKILL");
+		await Bun.sleep(100);
+		await copilot.close();
+		expect(running(child)).toBe(false);
+		done();
+	}, 10_000);
+
 	it("closes a connection whose session/new has not answered, and the next run starts afresh", async () => {
 		const seen = fresh();
 		// Answers initialize, then never session/new.
