@@ -1,10 +1,14 @@
 /** Device extensions are discovered without importing them; only enabled code runs. */
 import {
 	existsSync,
+	lstatSync,
+	mkdirSync,
 	readdirSync,
 	readFileSync,
 	realpathSync,
+	rmSync,
 	statSync,
+	symlinkSync,
 } from "node:fs";
 import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,6 +31,7 @@ import { z } from "zod";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { hostFor, hostHarnessMode } from "./host";
+import { Self } from "./self";
 
 const Manifest = z.object({
 	kabane: z.object({
@@ -194,6 +199,52 @@ export namespace Extensions {
 		const stat = trySync(() => statSync(directory(home, name)));
 		return stat.ok && stat.value.isDirectory();
 	};
+	const isDirectory = (path: string): boolean => {
+		const stat = trySync(() => statSync(path));
+		return stat.ok && stat.value.isDirectory();
+	};
+	/** Where this install ships its extensions (`Self.extensions`); undefined from a source checkout. */
+	export const shippedRoot = (): string | undefined => Self.extensions();
+	/** The extensions this install ships, by name. */
+	export const shipped = (root = shippedRoot()): string[] => {
+		if (root === undefined) return [];
+		const entries = trySync(() => readdirSync(root));
+		return entries.ok
+			? entries.value
+					.filter(
+						(name) =>
+							Name.safeParse(name).success && isDirectory(join(root, name)),
+					)
+					.toSorted()
+			: [];
+	};
+	/**
+	 * Links `$KABANE_HOME/extensions/<name>` to `<root>/<name>` for each of `names` this install
+	 * ships and the home lacks, a link that resolves nowhere included. What is there otherwise, a
+	 * directory or a link that resolves, is the user's own install and stays. Returns the names
+	 * linked; the link names `root` as `Self.extensions` does, so an upgrade keeps it resolving.
+	 */
+	export const link = (
+		home: string,
+		names: readonly string[],
+		root = shippedRoot(),
+	): Result<string[]> =>
+		trySync(() => {
+			const ships = new Set(shipped(root));
+			const linked: string[] = [];
+			for (const name of names) {
+				if (root === undefined || !ships.has(name) || installed(home, name))
+					continue;
+				const target = directory(home, name);
+				const there = lstatSync(target, { throwIfNoEntry: false });
+				if (there && !there.isSymbolicLink()) continue;
+				mkdirSync(join(home, "extensions"), { recursive: true });
+				if (there) rmSync(target);
+				symlinkSync(join(root, name), target);
+				linked.push(name);
+			}
+			return linked;
+		});
 	/** Directory discovery never reads a manifest or imports disabled code. */
 	export const available = (home: string): string[] => {
 		const entries = trySync(() => readdirSync(join(home, "extensions")));
@@ -202,16 +253,12 @@ export namespace Extensions {
 			: [];
 	};
 	/**
-	 * What an installed extension says it adds: the `description` of its `package.json`, read as
+	 * What the extension in `path` says it adds: the `description` of its `package.json`, read as
 	 * JSON and never imported.
 	 */
-	export const description = async (
-		home: string,
-		name: string,
-	): Promise<string | undefined> => {
-		if (!installed(home, name)) return undefined;
+	export const descriptionAt = (path: string): string | undefined => {
 		const text = trySync(() =>
-			readFileSync(join(directory(home, name), "package.json"), "utf8"),
+			readFileSync(join(path, "package.json"), "utf8"),
 		);
 		const manifest = text.ok
 			? trySync((): unknown => JSON.parse(text.value))
@@ -223,6 +270,12 @@ export namespace Extensions {
 			? parsed.data.description.replace(/\s+/g, " ")
 			: undefined;
 	};
+	/** `descriptionAt` for an installed extension. */
+	export const description = async (
+		home: string,
+		name: string,
+	): Promise<string | undefined> =>
+		installed(home, name) ? descriptionAt(directory(home, name)) : undefined;
 	export const enabled = (home: string): Result<string[]> => {
 		if (!existsSync(configPath(home))) return ok([]);
 		const config = loadConfig(home);

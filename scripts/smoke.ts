@@ -18,6 +18,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -292,7 +293,10 @@ const checkShippedLens = (): void => {
 	const refused = start();
 	if (refused.code === 0 || !refused.stderr.includes("No lens smoke"))
 		fail("kabane loop start did not read the shipped quality lens", refused);
-	const lens = join(KABANE_HOME, "extensions/loop/lenses/quality.md");
+	// Through a linked install's link: the loop names the file where it found it.
+	const lens = realpathSync(
+		join(KABANE_HOME, "extensions/loop/lenses/quality.md"),
+	);
 	const contents = readFileSync(lens);
 	rmSync(lens);
 	const missing = start();
@@ -304,7 +308,6 @@ const checkShippedLens = (): void => {
 		);
 };
 
-// Exercise the base artifact before installing the separately built directory extension.
 /** The extensions a release archive ships beside its executable. */
 const shippedExtensions = (): string => join(dirname(BIN), "extensions");
 
@@ -321,6 +324,7 @@ const checkShipped = (): void => {
 	pass(`archive ships extensions ${SHIPPED.join(", ")}`);
 };
 
+// Exercise the base artifact before installing the separately built directory extension.
 const checkLoopExtension = async (version: string): Promise<void> => {
 	const extensions = join(KABANE_HOME, "extensions");
 	mkdirSync(extensions, { recursive: true });
@@ -347,11 +351,19 @@ const checkLoopExtension = async (version: string): Promise<void> => {
 		fail("enabled missing loop printed no installation diagnostic", missing);
 	const contextId = checkCommands(version);
 	await checkMcp(version, contextId);
-	if (binaryMode)
-		cpSync(join(shippedExtensions(), "loop"), join(extensions, "loop"), {
-			recursive: true,
-		});
-	else {
+	if (binaryMode) {
+		// Enabling a shipped extension links it from the archive's extensions/.
+		const enabled = kabane(
+			"config",
+			"set",
+			"extensions",
+			"loop",
+			"--layer",
+			"global",
+		);
+		if (!enabled.stdout.includes("linked loop from this install"))
+			fail("enabling the shipped loop did not link it", enabled);
+	} else {
 		const output = join(WORK, "loop-build");
 		const built = await buildLoop(output);
 		if (!built.success) fail(`loop build failed: ${built.logs.join("\n")}`);

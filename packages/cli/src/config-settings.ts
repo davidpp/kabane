@@ -105,7 +105,7 @@ const lookOf = (entry: Key, where: ConfigSettings.Where, home: string) => {
 				);
 	const options =
 		entry.key === "extensions"
-			? Extensions.available(home)
+			? [...new Set([...Extensions.available(home), ...Extensions.shipped()])]
 			: Settings.options(
 					entry.field,
 					look,
@@ -420,6 +420,8 @@ type ConfigChange = {
 	unresolved?: string;
 	/** Extension names saved that this build does not ship. */
 	ignored?: string[];
+	/** Shipped extensions the write linked into `$KABANE_HOME/extensions`, so they load. */
+	linked?: string[];
 	restart: Restart;
 };
 
@@ -609,12 +611,36 @@ const writeSetting = (
 			? {}
 			: { unresolved: decides.unresolved }),
 	};
-	// Saved anyway, since a newer kabane may ship the name, but it loads nothing here.
-	const ignored =
-		entry.key === "extensions" && Array.isArray(parsed.value)
-			? Extensions.unshipped(parsed.value, home)
-			: [];
-	return ok(ignored.length > 0 ? { ...change, ignored } : change);
+	return entry.key === "extensions" && Array.isArray(parsed.value)
+		? enableShipped(home, change, parsed.value)
+		: ok(change);
+};
+
+/**
+ * An `extensions` write: enabling one this install ships links it, so it loads; the setting is
+ * saved either way, since a newer kabane may ship a name this one does not.
+ */
+const enableShipped = (
+	home: string,
+	change: ConfigChange,
+	value: readonly unknown[],
+): Result<ConfigChange> => {
+	const named = value.filter(
+		(name): name is string => typeof name === "string",
+	);
+	const linked = Extensions.link(home, named);
+	if (!linked.ok)
+		return err(
+			new Error(
+				`${change.key} was saved, but linking a shipped extension failed: ${linked.error.message}`,
+			),
+		);
+	const ignored = Extensions.unshipped(named, home);
+	return ok({
+		...change,
+		...(ignored.length > 0 ? { ignored } : {}),
+		...(linked.value.length > 0 ? { linked: linked.value } : {}),
+	});
 };
 
 export namespace ConfigSettings {

@@ -209,3 +209,52 @@ describe("a binary mise installed", () => {
 		expect(Self.executable(host, () => undefined)).toBe(INSTALL);
 	});
 });
+
+describe("Self.extensions", () => {
+	// Each path resolves to itself, or to what `links` says it links to.
+	const resolver =
+		(present: readonly string[], links: Record<string, string> = {}) =>
+		(path: string) =>
+			links[path] ?? (present.includes(path) ? path : undefined);
+
+	it("is the directory beside a plain or installer-placed binary", () => {
+		expect(Self.extensions(BINARY, resolver(["/opt/kabane/extensions"]))).toBe(
+			"/opt/kabane/extensions",
+		);
+	});
+
+	it("is named through Homebrew's opt link to the keg", () => {
+		const keg = "/opt/homebrew/Cellar/kabane/1.0.0/libexec/extensions";
+		const host = {
+			...BINARY,
+			execPath: "/opt/homebrew/Cellar/kabane/1.0.0/libexec/kabane",
+		};
+		expect(
+			Self.extensions(
+				host,
+				resolver([keg], { "/opt/homebrew/opt/kabane/libexec/extensions": keg }),
+			),
+		).toBe("/opt/homebrew/opt/kabane/libexec/extensions");
+		// opt names a newer keg: this binary's own directory is the honest answer.
+		expect(Self.extensions(host, resolver([keg]))).toBe(keg);
+	});
+
+	it("is named through mise's latest link", () => {
+		const install = "/data/mise/installs/kabane/1.0.0/kabane/extensions";
+		const latest = "/data/mise/installs/kabane/latest/kabane/extensions";
+		expect(
+			Self.extensions(
+				{
+					...BINARY,
+					execPath: "/data/mise/installs/kabane/1.0.0/kabane/kabane",
+				},
+				resolver([install], { [latest]: install }),
+			),
+		).toBe(latest);
+	});
+
+	it("is undefined for a source run or a binary with nothing beside it", () => {
+		expect(Self.extensions(SCRIPT, () => "/anything")).toBeUndefined();
+		expect(Self.extensions(BINARY, () => undefined)).toBeUndefined();
+	});
+});
