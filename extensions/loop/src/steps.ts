@@ -629,10 +629,10 @@ export namespace RunSteps {
 		steps.find((s) => s.state === "pending");
 
 	/**
-	 * What the run has spent where a harness priced its work, in the run's currency, and the harnesses
-	 * of its sessions that priced none of theirs in it (no cost reported, or another currency), whose
-	 * spend is unknown. `priced` says whether any session did, so an unknown spend is not read as
-	 * a measured zero.
+	 * What the run has spent where a harness priced its work, in the run's currency; whether any
+	 * session priced it, so an unknown spend is not read as a measured zero; and the harnesses of its
+	 * ended sessions that priced none of theirs in it (no cost reported, or another currency). A
+	 * session still going may report its cost yet.
 	 */
 	export const spend = (
 		run: RunStore.Run,
@@ -640,25 +640,28 @@ export namespace RunSteps {
 		const { currency } = run.config.budget;
 		const isPriced = (claim: RunStore.Claim): boolean =>
 			run.usage[claim.sessionId]?.cost?.currency === currency;
+		const over = (claim: RunStore.Claim): boolean =>
+			claim.endedAt !== undefined || !RunStore.isLive(run.status);
 		return {
 			amount: Budget.spent(run.usage, currency, run.claims).amount,
 			priced: run.claims.some(isPriced),
 			unpriced: [
 				...new Set(
-					run.claims.filter((c) => !isPriced(c)).map((c) => c.harness),
+					run.claims
+						.filter((c) => over(c) && !isPriced(c))
+						.map((c) => c.harness),
 				),
 			],
 		};
 	};
 
-	// The spend fact: `$17.50`, `$17.50 (codex unpriced)`, or `unknown (codex unpriced)` when no
-	// session priced its work; a spend limit after the amount. Not `·` before the harnesses: the
-	// board joins facts with it.
+	// The spend fact: `$17.50`, `$17.50 (codex unpriced)`, or `unknown` while no session priced its
+	// work; a spend limit after the amount. Not `·` before the harnesses: the board joins facts with it.
 	const spendFact = (run: RunStore.Run): string => {
 		const { amount, priced, unpriced } = spend(run);
 		const limit = run.config.budget.spend;
 		const spent =
-			priced || unpriced.length === 0 ? money(run, amount) : "unknown";
+			priced || run.claims.length === 0 ? money(run, amount) : "unknown";
 		const of = limit === undefined ? spent : `${spent} of ${money(run, limit)}`;
 		return unpriced.length > 0 ? `${of} (${unpriced.join("·")} unpriced)` : of;
 	};

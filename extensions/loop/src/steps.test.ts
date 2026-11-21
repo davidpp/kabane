@@ -631,6 +631,23 @@ describe("RunSteps' spend fact", () => {
 		expect(spendOf(finished({ claims: [], usage: {} }))).toBe("$0.00");
 	});
 
+	it("waits for a live session to report before calling it unpriced", () => {
+		const live = (claims: unknown[], usage = {}) =>
+			finished({
+				status: "running",
+				endedAt: undefined,
+				exit: undefined,
+				claims,
+				usage,
+			});
+		const going = claim("next", "09:00:00", undefined, { harness: "claude" });
+		expect(spendOf(live([going]))).toBe("unknown");
+		const ended = claim("fixer", "08:43:41", "09:10:39", { harness: "claude" });
+		expect(spendOf(live([ended, going], { "s-fixer": priced(3.1) }))).toBe(
+			"$3.10",
+		);
+	});
+
 	it("keeps the limit after the amount", () => {
 		const limited = finished({
 			config: {
