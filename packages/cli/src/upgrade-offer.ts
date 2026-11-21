@@ -71,11 +71,15 @@ export namespace UpgradeOffer {
 
 	export type Answer = "yes" | "no" | "skip" | "quit";
 
-	/** One key as the terminal sent it; undefined for a key that answers nothing. */
+	/**
+	 * The first key of what the terminal sent; undefined for a key that answers nothing. A fast
+	 * `n` then Enter can arrive as one chunk, and the `n` is the answer.
+	 */
 	export const answer = (
-		key: string,
+		chunk: string,
 		install: UpdateNotice.Install,
 	): Answer | undefined => {
+		const key = chunk.slice(0, 1);
 		if (key === "\x03") return "quit";
 		if (key === "" || key === "n" || key === "N") return "no";
 		if (key === "s" || key === "S") return "skip";
@@ -101,6 +105,23 @@ export namespace UpgradeOffer {
 			stdin.on("data", onData);
 			stdin.once("end", onEnd);
 			stdin.resume();
+		});
+
+	// What is typed just after the answer, such as an Enter out of habit, is read and dropped, so
+	// it does not reach the upgrade or the board, where Enter opens the selected issue.
+	const DRAIN_MS = 200;
+	const drain = (stdin: NodeJS.ReadStream): Promise<void> =>
+		new Promise((resolve) => {
+			const discard = (): void => {};
+			stdin.setRawMode(true);
+			stdin.on("data", discard);
+			stdin.resume();
+			setTimeout(() => {
+				stdin.off("data", discard);
+				stdin.setRawMode(false);
+				stdin.pause();
+				resolve();
+			}, DRAIN_MS);
 		});
 
 	export type Outcome =
@@ -142,6 +163,7 @@ export namespace UpgradeOffer {
 		let said: Answer | undefined;
 		while (said === undefined)
 			said = answer(await readKey(process.stdin), install);
+		await drain(process.stdin);
 		process.stdout.write("\n");
 		if (said === "quit") return { kind: "quit" };
 		if (said === "skip") await UpdateNotice.skip(home, release);
