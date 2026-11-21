@@ -921,6 +921,13 @@ const CheckRow = ({
 	);
 };
 
+/** `text` cut to `room` columns at its last whole word, with an ellipsis. */
+export const cutAtWord = (text: string, room: number): string => {
+	const cut = text.slice(0, room - 1);
+	const space = cut.lastIndexOf(" ");
+	return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`;
+};
+
 // An extension row is a check row with what the extension does under it, dim: one line cut to the
 // panel, more of it while the row has focus.
 const ExtensionRow = ({
@@ -937,8 +944,7 @@ const ExtensionRow = ({
 	const about = offer.description ?? "";
 	// Three lines' worth while focused: the step has to fit a 24-row terminal at 40 columns.
 	const fits = room * (focused ? 3 : 1);
-	const shown =
-		about.length <= fits ? about : `${about.slice(0, fits - 1).trimEnd()}…`;
+	const shown = about.length <= fits ? about : cutAtWord(about, fits);
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<CheckRow

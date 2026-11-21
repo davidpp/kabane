@@ -10,6 +10,7 @@ import {
 	AGENTS_NOTE,
 	AGENTS_OFF,
 	AGENTS_OFF_NOTE,
+	cutAtWord,
 	EXTENSIONS_NOTE,
 	elidePath,
 	NEXT_STEP_LINE,
@@ -438,7 +439,7 @@ describe("SetupScreen form", () => {
 			expect(frame).not.toContain("turns on");
 			// Focused, three lines' worth of its description wraps under it.
 			expect(frame).toContain("             Serves the setup-dispatch");
-			expect(frame).toContain("             project's dispatch skill");
+			expect(frame).toContain("             project's dispatch skill…");
 			mockInput.pressKey(" ");
 			const ticked = await until((f) => f.includes("[x] dispatch"));
 			expect(ticked).toContain("turns on dispatch");
@@ -812,5 +813,14 @@ describe("SetupScreen copy", () => {
 	it("keeps JCAB-82's next step word for word", () => {
 		expect(nextLines("claude", "REPO-1")[1]).toBe(`say ${NEXT_PHRASE} and`);
 		expect(NEXT_PHRASE).toBe('"take the next kabane issue"');
+	});
+});
+
+describe("cutAtWord", () => {
+	it("cuts at the last whole word that fits, ellipsis included", () => {
+		expect(cutAtWord("Drives an issue, or a parent issue", 27)).toBe(
+			"Drives an issue, or a…",
+		);
+		expect(cutAtWord("unbreakablewordthatislong", 10)).toBe("unbreakab…");
 	});
 });
