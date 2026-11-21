@@ -5,7 +5,7 @@
 #   curl -fsSL https://github.com/davidpp/kabane/releases/latest/download/install.sh | sh
 #   curl -fsSL …/install.sh | sh -s -- --version 1.2.0 --prefix ~/opt/kabane --bin ~/bin
 #
-# Downloads this machine's archive and SHA256SUMS with curl, refuses the archive unless its SHA-256
+# Downloads this machine's archive and SHA256SUMS with curl, over https at every redirect, refuses the archive unless its SHA-256
 # matches its line there, and also verifies its build provenance with `gh attestation verify` when
 # an authenticated GitHub CLI is available. Run again to reinstall; `kabane update` updates it in
 # place. KABANE_UPDATE_API and KABANE_UPDATE_RELEASES point it at another releases API and asset
@@ -44,6 +44,26 @@ for url in "$api" "$releases"; do
   esac
 done
 
+# curl with its redirects held to https. A loopback rehearsal URL may itself be http, checked
+# above, but nothing it redirects to may be.
+fetch() {
+  case "$1" in
+    https://*) protocols='=https' ;;
+    *) protocols='=http,https' ;;
+  esac
+  url="$1"
+  shift
+  curl --proto "$protocols" --proto-redir '=https' -fsSL "$@" "$url"
+}
+
+# Both made absolute before anything uses them: the link stores the prefix as given.
+case "$prefix" in /*) ;; *) prefix="$(pwd)/${prefix}" ;; esac
+case "$bindir" in /*) ;; *) bindir="$(pwd)/${bindir}" ;; esac
+link="${bindir}/kabane"
+if [ -e "$link" ] || [ -L "$link" ]; then
+  [ -L "$link" ] || fail "${link} exists and is not a symlink; move it away or choose another --bin"
+fi
+
 case "$(uname -s)" in
   Darwin) os=darwin ;;
   Linux)
@@ -63,8 +83,8 @@ name="kabane-${os}-${arch}.tar.gz"
 
 if [ -z "$version" ]; then
   # The latest release, which GitHub never makes a prerelease: `--version` installs a beta.
-  version=$(curl -fsSL "${api}/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1) ||
-    fail "could not read the latest release from ${api}/latest"
+  latest=$(fetch "${api}/latest") || fail "could not read the latest release from ${api}/latest"
+  version=$(printf '%s\n' "$latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -n 1)
 fi
 case "$version" in
   [0-9]*.[0-9]*.[0-9]*) ;;
@@ -83,13 +103,31 @@ fi
 parent=$(dirname "$prefix")
 mkdir -p "$parent"
 work=$(mktemp -d "${parent}/.kabane-install.XXXXXX")
-trap 'rm -rf "$work"' EXIT INT TERM
+# The previous install waits beside $work, not in it, until the new one is linked. Any exit
+# before then, an interrupt included, removes what this run placed and puts the previous back.
+previous="${work}.previous"
+placed=""
+committed=""
+finish() {
+  if [ -z "$committed" ]; then
+    [ -z "$placed" ] || rm -rf "$prefix"
+    if [ -e "$previous" ] || [ -L "$previous" ]; then
+      mv "$previous" "$prefix" ||
+        printf 'kabane install: could not put %s back; it is at %s\n' "$prefix" "$previous" >&2
+    fi
+  fi
+  rm -rf "$work"
+}
+trap finish EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 base="${releases}/v${version}"
 printf 'Downloading kabane %s for %s-%s…\n' "$version" "$os" "$arch"
-curl -fsSL -o "${work}/${name}" "${base}/${name}" ||
+fetch "${base}/${name}" -o "${work}/${name}" ||
   fail "download failed: ${base}/${name} (a release before binaries has none)"
-curl -fsSL -o "${work}/SHA256SUMS" "${base}/SHA256SUMS" || fail "download failed: ${base}/SHA256SUMS"
+fetch "${base}/SHA256SUMS" -o "${work}/SHA256SUMS" || fail "download failed: ${base}/SHA256SUMS"
 expected=$(awk -v file="$name" '$2 == file { print $1 }' "${work}/SHA256SUMS")
 [ "$(printf '%s\n' "$expected" | grep -c .)" = 1 ] || fail "SHA256SUMS has no single line for ${name}"
 [ "$(digest "${work}/${name}")" = "$expected" ] ||
@@ -115,11 +153,16 @@ installed=$("${work}/kabane/kabane" --version) || fail "the downloaded kabane do
 if [ -e "$prefix" ]; then
   [ -x "${prefix}/kabane" ] && [ -d "${prefix}/templates" ] ||
     fail "${prefix} exists and is not a kabane install; choose another --prefix"
-  mv "$prefix" "${work}/previous"
 fi
-mv "${work}/kabane" "$prefix"
 mkdir -p "$bindir"
-ln -sf "${prefix}/kabane" "${bindir}/kabane"
+if [ -e "$prefix" ]; then
+  mv "$prefix" "$previous"
+fi
+placed=1
+mv "${work}/kabane" "$prefix"
+ln -sfn "${prefix}/kabane" "$link"
+committed=1
+rm -rf "$previous"
 printf 'Installed kabane %s in %s, linked at %s/kabane\n' "$installed" "$prefix" "$bindir"
 
 case ":${PATH}:" in
