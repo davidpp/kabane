@@ -718,7 +718,8 @@ test("with KABANE_JOB_TICK=print, as the sandbox sets it, the tick's fix says wh
 	expect(fixed.code).toBe(0);
 	expect(fixed.stdout).toContain("KABANE_JOB_TICK=print: would");
 	expect(fixed.stdout).toContain("job tick");
-	expect(called()).toEqual([]);
+	// Detection may read the crontab; nothing may write it or load an agent.
+	expect(called().filter((call) => call !== "crontab -l")).toEqual([]);
 	expect(existsSync(join(user, "Library/LaunchAgents"))).toBe(false);
 	expect(existsSync(join(home, "tools/table"))).toBe(false);
 });
