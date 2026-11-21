@@ -47,7 +47,8 @@ instructions live in `@kabane/board` (see [the board README](../board/README.md#
   its own, so an npx wrapper's adapter goes with it), and settles once it has exited and the
   group is empty or 500 ms past the SIGKILL. The group is swept once, when the harness exits: a
   harness that dies by itself has whatever it left behind stopped then, and a later `close`
-  signals no group, since the OS may have reused its id.
+  signals no group, since the OS may have reused its id. `conn.closed` settles when the harness
+  exits, or for `connect`'s in-process transport when the connection closes.
   `steer(session, blocks)` puts text into the turn the session is running through the
   `_session/steering` extension method, for a harness whose `initialize` advertised
   `_meta.steering.supported` (`conn.steering`; both pinned adapters do, Gemini does not). It

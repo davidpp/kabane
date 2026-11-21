@@ -390,14 +390,15 @@ export namespace AcpClient {
 		await proc.exited;
 	};
 
-	type Process = Pick<Connection, "closed" | "stderr" | "close"> & {
+	type Process = Pick<Connection, "stderr" | "close"> & {
+		// Absent for an in-process transport: its connection is closed once the transport is.
+		closed?: Connection["closed"];
 		// What was launched, so a start that failed can say what kabane was trying to run.
 		// Absent for an in-process transport, which never started anything.
 		launch?: Harnesses.Launch;
 	};
 
 	const NO_PROCESS: Process = {
-		closed: Promise.resolve(null),
 		stderr: () => "",
 		close: async () => {},
 	};
@@ -444,7 +445,7 @@ export namespace AcpClient {
 			steering: false,
 			resume: false,
 			resumed,
-			closed: process.closed,
+			closed: process.closed ?? raw.closed.then(() => null),
 			stderr: process.stderr,
 			close: () => {
 				raw.close();
