@@ -61,7 +61,7 @@ const ctxFor = (run: RunStore.Run): RunState.Ctx => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides(),
 		},

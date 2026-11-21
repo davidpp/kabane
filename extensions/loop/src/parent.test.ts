@@ -60,7 +60,7 @@ const deps = (signal?: AbortSignal) => ({
 	home,
 	basePath: home,
 	host: testHost(home, "kabane://actor/human/runner"),
-	kabaneBin: "/nonexistent/kabane",
+	kabaneBin: () => "/nonexistent/kabane",
 	pid: process.pid,
 	overrides: TestHarnesses.overrides({
 		claude: { command: "/nonexistent/harness" },

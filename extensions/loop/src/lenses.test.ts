@@ -504,7 +504,7 @@ describe("Runner lenses", () => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides({
 				claude: { command: "/nonexistent/harness" },
@@ -568,7 +568,7 @@ describe("Runner lenses", () => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			overrides: TestHarnesses.overrides({
 				claude: { command: "/nonexistent/harness" },
@@ -594,7 +594,7 @@ describe("Runner lenses", () => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 				cwd: repo,
 				settings: Settings.port(async () => ok([])),
 				runner: () => ["/nonexistent/runner"],

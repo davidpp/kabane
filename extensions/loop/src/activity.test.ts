@@ -90,7 +90,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		expect(await source.load()).toEqual({ ok: true, value: [] });
 		RunStore.create(home, run({ status: "pending", exit: undefined }));
@@ -120,7 +120,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		RunStore.create(home, run({ status: "running", exit: undefined }));
 		const log = RunStore.eventLog(home, "KAB-1-abc");
@@ -153,7 +153,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		RunStore.create(home, run({ status: "running", exit: undefined }));
 		const log = RunStore.eventLog(home, "KAB-1-abc");
@@ -223,7 +223,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		const before = await source.questions?.();
 		expect(before?.ok && before.value.map((q) => q.id)).toEqual([
@@ -249,7 +249,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		RunStore.create(home, run({ status: "running", pid: process.pid }));
 		const refused = await source.dismiss?.("KAB-1-abc");
@@ -272,7 +272,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		RunStore.create(
 			home,
@@ -358,7 +358,7 @@ describe("LoopActivity", () => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 			},
 			live.id,
 			"inject",
@@ -376,7 +376,7 @@ describe("LoopActivity", () => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 			},
 			live.id,
 			"inject",
@@ -406,7 +406,7 @@ describe("LoopActivity", () => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 			},
 			live.id,
 			"stop",
@@ -423,7 +423,7 @@ describe("LoopActivity", () => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 			},
 			live.id,
 			"stop",
@@ -451,7 +451,7 @@ describe("LoopActivity", () => {
 			basePath: home,
 			host: testHost(home),
 			actor: ACTOR,
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 		});
 		RunStore.create(
 			home,
@@ -530,7 +530,7 @@ it("lists only loop questions with their card and lane, and answers through the 
 		basePath: home,
 		host: testHost(home),
 		actor: ACTOR,
-		kabaneBin: "/nonexistent/kabane",
+		kabaneBin: () => "/nonexistent/kabane",
 	});
 	expect(await source.questions?.()).toEqual({
 		ok: true,

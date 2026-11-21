@@ -23,7 +23,7 @@ const deps = () => ({
 	home,
 	basePath: home,
 	host: testHost(home),
-	kabaneBin: "/nonexistent",
+	kabaneBin: () => "/nonexistent",
 	cwd: repo,
 	// No stored layers: the form's values over the defaults, through the real resolver.
 	settings: Settings.port(async () => ok([])),

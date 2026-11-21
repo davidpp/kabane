@@ -47,8 +47,11 @@ export namespace Loop {
 		/** The core base path (the database's directory). */
 		basePath: string;
 		host: Host;
-		/** The `kabane` executable: the runner's binary, and each session's MCP server. */
-		kabaneBin: string;
+		/**
+		 * The `kabane` executable, the runner's binary and each session's MCP server, asked at each
+		 * spawn: null once the kabane this process started from is gone and none is on PATH.
+		 */
+		kabaneBin: () => string | null;
 	};
 
 	export type StartDeps = Deps & {
@@ -88,16 +91,17 @@ export namespace Loop {
 	const sleep = (ms: number) =>
 		new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-	const defaultRunner =
-		(kabaneBin: string) =>
-		(runId: string): string[] => [
-			kabaneBin,
-			"loop",
-			"run",
-			runId,
-			"--as",
-			RUNNER_ACTOR,
-		];
+	const defaultRunner = (
+		kabaneBin: string | null,
+		runId: string,
+	): string[] | null =>
+		kabaneBin === null
+			? null
+			: [kabaneBin, "loop", "run", runId, "--as", RUNNER_ACTOR];
+
+	// Only a long-lived process, the board, outlives the kabane it started from.
+	const MOVED =
+		"kabane was updated or moved since the board started: restart the board";
 
 	const logTail = (home: string, runId: string): string => {
 		const file = RunStore.paths(home, runId).log;
@@ -143,7 +147,8 @@ export namespace Loop {
 		run: RunStore.Run,
 	): Result<{ exited: () => number | null | undefined }> => {
 		const runId = run.id;
-		const argv = (deps.runner ?? defaultRunner(deps.kabaneBin))(runId);
+		const argv = deps.runner?.(runId) ?? defaultRunner(deps.kabaneBin(), runId);
+		if (argv === null) return err(new Error(MOVED));
 		const [command, ...args] = argv;
 		if (command === undefined)
 			return err(new Error("The runner command is empty"));

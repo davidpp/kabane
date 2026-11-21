@@ -72,7 +72,7 @@ const deps = () => ({
 	home,
 	basePath: home,
 	host: testHost(home),
-	kabaneBin: "/nonexistent/kabane",
+	kabaneBin: () => "/nonexistent/kabane",
 	cwd: repo,
 	// Never reached: each start below stops at the (nonexistent) runner.
 	runner: () => ["/nonexistent/runner"],

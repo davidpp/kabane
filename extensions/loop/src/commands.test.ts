@@ -37,7 +37,7 @@ const deps = () => ({
 	home,
 	basePath: home,
 	host: testHost(home, undefined, testScope(repo)),
-	kabaneBin: "/nonexistent/kabane",
+	kabaneBin: () => "/nonexistent/kabane",
 	cwd: repo,
 	// Never reached: every case below is refused before the spawn.
 	runner: () => ["/nonexistent/runner"],
@@ -547,7 +547,7 @@ const RUNNER = [
 	`import ${JSON.stringify(Bun.resolveSync("@kabane/core/testing", import.meta.dir))};`,
 	`import { Loop } from ${JSON.stringify(join(import.meta.dir, "commands.ts"))};`,
 	`const home = process.env.KABANE_HOME ?? "";`,
-	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
+	`const ran = await Loop.run({ home, basePath: home, host: testHost(home), kabaneBin: () => "/nonexistent/kabane", overrides: ${JSON.stringify(TestHarnesses.NOWHERE)} }, process.argv[1] ?? "");`,
 	`process.exit(ran.ok ? 0 : 1);`,
 ].join("\n");
 
@@ -651,6 +651,20 @@ describe("Loop.restart", () => {
 			if (pid !== undefined && RunStore.runnerAlive(pid)) process.kill(pid);
 		}
 	}, 30_000);
+
+	it("spawns no runner once the kabane that would run it is gone, and says to restart the board", async () => {
+		const { run } = await orphaned("dead-run");
+		const { runner: _, ...rest } = deps();
+		const restarted = await Loop.restart(
+			{ ...rest, kabaneBin: () => null },
+			run.id,
+		);
+		expect(!restarted.ok && restarted.error.message).toBe(
+			"kabane was updated or moved since the board started: restart the board",
+		);
+		const after = RunStore.read(home, run.id);
+		expect(after.ok && Loop.died(after.value)).toBe(true);
+	});
 
 	it("refuses a run whose runner is not dead, and one whose parent has another live run", async () => {
 		const { run } = await orphaned("dead-run");

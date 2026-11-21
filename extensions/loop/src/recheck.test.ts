@@ -157,7 +157,7 @@ const run = async (
 		home,
 		basePath: home,
 		host: testHost(home),
-		kabaneBin: "/nonexistent/kabane",
+		kabaneBin: () => "/nonexistent/kabane",
 		pid: process.pid,
 		overrides: TestHarnesses.overrides({
 			gemini: { command: process.execPath, args: [agent] },

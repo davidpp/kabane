@@ -243,7 +243,7 @@ describe("Runner inbox handling", () => {
 			home,
 			basePath: home,
 			host: testHost(home),
-			kabaneBin: "/nonexistent/kabane",
+			kabaneBin: () => "/nonexistent/kabane",
 			pid: process.pid,
 			signal: controller.signal,
 			overrides: TestHarnesses.overrides({

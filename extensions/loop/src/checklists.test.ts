@@ -172,7 +172,7 @@ const drive = async (
 		home,
 		basePath: home,
 		host: testHost(home),
-		kabaneBin: "/nonexistent/kabane",
+		kabaneBin: () => "/nonexistent/kabane",
 		pid: process.pid,
 		git,
 		overrides: TestHarnesses.overrides({
@@ -448,7 +448,7 @@ describe("A checkpoint on a task with a checklist", () => {
 				home,
 				basePath: home,
 				host: testHost(home),
-				kabaneBin: "/nonexistent/kabane",
+				kabaneBin: () => "/nonexistent/kabane",
 				pid: process.pid,
 				overrides: TestHarnesses.overrides(),
 				git,
