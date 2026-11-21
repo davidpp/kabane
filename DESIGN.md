@@ -152,7 +152,7 @@ requests and three status hues for states.
 - **Secondary** (`{colors.text-secondary}`): one step down from the foreground. A normal-priority
   id, and an answer's description in an ask.
 - **Muted** (`{colors.text-muted}`): chrome. Meta, counts, footer key labels, a linked-issue
-  glyph, a paused or stale card.
+  glyph, a paused, unreported or stale card.
 - **Faint** (`{colors.text-faint}`): what cannot be acted on right now (an unsatisfiable
   trigger), and the title of a cold strip.
 - **Raised, Overlay, Selected** (`{colors.surface-raised}`, `{colors.surface-overlay}`,
@@ -293,6 +293,7 @@ against every glyph already here.
 | `●` (badge) | in flight, echoed on a surface that does not own it | working |
 | `⠋` frozen | in flight, but the runner stopped reporting | muted |
 | `⏸` | paused | muted |
+| `◌` | in flight, but nothing reports whether it is working or waiting | muted |
 | `⏹` | stopped on purpose before it finished (a human, a budget): over, not failed | muted |
 | `✓` `•` | done | done |
 | `○` | pending plan step | muted |
@@ -302,7 +303,7 @@ against every glyph already here.
 | `⊘` | the detail's trail: a blocker still open | accent |
 | `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
 | spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
-| `▸` `▾` | transcript: a run of reads and searches folded into one row, closed and open | muted |
+| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open; a running call spins the group glyph | muted, working |
 | `!` | transcript: a harness's notice by its severity, or a loop's warning; a warning in the accent, since the session is not running as asked, an error in the failed hue, information muted | accent, failed, muted |
 
 ### Footer
@@ -322,21 +323,48 @@ against every glyph already here.
   waiting there; the tracker's counts them all, and the Jobs tab's the jobs whose run waits on
   the human.
 - **Motion:** only the tab on screen animates its spinner. A running card on another tab
-  shows the still `●`.
+  shows the still `●`. The glyph reads the state the tab's own poll last saw, so it stops the
+  moment the run row says the run is over.
+- **Left for you:** a finished card that left issues for the human shows the accent `?` as its
+  glyph until its tab has been on screen.
 
-### Lane chips
-- **Style:** one row under a card tab's header, a chip per lane on the terminal's own background;
-  the chip on screen sits on selected in Label weight behind a `▸`. The first chip,
-  `all <noun> · live`, is in the text color; each lane's chip is in its series hue, the same hue
-  as the tag on its lines.
-- **Tags:** on the all-lanes stream only, after the time, padded to the widest lane and held to
-  a quarter of the row.
+### Run map
+- **What:** a card tab whose card has steps opens on its map, under the run row: one row per
+  step, in the order they run, the ones still to come included and the landing last. A step's
+  row is its state glyph, its name in a column, its result muted and its time at the right; a
+  step opens by itself to one row per session while it runs, indented under it, and folds once
+  it is over. Bays and strips again: steps are the bays, sessions the strips under the live one.
+- **Glyphs:** `●` a step under way and the spinner on each live session (the tab on screen owns
+  them), `✓` done, `○` to come, `✗` failed, `⏹` stopped, and the accent `?` on a session a
+  question waits on and on its step, whose result then starts `asks you`.
+- **Cursor:** one row on selected under the Selection Rule, behind a `›`. It starts on and
+  follows the newest live session, or the session that asks, until the human moves it; `f` gives
+  it back to the run. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
+  session's log in place of the stream with its name over it, and `esc` closes the log before it
+  goes back to the tracker.
+  `g/G` and `⌃d/⌃u` scroll the stream. The `?` sheet lists what the card runs with after its
+  keys, under the card's name: label muted, value in the text color.
+- **Left for you:** on a finished card, a blank row and `left for you · n` as a Label under the
+  map, then each issue it left: `○`, its id, how it was left in secondary, why muted. A line with
+  no issue (the kept branch) is muted and has no glyph. The cursor walks on to them, and `enter`
+  opens an issue on the tracker.
+- **Fit:** a result gives up whole ` · ` parts from its tail before it is cut with `…`. Under
+  sixty columns the time column goes (a row with no result keeps its time), and the finished
+  steps the cursor is not on share rows, as many names to a row as fit:
+  `✓ implement gates triage review`. The map and its left-for-you list take at most half the tab's
+  rows while the work goes and seven tenths once it is over, and keep the cursor in sight,
+  counting the rows they leave out as `… n more`.
+- **Without steps:** a card that gives none keeps its stream with a chip per lane under the
+  header, `all <noun> · live` first, `h/l` walking them, each in its series hue.
 
 ### Question banner
 - **Style:** `{components.question-banner}`, raised, pinned over the detail view it asks about
   (or under a card tab's header), with a blank row of its own surface above and below, as the
   copilot's ask panel has, and no minimum height.
-- **Content:** `waiting on you` in the accent and bold, then who asks about which task, muted;
+- **Content:** `waiting on you` in the accent and bold, then who asks about which task, muted:
+  the session that asked by its lane with its harness after it (`docs-recheck (codex) asks about
+  PROJ-5`), or the harness alone when the question names no lane. On a card's map it sits under
+  the map, and that session's row turns to the accent `?`;
   the question with an accent `?`; the numbered answers, each key and its words in the text
   color and the `·` between them muted (the Answer Rule, under Copilot pane). Once
   answered: `✓ answered` in the done hue and the answer after `→`. The detail view under it

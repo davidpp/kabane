@@ -1,4 +1,4 @@
-import { Keymap } from "@cabane/board/keymap";
+import { Keymap } from "@kabane/board/keymap";
 import type { Command } from "../context";
 
 export const board: Command = {

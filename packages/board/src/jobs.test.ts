@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Task } from "@cabane/core";
-import type { JobFacts } from "@cabane/extension";
+import type { Task } from "@kabane/core";
+import type { JobFacts } from "@kabane/extension";
 import { BoardJobs } from "./jobs";
 import { BoardNav } from "./nav";
 import { BoardTabs } from "./tabs";

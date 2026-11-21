@@ -1,5 +1,5 @@
-import { Planner } from "@cabane/core";
-import { failure, success } from "@cabane/extension";
+import { Planner } from "@kabane/core";
+import { failure, success } from "@kabane/extension";
 import type { Command } from "../context";
 
 /**
@@ -33,7 +33,7 @@ export const open: Command = {
 			identifier: link.identifier,
 			url: link.url,
 		};
-		const { Launcher } = await import("@cabane/board");
+		const { Launcher } = await import("@kabane/board");
 		const opened = await Launcher.open(target);
 		if (!opened.ok) return failure(opened.error);
 

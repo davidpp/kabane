@@ -7,7 +7,7 @@ import {
 	Planner,
 	type Result,
 	serializedBytes,
-} from "@cabane/core";
+} from "@kabane/core";
 import { z } from "zod";
 import { questionsMarkdown } from "./markdown";
 import type { QuestionView } from "./schema";

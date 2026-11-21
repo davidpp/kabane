@@ -2,7 +2,11 @@
 export const elapsed = (startedAt: string, finishedAt?: string): string => {
 	const start = Date.parse(startedAt);
 	const end = finishedAt ? Date.parse(finishedAt) : Date.now();
-	const ms = end - start;
+	return took(end - start);
+};
+
+/** A span of `ms` as `41s`, `3m12s`, `1h5m`. */
+export const took = (ms: number): string => {
 	if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
 	if (ms < 3_600_000)
 		return `${Math.floor(ms / 60_000)}m${Math.round((ms % 60_000) / 1000)}s`;

@@ -2,8 +2,8 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChecklistItemView } from "@cabane/checklist";
-import { Planner, type Result } from "@cabane/core";
+import type { ChecklistItemView } from "@kabane/checklist";
+import { Planner, type Result } from "@kabane/core";
 import { run } from "../main";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -21,7 +21,7 @@ const device = async () => {
 	homes.push(home);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
 	const init = await run(
-		["init", "--actor", "cabane://actor/human/test", "--device", "test"],
+		["init", "--actor", "kabane://actor/human/test", "--device", "test"],
 		env,
 		home,
 	);
@@ -56,7 +56,7 @@ it("adds, ticks, edits and lists an issue's checklist, with the receipts the MCP
 	expect(listed.exitCode).toBe(0);
 	const { items } = listed.json as { items: ChecklistItemView[] };
 	expect(items.map((item) => [item.handle, item.done, item.doneBy])).toEqual([
-		[`${label}.1`, true, "cabane://actor/human/test"],
+		[`${label}.1`, true, "kabane://actor/human/test"],
 		[`${label}.2`, false, undefined],
 	]);
 	expect((await kabane(["checklist", label])).text).toBe(

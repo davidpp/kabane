@@ -1,6 +1,6 @@
 import { SELF } from "cloudflare:test";
-import { ContextPageSchema } from "@cabane/core";
-import issues from "@cabane/core/testing/fixtures/issue-corpus/issues.json";
+import { ContextPageSchema } from "@kabane/core";
+import issues from "@kabane/core/testing/fixtures/issue-corpus/issues.json";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { HUMAN, withAccess } from "./test-access";
@@ -30,7 +30,7 @@ const call = async (
 	args: Record<string, unknown>,
 	expectedError = false,
 ) => {
-	const response = await SELF.fetch("https://cabane.test/mcp", {
+	const response = await SELF.fetch("https://kabane.test/mcp", {
 		method: "POST",
 		headers: withAccess(HUMAN, {
 			"Content-Type": "application/json",
@@ -54,7 +54,7 @@ const bytes = (text: string) => new TextEncoder().encode(text).length;
 
 describe("concise formats through authenticated Worker HTTP", () => {
 	it("keeps auth/scope enforcement and enumerates the retained public corpus with bounded pages/receipts", async () => {
-		const noAuth = await SELF.fetch("https://cabane.test/mcp", {
+		const noAuth = await SELF.fetch("https://kabane.test/mcp", {
 			method: "POST",
 			body: "{}",
 		});

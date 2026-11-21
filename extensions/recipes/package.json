@@ -1,5 +1,5 @@
 {
-	"name": "@cabane/recipes",
+	"name": "@kabane/recipes",
 	"version": "0.1.0",
 	"description": "Named prompt recipes from a project's .kabane/recipes/, started with `kabane run` in hc terminals and listed with `kabane runs`.",
 	"license": "MIT",
@@ -18,8 +18,8 @@
 		"build": "bun scripts/build.ts"
 	},
 	"devDependencies": {
-		"@cabane/core": "workspace:*",
-		"@cabane/extension": "workspace:*",
+		"@kabane/core": "workspace:*",
+		"@kabane/extension": "workspace:*",
 		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2"
 	},

@@ -22,15 +22,20 @@ export type {
 	Result,
 	ToolDef,
 	ToolHandler,
-} from "@cabane/core";
-export type { ProjectScope } from "@cabane/core";
+} from "@kabane/core";
+export type { ProjectScope } from "@kabane/core";
 export type {
 	ActivityCard,
 	ActivityDiff,
 	ActivityEvent,
+	ActivityFact,
+	ActivityLeft,
 	ActivityQuestion,
+	ActivitySession,
 	ActivitySource,
 	ActivityStatus,
+	ActivityStep,
+	ActivityStepState,
 	ActivityToolDetail,
 	CardAction,
 	CopilotShortcut,

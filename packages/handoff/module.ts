@@ -1,4 +1,4 @@
-import type { KabaneModule } from "@cabane/core";
+import type { KabaneModule } from "@kabane/core";
 import { HANDOFF_KIND, HANDOFF_TEMPLATE } from "./template";
 import { handoffTools } from "./tools";
 

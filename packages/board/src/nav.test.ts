@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
-import type { TriggerDescriptor } from "@cabane/extension";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
+import type { TriggerDescriptor } from "@kabane/extension";
 import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import { BoardData } from "./data";
@@ -1453,7 +1453,7 @@ describe("dispatch overlay", () => {
 			id: "custom",
 			label: "custom",
 			satisfiable: false,
-			hint: "run via: cabane dispatch custom -i …",
+			hint: "run via: kabane dispatch custom -i …",
 		}),
 	];
 	const LOADING = { taskId: "a", triggers: [], selected: 0, loading: true };
@@ -1554,7 +1554,7 @@ describe("dispatch overlay", () => {
 		expect(effect).toEqual({
 			type: "notice",
 			notice: {
-				text: "run via: cabane dispatch custom -i …",
+				text: "run via: kabane dispatch custom -i …",
 				tone: "error",
 			},
 		});
@@ -3178,7 +3178,7 @@ describe("copilot prompt (`A` / `:`)", () => {
 });
 
 describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
-	const ACTOR = "cabane://actor/agent/claude";
+	const ACTOR = "kabane://actor/agent/claude";
 	const TURN_START = "2026-09-12T10:00:00.000Z";
 	const before = "2026-09-12T09:59:59.000Z";
 	const after = "2026-09-12T10:00:01.000Z";
@@ -3195,7 +3195,7 @@ describe("the copilot's fingerprint on the rows it changed (`✦ ai`)", () => {
 		const human = task({
 			id: "human",
 			parentTaskId: "agent",
-			updatedBy: "cabane://actor/human/david",
+			updatedBy: "kabane://actor/human/david",
 			updatedAt: after,
 		});
 		const stale = task({

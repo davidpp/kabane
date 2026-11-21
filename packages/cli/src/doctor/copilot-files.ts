@@ -2,8 +2,8 @@
 // description the board does not show, as a finding of the extension it belongs to: the board's
 // announcer has room for one line, so this is where every refused file is listed by name.
 import { join } from "node:path";
-import { ok } from "@cabane/core";
-import type { Doctor } from "@cabane/extension";
+import { ok } from "@kabane/core";
+import type { Doctor } from "@kabane/extension";
 import { CopilotFiles } from "../copilot-files";
 import { Extensions } from "../extensions";
 import { Skills } from "../skills";

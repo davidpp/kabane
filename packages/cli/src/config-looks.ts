@@ -1,8 +1,8 @@
 // How the device keys of `config.json` read on a generated settings screen, as an extension's
 // `looks` say for its own namespace. The choices `ConfigSchema` keeps open on purpose, so a config
 // from a newer kabane still loads, come from what this build ships.
-import { Harnesses } from "@cabane/acp/harnesses";
-import type { Settings } from "@cabane/extension";
+import { Harnesses } from "@kabane/acp/harnesses";
+import type { Settings } from "@kabane/extension";
 
 export const DEVICE_LOOKS: Settings.Looks = {
 	copilot: { label: "copilot", group: "Copilot" },

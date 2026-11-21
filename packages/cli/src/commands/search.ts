@@ -1,11 +1,11 @@
-import { Planner, type TaskState } from "@cabane/core";
+import { Planner, type TaskState } from "@kabane/core";
 import {
 	conciseSuccess,
 	failure,
 	flagString,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { type Command, resolveScopeUri } from "../context";
 import { formatTaskList } from "../output";
 import { pageOptions, responseFormat } from "../response-format";

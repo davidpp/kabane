@@ -13,6 +13,7 @@
 // log's sources are lists, so another tab or another kind of log entry is one more item, not a
 // reshape.
 import {
+	ActorUri,
 	CONTEXT_SECTIONS,
 	DEFAULT_ENTRY_KIND,
 	TASK_STATE_DISPLAY,
@@ -21,8 +22,8 @@ import {
 	type TaskEntry,
 	type TaskLink,
 	type WorkRef,
-} from "@cabane/core";
-import { parseDecisionBody } from "@cabane/questions";
+} from "@kabane/core";
+import { parseDecisionBody } from "@kabane/questions";
 import type { BoardActivity } from "./activity";
 import type { BoardData } from "./data";
 
@@ -120,9 +121,9 @@ export namespace DetailModel {
 	 */
 	type BodySection = { heading?: string; lines: string[]; size: number };
 
-	/** A comment author as a name: `cabane://actor/agent/claude` → `claude`. */
+	/** A comment author as a name: `kabane://actor/agent/claude` → `claude`. */
 	export const actorName = (author: string): string =>
-		author.startsWith("cabane://actor/")
+		author.startsWith(ActorUri.PREFIX)
 			? (author.split("/").at(-1) ?? author)
 			: author;
 

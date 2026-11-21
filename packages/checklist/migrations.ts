@@ -1,4 +1,4 @@
-import { type Migrate, TABLES } from "@cabane/core";
+import { ActorScheme, type Migrate, TABLES } from "@kabane/core";
 
 export const ITEMS_TABLE = "task_checklist_items";
 
@@ -25,5 +25,11 @@ export const migrations: readonly Migrate.Migration[] = [
 				`CREATE INDEX idx_task_checklist_items_task_rank ON ${ITEMS_TABLE} (task_id, rank)`,
 			);
 		},
+	},
+	{
+		// `cabane://actor/` became `kabane://actor/` (core's migration 12, JCAB-607).
+		name: "actor-scheme",
+		up: (db) =>
+			ActorScheme.renameColumns(db, ITEMS_TABLE, ["done_by", "updated_by"]),
 	},
 ];

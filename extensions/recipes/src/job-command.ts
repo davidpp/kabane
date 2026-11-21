@@ -13,7 +13,7 @@ import type {
 	ProjectScope,
 	Result,
 	Task,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { Jobs } from "./jobs";

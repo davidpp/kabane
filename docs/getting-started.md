@@ -6,8 +6,7 @@ MCP server running on your machine. Everything lives in one SQLite file under `~
 
 This guide covers one machine with local storage, which is a complete setup on its own.
 Syncing several machines through a Cloudflare hub is optional and lives in
-[`deploy.md`](deploy.md). The project was called Cabane; [the README](../README.md) explains
-why some internal names still use it.
+[`deploy.md`](deploy.md).
 
 ## Prerequisites
 
@@ -70,8 +69,7 @@ space toggle · enter confirm · esc quit
 ```
 
 - **name** is prefilled with your OS username. It becomes your actor, the identity stamped
-  on everything you write: `cabane://actor/human/<name>`, lowercased with spaces as dashes.
-  The scheme keeps the project's earlier name, Cabane, because every row stores it.
+  on everything you write: `kabane://actor/human/<name>`, lowercased with spaces as dashes.
 - **agents** lists the harnesses found on your PATH, all checked. Tab or the arrow keys
   move between rows, and space unchecks one. Each checked harness gets a `kabane` entry in
   its user-level MCP config (its own `mcp add`). With none on your PATH the row reads
@@ -121,9 +119,9 @@ checked harness, added through that harness's own `mcp add`:
 
 | Harness | File | Entry runs |
 |---|---|---|
-| Claude Code | `~/.claude.json` | `<bun> <installed kabane bin> mcp --as cabane://actor/agent/claude` |
-| Codex | `~/.codex/config.toml` | the same, `--as cabane://actor/agent/codex` |
-| Gemini CLI | `~/.gemini/settings.json` | the same, `--as cabane://actor/agent/gemini` |
+| Claude Code | `~/.claude.json` | `<bun> <installed kabane bin> mcp --as kabane://actor/agent/claude` |
+| Codex | `~/.codex/config.toml` | the same, `--as kabane://actor/agent/codex` |
+| Gemini CLI | `~/.gemini/settings.json` | the same, `--as kabane://actor/agent/gemini` |
 
 A harness that already has a `kabane` entry shows `· already installed` and is left alone.
 `codex mcp add` rewrites the whole of `~/.codex/config.toml` in its own formatting. The
@@ -233,9 +231,9 @@ Setup registered one MCP server, `kabane`, per harness. Each harness writes as i
 actor, so the board and `kabane show` tell you who did what. Check the registration:
 
 ```bash
-claude mcp get kabane      # Status: ✔ Connected, Args: … mcp --as cabane://actor/agent/claude
-codex mcp get kabane       # args: … mcp --as cabane://actor/agent/codex
-gemini mcp list            # ✓ kabane: … mcp --as cabane://actor/agent/gemini (stdio) - Connected
+claude mcp get kabane      # Status: ✔ Connected, Args: … mcp --as kabane://actor/agent/claude
+codex mcp get kabane       # args: … mcp --as kabane://actor/agent/codex
+gemini mcp list            # ✓ kabane: … mcp --as kabane://actor/agent/gemini (stdio) - Connected
 ```
 
 To wire a harness later, or re-wire one, use `kabane mcp install`. It takes
@@ -297,7 +295,7 @@ Work is tracked in kabane (MCP server `kabane`). Your assignee name is your harn
 The board shows assignees (`@claude`) but does not set them. Assign with
 `kabane add "…" --assignee claude` or `kabane edit <id> --assignee claude`, or ask the
 copilot to do it. The assignee is a plain name, not the actor URI, and `list` matches it
-exactly: `--assignee cabane://actor/agent/claude` finds nothing.
+exactly: `--assignee kabane://actor/agent/claude` finds nothing.
 
 ## The CLI, for scripts and agents
 
@@ -365,13 +363,15 @@ a silent UTC.
 The board says when a release your install would update to is out: a line over its footer,
 `kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A binary mise
 installed says `run mise up kabane` instead, and an install `kabane update` would refuse says
-`update it the way you installed it`. It is the release
-`kabane update --check` would name, on your channel and within your major (minor for `0.x`).
-The board reads npm's `latest` and `beta` dist-tags at most once a day, after its first
-frame, and keeps them in `KABANE_HOME/update-check.json`. Bun's registry and proxy settings
-do not apply to that read. When the registry cannot be reached, nothing is shown and the board
-carries on. Only the board checks: `kabane mcp`, a piped command and every other command never
-do, and a run from a source checkout never shows the line. The check installs nothing. To turn
+`update it the way you installed it`. It is the newest release on your channel and within your
+major (minor for `0.x`), the one `kabane update --check` names on a binary.
+The board reads the latest release and the betas from
+[GitHub releases](https://github.com/davidpp/kabane/releases), where the binaries download
+from, at most once a day, after its first frame, and keeps them in
+`KABANE_HOME/update-check.json`. Bun's registry and proxy settings do not apply to that read.
+When GitHub cannot be reached, nothing is shown and the board carries on. Only the board
+checks: `kabane mcp`, a piped command and every other command never do, and a run from a
+source checkout never shows the line. The check installs nothing. To turn
 it off:
 
 ```bash
@@ -423,13 +423,14 @@ Use `--force` or the named doctor repair only when you want to re-point it.
 This applies once a release ships binaries ([install](#install)).
 
 ```bash
-kabane update --check        # metadata only: the candidate from npm's dist-tags
+kabane update --check        # metadata only: the candidate from GitHub releases
 kabane update               # download, verify and replace this binary
 ```
 
 A binary follows the same channel and version policy as a Bun install
-([subsequent updates](#subsequent-updates), [beta installs](#beta-installs)); it reads npm's
-dist-tags over HTTPS, so Bun's registry and proxy settings do not apply. `kabane update`
+([subsequent updates](#subsequent-updates), [beta installs](#beta-installs)). It reads the
+candidate from the GitHub releases API over HTTPS: `latest` is the latest release, `beta` the
+highest `X.Y.Z-beta.N` prerelease. Bun's registry and proxy settings do not apply. `kabane update`
 downloads `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from that version's
 [GitHub release](https://github.com/davidpp/kabane/releases) and refuses on any checksum
 mismatch. It extracts into a temporary directory beside the executable, runs the new
@@ -594,6 +595,61 @@ without that backup.
   and changes nothing.
 - **No going back.** The old version refuses a database the new version has opened. Going back
   takes the backup.
+
+### Upgrading from 1.0.0-beta.0: actor URIs
+
+An actor, the identity stamped on everything you and your agents write, was
+`cabane://actor/human/<name>` or `cabane://actor/agent/<harness>`, after the project's earlier
+name. It is `kabane://actor/…` now. The database, `config.json` and the harness entries
+`kabane mcp install` wrote all hold one, and this version reads only the new prefix.
+
+**Back up first**, with every board, `kabane mcp`, loop runner and `kabane sync` of the old
+version stopped: a consistent copy of the database
+(`sqlite3 ~/.kabane/kabane.db "VACUUM INTO '<backup path>'"`), `~/.kabane/config.json`, and the
+harness configs the repair rewrites: `~/.claude.json`, `~/.codex/config.toml` and
+`~/.gemini/settings.json`, where present. Then run:
+
+```bash
+kabane doctor --fix
+```
+
+It migrates the database, rewrites `actor` in `config.json`, and re-registers each harness entry
+whose only difference is its old `--as` actor. Until you run it, every other command stops with
+a message that names it. Keep the old version's processes stopped until it has run: one still
+running writes the old prefix into the migrated database, where nothing renames it again. Then
+start them again, harness sessions included, so each `kabane mcp` starts with its new `--as`.
+
+- **What is kept.** Every task, comment, question, checklist item and log entry, with its
+  author and time. The columns that name who wrote a row (authors, `updated_by` and the like)
+  move to the new prefix; no version or time moves. Text that quotes an old URI, in a
+  description, a comment or a question, stays as written, and so do authors with no URI
+  (`claude`, `agent:claude`).
+- **Output says `kabane://actor/…`.** `kabane config get actor`, `--json` output, tool results
+  and every brief name the new prefix. A script that compares an author to a `cabane://actor/…`
+  string has to change.
+- **The old prefix is refused.** `--as cabane://actor/…`, or a `config.json` actor under it,
+  stops the command with a pointer to `kabane doctor --fix`. A harness entry that also runs
+  another command, such as one `mise up` left on an older binary, is reported as
+  `mcp-entry-stale-<harness>` instead, which a bare `--fix` does not apply:
+  `kabane doctor --fix kabane/mcp-entry-stale-<harness>` re-registers it with the new actor.
+  An entry that sets more than its command, such as an `env` with its own `KABANE_HOME`, is
+  reported as `mcp-entry-actor-kept-<harness>` and left alone, because re-registering would
+  drop the rest: replace the old actor after `--as` in the file it names, by hand.
+- **Extensions you installed from a clone.** Rebuild and reinstall each one
+  ([extensions.md](extensions.md), "Update an extension"): an older loop starts its sessions as
+  `cabane://actor/agent/<harness>`, which this version refuses, and an older recipes leaves its
+  tables under the old prefix. On a main build, `kabane update` rebuilds them for you.
+- **The recipes extension.** Its runs and jobs move when it is enabled. A device with it
+  disabled keeps the old prefix in those tables until it is enabled again.
+- **Sync: every device before the next sync.** A device still on the old version stops pulling
+  at an updated device's first change. What it pushes meanwhile carries the old prefix, and an
+  updated device stores it as it came. So stop writing, sync every device until nothing is left
+  to pull while all of them still run the old version, then update every device, and the hub,
+  before syncing again. A hub deployed as `cabane-worker` moves to `kabane-worker`
+  ([deploy.md, 5.9](deploy.md#59-move-a-hub-deployed-as-cabane-worker--manual)).
+- **No going back.** The old version refuses a database this one has opened: `newer than this
+  kabane knows`. Going back takes all three backups: the database, `config.json` and the
+  harness configs.
 
 ### Upgrading from 1.0.0-beta.0: the loop and dispatch are extensions you install
 

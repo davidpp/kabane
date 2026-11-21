@@ -1,5 +1,5 @@
 {
-	"name": "@cabane/outcome",
+	"name": "@kabane/outcome",
 	"version": "0.1.0",
 	"description": "Kabane data module: session outcomes on the issue timeline",
 	"license": "MIT",
@@ -16,7 +16,7 @@
 		"clean": "rm -rf node_modules"
 	},
 	"dependencies": {
-		"@cabane/core": "workspace:*"
+		"@kabane/core": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/bun": "1.4.4",

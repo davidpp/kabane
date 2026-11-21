@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SqliteDb } from "@cabane/sqlite";
+import { SqliteDb } from "@kabane/sqlite";
 import { CORE_TOOL_NAMES } from "./mcp/tool-names";
 import { KABANE_TOOLS, type ToolDef } from "./mcp/tools";
 import type { KabaneModule, ModuleContextSection } from "./module";

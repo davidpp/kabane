@@ -10,9 +10,9 @@ import {
 	Runtime,
 	Sync,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
-import { SqliteDb } from "@cabane/sqlite";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
+import { SqliteDb } from "@kabane/sqlite";
 import { checklistModule } from "./module";
 import { Checklist } from "./storage";
 
@@ -31,7 +31,7 @@ const register = (enabled: boolean, actor: string) =>
 		Runtime.configure({
 			provider: SqliteDb.provider(),
 			modules: enabled ? [checklistModule] : [],
-			actor: () => `cabane://actor/human/${actor}`,
+			actor: () => `kabane://actor/human/${actor}`,
 		}),
 	);
 const device = async (name: string, enabled: boolean) => {
@@ -66,8 +66,96 @@ it("parks item ops on a device without the module and replays them on registrati
 	expect(unwrap(await Sync.pull(beta, b)).replayed).toBe(2);
 	expect(unwrap(await Checklist.list(beta, task.id))[0]).toMatchObject({
 		done: true,
-		doneBy: "cabane://actor/human/alpha",
+		doneBy: "kabane://actor/human/alpha",
 		version: 2,
+	});
+});
+
+/** A device on the build before the rename: it writes cabane://actor/. */
+const legacyWriter = () =>
+	unwrap(
+		Runtime.configure({
+			provider: SqliteDb.provider(),
+			modules: [checklistModule],
+			actor: () => "cabane://actor/human/alpha",
+		}),
+	);
+const LEGACY = "cabane://actor/human/alpha";
+const RENAMED = "kabane://actor/human/alpha";
+
+for (const registered of [true, false])
+	it(`renames the item ops pending at the cutover, with the module ${registered ? "registered" : "not registered"} then`, async () => {
+		const alpha = await device("alpha", true);
+		legacyWriter();
+		const task = unwrap(
+			await Planner.addTask(alpha, { title: "Pending", kind: "issue" }),
+		);
+		const [item] = unwrap(
+			await Checklist.add(alpha, { id: task.id, items: ["One"] }),
+		).items;
+		unwrap(await Checklist.tick(alpha, { items: [item?.id ?? ""] }));
+		// Back to schema 11, as the build before the rename left it, then the upgrade's boot.
+		unwrap(
+			await withDb(alpha, (db) => {
+				db.run("DELETE FROM schema_migrations WHERE version = 12");
+				db.run("DELETE FROM schema_migrations_checklist WHERE version = 2");
+			}),
+		);
+		register(registered, "alpha");
+		unwrap(await Planner.init(alpha));
+		const pending = unwrap(
+			unwrap(await withDb(alpha, (db) => Oplog.drain(db, 100))),
+		).filter((op) => op.tbl === "task_checklist_items");
+		expect(
+			pending.map((op) => [op.payload?.done_by ?? null, op.updatedBy]),
+		).toEqual([
+			[null, RENAMED],
+			[RENAMED, RENAMED],
+		]);
+	});
+
+it("leaves an item op pulled after the cutover as written, whichever order the module registers in", async () => {
+	const relay = LocalRelay.create();
+	const alpha = await device("alpha", true);
+	const a = LocalRelay.transportFor(relay, "alpha");
+	// A peer still on the build before the rename.
+	legacyWriter();
+	const task = unwrap(
+		await Planner.addTask(alpha, { title: "Old peer", kind: "issue" }),
+	);
+	const [item] = unwrap(
+		await Checklist.add(alpha, { id: task.id, items: ["One"] }),
+	).items;
+	unwrap(await Checklist.tick(alpha, { items: [item?.id ?? ""] }));
+	unwrap(await Sync.push(alpha, a));
+
+	// Registered after the pull: the op parks, then replays as it came.
+	const beta = await device("beta", false);
+	const b = LocalRelay.transportFor(relay, "beta");
+	expect(unwrap(await Sync.pull(beta, b)).parked).toBe(2);
+	register(true, "beta");
+	unwrap(await Planner.init(beta));
+	const parked = unwrap(
+		await withDb(beta, (db) =>
+			db
+				.query<{ op: string }, []>("SELECT op FROM sync_parked ORDER BY op_id")
+				.all()
+				.map((row) => row.op),
+		),
+	);
+	expect(parked.join("\n")).toContain(LEGACY);
+	expect(unwrap(await Sync.pull(beta, b)).replayed).toBe(2);
+	expect(unwrap(await Checklist.list(beta, task.id))[0]).toMatchObject({
+		done: true,
+		doneBy: LEGACY,
+	});
+
+	// Registered before the pull: the op applies as it came.
+	const gamma = await device("gamma", true);
+	unwrap(await Sync.pull(gamma, LocalRelay.transportFor(relay, "gamma")));
+	expect(unwrap(await Checklist.list(gamma, task.id))[0]).toMatchObject({
+		done: true,
+		doneBy: LEGACY,
 	});
 });
 

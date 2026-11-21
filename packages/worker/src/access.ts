@@ -17,7 +17,14 @@
  * mapping with hand-made tokens; `wrangler.jsonc` never sets it.
  */
 
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import {
+	ActorUri,
+	err,
+	ok,
+	type Result,
+	tryCatch,
+	trySync,
+} from "@kabane/core";
 import {
 	createRemoteJWKSet,
 	decodeJwt,
@@ -51,21 +58,23 @@ type AccessEnv = Pick<
 	| "ACCESS_DEV_UNVERIFIED"
 >;
 
-const HUMAN_ACTOR_PREFIX = "cabane://actor/human/";
-
 /**
- * Client id → actor URI. A service is never a human: the hub credits a human
- * actor with the replies an agent relays, so a service mapped to one could
- * answer as the human.
+ * Client id → actor URI, an agent's. A service is never a human: the hub
+ * credits a human actor with the replies an agent relays, so a service mapped
+ * to one could answer as the human. Any other value, one under a retired
+ * scheme included, maps the service to nobody kabane reads.
  */
 const ServiceActorsSchema = z
 	.record(z.string(), z.string().min(1))
 	.superRefine((services, ctx) => {
 		for (const [id, actor] of Object.entries(services))
-			if (actor.startsWith(HUMAN_ACTOR_PREFIX))
+			if (
+				!actor.startsWith(ActorUri.AGENT) ||
+				actor.length === ActorUri.AGENT.length
+			)
 				ctx.addIssue({
 					code: z.ZodIssueCode.custom,
-					message: `SERVICE_ACTORS maps service "${id}" to the human actor ${actor}; map a service token to an agent actor (cabane://actor/agent/<name>)`,
+					message: `SERVICE_ACTORS maps service "${id}" to ${actor}; map a service token to an agent actor (${ActorUri.AGENT}<name>)`,
 				});
 	});
 
@@ -149,7 +158,7 @@ export namespace Access {
 		return ok({
 			kind: "human",
 			subject: email,
-			actor: `cabane://actor/human/${local}`,
+			actor: ActorUri.human(local),
 		});
 	};
 

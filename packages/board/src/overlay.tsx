@@ -6,7 +6,7 @@
 // already draw the pane's lines, so an overlay is set apart by the overlay surface and a cell of
 // padding, never a border. Selection highlight follows board.tsx's rowStyle rule — explicit bg + fg
 // on the row, NEVER INVERSE (JJAK-1017).
-import type { TriggerDescriptor } from "@cabane/extension";
+import type { ActivityFact, TriggerDescriptor } from "@kabane/extension";
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode, RefObject } from "react";
@@ -81,7 +81,25 @@ export type DispatchOverlayProps = {
 export type SheetLine =
 	| { kind: "title"; text: string; primary: boolean }
 	| { kind: "gap" }
-	| { kind: "row"; key: string; label: string; available: boolean };
+	| { kind: "row"; key: string; label: string; available: boolean }
+	| { kind: "fact"; label: string; value: string };
+
+/** The card on screen's facts, after its keys: a gap, their title, one row each. */
+const factLines = (
+	facts: { title: string; rows: readonly ActivityFact[] } | undefined,
+): SheetLine[] => {
+	if (!facts || facts.rows.length === 0) return [];
+	const width = Math.max(...facts.rows.map((fact) => fact.label.length));
+	return [
+		{ kind: "gap" },
+		{ kind: "title", text: facts.title, primary: false },
+		...facts.rows.map((fact): SheetLine => ({
+			kind: "fact",
+			label: fact.label.padEnd(width),
+			value: fact.value,
+		})),
+	];
+};
 
 export const sheetLines = (
 	groups: readonly Keymap.SheetGroup[],
@@ -106,9 +124,11 @@ export const sheetLines = (
 export const sheetLineWidth = (line: SheetLine): number =>
 	line.kind === "row"
 		? line.key.length + 2 + line.label.length
-		: line.kind === "title"
-			? line.text.length
-			: 0;
+		: line.kind === "fact"
+			? line.label.length + 2 + line.value.length
+			: line.kind === "title"
+				? line.text.length
+				: 0;
 
 export type HelpSheetProps = {
 	// Whose keys to list (BoardNav.sheetContext) and what is true right now (keySituation).
@@ -118,6 +138,8 @@ export type HelpSheetProps = {
 	scrollRef?: RefObject<ScrollBoxRenderable | null>;
 	// The card on screen's own actions, listed first.
 	host?: readonly Keymap.Hint[];
+	// What the card on screen runs with (`ActivityCard.facts`), listed after the keys.
+	facts?: { title: string; rows: readonly ActivityFact[] };
 };
 
 // The `?` sheet, which-key style: across the pane at the bottom, the keys of the view in hand under
@@ -130,11 +152,15 @@ export const HelpSheet = ({
 	situation,
 	scrollRef,
 	host,
+	facts,
 }: HelpSheetProps): ReactNode => {
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const bg = overlayBg(theme);
-	const lines = sheetLines(Keymap.sheet(context, situation, host));
+	const lines = [
+		...sheetLines(Keymap.sheet(context, situation, host)),
+		...factLines(facts),
+	];
 	const inner = Math.max(0, width - 2);
 	// The padding row on top, every line, then the sheet's footer row.
 	const wanted = lines.length + 2;
@@ -204,6 +230,14 @@ const SheetRow = ({
 				attributes={TextAttributes.BOLD}
 			>
 				{line.text}
+				{pad}
+			</text>
+		);
+	if (line.kind === "fact")
+		return (
+			<text bg={bg} fg={theme.muted}>
+				{`${line.label}  `}
+				<span fg={theme.text}>{line.value}</span>
 				{pad}
 			</text>
 		);

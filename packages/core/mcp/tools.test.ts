@@ -35,7 +35,7 @@ const tool = (name: string): ToolDef => {
 	return found;
 };
 
-const AGENT = "cabane://actor/agent/hermes";
+const AGENT = "kabane://actor/agent/hermes";
 const COMMENT_ALIASES = ["body", "text", "content"];
 const COMMENT_CONFLICTS = [
 	{ body: "a", text: "b" },
@@ -49,12 +49,12 @@ const COMMENT_CONFLICTS = [
 	{ body: "a\n", content: "a" },
 ];
 
-describe("cabane tools", () => {
+describe("kabane tools", () => {
 	let base: string;
 	let ctx: ToolContext;
 
 	beforeEach(async () => {
-		base = join(tmpdir(), `cabane-mcp-${crypto.randomUUID()}`);
+		base = join(tmpdir(), `kabane-mcp-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		configureTestRuntime({ actor: () => AGENT });
 		unwrap(await Planner.init(base));
@@ -702,28 +702,28 @@ describe("humanActorOf", () => {
 	it("credits the human the host names, whoever the actor is", () => {
 		expect(
 			humanActorOf(
-				ctx("cabane://actor/agent/claude", "cabane://actor/human/david"),
+				ctx("kabane://actor/agent/claude", "kabane://actor/human/david"),
 			),
-		).toBe("cabane://actor/human/david");
+		).toBe("kabane://actor/human/david");
 	});
 
 	it("never takes the actor for the human, nor an agent the host configured", () => {
 		// A human-looking actor may be a service token's mapping: only the host knows.
-		expect(humanActorOf(ctx("cabane://actor/human/david"))).toBeUndefined();
-		expect(humanActorOf(ctx("cabane://actor/agent/claude"))).toBeUndefined();
+		expect(humanActorOf(ctx("kabane://actor/human/david"))).toBeUndefined();
+		expect(humanActorOf(ctx("kabane://actor/agent/claude"))).toBeUndefined();
 		expect(
 			humanActorOf(
-				ctx("cabane://actor/agent/claude", "cabane://actor/agent/hermes"),
+				ctx("kabane://actor/agent/claude", "kabane://actor/agent/hermes"),
 			),
 		).toBeUndefined();
 	});
 });
 
-describe("cabane MCP server over an in-memory transport", () => {
+describe("kabane MCP server over an in-memory transport", () => {
 	let base: string;
 
 	beforeEach(async () => {
-		base = join(tmpdir(), `cabane-mcp-wire-${crypto.randomUUID()}`);
+		base = join(tmpdir(), `kabane-mcp-wire-${crypto.randomUUID()}`);
 		mkdirSync(base, { recursive: true });
 		configureTestRuntime();
 		unwrap(await Planner.init(base));
@@ -736,7 +736,7 @@ describe("cabane MCP server over an in-memory transport", () => {
 	const connect = async (afterWrite?: (tool: ToolDef) => void) => {
 		const ctx: ToolContext = {
 			basePath: base,
-			actor: "cabane://actor/human/david",
+			actor: "kabane://actor/human/david",
 			scopeRequired: true,
 		};
 		const server = unwrap(createMcpServer(ctx, {}, afterWrite));
@@ -868,7 +868,7 @@ describe("cabane MCP server over an in-memory transport", () => {
 				unwrap(await Planner.getComments(base, issue.id))[0],
 			).toMatchObject({
 				content: " ",
-				author: "cabane://actor/human/david",
+				author: "kabane://actor/human/david",
 				authorType: "human",
 			});
 			const log = await client.callTool({

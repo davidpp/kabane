@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type Result } from "@cabane/core";
+import { type Result } from "@kabane/core";
 import { settingsPort } from "../context";
 import { TRACKER_BLOCK } from "../first-run";
 import { project, uncheckedSkills } from "./project";

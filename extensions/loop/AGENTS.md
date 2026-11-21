@@ -1,4 +1,4 @@
-# @cabane/loop (extensions/loop)
+# @kabane/loop (extensions/loop)
 
 The first extension: `kabane loop` drives an issue, or a parent's subtasks, through coding
 harnesses from a detached runner, runs the project's gates and verifier lenses, and lands the
@@ -17,19 +17,19 @@ branch. `docs/loop.md` is what a user reads; read the part your change touches.
 
 ## It takes types from kabane, and values only from the harness client it bundles
 
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/loop"`) allows one
-runtime dependency, `@cabane/acp`. Record calls, scope detection, the executable, settings
+Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/loop"`) allows one
+runtime dependency, `@kabane/acp`. Record calls, scope detection, the executable, settings
 schemas and tool definitions arrive through `host`; the factory binds its stateless result
 helpers through `src/result.ts` before constructing anything else. Thread the host or its
 record through dependencies, never create a home or a global host. The loop parses checklist
 results from `host.record.call("kabane_checklist", ...)` with `host.z`.
-Production imports from `@cabane/core` are type-only; `src/test-host.ts` binds real host
+Production imports from `@kabane/core` are type-only; `src/test-host.ts` binds real host
 values for tests. Core and contract are development dependencies: the layer check allows
 only type imports from them in production files.
 Command entry points resolve case-insensitive short ids and unique ULID prefixes through
 `host.record.get`; an ambiguous prefix is an error, while an absent task is `null`.
-Activity, dispatch and header types come from `@cabane/extension`; forms and `FormField`
-come from `@cabane/acp/form-field`. Runtime imports use ACP capability subpaths, never
+Activity, dispatch and header types come from `@kabane/extension`; forms and `FormField`
+come from `@kabane/acp/form-field`. Runtime imports use ACP capability subpaths, never
 its root barrel: the bundle includes the harness client and core's `result.ts` helpers,
 but no other core source, ACP instructions or templates. The build test checks emitted
 metafile inputs. The loop has no dependency on the board.

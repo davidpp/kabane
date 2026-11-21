@@ -2,8 +2,8 @@ import { afterEach, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
-import { parseArgs } from "@cabane/extension";
+import { Planner } from "@kabane/core";
+import { parseArgs } from "@kabane/extension";
 import { openContext } from "./context";
 import { activateHostRecord, createHost } from "./host";
 import * as scope from "./scope/detect";
@@ -21,7 +21,7 @@ it("activates existing and later hosts with the command's actor, scope and modul
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			deviceId: "test",
 			harness: { mode: "default" },
 		}),
@@ -42,7 +42,7 @@ it("activates existing and later hosts with the command's actor, scope and modul
 	const ctx = await openContext(
 		home,
 		home,
-		parseArgs(["--as", "cabane://actor/agent/test", "--scope", "host-test"]),
+		parseArgs(["--as", "kabane://actor/agent/test", "--scope", "host-test"]),
 	);
 	if (!ctx.ok) throw ctx.error;
 	const added = await host.record.call("kabane_add", {
@@ -66,7 +66,7 @@ it("activates existing and later hosts with the command's actor, scope and modul
 	});
 	expect(comment).toMatchObject({
 		ok: true,
-		value: { author: "cabane://actor/agent/test" },
+		value: { author: "kabane://actor/agent/test" },
 	});
 	expect(await Planner.getEntries(home, task.id)).toMatchObject({
 		ok: true,
@@ -86,7 +86,7 @@ const configuredHome = () => {
 	homes.push(home);
 	writeFileSync(
 		join(home, "config.json"),
-		JSON.stringify({ actor: "cabane://actor/human/test", deviceId: "test" }),
+		JSON.stringify({ actor: "kabane://actor/human/test", deviceId: "test" }),
 	);
 	return home;
 };
@@ -116,7 +116,7 @@ it("caches harness mode on first use and shares it with the command", async () =
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			deviceId: "test",
 			harness: { mode: "default" },
 		}),
@@ -125,7 +125,7 @@ it("caches harness mode on first use and shares it with the command", async () =
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
-			actor: "cabane://actor/human/test",
+			actor: "kabane://actor/human/test",
 			deviceId: "test",
 			harness: { mode: "auto" },
 		}),

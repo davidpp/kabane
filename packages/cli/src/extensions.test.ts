@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { parseArgs } from "@cabane/extension";
+import { parseArgs } from "@kabane/extension";
 import { z } from "zod";
 import { configPath } from "./config";
 import { ConfigSettings } from "./config-settings";
@@ -28,7 +28,7 @@ const makeHome = (config?: Record<string, unknown>): string => {
 		writeFileSync(
 			configPath(home),
 			JSON.stringify({
-				actor: "cabane://actor/human/t",
+				actor: "kabane://actor/human/t",
 				deviceId: "t",
 				...config,
 			}),

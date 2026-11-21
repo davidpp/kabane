@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 // Settling ended sessions against a real tracker: the core sessions, the subtasks' states and the
 // gate results a settle records.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AcpClient } from "@cabane/acp";
-import { Planner, type Task } from "@cabane/core";
+import { AcpClient } from "@kabane/acp";
+import { Planner, type Task } from "@kabane/core";
 import { Claims } from "./claims";
 import { LoopConfig } from "./config";
 import type { Gates } from "./gates";

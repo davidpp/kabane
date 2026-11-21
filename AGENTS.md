@@ -1,29 +1,26 @@
 # Kabane
 
-Local-first issue tracker and kanban for humans and AI agent runtimes. The project was called
-Cabane before its first public release; the workspace packages (`@cabane/*`), the
-`cabane-worker` Worker and the `cabane://actor/...` URIs keep that name, because rows and
-deployed hubs store it.
+Local-first issue tracker and kanban for humans and AI agent runtimes.
 
 ## Shape
 
 ```
 packages/
-├── core/      # @cabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
-├── sqlite/    # @cabane/sqlite — Db adapter over bun:sqlite (local devices)
-├── acp/       # @cabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union and form fields
-├── extension/ # @cabane/extension — extension contract (Command, Ctx, board ports, doctor checks), args, outcomes
-├── questions/ # @cabane/questions — data module: decisions agents ask humans (kabane_ask, kabane_questions, kabane_answer)
-├── checklist/ # @cabane/checklist — data module: the steps of one issue (kabane_checklist, kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
-├── outcome/   # @cabane/outcome — data module: decisions, findings, verifications and summaries on the issue timeline
-├── handoff/   # @cabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
+├── core/      # @kabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
+├── sqlite/    # @kabane/sqlite — Db adapter over bun:sqlite (local devices)
+├── acp/       # @kabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union and form fields
+├── extension/ # @kabane/extension — extension contract (Command, Ctx, board ports, doctor checks), args, outcomes
+├── questions/ # @kabane/questions — data module: decisions agents ask humans (kabane_ask, kabane_questions, kabane_answer)
+├── checklist/ # @kabane/checklist — data module: the steps of one issue (kabane_checklist, kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
+├── outcome/   # @kabane/outcome — data module: decisions, findings, verifications and summaries on the issue timeline
+├── handoff/   # @kabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
 ├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, doctor, mcp (stdio)
-├── board/     # @cabane/board  — OpenTUI kanban and ACP copilot; consumes extension ports, no-op defaults
-└── worker/    # cabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
+├── board/     # @kabane/board  — OpenTUI kanban and ACP copilot; consumes extension ports, no-op defaults
+└── worker/    # kabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
 extensions/
-├── loop/      # @cabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
-├── dispatch/  # @cabane/dispatch — the dispatch and grill skill templates, the setup-dispatch skill, `kabane dispatch stamp`, their doctor checks
-└── recipes/   # @cabane/recipes — prompt recipes from .kabane/recipes/, `kabane run` and `kabane runs` over hc terminals, its run table
+├── loop/      # @kabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
+├── dispatch/  # @kabane/dispatch — the dispatch and grill skill templates, the setup-dispatch skill, `kabane dispatch stamp`, their doctor checks
+└── recipes/   # @kabane/recipes — prompt recipes from .kabane/recipes/, `kabane run` and `kabane runs` over hc terminals, its run table
 ```
 
 Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.

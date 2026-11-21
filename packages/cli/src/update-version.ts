@@ -18,7 +18,7 @@ export const SemverSchema = z
 	)
 	.refine(safe);
 
-/** The versions kabane ships: stable `X.Y.Z` on npm `latest`, `X.Y.Z-beta.N` on npm `beta`. */
+/** The versions kabane ships: stable `X.Y.Z` on `latest`, `X.Y.Z-beta.N` on `beta`. */
 export const ChannelVersionSchema = z
 	.string()
 	.max(64)
@@ -78,7 +78,10 @@ export const compareVersions = (a: string, b: string): number => {
 	return 0;
 };
 
-/** The registry's `latest` and `beta` dist-tags; any other tag is dropped. */
+/**
+ * The newest `latest` and `beta` releases: npm's dist-tags for a Bun install, the GitHub releases
+ * for the board's notice and a binary (update-binary.ts). Any other tag is dropped.
+ */
 export const DistTagsSchema = z.object({
 	latest: SemverSchema,
 	beta: SemverSchema.optional(),
@@ -86,7 +89,7 @@ export const DistTagsSchema = z.object({
 export type DistTags = z.infer<typeof DistTagsSchema>;
 
 /**
- * The dist-tag an install follows. A stable install follows `latest` alone. A prerelease install
+ * The channel an install follows. A stable install follows `latest` alone. A prerelease install
  * follows the higher of `beta` and `latest`, so a beta user reaches the stable release it precedes.
  */
 export const followedTag = (

@@ -5,8 +5,8 @@ import {
 	tryCatch,
 	type Result,
 	type ToolDef,
-} from "@cabane/core";
-import { type Extension, failure, success } from "@cabane/extension";
+} from "@kabane/core";
+import { type Extension, failure, success } from "@kabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import { ConfigSettings } from "../config-settings";

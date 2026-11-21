@@ -1,6 +1,6 @@
 // Made-up props the render tests and the gallery's stories share, so a component is drawn from the
 // same data in both: what a test pins is what David looks at.
-import type { ChecklistItemView } from "@cabane/checklist";
+import type { ChecklistItemView } from "@kabane/checklist";
 import {
 	type LinkType,
 	TASK_STATE_DISPLAY,
@@ -8,20 +8,20 @@ import {
 	type TaskEntry,
 	type TaskLink,
 	type UpstreamLink,
-} from "@cabane/core";
+} from "@kabane/core";
 import type {
 	ActivityCard,
 	HeaderPart,
 	JobFacts,
 	TriggerDescriptor,
 	SettingKind,
-} from "@cabane/extension";
-import { handoffModule } from "@cabane/handoff";
+} from "@kabane/extension";
+import { handoffModule } from "@kabane/handoff";
 import {
 	type DecisionMeta,
 	formatDecisionBody,
 	type QuestionView,
-} from "@cabane/questions";
+} from "@kabane/questions";
 import type { BoardData } from "../data";
 import type { BoardJobs } from "../jobs";
 import type { BoardNav } from "../nav";
@@ -245,6 +245,16 @@ export namespace Fixtures {
 	});
 
 	/**
+	 * The same run while its harness has reported no status (`live`): the recipes extension draws
+	 * it unreported, neither working nor paused.
+	 */
+	export const silentRun = (on: Task): ActivityCard => ({
+		...waitingRun(on),
+		status: "unreported",
+		detail: ["live", ...waitingRun(on).detail.slice(1)],
+	});
+
+	/**
 	 * A decision an agent filed on `on`, its `n`th: open unless `over` answers it. `meta` is what
 	 * `kabane_ask` records beside the question (choices, recommended, multi-select, freeform).
 	 */
@@ -258,10 +268,10 @@ export namespace Fixtures {
 		id: `01H00000000000000000000Q${n}0`,
 		taskId: on.id,
 		status: "open",
-		askedBy: "cabane://actor/agent/claude",
+		askedBy: "kabane://actor/agent/claude",
 		createdAt: "2026-10-10T00:00:00.000Z",
 		updatedAt: "2026-10-10T00:00:00.000Z",
-		updatedBy: "cabane://actor/agent/claude",
+		updatedBy: "kabane://actor/agent/claude",
 		version: 1,
 		visibility: "shared",
 		body: formatDecisionBody(question, meta),
@@ -288,13 +298,13 @@ export namespace Fixtures {
 		...(done
 			? {
 					doneAt: "2026-10-10T00:00:00.000Z",
-					doneBy: "cabane://actor/agent/claude",
+					doneBy: "kabane://actor/agent/claude",
 				}
 			: {}),
 		rank: `a${n}`,
 		createdAt: "2026-10-10T00:00:00.000Z",
 		updatedAt: "2026-10-10T00:00:00.000Z",
-		updatedBy: "cabane://actor/agent/claude",
+		updatedBy: "kabane://actor/agent/claude",
 		version: 1,
 		visibility: "shared",
 		handle: `${on.shortId ?? on.id}.${n}`,
@@ -317,7 +327,7 @@ export namespace Fixtures {
 		taskId: on.id,
 		kind,
 		author,
-		authorType: author.startsWith("cabane://actor/agent/") ? "ai" : "human",
+		authorType: author.startsWith("kabane://actor/agent/") ? "ai" : "human",
 		content,
 		createdAt: `2026-10-10T${String(n).padStart(2, "0")}:00:00.000Z`,
 	});
@@ -366,7 +376,7 @@ export namespace Fixtures {
 The wave is merged on local \`main\` at \`1519458\`, not pushed. An issue's comments are now a timeline of entries with a kind; a handoff is the first kind built on it.
 
 - JCAB-217: comments carry a \`kind\` (migration 9); \`Planner.addEntry\`, \`getEntries\`, \`latestEntry\`; entries are append-only; a module declares kinds as data; the brief keeps every typed entry and lifts a kind projected as \`latest\` into its own section. \`kabane_comment\` and \`kabane comment\` take a kind.
-- JCAB-218: \`@cabane/handoff\`, with no table: the \`handoff\` kind, a four-heading template, \`kabane_handoff(id, body)\`, \`kabane handoff <id> [--all] [--json] | --from <file|-> | --template\`. \`kabane show\` and \`kabane context --help\` follow the registered sections through one core helper.
+- JCAB-218: \`@kabane/handoff\`, with no table: the \`handoff\` kind, a four-heading template, \`kabane_handoff(id, body)\`, \`kabane handoff <id> [--all] [--json] | --from <file|-> | --template\`. \`kabane show\` and \`kabane context --help\` follow the registered sections through one core helper.
 - JCAB-219: every instruction that told an agent to report finished work in a comment now says to hand off: this repo's dispatch skill, the shipped template, the first-run Tracker block and its copy in the docs, the copilot's \`/setup-dispatch\`.
 - JCAB-221: the board's comments tab names an entry's kind, and the description tab shows the latest handoff under the description. A band never wraps: it cuts a long author first.
 - JCAB-224: an upgrade note for someone coming from \`1.0.0-beta.0\`.
@@ -479,7 +489,7 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 			{
 				label: "actor",
 				group: "Identity",
-				value: "cabane://actor/human/ada",
+				value: "kabane://actor/human/ada",
 				layer: "global",
 				from: `${HOME}/config.json`,
 				readOnly: true,

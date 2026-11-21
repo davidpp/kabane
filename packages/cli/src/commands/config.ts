@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "@cabane/core";
+import { err, ok, type Result } from "@kabane/core";
 import {
 	failure,
 	flagString,
@@ -6,7 +6,7 @@ import {
 	type ParsedArgs,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { configPath } from "../config";
 import { ConfigSettings } from "../config-settings";
 import type { Command } from "../context";

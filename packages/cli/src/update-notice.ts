@@ -1,11 +1,11 @@
 /**
- * The board's word that a newer kabane is out. npm's `latest` and `beta` dist-tags are read at
- * most once a day into `KABANE_HOME/update-check.json`, and the release named is the one
- * `kabane update` would take: the install's channel and version policy, from update-version.ts.
- * Over `fetch` rather than `bun info`, so an install without Bun can read it too, which also means
- * Bun's registry and proxy settings do not apply. Every failure says nothing: a notice is never
- * worth an error on screen. The hint is the install's own: `kabane update`, `mise up kabane`, or
- * a manual update where `kabane update` would refuse.
+ * The board's word that a newer kabane is out. The `latest` and `beta` releases on GitHub, where
+ * the binaries download from (update-binary.ts), are read at most once a day into
+ * `KABANE_HOME/update-check.json`, and the release named is the one the install's channel and
+ * version policy take, from update-version.ts. Over `fetch`, so an install without Bun can read it
+ * too, which also means Bun's registry and proxy settings do not apply. Every failure says
+ * nothing: a notice is never worth an error on screen. The hint is the install's own:
+ * `kabane update`, `mise up kabane`, or a manual update where `kabane update` would refuse.
  *
  * A main build hears of main instead (update-main.ts): how many commits main has past its stamp,
  * cached for an hour in `KABANE_HOME/update-check-main.json`, since main moves more often than
@@ -15,8 +15,8 @@
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { Announcer } from "@cabane/board";
-import { ok, type Result, tryCatch, trySync } from "@cabane/core";
+import type { Announcer } from "@kabane/board";
+import { ok, type Result, tryCatch, trySync } from "@kabane/core";
 import { z } from "zod";
 import { version } from "../package.json";
 import { Self } from "./self";
@@ -95,25 +95,26 @@ export namespace UpdateNotice {
 		/** The running release. */
 		version: string;
 		now?: number;
-		registry?: string;
+		/** The releases API, as `UpdateBinary.Source` names it. */
+		api?: string;
 		timeoutMs?: number;
 	};
 
 	/**
 	 * The release to tell the human about, read from the cache while it is under a day old, else
-	 * from the registry and written back. A registry that cannot be read leaves the cache as it was
+	 * from the releases API and written back. An API that cannot be read leaves the cache as it was
 	 * and falls back on it; with nothing usable either way, undefined.
 	 */
 	export const check = async ({
 		home,
 		version,
 		now = Date.now(),
-		registry = UpdateBinary.source(process.env).registry,
+		api = UpdateBinary.source(process.env).api,
 		timeoutMs = TIMEOUT_MS,
 	}: Options): Promise<string | undefined> => {
 		const cached = await readCache(home);
 		if (cached && fresh(cached, now)) return candidate(version, cached);
-		const fetched = await UpdateBinary.fetchTags(registry, version, timeoutMs);
+		const fetched = await UpdateBinary.fetchReleases(api, version, timeoutMs);
 		if (!fetched.ok) return cached && candidate(version, cached);
 		await writeCache(cachePath(home), {
 			...fetched.value,

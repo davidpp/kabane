@@ -52,7 +52,7 @@ afterEach(() => {
 });
 const context = () => ({
 	basePath: base,
-	actor: "cabane://actor/agent/test",
+	actor: "kabane://actor/agent/test",
 	scopeRequired: false,
 });
 

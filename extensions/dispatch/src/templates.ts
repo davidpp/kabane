@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { ok, trySync } from "./result";
 
 export namespace Templates {

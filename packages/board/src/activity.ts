@@ -1,12 +1,12 @@
 // In-flight activity seam for the board: host activity cards (via the ActivitySource port) plus
 // awaiting-input questions supplied by that same port. app.tsx fetches this in the same 5s poll
 // as loadBoard and threads the result down as props.
-import { ok, type Result } from "@cabane/core";
+import { ok, type Result } from "@kabane/core";
 import {
 	type ActivityCard,
 	type ActivityQuestion,
 	type ActivitySource,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { isInFlight } from "./ports";
 
 export namespace BoardActivity {

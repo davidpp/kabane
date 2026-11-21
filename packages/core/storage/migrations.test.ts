@@ -32,7 +32,7 @@ const withDb = async <T>(fn: (db: Db) => T, at = base): Promise<T> => {
 const freshBase = (label: string): string => {
 	const dir = join(
 		tmpdir(),
-		`cabane-migrations-${label}-${crypto.randomUUID()}`,
+		`kabane-migrations-${label}-${crypto.randomUUID()}`,
 	);
 	mkdirSync(dir, { recursive: true });
 	return dir;
@@ -621,6 +621,503 @@ describe("Migration 10: scopes leave the jake:// scheme", () => {
 			const found = await Planner.queryTasks(base, { scopeUri });
 			expect(found.ok && found.value.map((t) => t.title)).toEqual(["plain"]);
 		}
+	});
+});
+
+describe("Migration 12: actors leave the cabane:// scheme", () => {
+	afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+	const must = <T>(result: Result<T>): T => {
+		if (!result.ok) throw result.error;
+		return result.value;
+	};
+	const ADA = "cabane://actor/human/ada";
+	const CLAUDE = "cabane://actor/agent/claude";
+
+	/** Every identity column core owns, with the values it holds. */
+	const identities = () =>
+		withDb((db) =>
+			[
+				[TABLES.tasks, "discovered_by"],
+				[TABLES.tasks, "reviewed_by"],
+				[TABLES.tasks, "updated_by"],
+				[TABLES.projects, "updated_by"],
+				[TABLES.task_links, "updated_by"],
+				[TABLES.comments, "author"],
+				[TABLES.comments, "updated_by"],
+				[TABLES.work_log, "updated_by"],
+				[TABLES.context_refs, "added_by"],
+				[TABLES.context_refs, "updated_by"],
+			].map(([table, column]): [string, (string | null)[]] => [
+				`${table}.${column}`,
+				db
+					.query<{ value: string | null }, []>(
+						`SELECT ${column} AS value FROM ${table} ORDER BY id`,
+					)
+					.all()
+					.map((row) => row.value),
+			]),
+		);
+
+	it("renames every identity column and logged or parked op, once, and leaves prose, other shapes, versions and clocks alone", async () => {
+		base = freshBase("actor-scheme");
+		// A device on the build before this migration, with sync armed.
+		await withDb((db) => {
+			must(Migrate.run(db, Migrations.LIST.slice(0, 11)));
+			must(Oplog.initDevice(db, "device-a"));
+		});
+		must(await Planner.addProject(base, { title: "p" }));
+		const task = must(
+			await Planner.addTask(base, {
+				title: "t",
+				description: `${CLAUDE} starts this description`,
+				verification: {
+					status: "passed",
+					verifiedBy: CLAUDE,
+					notes: `${CLAUDE} checked it`,
+				},
+			}),
+		);
+		const other = must(await Planner.addTask(base, { title: "o" }));
+		must(
+			await Planner.addLink(base, {
+				sourceId: task.id,
+				targetId: other.id,
+				type: "blocks",
+			}),
+		);
+		for (const [author, content] of [
+			[CLAUDE, `quotes ${ADA}`],
+			["claude", "a bare name"],
+			["agent:claude", "an older shape"],
+			["kabane://actor/agent/codex", "already renamed"],
+		] as const)
+			must(
+				await Planner.addComment(base, {
+					taskId: task.id,
+					author,
+					authorType: "ai",
+					content,
+				}),
+			);
+		must(
+			await Planner.addWorkLog(base, {
+				taskId: task.id,
+				refs: [{ uri: "commit:abc" }],
+				addedBy: CLAUDE,
+				addedByType: "ai",
+			}),
+		);
+		must(
+			await Planner.addContextRef(base, {
+				taskId: task.id,
+				uri: "file:README.md",
+				kind: "doc",
+				addedBy: CLAUDE,
+			}),
+		);
+		// What that build stored: its writers under the old prefix, in rows and in ops.
+		await withDb((db) => {
+			db.run(
+				`UPDATE ${TABLES.tasks} SET updated_by = ?, discovered_by = ?, reviewed_by = ?`,
+				[ADA, CLAUDE, ADA],
+			);
+			for (const table of [
+				TABLES.projects,
+				TABLES.task_links,
+				TABLES.work_log,
+				TABLES.context_refs,
+			])
+				db.run(`UPDATE ${table} SET updated_by = ?`, [ADA]);
+			db.run(`UPDATE ${TABLES.comments} SET updated_by = author`);
+			db.run(
+				`UPDATE ${TABLES.sync_oplog} SET payload = replace(payload, 'kabane://actor/unknown', ?)`,
+				[ADA],
+			);
+			db.run(
+				`INSERT INTO ${TABLES.sync_oplog} (op_id, device_id, tbl, row_id, op, payload, captured_at)
+				 VALUES ('gone', 'device-a', ?, 'gone', 'delete', NULL, '2026-11-20T00:00:00.000Z')`,
+				[TABLES.comments],
+			);
+			// An extension's table: `requested_by` is free text, `updated_by` the writer sync carries.
+			db.run(
+				`INSERT INTO ${TABLES.sync_oplog} (op_id, device_id, tbl, row_id, op, payload, captured_at)
+				 VALUES ('ext', 'device-a', 'ext_requests', 'r1', 'insert', ?, '2026-11-20T00:00:00.000Z')`,
+				[JSON.stringify({ id: "r1", requested_by: ADA, updated_by: ADA })],
+			);
+			for (const [opId, tbl, payload] of [
+				[
+					"parked",
+					"task_checklist_items",
+					{
+						id: "c1",
+						text: `${ADA} wrote this`,
+						done_by: ADA,
+						updated_by: ADA,
+					},
+				],
+				[
+					"parked-ext",
+					"ext_requests",
+					{ id: "r2", requested_by: ADA, updated_by: ADA },
+				],
+			] as const)
+				db.run(
+					`INSERT INTO ${TABLES.sync_parked} (op_id, server_seq, module, module_schema, tbl, row_id, op, parked_at)
+					 VALUES (?, 7, 'checklist', 9, ?, ?, ?, '2026-11-20T00:00:00.000Z')`,
+					[
+						opId,
+						tbl,
+						payload.id,
+						JSON.stringify({
+							opId,
+							tbl,
+							rowId: payload.id,
+							op: "update",
+							payload,
+							updatedBy: ADA,
+						}),
+					],
+				);
+		});
+		const rows = () =>
+			withDb((db) => ({
+				tasks: db
+					.query<Record<string, unknown>, []>(
+						`SELECT id, description, verification, version, updated_at FROM ${TABLES.tasks} ORDER BY id`,
+					)
+					.all(),
+				comments: db
+					.query<{ author: string; content: string }, []>(
+						`SELECT author, content FROM ${TABLES.comments} ORDER BY id`,
+					)
+					.all(),
+				refs: db
+					.query<{ refs: string }, []>(`SELECT refs FROM ${TABLES.work_log}`)
+					.all()
+					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
+				ops: db
+					.query<{ tbl: string; payload: string | null }, []>(
+						`SELECT tbl, payload FROM ${TABLES.sync_oplog} ORDER BY seq`,
+					)
+					.all()
+					.map((op) => ({
+						tbl: op.tbl,
+						row:
+							op.payload === null
+								? null
+								: (JSON.parse(op.payload) as Record<string, unknown>),
+					})),
+				parked: db
+					.query<{ op: string }, []>(
+						`SELECT op FROM ${TABLES.sync_parked} ORDER BY op_id`,
+					)
+					.all()
+					.map((row) => JSON.parse(row.op) as Record<string, unknown>),
+			}));
+		const before = await rows();
+
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+
+		const after = await rows();
+		const renamed = (value: string) =>
+			value.replace(/^cabane:\/\/actor\//, "kabane://actor/");
+		for (const [column, values] of await identities()) {
+			const kept = values.filter((v) => v?.startsWith("cabane://"));
+			expect([column, kept]).toEqual([column, []]);
+		}
+		expect(
+			(await identities()).find(([c]) => c === "tasks.reviewed_by"),
+		).toEqual([
+			"tasks.reviewed_by",
+			["kabane://actor/human/ada", "kabane://actor/human/ada"],
+		]);
+		// Prose, versions and clocks are as they were; only the identity fields moved.
+		const verified = (raw: unknown) =>
+			typeof raw === "string"
+				? raw.replace(
+						`"verifiedBy":"${CLAUDE}"`,
+						`"verifiedBy":"kabane://actor/agent/claude"`,
+					)
+				: raw;
+		expect(after.tasks).toEqual(
+			before.tasks.map((t) => ({
+				...t,
+				verification: verified(t.verification),
+			})),
+		);
+		expect(
+			after.tasks.map((t) => JSON.parse(String(t.verification)) as unknown),
+		).toContainEqual({
+			status: "passed",
+			verifiedBy: "kabane://actor/agent/claude",
+			notes: `${CLAUDE} checked it`,
+		});
+		expect(after.comments).toEqual(
+			before.comments.map((c) => ({ ...c, author: renamed(c.author) })),
+		);
+		expect(after.comments.map((c) => c.author)).toEqual([
+			"kabane://actor/agent/claude",
+			"claude",
+			"agent:claude",
+			"kabane://actor/agent/codex",
+		]);
+		expect(after.refs[0]?.[0]?.addedBy).toBe("kabane://actor/agent/claude");
+		// The log's snapshots, a delete with none included, renamed the same way and nothing
+		// captured: core's identity fields, and only the writer of an extension's table.
+		expect(after.ops).toHaveLength(before.ops.length);
+		expect(after.ops).toEqual(
+			before.ops.map(({ tbl, row }) => ({
+				tbl,
+				row:
+					row === null
+						? null
+						: Object.fromEntries(
+								Object.entries(row).map(([key, value]) => [
+									key,
+									// The context ref was written by an agent with no type.
+									key === "added_by_type" &&
+									String(row.added_by).includes("actor/agent/")
+										? "ai"
+										: typeof value !== "string"
+											? value
+											: key === "updated_by" ||
+												  (tbl !== "ext_requests" &&
+														(key === "author" || key.endsWith("_by")))
+												? renamed(value)
+												: key === "refs"
+													? value.replaceAll(
+															CLAUDE,
+															"kabane://actor/agent/claude",
+														)
+													: key === "verification"
+														? verified(value)
+														: value,
+								]),
+							),
+			})),
+		);
+		expect(after.ops.find((op) => op.tbl === "ext_requests")?.row).toEqual({
+			id: "r1",
+			requested_by: ADA,
+			updated_by: "kabane://actor/human/ada",
+		});
+		expect(
+			after.ops.some(
+				(op) => op.row?.description === `${CLAUDE} starts this description`,
+			),
+		).toBe(true);
+		// A parked op's writer, in its envelope and its snapshot; a module's actors, registered or
+		// not; and an extension's free text stays as written.
+		expect(after.parked).toEqual([
+			{
+				...before.parked[0],
+				payload: {
+					id: "c1",
+					text: `${ADA} wrote this`,
+					done_by: "kabane://actor/human/ada",
+					updated_by: "kabane://actor/human/ada",
+				},
+				updatedBy: "kabane://actor/human/ada",
+			},
+			{
+				...before.parked[1],
+				payload: {
+					id: "r2",
+					requested_by: ADA,
+					updated_by: "kabane://actor/human/ada",
+				},
+				updatedBy: "kabane://actor/human/ada",
+			},
+		]);
+
+		// A second boot is a read of the version table.
+		await mustInit(base);
+		expect(await rows()).toEqual(after);
+	});
+
+	it("types as ai every agent stored as human, in rows and logged ops, and leaves humans, prose and versions alone", async () => {
+		base = freshBase("actor-types");
+		const CODEX = "kabane://actor/agent/codex";
+		await withDb((db) => {
+			must(Migrate.run(db, Migrations.LIST.slice(0, 11)));
+			must(Oplog.initDevice(db, "device-a"));
+		});
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		// A session on schema 11 that already wrote the new prefix, stored as a human.
+		for (const [author, content] of [
+			[CODEX, `${CODEX} wrote this`],
+			[CLAUDE, "an old-prefix agent"],
+			[ADA, "a human"],
+		] as const)
+			must(
+				await Planner.addComment(base, {
+					taskId: task.id,
+					author,
+					authorType: "human",
+					content,
+				}),
+			);
+		must(
+			await Planner.addWorkLog(base, {
+				taskId: task.id,
+				refs: [{ uri: "commit:abc" }],
+				addedBy: CODEX,
+				addedByType: "human",
+			}),
+		);
+		must(
+			await Planner.addContextRef(base, {
+				taskId: task.id,
+				uri: "file:README.md",
+				kind: "doc",
+				addedBy: CODEX,
+				addedByType: "human",
+			}),
+		);
+		const rows = () =>
+			withDb((db) => ({
+				comments: db
+					.query<Record<string, unknown>, []>(
+						`SELECT author, author_type, content, version FROM ${TABLES.comments} ORDER BY id`,
+					)
+					.all(),
+				refs: db
+					.query<{ refs: string }, []>(`SELECT refs FROM ${TABLES.work_log}`)
+					.all()
+					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
+				context: db
+					.query<Record<string, unknown>, []>(
+						`SELECT added_by, added_by_type FROM ${TABLES.context_refs}`,
+					)
+					.all(),
+				ops: db
+					.query<{ tbl: string; payload: string }, [string]>(
+						`SELECT tbl, payload FROM ${TABLES.sync_oplog} WHERE tbl != ? ORDER BY seq`,
+					)
+					.all(TABLES.tasks)
+					.map((op) => ({
+						tbl: op.tbl,
+						row: JSON.parse(op.payload) as Record<string, unknown>,
+					})),
+			}));
+
+		await mustInit(base);
+		const after = await rows();
+		expect(after.comments).toEqual([
+			{
+				author: CODEX,
+				author_type: "ai",
+				content: `${CODEX} wrote this`,
+				version: 1,
+			},
+			{
+				author: "kabane://actor/agent/claude",
+				author_type: "ai",
+				content: "an old-prefix agent",
+				version: 1,
+			},
+			{
+				author: "kabane://actor/human/ada",
+				author_type: "human",
+				content: "a human",
+				version: 1,
+			},
+		]);
+		expect(after.refs[0]?.[0]).toMatchObject({
+			addedBy: CODEX,
+			addedByType: "ai",
+		});
+		expect(after.context).toEqual([{ added_by: CODEX, added_by_type: "ai" }]);
+		// The log's snapshots say what the rows say.
+		expect(
+			after.ops.map(({ tbl, row }) =>
+				tbl === TABLES.comments
+					? [row.author, row.author_type]
+					: tbl === TABLES.context_refs
+						? [row.added_by, row.added_by_type]
+						: (JSON.parse(String(row.refs)) as Record<string, unknown>[]).map(
+								(ref) => [ref.addedBy, ref.addedByType],
+							),
+			),
+		).toEqual([
+			[CODEX, "ai"],
+			["kabane://actor/agent/claude", "ai"],
+			["kabane://actor/human/ada", "human"],
+			[[CODEX, "ai"]],
+			[CODEX, "ai"],
+		]);
+
+		// A second boot is a read of the version table.
+		await mustInit(base);
+		expect(await rows()).toEqual(after);
+	});
+
+	it("types as ai a work-log ref by an agent that carries no type, and leaves an untyped human ref untyped", async () => {
+		base = freshBase("ref-untyped");
+		await withDb((db) => {
+			must(Migrate.run(db, Migrations.LIST.slice(0, 10)));
+			must(Oplog.initDevice(db, "device-a"));
+		});
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		for (const addedBy of [CLAUDE, ADA])
+			must(
+				await Planner.addWorkLog(base, {
+					taskId: task.id,
+					refs: [{ uri: "commit:abc" }],
+					addedBy,
+				}),
+			);
+		const refs = () =>
+			withDb((db) => ({
+				rows: db
+					.query<{ refs: string }, []>(
+						`SELECT refs FROM ${TABLES.work_log} ORDER BY id`,
+					)
+					.all()
+					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
+				ops: db
+					.query<{ payload: string }, [string]>(
+						`SELECT payload FROM ${TABLES.sync_oplog} WHERE tbl = ? ORDER BY seq`,
+					)
+					.all(TABLES.work_log)
+					.map(
+						(op) =>
+							JSON.parse(
+								String((JSON.parse(op.payload) as { refs: string }).refs),
+							) as Record<string, unknown>[],
+					),
+			}));
+		const before = await refs();
+		expect(before.rows.flat().map((ref) => "addedByType" in ref)).toEqual([
+			false,
+			false,
+		]);
+
+		await mustInit(base);
+		const after = await refs();
+		const expected = [
+			[{ addedBy: "kabane://actor/agent/claude", addedByType: "ai" }],
+			[{ addedBy: "kabane://actor/human/ada" }],
+		];
+		for (const stored of [after.rows, after.ops])
+			expect(
+				stored
+					.map((list) =>
+						list.map(({ addedBy, addedByType }) =>
+							addedByType === undefined
+								? { addedBy }
+								: { addedBy, addedByType },
+						),
+					)
+					.sort((a, b) =>
+						String(a[0]?.addedBy).localeCompare(String(b[0]?.addedBy)),
+					),
+			).toEqual(expected);
+
+		await mustInit(base);
+		expect(await refs()).toEqual(after);
 	});
 });
 

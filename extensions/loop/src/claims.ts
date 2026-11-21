@@ -13,8 +13,8 @@
 // isolated claims, a subtask works in a worktree of its own (`ClaimTrees`), its session, gates
 // and checkpoint there, and a green pass merges its branch into the run's; one the tracker closed
 // or cancelled while it held that worktree is settled there (`settleHeld`).
-import { Harnesses } from "@cabane/acp/harnesses";
-import { type Result, type Task } from "@cabane/core";
+import { Harnesses } from "@kabane/acp/harnesses";
+import { type Result, type Task } from "@kabane/core";
 import { Brief } from "./brief";
 import { Budget } from "./budget";
 import { Checklists } from "./checklists";

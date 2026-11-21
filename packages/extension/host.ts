@@ -18,7 +18,7 @@ import type {
 	ItemKind,
 	TaskPriority,
 	TaskState,
-} from "@cabane/core";
+} from "@kabane/core";
 import type { z } from "zod";
 import type { flagBool, flagCsv, flagList, flagString } from "./args";
 import type { conciseSuccess, failure, success, usage } from "./outcome";

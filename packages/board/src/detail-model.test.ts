@@ -6,8 +6,8 @@ import type {
 	TaskLink,
 	TaskWorkLog,
 	UpstreamLink,
-} from "@cabane/core";
-import { HANDOFF_TEMPLATE } from "@cabane/handoff";
+} from "@kabane/core";
+import { HANDOFF_TEMPLATE } from "@kabane/handoff";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 
@@ -517,7 +517,7 @@ describe("lifted", () => {
 					entry({
 						id: "h2",
 						kind: "handoff",
-						author: "cabane://actor/agent/claude",
+						author: "kabane://actor/agent/claude",
 						content: "  the newer one\n",
 						createdAt: at(13),
 					}),
@@ -727,8 +727,8 @@ describe("tabs and the tab bar", () => {
 
 describe("actorName", () => {
 	it("names an actor URI by its last segment and passes anything else through", () => {
-		expect(DetailModel.actorName("cabane://actor/agent/claude")).toBe("claude");
-		expect(DetailModel.actorName("cabane://actor/human/david-paquet")).toBe(
+		expect(DetailModel.actorName("kabane://actor/agent/claude")).toBe("claude");
+		expect(DetailModel.actorName("kabane://actor/human/david-paquet")).toBe(
 			"david-paquet",
 		);
 		expect(DetailModel.actorName("david")).toBe("david");
@@ -770,9 +770,9 @@ describe("subtasks and curated context", () => {
 					{
 						id: "r1",
 						taskId: "t1",
-						uri: "obsidian:prds/cabane.md",
+						uri: "obsidian:prds/kabane.md",
 						kind: "PRD",
-						label: " Cabane PRD ",
+						label: " Kabane PRD ",
 						addedAt: "2026-09-20T10:00:00.000Z",
 					},
 					{
@@ -790,8 +790,8 @@ describe("subtasks and curated context", () => {
 			{
 				id: "r1",
 				kind: "PRD",
-				label: "Cabane PRD",
-				uri: "obsidian:prds/cabane.md",
+				label: "Kabane PRD",
+				uri: "obsidian:prds/kabane.md",
 			},
 			{
 				id: "r2",

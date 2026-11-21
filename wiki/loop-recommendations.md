@@ -100,7 +100,7 @@ state per-subtask hints the loop reads:
 - **Stars.** Issues are the spec. It composes with the dispatch skill, which already assigns
   territories but only in prose. The planner's judgment is explained in the issue (5).
 - **Limits.** It needs a place on the issue: tags (`territory:` is awkward), a context ref, or a
-  small first-party data module like `@cabane/checklist` (not a core column). Plans not written
+  small first-party data module like `@kabane/checklist` (not a core column). Plans not written
   by an agent will lack it, so A must degrade without it.
 
 ### E. Per-subtask routing

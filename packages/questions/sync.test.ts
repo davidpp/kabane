@@ -10,9 +10,9 @@ import {
 	type Result,
 	Sync,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
-import { SqliteDb } from "@cabane/sqlite";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
+import { SqliteDb } from "@kabane/sqlite";
 import { questionsModule } from "./module";
 import { Questions } from "./storage";
 
@@ -31,7 +31,7 @@ const register = (enabled: boolean, actor = "test") =>
 		Runtime.configure({
 			provider: SqliteDb.provider(),
 			modules: enabled ? [questionsModule] : [],
-			actor: () => `cabane://actor/human/${actor}`,
+			actor: () => `kabane://actor/human/${actor}`,
 		}),
 	);
 const device = async (name: string, enabled: boolean) => {
@@ -153,7 +153,7 @@ it("replicates a close's withdrawals, and the receiving device withdraws nothing
 	expect(rows[0]).toMatchObject({
 		status: "withdrawn",
 		reasoning: Questions.CLOSED_REASON,
-		answeredBy: "cabane://actor/human/alpha",
+		answeredBy: "kabane://actor/human/alpha",
 	});
 	register(true, "alpha");
 	expect(unwrap(await Questions.list(alpha, { id: task.id }))).toEqual(rows);

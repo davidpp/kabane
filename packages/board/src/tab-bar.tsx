@@ -6,15 +6,16 @@
 // tracker's `?n` counts every question, and the Jobs tab's the jobs whose run waits on the human. Only the tab on screen
 // animates: a running card on another tab is the still echo (spinner.ts).
 //
-// A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n`, then as
-// many of the rest as fit in tab order, and counts the others in a `+n` cell; `{` `}` still reach
-// them.
-import type { ActivityCard } from "@cabane/extension";
+// A bar wider than the pane keeps the tracker, the tab on screen and every tab with a `?n` or an
+// accent `?`, then as many of the rest as fit in tab order, and counts the others in a `+n` cell;
+// `{` `}` still reach them.
+import type { ActivityCard } from "@kabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
 import { BoardJobs } from "./jobs";
 import { RUNNING_ECHO, SPINNER_IDLE } from "./spinner";
+import { STILL } from "./still";
 import { BoardTabs } from "./tabs";
 import { type Theme, useTheme } from "./theme";
 
@@ -25,7 +26,10 @@ const glyphOf = (
 	onScreen: boolean,
 	spinnerFrame: string,
 	theme: Theme.Tokens,
+	unseen: boolean,
 ): Part => {
+	// A finished card that left issues for the human keeps the accent until its tab was on screen.
+	if (unseen) return { text: "?", fg: theme.accent };
 	switch (card.status) {
 		case "running":
 		case "pending":
@@ -35,7 +39,8 @@ const glyphOf = (
 				fg: theme.working,
 			};
 		case "paused":
-			return { text: "⏸", fg: theme.muted };
+		case "unreported":
+			return { text: STILL[card.status].glyph, fg: theme.muted };
 		case "completed":
 			return { text: "✓", fg: theme.done };
 		case "stopped":
@@ -58,6 +63,7 @@ const tabParts = (
 		waiting: number;
 		spinnerFrame: string;
 		theme: Theme.Tokens;
+		unseen: boolean;
 	},
 ): Part[] => {
 	const { theme, onScreen } = opts;
@@ -65,7 +71,10 @@ const tabParts = (
 	return [
 		{ text: ` ${index} `, fg: theme.muted },
 		...(card
-			? [glyphOf(card, onScreen, opts.spinnerFrame, theme), { text: " ", fg }]
+			? [
+					glyphOf(card, onScreen, opts.spinnerFrame, theme, opts.unseen),
+					{ text: " ", fg },
+				]
 			: []),
 		{ text: name, fg, bold: onScreen },
 		...(opts.waiting > 0
@@ -83,6 +92,8 @@ type Tab = {
 	index: number;
 	onScreen: boolean;
 	waiting: number;
+	// A finished card whose left-for-you list the human has not seen: kept in sight like a `?n`.
+	unseen: boolean;
 	parts: Part[];
 };
 
@@ -99,7 +110,9 @@ const fitting = (
 	const total = all.reduce((sum, tab) => sum + widthOf(tab), 0);
 	if (total <= room) return { shown: [...all], hidden: 0 };
 	const kept = new Set(
-		all.filter((tab) => tab.index === 0 || tab.onScreen || tab.waiting > 0),
+		all.filter(
+			(tab) => tab.index === 0 || tab.onScreen || tab.waiting > 0 || tab.unseen,
+		),
 	);
 	// The `+n` cell, its rule included, at its widest.
 	let left =
@@ -135,9 +148,20 @@ export const TabBar = ({
 		.flatMap((id) => {
 			if (id === null || id === BoardTabs.JOBS)
 				return [{ id, card: null as ActivityCard | null }];
-			// A tab whose card the poll has not brought yet is skipped.
+			// A tab whose card the poll has not brought yet is skipped. Its state is the one the tab's
+			// own poll saw last, which is ahead of the board's.
 			const card = cards.find((one) => one.id === id);
-			return card ? [{ id, card }] : [];
+			const status = tabs.cards.get(id)?.status;
+			return card
+				? [
+						{
+							id,
+							card: status
+								? { ...card, status, stale: tabs.cards.get(id)?.stale }
+								: card,
+						},
+					]
+				: [];
 		})
 		.map(({ id, card }, index) => {
 			const onScreen = id === tabs.active;
@@ -150,17 +174,21 @@ export const TabBar = ({
 				: id === null
 					? "tracker"
 					: "jobs";
+			const unseen =
+				id !== null && id !== BoardTabs.JOBS && BoardTabs.unseen(tabs, id);
 			return {
 				id,
 				card,
 				index,
 				onScreen,
 				waiting,
+				unseen,
 				parts: tabParts(index + 1, card, name, {
 					onScreen,
 					waiting,
 					spinnerFrame,
 					theme,
+					unseen,
 				}),
 			};
 		});
@@ -231,7 +259,8 @@ type QuestionBannerProps = {
 };
 
 /**
- * A session question on a raised surface: who asks about which task, the question, and its numbered
+ * A session question on a raised surface: who asks (the session, by its lane, and its harness)
+ * about which task, the question, and its numbered
  * answers while it waits; what was answered once it is; and the way back to the card's tab. The
  * digits and a click answer it wherever it is pinned.
  */
@@ -280,7 +309,7 @@ const QuestionBanner = ({
 				>
 					{closed ? "closed" : answered ? "✓ answered" : "waiting on you"}
 				</span>
-				{` · ${question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`}
+				{` · ${question.lane ? `${question.lane} (${question.agent})` : question.agent} asks${taskShortId ? ` about ${taskShortId}` : ""}`}
 				{more > 0 ? <span fg={theme.accent}>{` · +${more} more`}</span> : null}
 			</text>
 			<text bg={bg} fg={theme.text}>

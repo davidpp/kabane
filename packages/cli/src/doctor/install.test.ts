@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Doctor, type Extension } from "@cabane/extension";
+import { Doctor, type Extension } from "@kabane/extension";
 import type { McpInstall } from "../commands/mcp-install";
 import { settingsPort } from "../context";
 import { McpClients } from "../mcp-clients";
@@ -170,6 +170,96 @@ test("an entry left on a version mise removed is mentioned with the harness, bot
 	]);
 });
 
+test("an entry from before the rename, which differs only by its old-prefix actor, is fixed automatically", async () => {
+	const s = setup();
+	const legacy = (harness: string, command?: string) => {
+		const launch = s.entry(harness, command);
+		return {
+			...launch,
+			args: launch.args.map((arg) =>
+				arg.replace("kabane://actor/", "cabane://actor/"),
+			),
+		};
+	};
+	s.claude({ kabane: legacy("claude") });
+	s.codex(legacy("codex"));
+	const found = await install(s.ctx, s.deps());
+	if (!found.ok) throw found.error;
+	expect(found.value.map(({ id, severity }) => `${id}:${severity}`)).toEqual([
+		"mcp-entry-actor-claude:auto",
+		"mcp-entry-actor-codex:auto",
+	]);
+	expect(found.value[0]?.summary).toContain("cabane://actor/agent/claude");
+	expect(found.value[0]?.summary).toContain("kabane://actor/agent/claude");
+	// An old prefix on an entry that also runs another kabane is that entry's stale finding alone.
+	s.claude({ kabane: legacy("claude", s.binary("1.0.0")) });
+	s.codex(s.entry("codex"));
+	expect(await s.ids()).toEqual(["mcp-entry-stale-claude:mention"]);
+});
+
+test("the old-prefix repair re-registers only the scope that has it, never a deliberate other checkout", async () => {
+	const s = setup();
+	const bun = join(s.home, ".bun/bin/bun");
+	const script = join(s.home, "src/kabane/packages/cli/index.ts");
+	write(bun, "");
+	write(script, "");
+	const legacy = s.entry("claude");
+	legacy.args = legacy.args.map((arg) => arg.replace("kabane://", "cabane://"));
+	// What `claude mcp add` writes beside the launch.
+	s.claude(
+		{ kabane: { type: "stdio", ...legacy, env: {} } },
+		{ kabane: s.entry("claude", bun, [script]) },
+	);
+	expect(await s.ids()).toEqual([
+		"mcp-entry-actor-claude:auto",
+		"mcp-entry-stale-claude:suggest",
+	]);
+	const calls: string[][] = [];
+	const run: McpInstall.Runner = async (argv) => {
+		calls.push(argv);
+		return { code: 0, out: "", err: "" };
+	};
+	const source = {
+		name: "kabane",
+		doctor: (ctx: Extension.Ctx) => install(ctx, s.deps({ run })),
+	};
+	const fixed = await Doctor.run([source], s.ctx, { fix: true });
+	expect(fixed.fixes.map((f) => [f.id, f.result.ok])).toEqual([
+		["mcp-entry-actor-claude", true],
+	]);
+	expect(
+		calls
+			.filter((argv) => argv[2] !== "get")
+			.map((argv) => argv.slice(0, 5).join(" ")),
+	).toEqual(["claude mcp remove -s user", "claude mcp add -s user"]);
+});
+
+test("an old-prefix entry that sets more than its launch is no automatic repair: re-registering would drop the rest", async () => {
+	const s = setup();
+	const legacy = s.entry("codex");
+	legacy.args = legacy.args.map((arg) => arg.replace("kabane://", "cabane://"));
+	write(
+		join(s.home, ".codex/config.toml"),
+		[
+			"[mcp_servers.kabane]",
+			`command = ${JSON.stringify(legacy.command)}`,
+			`args = [${legacy.args.map((a) => JSON.stringify(a)).join(", ")}]`,
+			'env = { KABANE_HOME = "/elsewhere/.kabane" }',
+			"",
+		].join("\n"),
+	);
+	const found = await install(s.ctx, s.deps());
+	if (!found.ok) throw found.error;
+	expect(found.value.map(({ id, severity }) => `${id}:${severity}`)).toEqual([
+		"mcp-entry-actor-kept-codex:mention",
+	]);
+	expect(found.value[0]?.fix).toBeUndefined();
+	expect(found.value[0]?.summary).toContain("env");
+	expect(found.value[0]?.summary).toContain(
+		"cabane://actor/agent/codex with kabane://actor/agent/codex",
+	);
+});
+
 test("Claude's local scope for this project is read beside its user scope", async () => {
 	const s = setup();
 	s.claude(
@@ -265,7 +355,7 @@ test("the fix re-registers through mcp install --force, and only when named", as
 		s.binary("1.1.0"),
 		"mcp",
 		"--as",
-		"cabane://actor/agent/gemini",
+		"kabane://actor/agent/gemini",
 	]);
 });
 

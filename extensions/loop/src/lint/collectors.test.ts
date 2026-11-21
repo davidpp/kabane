@@ -1,9 +1,9 @@
 import { afterEach, expect, it } from "bun:test";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Result } from "@cabane/core";
+import { Planner, type Result } from "@kabane/core";
 import { testHost } from "../test-host";
 import { LintCollectors } from "./collectors";
 

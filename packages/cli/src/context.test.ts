@@ -2,9 +2,9 @@ import { afterEach, expect, it } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, Runtime } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
-import { OUTCOME_KINDS } from "@cabane/outcome";
+import { Planner, Runtime } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
+import { OUTCOME_KINDS } from "@kabane/outcome";
 import { configureRuntime, MODULES } from "./context";
 
 afterEach(() => configureTestRuntime());

@@ -29,7 +29,7 @@ it("publishes self-contained extension types that compile with only the built pa
 		),
 	).toEqual([]);
 	const declaration = readFileSync(join(DIST, "types/extension.d.ts"), "utf8");
-	expect(declaration).not.toContain("@cabane/");
+	expect(declaration).not.toContain("@kabane/");
 	expect(declaration).not.toMatch(/^import\s/m);
 	expect(declaration).not.toMatch(
 		/export declare (?:const|function|namespace|class)\b/,

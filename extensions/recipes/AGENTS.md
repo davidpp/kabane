@@ -1,4 +1,4 @@
-# @cabane/recipes (extensions/recipes)
+# @kabane/recipes (extensions/recipes)
 
 The recipes extension: recipes from a project's `.kabane/recipes/`, each naming a project skill or
 carrying its own prompt, `kabane run` to start
@@ -26,7 +26,7 @@ those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is wh
 
 ## It takes types from kabane and no value
 
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@cabane/recipes"`) allows no runtime
+Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/recipes"`) allows no runtime
 dependency. Scope detection, records, storage, zod, outcomes and the result helpers arrive on
 `host`; the factory binds the result helpers through `src/result.ts`. Core, the contract and zod
 are development dependencies for types and for the tests' own result helpers.
@@ -136,7 +136,7 @@ board writes itself.
 
 | Run state | `ActivityStatus` | Why |
 |---|---|---|
-| `live` | `paused` | in flight without a spinner and without claiming work; `detail[0]` is `live`, so the row reads `⏸ <label> · paused · live` |
+| `live` | `unreported` | in flight, but nothing says whether it works or waits: no spinner and no pause glyph (JCAB-534; a silent Claude Code run is working). `detail[0]` is `live`, so the row reads `◌ <label> · no status reported · live` |
 | `running` | `running` | in flight, animated |
 | `waiting` | `paused` | in flight without a spinner: the harness waits on the human. The row reads `⏸ <label> · paused · waiting` |
 | `idle`, `ended` | `completed` | finished; `detail[0]` is the run state, though the board draws no badge or header line for a finished card, so only `kabane runs` tells the two apart |

@@ -1,11 +1,11 @@
-import { Planner, type UpstreamLink } from "@cabane/core";
+import { Planner, type UpstreamLink } from "@kabane/core";
 import {
 	failure,
 	flagString,
 	type Outcome,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import type { Command, Ctx } from "../context";
 
 /**

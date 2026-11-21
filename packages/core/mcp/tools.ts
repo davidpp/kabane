@@ -18,6 +18,7 @@
  */
 
 import { z } from "zod";
+import { ActorUri } from "../actor";
 import { ContextPageOptionsSchema } from "../context-output";
 import { err, ok, NotFoundError, type Result } from "../result";
 import { Runtime } from "../runtime";
@@ -75,18 +76,16 @@ export type ToolDef<Shape extends z.ZodRawShape = z.ZodRawShape> = {
 
 /** Human actor URIs comment as `human`; agent actor URIs as `ai`. */
 export const authorTypeOf = (actor: string): "human" | "ai" =>
-	actor.startsWith("cabane://actor/agent/") ? "ai" : "human";
-
-const HUMAN_ACTOR_PREFIX = "cabane://actor/human/";
+	actor.startsWith(ActorUri.AGENT) ? "ai" : "human";
 
 /**
  * The human actor a connection can credit with a reply it relays: the host's
- * `humanActor` when it is a `cabane://actor/human/` URI, else none, so a
+ * `humanActor` when it is a `kabane://actor/human/` URI, else none, so a
  * configured agent is never passed off as the human. `actor` is not consulted:
  * its URI alone does not say whether a human or a service authenticated.
  */
 export const humanActorOf = (ctx: ToolContext): string | undefined =>
-	ctx.humanActor?.startsWith(HUMAN_ACTOR_PREFIX) ? ctx.humanActor : undefined;
+	ctx.humanActor?.startsWith(ActorUri.HUMAN) ? ctx.humanActor : undefined;
 
 /** A tool with its own input shape, widened to the `ToolDef` a list of tools holds. */
 export const define = <Shape extends z.ZodRawShape>(

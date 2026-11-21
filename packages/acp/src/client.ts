@@ -24,7 +24,7 @@ import {
 	type Stream,
 	type ToolCallContent,
 } from "@agentclientprotocol/sdk";
-import { err, ok, type Result, toError, tryCatch } from "@cabane/core/result";
+import { err, ok, type Result, toError, tryCatch } from "@kabane/core/result";
 import type {
 	CopilotElicitationAnswer,
 	CopilotFormField,
@@ -111,7 +111,7 @@ export namespace AcpClient {
 	) => Promise<Result<string>>;
 
 	// A form's parts are the board's: the board and the loop put the same form to a human, and read
-	// its answers the same way (`@cabane/acp/form-field`).
+	// its answers the same way (`@kabane/acp/form-field`).
 	export type ElicitationOption = CopilotFormOption;
 
 	/**
@@ -341,7 +341,7 @@ export namespace AcpClient {
 	};
 
 	type Process = Pick<Connection, "closed" | "stderr" | "close"> & {
-		// What was launched, so a start that failed can say what cabane was trying to run.
+		// What was launched, so a start that failed can say what kabane was trying to run.
 		// Absent for an in-process transport, which never started anything.
 		launch?: Harnesses.Launch;
 	};
@@ -1437,7 +1437,7 @@ export namespace AcpClient {
 
 	// A start that failed with the process already dead, launched through `npx`, means npm
 	// never put the adapter on disk: the harness was never reached, so nothing it might have
-	// said is missing. Cabane pinned that version and chose to run it through npx, so it owns
+	// said is missing. Kabane pinned that version and chose to run it through npx, so it owns
 	// the sentence. npm's own diagnostics stay underneath as the evidence.
 	const startFailure = async (
 		error: unknown,

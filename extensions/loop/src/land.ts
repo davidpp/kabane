@@ -6,7 +6,7 @@
 // config; the loop adds none. The outcome is run.json's `landing`, and the pull request its `pr`.
 // A landing that fails leaves the run completed: the work is done and its gates were green, only
 // getting it onto the base is left, and the branch stays as the run left it.
-import { type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@kabane/core";
 import { z } from "zod";
 import { Checks } from "./checks";
 import { Exec } from "./exec";

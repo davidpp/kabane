@@ -3,7 +3,7 @@
 // stays: the drift guard below fails the gate then, context by context. The rest pins what the
 // registry promises the views: whole hints at forty columns, `? help` kept, a key listed once.
 import { describe, expect, test } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
 import { BoardChecklist } from "./checklist";
 import { CopilotLog } from "./copilot-log";
 import type { BoardData } from "./data";
@@ -149,6 +149,35 @@ const RUNNING: BoardTabs.Tabs = {
 		],
 	]),
 	queue: [FREEFORM],
+};
+
+// The same card drawn as a map: its live step opened to the session the cursor follows.
+const MAPPED: BoardTabs.Tabs = {
+	...TABS,
+	active: LOOP,
+	queue: [],
+	cards: new Map([
+		[
+			LOOP,
+			{
+				label: "loop",
+				finished: false,
+				taskId: "p",
+				lanes: ["claude:MILL-3"],
+				liveLanes: ["claude:MILL-3"],
+				steps: [
+					{ name: "gates", state: "done" },
+					{
+						name: "implement",
+						state: "running",
+						sessions: [
+							{ name: "MILL-3", state: "running", lane: "claude:MILL-3" },
+						],
+					},
+				],
+			},
+		],
+	]),
 };
 
 const LOOSE: BoardTabs.Tabs = {
@@ -298,6 +327,10 @@ const FIXTURES: Partial<Record<Keymap.ContextId, BoardNav.BoardState[]>> = {
 		state({
 			view: { type: "events", cardId: LOOP, fromView: "board" },
 			tabs: RUNNING,
+		}),
+		state({
+			view: { type: "events", cardId: LOOP, fromView: "board" },
+			tabs: MAPPED,
 		}),
 	],
 	prompt: [

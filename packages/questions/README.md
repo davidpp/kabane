@@ -1,4 +1,4 @@
-# @cabane/questions
+# @kabane/questions
 
 The decisions an agent needs from a human, filed on an issue and answered whenever the human
 gets to them. It is a data module: its own table (`task_questions`), migrations, MCP tools and a

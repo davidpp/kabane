@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The review plan triage answers, normalized, and the runner that triages before its lenses,
 // on a disposable tracker and a real git repository. An inline ACP subprocess stands in for the
 // model: a triage prompt is answered with the plan the test writes, any other prompt ends its turn.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdtempSync,
@@ -12,8 +12,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type Task } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { Planner, type Task } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
 import { LoopConfig } from "./config";
 import { Review } from "./review";
 import { Runner } from "./runner";

@@ -11,7 +11,7 @@
 // completes lands its branch when its `land` setting says so
 // (`Land`), then runs the user's `onLanded` command once it is over (`Landed`). A single issue that gains a work child mid-run is a parent from then on. Each
 // subtask may work in a worktree of its own (`ClaimTrees`), which the run's end removes once free.
-import { type Result, type Task } from "@cabane/core";
+import { type Result, type Task } from "@kabane/core";
 import { Budget } from "./budget";
 import { Checks } from "./checks";
 import { Claims } from "./claims";

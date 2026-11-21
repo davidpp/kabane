@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, parse, resolve } from "node:path";
 import { promisify } from "node:util";
-import { ScopeUri, type ProjectScope } from "@cabane/core";
+import { ScopeUri, type ProjectScope } from "@kabane/core";
 import { Paths } from "../paths";
 import { DetectedScopes } from "./detected";
 import { ProjectDirs } from "./projects";

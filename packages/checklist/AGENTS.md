@@ -1,4 +1,4 @@
-# @cabane/checklist
+# @kabane/checklist
 
 A data module: the steps of one issue, ticked as they land. It owns the `task_checklist_items`
 table and its migrations, the tools `kabane_checklist`, `kabane_checklistAdd`,
@@ -8,7 +8,7 @@ removal; read it before changing one.
 
 ## It depends on core alone and both hosts register it
 
-Its layer is `data module`; its entry in `scripts/layers.ts` (`"@cabane/checklist"`) says what
+Its layer is `data module`; its entry in `scripts/layers.ts` (`"@kabane/checklist"`) says what
 it may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
 (`packages/worker/src/hub.ts`) register `checklistModule`. Its other entry points are
 `Checklist` (`storage.ts`), which the board reads for card progress and the detail and the CLI's

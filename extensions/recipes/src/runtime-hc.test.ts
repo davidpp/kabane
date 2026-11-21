@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { err, ok, tryCatch, trySync } from "@cabane/core";
+import { err, ok, tryCatch, trySync } from "@kabane/core";
 import { z } from "zod";
 import { Kabane } from "./result";
 import { HcRuntime } from "./runtime-hc";

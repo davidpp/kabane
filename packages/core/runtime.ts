@@ -11,6 +11,7 @@
  * host may wire to its own observability and event bus.
  */
 
+import { ActorUri } from "./actor";
 import type { Db, DbProvider } from "./db/port";
 import { type KabaneModule, Modules, setModules } from "./module";
 import { err, ok, type Result } from "./result";
@@ -52,16 +53,14 @@ export type FileReader = (path: string, cap: number) => Promise<FileHead>;
 export type SyncSettingsSource = () => Promise<Result<SyncConfig>>;
 
 /**
- * Who is writing. Returns an actor URI (`cabane://actor/human/david`,
- * `cabane://actor/agent/claude`) stamped into `updated_by` on every local
+ * Who is writing. Returns an actor URI (`kabane://actor/human/david`,
+ * `kabane://actor/agent/claude`, `ActorUri`) stamped into `updated_by` on every local
  * write. A function rather than a value so a host serving several identities
  * (the hub) can answer per request. Default: an anonymous actor.
  */
 export type ActorSource = () => string;
 
-// `cabane://` predates the rename to kabane and is stored in every row, so it
-// changes only with a migration.
-export const ANONYMOUS_ACTOR = "cabane://actor/unknown";
+export const ANONYMOUS_ACTOR = `${ActorUri.PREFIX}unknown`;
 
 /**
  * The owner's timezone, an IANA name (`America/Montreal`). It decides when a

@@ -1,4 +1,4 @@
-import type { Host } from "@cabane/extension";
+import type { Host } from "@kabane/extension";
 import { ok, tryCatch } from "../result";
 /**
  * Plan Lint Collectors
@@ -10,7 +10,7 @@ import { ok, tryCatch } from "../result";
  * history) are overlaid by callers via `AnalyzeOptions.progressEntries`.
  */
 
-import { type Result } from "@cabane/core";
+import { type Result } from "@kabane/core";
 import { firstGroups } from "./regex";
 import type { SubtaskInput } from "./risks";
 

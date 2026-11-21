@@ -1,9 +1,9 @@
 /**
- * @cabane/acp
+ * @kabane/acp
  *
  * Agent Client Protocol client: a harness registry, the stdio
  * adapters a Bun subprocess needs, and a small session runner whose update stream is
- * cabane's own so nothing downstream imports the SDK.
+ * kabane's own so nothing downstream imports the SDK.
  */
 
 export { AcpClient } from "./src/client";

@@ -1,6 +1,6 @@
 // Real run-store setup and reads for session tests. Answers use the public command entry point.
 import { mkdirSync } from "node:fs";
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { ok } from "./result";
@@ -91,7 +91,7 @@ export namespace TestSessions {
 				home,
 				basePath: home,
 				host: testHost(home),
-				actor: "cabane://actor/human/test",
+				actor: "kabane://actor/human/test",
 			},
 			input.questionId,
 			input.answer,

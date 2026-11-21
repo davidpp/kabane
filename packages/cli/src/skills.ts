@@ -8,7 +8,7 @@
  */
 import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
-import { CopilotInstructions } from "@cabane/board/copilot-instructions";
+import { CopilotInstructions } from "@kabane/board/copilot-instructions";
 import {
 	defineTool,
 	err,
@@ -16,7 +16,7 @@ import {
 	type Result,
 	type ToolDef,
 	trySync,
-} from "@cabane/core";
+} from "@kabane/core";
 import { z } from "zod";
 import BASE_ENTRY from "../skills/kabane/SKILL.md" with { type: "text" };
 // Imported as text, not read from beside the source: a compiled kabane has no source tree.

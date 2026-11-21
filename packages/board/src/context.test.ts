@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
 import { BoardChecklist } from "./checklist";
 import { BoardContext } from "./context";
 import { BoardData } from "./data";

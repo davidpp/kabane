@@ -9,7 +9,7 @@ import {
 	type Header,
 	type Dispatcher,
 	type JobSource,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { useRenderer } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
 import { useAnnouncement } from "./announcement";

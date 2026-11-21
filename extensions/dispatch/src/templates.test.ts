@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { err, ok, type Result, tryCatch, trySync } from "@cabane/core";
+import { err, ok, type Result, tryCatch, trySync } from "@kabane/core";
 import { Kabane } from "./result";
 import { Templates } from "./templates";
 

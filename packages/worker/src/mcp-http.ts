@@ -3,7 +3,7 @@ import {
 	type ToolContext,
 	type McpServerInfo,
 	type AfterWrite,
-} from "@cabane/core";
+} from "@kabane/core";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 /**

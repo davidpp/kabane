@@ -1,5 +1,5 @@
 import { expect, it } from "bun:test";
-import { Harnesses } from "@cabane/acp";
+import { Harnesses } from "@kabane/acp";
 import { TestHarnesses } from "./test-harnesses";
 
 const before = process.env.CLAUDE_CODE_EXECUTABLE;

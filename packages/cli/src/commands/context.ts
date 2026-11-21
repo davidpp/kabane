@@ -2,7 +2,7 @@ import {
 	ContextPageOptionsSchema,
 	contextSectionsOf,
 	Planner,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	conciseSuccess,
 	failure,
@@ -10,7 +10,7 @@ import {
 	flagString,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { type Command, MODULES } from "../context";
 import { responseFormat } from "../response-format";
 

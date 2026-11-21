@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/react */
-import type { ActivityCard, Header, HeaderPart } from "@cabane/extension";
+import type { ActivityCard, Header, HeaderPart } from "@kabane/extension";
 import { TextAttributes } from "@opentui/core";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Segments } from "./segments";
@@ -22,6 +22,27 @@ export const segmentsOf = (
 					],
 		...(part.bold ? { attributes: TextAttributes.BOLD } : {}),
 	}));
+
+/** A row held to `room` columns: one that runs over ends on `…` rather than stopping mid-word. */
+const clip = (
+	line: readonly HeaderPart[],
+	room: number,
+): readonly HeaderPart[] => {
+	const total = line.reduce((sum, part) => sum + part.text.length, 0);
+	if (total <= room) return line;
+	const kept: HeaderPart[] = [];
+	let left = Math.max(0, room - 1);
+	for (const part of line) {
+		if (left === 0) break;
+		const text = part.text.slice(0, left);
+		kept.push({ ...part, text });
+		left -= text.length;
+	}
+	const last = kept.at(-1);
+	return last
+		? [...kept.slice(0, -1), { ...last, text: `${last.text}…` }]
+		: [{ text: "…" }];
+};
 
 export const CardHeader = ({
 	header,
@@ -100,7 +121,7 @@ export const CardHeader = ({
 					wrapMode="none"
 					style={{ height: 1, flexShrink: 0 }}
 				>
-					{Segments.spans(segmentsOf(line, theme))}
+					{Segments.spans(segmentsOf(clip(line, room), theme))}
 				</text>
 			))}
 		</box>

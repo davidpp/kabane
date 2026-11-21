@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import {
 	existsSync,
 	mkdirSync,
@@ -12,9 +12,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { ok, Planner } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { Doctor, type Extension, Settings } from "@cabane/extension";
+import { ok, Planner } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { Doctor, type Extension, Settings } from "@kabane/extension";
 import { LoopDoctor } from "./doctor";
 import { Lenses } from "./lenses";
 import { testHost, pinTestScope, testScope } from "./test-host";

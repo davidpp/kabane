@@ -11,7 +11,7 @@
 // writes still on the board's state when the records land (a tick, an answer) are its own. A v/x/n/s
 // changes the task row, which is no block of `now`. Another task, or the detail closing, forgets
 // them.
-import type { Result } from "@cabane/core";
+import type { Result } from "@kabane/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoardStore } from "./board-store";
 import { BoardChecklist } from "./checklist";

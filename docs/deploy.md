@@ -3,8 +3,9 @@
 This is the optional Cloudflare hub, for syncing several machines; one machine on local
 SQLite needs none of it ([`getting-started.md`](getting-started.md)). You host it on your own
 Cloudflare account, on a domain you own, behind your own Cloudflare Access team. Nobody
-else's hub is involved. The project was called Cabane; [the README](../README.md) explains
-why the Worker and stored actor URIs retain that name.
+else's hub is involved. A hub deployed before 1.0.0 runs as `cabane-worker`; §5.9 moves it,
+and [`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris) covers the
+devices.
 
 **Verified locally:** 2026-09-07 against `wrangler dev` with the dev verifier (see the last
 section). Steps an agent must never perform are marked **MANUAL**: they touch Cloudflare,
@@ -27,8 +28,8 @@ What you end up with:
 ```
 laptop ──┐                       ┌── Claude Code  (service token, CLI or hub)
 desktop ─┼── <your-domain> ──────┼── Hermes       (service token)
-hermes ──┘   CabaneLog (oplog)   ├── Codex        (service token)
-             CabaneHub (device   ├── Claude.ai    (Managed OAuth)
+hermes ──┘   KabaneLog (oplog)   ├── Codex        (service token)
+             KabaneHub (device   ├── Claude.ai    (Managed OAuth)
              "cloud", MCP)       └── ChatGPT      (Managed OAuth)
 ```
 
@@ -83,8 +84,8 @@ bun run deploy --dry-run
 bun run deploy
 ```
 
-Expected: the deploy creates the Worker `cabane-worker`, applies migration tag `v1`
-(`CabaneLog` and `CabaneHub` as SQLite-backed Durable Object classes), and attaches the
+Expected: the deploy creates the Worker `kabane-worker`, applies migration tag `v1`
+(`KabaneLog` and `KabaneHub` as SQLite-backed Durable Object classes), and attaches the
 custom domain `<your-domain>`. `wrangler.jsonc` names no route or domain, so the script
 always passes `--domain`. Wrangler creates the DNS record for a custom domain; nothing to
 add by hand. No `workers.dev` URL and no preview URL are published
@@ -143,10 +144,10 @@ times, duration 1 year:
 
 | Token name | Runtime | Actor the Worker stamps |
 |---|---|---|
-| `kabane-claude-code` | Claude Code | `cabane://actor/agent/claude` |
-| `kabane-hermes` | Hermes | `cabane://actor/agent/hermes` |
-| `kabane-codex` | Codex | `cabane://actor/agent/codex` |
-| `kabane-cron` | scheduled pulls on devices | `cabane://actor/agent/cron` |
+| `kabane-claude-code` | Claude Code | `kabane://actor/agent/claude` |
+| `kabane-hermes` | Hermes | `kabane://actor/agent/hermes` |
+| `kabane-codex` | Codex | `kabane://actor/agent/codex` |
+| `kabane-cron` | scheduled pulls on devices | `kabane://actor/agent/cron` |
 
 Each creation shows the **Client ID** (ends in `.access`) and the **Client Secret** once.
 Store the secret in the runtime machine's keychain or env; it never goes into a repo. The
@@ -158,9 +159,9 @@ tokens to the `runtimes` Service Auth policy.
 Set `ACCESS_AUD` to the tag from 1.3, `HUMAN_EMAIL` to the address in the Allow policy,
 `SERVICE_ACTORS` to a one-line JSON map of client IDs to actor URIs, and
 `KABANE_TIMEZONE` to your IANA timezone, e.g. `America/Toronto`. For example, the map's
-shape is `{"<claude-code client id>.access":"cabane://actor/agent/claude"}`; add the other
+shape is `{"<claude-code client id>.access":"kabane://actor/agent/claude"}`; add the other
 clients from 1.4 the same way. Map each to an agent actor: a map naming a
-`cabane://actor/human/` URI admits no service token at all. Source these values in your environment and run
+`kabane://actor/human/` URI admits no service token at all. Source these values in your environment and run
 `bun run deploy` again from the clone root.
 
 `wrangler.jsonc` keeps empty placeholders for the Access vars. Deploying with raw
@@ -185,7 +186,7 @@ curl -s https://<your-domain>/health \
   -H "CF-Access-Client-Secret: <client secret>"
 ```
 
-Expected: `{"ok":true,"service":"cabane-worker","actor":"cabane://actor/agent/claude"}`
+Expected: `{"ok":true,"service":"kabane-worker","actor":"kabane://actor/agent/claude"}`
 with the actor matching the token you used. And the reject test:
 
 ```bash
@@ -271,7 +272,7 @@ point at the installed file. For working on Kabane from source, see the
 
 ```bash
 kabane init \
-  --actor cabane://actor/human/<your name> \
+  --actor kabane://actor/human/<your name> \
   --device <short machine name> \
   --sync-url https://<your-domain> \
   --sync-token '<SYNC_TOKEN from 1.2>'
@@ -281,7 +282,7 @@ Expected:
 
 ```
 ✓ Initialized /Users/<you>/.kabane
-  actor:  cabane://actor/human/<your name>
+  actor:  kabane://actor/human/<your name>
   device: <short machine name>
   sync:   https://<your-domain>
 ```
@@ -427,7 +428,7 @@ claude mcp list
 ```
 
 Expected: `kabane: https://<your-domain>/mcp (HTTP) - ✔ Connected`. Writes from this
-connection are stamped `cabane://actor/agent/claude`.
+connection are stamped `kabane://actor/agent/claude`.
 
 Local device instead (no network, sessions included):
 
@@ -436,8 +437,8 @@ kabane mcp install --harness claude
 claude mcp list | grep kabane
 ```
 
-Expected: `✓ claude installed  as cabane://actor/agent/claude`, then `kabane: <bun>
-<installed kabane bin> mcp --as cabane://actor/agent/claude - ✔ Connected`. It
+Expected: `✓ claude installed  as kabane://actor/agent/claude`, then `kabane: <bun>
+<installed kabane bin> mcp --as kabane://actor/agent/claude - ✔ Connected`. It
 runs `claude mcp add -s user` for a new entry. Existing entries are left alone: a launch
 matching this installation (or a hub URL) is reported as already installed; a different
 local command is `stale` (`registered with another command` in text). `--force`, or
@@ -488,7 +489,7 @@ kabane mcp install --harness codex
 codex mcp get kabane
 ```
 
-Expected: `args: <installed kabane bin> mcp --as cabane://actor/agent/codex`.
+Expected: `args: <installed kabane bin> mcp --as kabane://actor/agent/codex`.
 `codex mcp add` rewrites the whole `config.toml` in its own formatting (table order,
 `120` as `120.0`); the content is the same, but keep a copy if you diff that file.
 
@@ -500,7 +501,7 @@ kabane mcp install --harness gemini
 gemini mcp list
 ```
 
-Expected: `✓ kabane: ... mcp --as cabane://actor/agent/gemini (stdio) - Connected`.
+Expected: `✓ kabane: ... mcp --as kabane://actor/agent/gemini (stdio) - Connected`.
 
 ### 4.4 MCP inspector, the first browser-style test — MANUAL
 
@@ -512,7 +513,7 @@ npx -y @modelcontextprotocol/inspector https://<your-domain>/mcp
 
 In the UI, transport Streamable HTTP, no headers, Connect. Expected: a browser tab opens on
 the Access login, you authenticate as `HUMAN_EMAIL`, the inspector lists fifteen tools, and
-`kabane_scopeList` returns your scopes. Writes are stamped `cabane://actor/human/<local
+`kabane_scopeList` returns your scopes. Writes are stamped `kabane://actor/human/<local
 part>`.
 
 ### 4.5 Claude.ai — MANUAL
@@ -544,7 +545,7 @@ Test order, and stop at the first failure: inspector (4.4), Claude Code (4.1), C
 The other direction: `A` in the board starts an agent session on this machine and hands it
 what is on screen. Nothing here touches Cloudflare or the hub — the harness runs locally as
 you, and its writes go through `kabane mcp` into this device's database, stamped
-`cabane://actor/agent/<harness>`.
+`kabane://actor/agent/<harness>`.
 
 | `copilot.harness` | Needs | What the board launches |
 |---|---|---|
@@ -579,7 +580,7 @@ What the harness brings and what kabane adds:
   unchanged. `"harness": { "mode": "default" }` in `config.json` turns it off.
 - **Added by kabane**: `KABANE_SESSION=1` in the harness environment, so your own hooks can
   tell a board session from an interactive one; one instruction block naming the job; and
-  one MCP server, `kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`.
+  one MCP server, `kabane mcp --scope <uri> --as kabane://actor/agent/<harness>`.
 
 The first turn cold-starts `npx`, which takes a few seconds; the footer indicator appears
 immediately. If it fails with an npm resolution error, check for a release-age guard:
@@ -679,7 +680,7 @@ So a release that adds a migration goes out in this order:
 A device that updates before the hub is safe too: the hub's cloud device and every older
 device stop at that device's first op until they update.
 
-Data modules such as `@cabane/questions` carry their own schema versions. A device without
+Data modules such as `@kabane/questions` carry their own schema versions. A device without
 the module, or with an older module schema, parks those ops and continues pulling core data.
 `kabane sync status --json` reports `parkedOps` counts by module; `parkedFailed` and
 `parkedFailures` identify replay failures. Install/register the matching module version,
@@ -697,6 +698,106 @@ log. The hub's log is not rewritten: an op in it from before the migration keeps
 scheme, and each updated device renames it as it pulls. The old scheme stays valid wherever a
 scope is given, so a client configured with a `jake://scope/…` URI keeps working.
 
+### 5.9 Move a hub deployed as `cabane-worker` — MANUAL
+
+Before 1.0.0 the Worker was `cabane-worker`, with the classes `CabaneLog` and `CabaneHub`.
+It is `kabane-worker` now, with `KabaneLog` and `KabaneHub`. A Worker with another name is
+another script with its own Durable Objects, so the new hub starts with an empty log and an
+empty cloud device: nothing carries over from the old one.
+
+1. Drain the old hub while every device still runs the build it has now, before any of them
+   updates. Migration 12 renames the actors a device holds when it runs, its own log
+   included; an op it pulls afterwards is applied as written. So a comment by
+   `cabane://actor/human/<name>` that no device has pulled yet would keep that author for
+   good once a device pulled it after updating, and no row count would show it.
+
+   Stop writing through the old hub: pause Hermes and any other runtime with a service token,
+   and leave the Claude.ai and ChatGPT connectors alone until step 8. The hub pushes each of
+   its writes to its log as it makes it. On every device, stop the board, `kabane mcp` and
+   loop runners, and let a running `kabane sync` finish. Keep them stopped until step 8.
+
+   Define these in a bash or zsh shell on each device. They resolve the device's home once,
+   from `KABANE_HOME` if you set it, so the SQL and the CLI below act on the same database.
+   One `kabane sync push` or `pull` stops after 100 batches, so `level` repeats each until
+   nothing is pending and the last pull ended before its limit:
+
+   ```bash
+   home="${KABANE_HOME:-$HOME/.kabane}"; export KABANE_HOME="$home"; db="$home/kabane.db"
+   level() {
+     while [ "$(kabane sync status --json | jq .pendingOps)" != 0 ]; do
+       kabane sync push >/dev/null || return 1
+     done
+     while :; do
+       out=$(kabane sync pull --json) || return 1
+       [ "$(echo "$out" | jq .batches)" -lt 100 ] && return 0
+     done
+   }
+   # Shared rows of every replicated table: core's, then each module's this device registers.
+   counts() {
+     for t in projects tasks task_links task_comments task_work_log task_context_refs \
+         upstream_links $(sqlite3 "$db" "SELECT tbl FROM module_declarations ORDER BY tbl"); do
+       echo "$t $(sqlite3 "$1" "SELECT count(*) FROM $t WHERE visibility != 'private'")"
+     done
+   }
+   ```
+
+   Run `level` on every device, then once more on each, so every device holds every other
+   device's writes and the old hub's.
+2. Update every device and run `kabane doctor --fix` on each
+   ([`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris)).
+   Migration 12 renames what step 1 brought in and logs no op of its own, so nothing is left
+   to exchange with the old hub. On the device you will check from, record the baseline:
+   `counts "$db" > "$home/hub-baseline.txt"`.
+3. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
+   `<your-domain>`. A hostname serves one Worker at a time.
+4. Set `SERVICE_ACTORS` with `kabane://actor/agent/<name>` values: the Worker refuses any
+   value that is not an agent actor under that prefix, the old `cabane://actor/agent/...`
+   included, and then admits no service token at all. Deploy the new Worker as in 1.1 and
+   1.5, with the rest of the values unchanged. The script attaches `<your-domain>` to
+   `kabane-worker` and uploads the same `SYNC_TOKEN`.
+5. The Access application from 1.3 protects the hostname, not the script, so it covers
+   `kabane-worker` as it is: same AUD, same policies, same service tokens. Check it with the
+   `/health` requests in 1.5.
+6. Reseed the new log from every device. §5.6's rewind is not enough here. A device rewinds
+   only when a push is acknowledged, but a device that already pushed everything has nothing
+   pending, and `kabane sync backfill` re-sends only rows that never had a backfill op. A
+   device that only pulls keeps its old position and reads nothing. On every device, one
+   after the other, in the shell from step 1:
+
+   ```bash
+   sqlite3 "$db" \
+     "UPDATE sync_state SET last_pushed_seq = 0, last_applied_seq = 0 WHERE id = 'local'"
+   kabane sync backfill && level
+   ```
+
+   Each device pushes every op it has logged, plus a backfill op for each row it pulled from
+   another device. The log stores an op it already holds only once, and two devices backfill a
+   row they share under the same op id. Once every device has done this, run `level` on each
+   one again.
+7. Check the new hub against the baseline before you delete anything. On the device that
+   recorded it, make a throwaway device with the same extensions, bring it level with the new
+   log, and compare:
+
+   ```bash
+   check=$(mktemp -d)
+   KABANE_HOME="$check" kabane init --actor kabane://actor/human/check --device check \
+     --sync-url https://<your-domain> --sync-token '<SYNC_TOKEN>' \
+     --access-client-id '<cron client id>.access' --access-client-secret '<cron client secret>'
+   ln -s "$home/extensions" "$check/extensions"
+   jq --slurpfile own "$home/config.json" '.extensions = ($own[0].extensions // [])' \
+     "$check/config.json" > "$check/config.next" && mv "$check/config.next" "$check/config.json"
+   KABANE_HOME="$check" level
+   diff "$home/hub-baseline.txt" <(counts "$check/kabane.db") && echo "the new hub holds the baseline"
+   rm -rf "$check"
+   ```
+
+   `diff` prints nothing above the last line when every table matches. A device that only
+   pulls never shows up in the log, so the check device leaves nothing behind. Rows marked
+   `visibility: private` never leave their device and are not counted.
+8. Once the new hub holds the baseline, start the devices' processes and the hub's writers
+   again. Then delete `cabane-worker` from the dashboard (**Settings → Delete**). Its Durable
+   Objects and their data go with it.
+
 ---
 
 ## What was verified locally, and what was not
@@ -709,16 +810,17 @@ localhost.
 
 | Step | Result |
 |---|---|
-| 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"cabane://actor/human/<local part>"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
+| 1.1 reject test | `GET /health` bare → `401`; with a human assertion → `{"ok":true,…,"actor":"kabane://actor/human/<local part>"}`; with a service assertion → the mapped agent actor; `GET /mcp` → `405`; `POST /push` without the bearer → `401` |
 | 2.1 historical `bun link` | `kabane` on PATH at `~/.bun/bin/kabane`, `--help` lists the commands; the current npm install path is covered by `bun run smoke` in CI |
 | 2.2 to 2.4 device A | `init` → `sync status` "not armed" → a task added before arming → `sync backfill` seeded and pushed it (1 op) → a task added after arming was captured and pushed live |
 | 3 device B | `init`, `sync pull` → 2 ops applied, both tasks listed |
-| hub as device | after the alarm the hub's `kabane_list` returned both device tasks with the right `updatedBy`; `kabane_add` at the hub as the Hermes service identity was stamped `cabane://actor/agent/hermes` |
+| hub as device | after the alarm the hub's `kabane_list` returned both device tasks with the right `updatedBy`; `kabane_add` at the hub as the Hermes service identity was stamped `kabane://actor/agent/hermes` |
 | collision repair | hub and device A had both minted `JCAB-1`; device B's next pull applied the hub's task, `renamed 1`, and all three sides agree on `JCAB-3` for it |
 | 3.1 templates | `plutil -lint` OK on the plist, before and after the `__HOME__` substitution |
 | 4.1 Claude Code | `claude mcp add --transport http … --header "Cf-Access-Jwt-Assertion: …"` against localhost → `claude mcp list` shows `✔ Connected`; removed afterwards |
-| 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `cabane://actor/agent/claude`; all three configs restored afterwards |
+| 4.1 to 4.3 local | `kabane mcp install` registered claude, codex and gemini at user scope; a second run reported each already installed; `--force` replaced claude and gemini; `claude mcp list` and `gemini mcp list` showed `Connected`; a `kabane_add` through the registered argv, spawned with a bare PATH, was stamped `kabane://actor/agent/claude`; all three configs restored afterwards |
 | 4.4 inspector | `npx @modelcontextprotocol/inspector --cli … --method tools/list` → 15 tools; `tools/call kabane_add` created a task |
+| 5.9 move (2026-11-20) | two devices and a write made through the hub's MCP, against one `wrangler dev` log, then an empty one. The baseline counted four tasks and a checklist item. After steps 6 and 7, run in bash from this page's own blocks with localhost for the domain and a dev assertion for the service token, the check device matched it table for table and printed `the new hub holds the baseline`. Without the drain, the hub's write was lost, and a tasks-and-comments count still matched, 3 and 3. `counts` and `level` also run under zsh. Every device ran this build throughout, so the drain on the old build before the update (steps 1 and 2) was not run |
 
 Not verifiable without the real account, therefore **MANUAL** above: `bun run deploy`,
 the custom domain, the Access application and policies, service tokens, Managed

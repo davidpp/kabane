@@ -26,8 +26,8 @@ import {
 	tryCatch,
 	trySync,
 	withDb,
-} from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+} from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import {
 	conciseSuccess,
 	createHostRecord,
@@ -42,7 +42,7 @@ import {
 	Settings,
 	success,
 	usage,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { z } from "zod";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
@@ -199,7 +199,7 @@ describe("RecipeActivity", () => {
 			return [state, card.status, card.actions?.map((a) => a.id) ?? []];
 		});
 		expect(statuses).toEqual([
-			["live", "paused", ["stop"]],
+			["live", "unreported", ["stop"]],
 			["running", "running", ["stop"]],
 			["waiting", "paused", ["stop"]],
 			["idle", "completed", ["stop"]],

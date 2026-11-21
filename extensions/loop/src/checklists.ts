@@ -1,5 +1,5 @@
-import type { Result, Task } from "@cabane/core";
-import type { Host } from "@cabane/extension";
+import type { Result, Task } from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { z } from "zod";
 import { ok, err } from "./result";
 import { actorUri } from "./session-identity";

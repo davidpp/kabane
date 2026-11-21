@@ -283,7 +283,7 @@ describe("Oplog — storage-layer capture", () => {
 	});
 
 	it("stamps updated_by from the actor port and bumps version on every update", async () => {
-		configureTestRuntime({ actor: () => "cabane://actor/human/tester" });
+		configureTestRuntime({ actor: () => "kabane://actor/human/tester" });
 		await armCapture();
 
 		const id = await createTask("versioned");
@@ -293,9 +293,9 @@ describe("Oplog — storage-layer capture", () => {
 		const ops = await drainOps();
 		expect(ops.map((op) => op.version)).toEqual([1, 2, 3]);
 		expect(
-			ops.every((op) => op.updatedBy === "cabane://actor/human/tester"),
+			ops.every((op) => op.updatedBy === "kabane://actor/human/tester"),
 		).toBe(true);
-		expect(ops[2]?.payload?.updated_by).toBe("cabane://actor/human/tester");
+		expect(ops[2]?.payload?.updated_by).toBe("kabane://actor/human/tester");
 		configureTestRuntime();
 	});
 

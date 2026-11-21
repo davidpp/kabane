@@ -12,7 +12,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { GitFixture } from "@cabane/core/git-fixture";
+import { GitFixture } from "@kabane/core/git-fixture";
 import {
 	detectScope,
 	findProjectRoot,
@@ -86,9 +86,9 @@ const RENAMED = "git@github.com:davidpp/kabane.git";
 beforeEach(() => {
 	// realpath so fixture paths match what git and the detector report: on macOS
 	// the temp dir is a symlink (/var -> /private/var).
-	workspace = realpathSync(mkdtempSync(join(tmpdir(), "cabane-detect-")));
+	workspace = realpathSync(mkdtempSync(join(tmpdir(), "kabane-detect-")));
 	home = join(
-		realpathSync(mkdtempSync(join(tmpdir(), "cabane-home-"))),
+		realpathSync(mkdtempSync(join(tmpdir(), "kabane-home-"))),
 		".kabane",
 	);
 	mkdirSync(home, { recursive: true });
@@ -101,15 +101,15 @@ afterEach(() => {
 
 describe("normalizeGitUrl", () => {
 	it.each([
-		["scp-style ssh", "git@github.com:davidpp/cabane.git"],
-		["ssh URL", "ssh://git@github.com/davidpp/cabane.git"],
-		["ssh URL without a user", "ssh://github.com/davidpp/cabane"],
-		["https", "https://github.com/davidpp/cabane.git"],
-		["http", "http://github.com/davidpp/cabane"],
-		["https with a token", "https://token@github.com/davidpp/cabane.git"],
-		["surrounding whitespace", "  git@github.com:davidpp/cabane.git  "],
+		["scp-style ssh", "git@github.com:davidpp/kabane.git"],
+		["ssh URL", "ssh://git@github.com/davidpp/kabane.git"],
+		["ssh URL without a user", "ssh://github.com/davidpp/kabane"],
+		["https", "https://github.com/davidpp/kabane.git"],
+		["http", "http://github.com/davidpp/kabane"],
+		["https with a token", "https://token@github.com/davidpp/kabane.git"],
+		["surrounding whitespace", "  git@github.com:davidpp/kabane.git  "],
 	])("normalizes %s to host/owner/repo", (_label, url) => {
-		expect(normalizeGitUrl(url)).toBe("github.com/davidpp/cabane");
+		expect(normalizeGitUrl(url)).toBe("github.com/davidpp/kabane");
 	});
 
 	it("leaves a form it does not recognize alone", () => {
@@ -195,7 +195,7 @@ describe("ProjectDirs", () => {
 describe("resolveScopeId", () => {
 	it("prefers the pin over the git remote", async () => {
 		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 		pin(root, "cabane");
 
 		expect(await resolveScopeId(root, { home })).toBe("cabane");
@@ -203,7 +203,7 @@ describe("resolveScopeId", () => {
 
 	it("prefers your own pin over the repo's pin and the remote", async () => {
 		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 		localPin(root, "mine");
 
 		expect(await resolveScopeId(root, { home })).toBe("mine");
@@ -218,16 +218,16 @@ describe("resolveScopeId", () => {
 		const root = dir("repo");
 		await gitInit(root);
 		localPin(root, await resolveScopeId(root, { home }));
-		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
+		git(root, ["remote", "add", "origin", "git@github.com:davidpp/kabane.git"]);
 
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 	});
 
 	it("reads the main checkout's local pin from a linked worktree", async () => {
 		const root = dir("main");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 		mkdirSync(join(root, "packages", "app", ".kabane"), { recursive: true });
 		writeFileSync(join(root, "packages", "app", ".kabane", ".keep"), "");
 		git(root, ["add", "."]);
@@ -247,10 +247,10 @@ describe("resolveScopeId", () => {
 	// it resolved under KABANE_HOME, never in the repo.
 	it("normalizes the git remote and writes nothing into the repo", async () => {
 		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 		expect(untracked(root)).toBe("");
 		expect(stored()).toHaveLength(1);
@@ -260,14 +260,14 @@ describe("resolveScopeId", () => {
 	// resolves by the remote it has, as it did before detection stored anything.
 	it("keeps a checkout's scope after its remote is renamed", async () => {
 		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 
 		git(root, ["remote", "set-url", "origin", RENAMED]);
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 
 		const fresh = join(workspace, "fresh");
@@ -290,7 +290,7 @@ describe("resolveScopeId", () => {
 				"remote",
 				"set-url",
 				"origin",
-				`git@github.com:${name}/cabane.git`,
+				`git@github.com:${name}/kabane.git`,
 			]);
 			return clone;
 		});
@@ -302,7 +302,7 @@ describe("resolveScopeId", () => {
 			[fork, upstream].map((root) => resolveScopeId(String(root), { home })),
 		);
 
-		const expected = ["github.com/fork/cabane", "github.com/upstream/cabane"];
+		const expected = ["github.com/fork/kabane", "github.com/upstream/kabane"];
 		expect(first).toEqual(expected);
 		expect(again).toEqual(expected);
 	});
@@ -313,11 +313,11 @@ describe("resolveScopeId", () => {
 	it("keeps an id stored before the first commit", async () => {
 		const root = dir("repo");
 		await gitInit(root, {
-			remote: "git@github.com:davidpp/cabane.git",
+			remote: "git@github.com:davidpp/kabane.git",
 			commit: false,
 		});
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 
 		git(root, ["remote", "remove", "origin"]);
@@ -326,20 +326,20 @@ describe("resolveScopeId", () => {
 		git(root, ["commit", "-qm", "init"]);
 
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 		const firstCommit = git(root, ["rev-parse", "HEAD"]).trim();
 		expect(entry()).toEqual({
-			scopeId: "github.com/davidpp/cabane",
+			scopeId: "github.com/davidpp/kabane",
 			firstCommit,
 		});
 	});
 
 	it("resolves afresh for another repo cloned at the same path", async () => {
 		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 
 		// Other content, or the fixture's commit could hash the same within a second.
@@ -358,15 +358,15 @@ describe("resolveScopeId", () => {
 	// MCP, the board and the CLI resolve at once; each write lands whole.
 	it("resolves the same id under concurrent first detections", async () => {
 		const root = dir("repo");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 
 		const ids = await Promise.all(
 			Array.from({ length: 16 }, () => resolveScopeId(root, { home })),
 		);
 
-		expect(new Set(ids)).toEqual(new Set(["github.com/davidpp/cabane"]));
+		expect(new Set(ids)).toEqual(new Set(["github.com/davidpp/kabane"]));
 		expect(stored()).toHaveLength(1);
-		expect(entry()).toMatchObject({ scopeId: "github.com/davidpp/cabane" });
+		expect(entry()).toMatchObject({ scopeId: "github.com/davidpp/kabane" });
 	});
 
 	it("falls back to the first commit when there is no remote", async () => {
@@ -385,15 +385,15 @@ describe("resolveScopeId", () => {
 		const frozen = await resolveScopeId(root, { home });
 		expect(frozen).toStartWith("git:");
 
-		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
+		git(root, ["remote", "add", "origin", "git@github.com:davidpp/kabane.git"]);
 
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 
 		git(root, ["remote", "remove", "origin"]);
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 	});
 
@@ -404,10 +404,10 @@ describe("resolveScopeId", () => {
 		await gitInit(root);
 		const frozen = await resolveScopeId(root, { home });
 		pin(root, frozen);
-		git(root, ["remote", "add", "origin", "git@github.com:davidpp/cabane.git"]);
+		git(root, ["remote", "add", "origin", "git@github.com:davidpp/kabane.git"]);
 
 		expect(await resolveScopeId(root, { home })).toBe(
-			"github.com/davidpp/cabane",
+			"github.com/davidpp/kabane",
 		);
 		expect((await readFile(join(root, SCOPE_FILE), "utf8")).trim()).toBe(
 			frozen,
@@ -435,7 +435,7 @@ describe("resolveScopeId", () => {
 
 describe("resolveProjectName", () => {
 	it.each([
-		["the repo half of a remote id", "github.com/davidpp/cabane", "cabane"],
+		["the repo half of a remote id", "github.com/davidpp/kabane", "kabane"],
 		["the folder of a path fallback", "/Users/x/Projects/mill", "mill"],
 		["a bare id unchanged", "cabane", "cabane"],
 	])("takes %s", (_label, scopeId, expected) => {
@@ -450,12 +450,12 @@ describe("detectScope", () => {
 		pin(root, "cabane");
 		writeFileSync(
 			join(root, "package.json"),
-			JSON.stringify({ name: "cabane-monorepo" }),
+			JSON.stringify({ name: "kabane-monorepo" }),
 		);
 		const nested = dir("repo", "packages", "core");
 		writeFileSync(
 			join(nested, "package.json"),
-			JSON.stringify({ name: "@cabane/core" }),
+			JSON.stringify({ name: "@kabane/core" }),
 		);
 
 		const scope = await detectScope(nested, { home });
@@ -465,11 +465,11 @@ describe("detectScope", () => {
 		expect(scope?.scopeId).toBe("cabane");
 		expect(scope?.name).toBe("cabane");
 		expect(scope?.extensions).toEqual({
-			package: "@cabane/core",
+			package: "@kabane/core",
 			branch: "main",
 		});
 		expect(scope?.scopeUri).toBe(
-			"kabane://scope/cabane?branch=main&package=%40cabane%2Fcore",
+			"kabane://scope/cabane?branch=main&package=%40kabane%2Fcore",
 		);
 	});
 
@@ -477,7 +477,7 @@ describe("detectScope", () => {
 	// project files under a different scope from a worktree.
 	it("resolves the same scope id from a worktree and a nested directory", async () => {
 		const root = dir("main");
-		await gitInit(root, { remote: "git@github.com:davidpp/cabane.git" });
+		await gitInit(root, { remote: "git@github.com:davidpp/kabane.git" });
 		const tree = join(workspace, "main.feature");
 		git(root, ["worktree", "add", "-q", "-b", "feat", tree]);
 
@@ -485,7 +485,7 @@ describe("detectScope", () => {
 		const fromNested = await detectScope(dir("main", "packages"), { home });
 		const fromTree = await detectScope(tree, { home });
 
-		expect(fromRoot?.scopeId).toBe("github.com/davidpp/cabane");
+		expect(fromRoot?.scopeId).toBe("github.com/davidpp/kabane");
 		expect(fromNested?.scopeId).toBe(fromRoot?.scopeId);
 		expect(fromTree?.scopeId).toBe(fromRoot?.scopeId);
 		expect(fromTree?.extensions.branch).toBe("feat");

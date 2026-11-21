@@ -5,12 +5,12 @@
 // opens on its prompt as a raised block, not a rule; glyphs carry the hues; the text keeps a hanging
 // indent at forty columns.
 import { describe, expect, it } from "bun:test";
-import { ok } from "@cabane/core";
+import { ok } from "@kabane/core";
 import type {
 	ActivityCard,
 	ActivityEvent,
 	ActivitySource,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import {
 	type CapturedSpan,
 	RGBA,
@@ -733,6 +733,48 @@ describe("tool calls in the transcript", () => {
 			expect(read).toContain("Found where the pane wraps.");
 		} finally {
 			destroy();
+		}
+	});
+
+	it("keeps an opened group's lane tags in the tag column on the all-lanes stream", async () => {
+		const card: ActivityCard = { ...loopCard, lanes: ["JREP-2", "triage"] };
+		const call = (seq: number, type: string, summary: string, ms: number) => ({
+			seq,
+			at: AT(ms),
+			type,
+			summary,
+			callId: summary,
+			lane: "JREP-2",
+		});
+		const setup = await renderTest(
+			<EventView
+				cardId="run-1"
+				initialCard={card}
+				source={sourceOf(card, [
+					call(1, "tool_call", "Build", 0),
+					call(2, "tool_completed", "Build", 500),
+					call(3, "tool_call", "Lint", 500),
+					call(4, "tool_failed", "Lint", 1000),
+				])}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				tabbed
+				toolDetails
+			/>,
+			{ width: 60, height: 16 },
+		);
+		try {
+			const frame = await pumpUntil(
+				setup.renderOnce,
+				setup.captureCharFrame,
+				(f) => f.includes("Lint"),
+			);
+			const rows = frame.split("\n").map((row) => row.trimEnd());
+			expect(rows).toContain("JREP-2 ▾ 2 tools · 1 failed · 1.0s");
+			expect(rows).toContain("JREP-2   ✓ Build · 0.5s");
+			expect(rows).toContain("JREP-2   ✗ Lint · 0.5s");
+		} finally {
+			setup.destroy();
 		}
 	});
 

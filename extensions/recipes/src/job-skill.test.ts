@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { err, ok, tryCatch, trySync } from "@cabane/core";
+import { err, ok, tryCatch, trySync } from "@kabane/core";
 import { JobSkill } from "./job-skill";
 import { Kabane } from "./result";
 

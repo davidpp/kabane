@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { join } from "node:path";
-import { Planner } from "@cabane/core";
+import { Planner } from "@kabane/core";
 import { LoopActivity } from "./activity";
 import { LoopConfig } from "./config";
 import { formatQuestionBody } from "./question-body";
@@ -12,7 +12,7 @@ import { testHost } from "./test-host";
 import { TestSessions } from "./test-sessions";
 
 let home = "";
-const ACTOR = "cabane://actor/human/david";
+const ACTOR = "kabane://actor/human/david";
 
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "loop-activity-"));
@@ -57,7 +57,16 @@ const run = (overrides: Partial<RunStore.Run> = {}): RunStore.Run => {
 
 describe("LoopActivity", () => {
 	it("a run is a tabbed card on its parent, with one lane per claim", () => {
-		expect(LoopActivity.card(run())).toEqual({
+		const { steps, facts, ...card } = LoopActivity.card(run());
+		expect(facts?.slice(0, 2)).toEqual([
+			{ label: "slots", value: "0/1" },
+			{ label: "continuations", value: "0/3" },
+		]);
+		expect(steps?.map((step) => `${step.state} ${step.name}`)).toEqual([
+			"stopped implement",
+			"pending land",
+		]);
+		expect(card).toEqual({
 			id: "KAB-1-abc",
 			kind: "loops",
 			label: "loop",

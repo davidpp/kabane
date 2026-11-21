@@ -1,7 +1,7 @@
 // What a run starts in. A runtime starts a program, reports its state and ends it; the handle
 // `start` returns is the run's `session`, and only the runtime reads it. A terminal is optional:
 // a runtime without one has no `read`, `send` or `attach`, and `kabane runs` says so.
-import type { Result } from "@cabane/extension";
+import type { Result } from "@kabane/extension";
 import type { Runs } from "./runs";
 
 export type Runtime = {

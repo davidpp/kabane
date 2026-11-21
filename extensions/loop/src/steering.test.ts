@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Planner, type TaskDraft } from "@cabane/core";
+import { Planner, type TaskDraft } from "@kabane/core";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopPlan } from "./plan";

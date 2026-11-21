@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CopilotElicitationAnswer } from "@cabane/acp/form-field";
+import { type CopilotElicitationAnswer } from "@kabane/acp/form-field";
 import {
 	RGBA,
 	type TextareaRenderable,
@@ -426,7 +426,7 @@ describe("the copilot pane with a form at the head of its queue", () => {
 			<CopilotPane
 				copilot={Fixtures.copilot({
 					turn: "running",
-					actor: "cabane://actor/agent/claude",
+					actor: "kabane://actor/agent/claude",
 					asks: [ask],
 				})}
 				chip="JALL-1"
@@ -470,7 +470,7 @@ describe("the copilot pane with a form at the head of its queue", () => {
 });
 
 describe("a form's typed field in the running board", () => {
-	const BASE = join(tmpdir(), `cabane-board-form-${crypto.randomUUID()}`);
+	const BASE = join(tmpdir(), `kabane-board-form-${crypto.randomUUID()}`);
 	beforeAll(() => freshDb(BASE));
 	afterAll(() => dropDb(BASE));
 

@@ -252,8 +252,8 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			taskId: b2.id,
 			provider: "github",
 			externalId: "github-b",
-			identifier: "davidpp/cabane#12",
-			url: "https://github.com/davidpp/cabane/issues/12",
+			identifier: "davidpp/kabane#12",
+			url: "https://github.com/davidpp/kabane/issues/12",
 			title: "Team feature B",
 		});
 		if (!upstreamB.ok) throw upstreamB.error;
@@ -289,7 +289,7 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		const review = await Planner.addEntry(a.base, {
 			taskId: task.id,
 			kind: "review",
-			author: "cabane://actor/agent/claude",
+			author: "kabane://actor/agent/claude",
 			authorType: "ai",
 			content: "from device A",
 		});
@@ -297,7 +297,7 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		const handoff = await Planner.addEntry(b.base, {
 			taskId: task.id,
 			kind: "handoff.summary",
-			author: "cabane://actor/agent/codex",
+			author: "kabane://actor/agent/codex",
 			authorType: "ai",
 			content: "from device B",
 		});
@@ -565,8 +565,8 @@ describe("Sync — two devices, one relay, no cloud", () => {
 				);
 				Oplog.afterWrite(db, "tasks", "update", task.id);
 			});
-		await edit(a, "cabane://actor/agent/hermes", "written by hermes");
-		await edit(b, "cabane://actor/agent/claude", "written by claude");
+		await edit(a, "kabane://actor/agent/hermes", "written by hermes");
+		await edit(b, "kabane://actor/agent/claude", "written by claude");
 
 		await convergeAll();
 

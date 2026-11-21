@@ -5,7 +5,7 @@
 //
 // What a human reads and edits is the command line, quoted as a POSIX shell would take it, so a
 // word with a space or a comma in it survives the round trip through the board's form.
-import type { Result } from "@cabane/extension";
+import type { Result } from "@kabane/extension";
 import { err, ok } from "./result";
 
 export namespace Harness {

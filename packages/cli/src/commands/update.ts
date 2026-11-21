@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
-import { err, ok, type Result, trySync } from "@cabane/core";
-import { type Outcome, type ParsedArgs, usage } from "@cabane/extension";
+import { err, ok, type Result, trySync } from "@kabane/core";
+import { type Outcome, type ParsedArgs, usage } from "@kabane/extension";
 import { z } from "zod";
 import { version } from "../../package.json";
 import type { Command } from "../context";
@@ -163,14 +163,17 @@ const verdict = (
 ): Outcome | undefined => {
 	const prerelease = isPrerelease(runningVersion);
 	const manualExit = check ? 0 : 1;
+	// Where the candidate was read: npm for a Bun install, GitHub releases for a binary.
+	const [source, Source] =
+		install.kind === "bun" ? ["registry", "Registry"] : ["GitHub", "GitHub"];
 	if (!SemverSchema.safeParse(target).success)
-		return reply("error", "Invalid registry version; no update attempted.", 1);
+		return reply("error", `Invalid ${source} version; no update attempted.`, 1);
 	if (!onChannel(target, runningVersion))
 		return reply(
 			"manual_only",
 			prerelease
-				? `Registry ${tag} ${target} is a prerelease outside the beta channel. Review compatibility and choose a manual installation; no channel override is performed. Eligibility is policy-unverified.`
-				: "Registry latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.",
+				? `${Source} ${tag} ${target} is a prerelease outside the beta channel. Review compatibility and choose a manual installation; no channel override is performed. Eligibility is policy-unverified.`
+				: `${Source} latest is a prerelease. Review compatibility and choose a manual installation; no prerelease/channel override is performed. Eligibility is policy-unverified.`,
 			manualExit,
 			{
 				installedVersion: runningVersion,
@@ -191,11 +194,11 @@ const verdict = (
 	if (prerelease && compareVersions(target, runningVersion) <= 0)
 		return reply(
 			"current",
-			`No release on registry latest or beta is newer than installed ${runningVersion}. Installation eligibility remains policy-unverified (metadata only).`,
+			`No release on ${source} latest or beta is newer than installed ${runningVersion}. Installation eligibility remains policy-unverified (metadata only).`,
 			0,
 			details,
 		);
-	const candidate = `${prerelease ? `Registry ${tag}` : "Latest stable"} ${target}`;
+	const candidate = `${prerelease ? `${Source} ${tag}` : "Latest stable"} ${target}`;
 	if (!withinVersionPolicy(target, runningVersion))
 		return reply(
 			"manual_only",
@@ -214,7 +217,7 @@ const verdict = (
 	if (target === runningVersion)
 		return reply(
 			"current",
-			`Installed ${runningVersion} matches registry latest. Installation eligibility remains policy-unverified (metadata only).`,
+			`Installed ${runningVersion} matches ${source} latest. Installation eligibility remains policy-unverified (metadata only).`,
 			0,
 			details,
 		);
@@ -337,7 +340,7 @@ const installCandidate = async (
 };
 
 /**
- * A standalone binary: the candidate from npm's dist-tags under the same policy, then the release
+ * A standalone binary: the candidate from the GitHub releases under the same policy, then the release
  * archive for this target downloaded, verified and renamed over the real executable. A binary mise
  * installed is left to `mise up kabane`.
  */
@@ -357,15 +360,15 @@ const updateBinary = async (
 	const install = UpdateBinary.miseOwned(executable.value, host.env)
 		? "mise"
 		: "binary";
-	const tags = await UpdateBinary.fetchTags(
-		host.source.registry,
+	const tags = await UpdateBinary.fetchReleases(
+		host.source.api,
 		runningVersion,
 		15_000,
 	);
 	if (!tags.ok)
 		return reply(
 			"error",
-			`Could not read kabane's dist-tags from ${host.source.registry} (${tags.error.message}); check the network and retry. No update attempted.`,
+			`Could not read kabane's releases from ${host.source.api} (${tags.error.message}); check the network and retry. No update attempted.`,
 			1,
 			{ install },
 		);

@@ -1,7 +1,7 @@
 // A card's own tab through the same reducer the keyboard and the mouse drive: its lanes, its
 // actions and the prompt they open, and a question it shows that takes a typed answer.
 import { describe, expect, it } from "bun:test";
-import type { ActivityCard, CardAction } from "@cabane/extension";
+import type { ActivityCard, CardAction } from "@kabane/extension";
 import { CardTab } from "./card-tab";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
@@ -327,7 +327,8 @@ describe("actions", () => {
 			...Keymap.EVERYWHERE,
 		]
 			.flatMap((binding) => binding.keys)
-			.filter((name) => !name.includes("+"));
+			// `f` is the board's only on a card with steps (run-map.test.ts); this card has none.
+			.filter((name) => !name.includes("+") && name !== "f");
 		const s = onTab([
 			card({
 				actions: [

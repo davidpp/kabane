@@ -9,9 +9,9 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { CopilotInstructions } from "@cabane/board/copilot-instructions";
-import { err, ok, type Result, trySync } from "@cabane/core";
-import type { CopilotShortcut } from "@cabane/extension";
+import { CopilotInstructions } from "@kabane/board/copilot-instructions";
+import { err, ok, type Result, trySync } from "@kabane/core";
+import type { CopilotShortcut } from "@kabane/extension";
 import { z } from "zod";
 import { Extensions } from "./extensions";
 

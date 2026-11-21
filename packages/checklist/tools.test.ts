@@ -2,8 +2,8 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMcpServer, Planner, type Result } from "@cabane/core";
-import { configureTestRuntime } from "@cabane/core/testing";
+import { createMcpServer, Planner, type Result } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { checklistModule } from "./module";
@@ -21,7 +21,7 @@ beforeEach(async () => {
 	const server = unwrap(
 		createMcpServer({
 			basePath: base,
-			actor: "cabane://actor/agent/test",
+			actor: "kabane://actor/agent/test",
 			scopeRequired: false,
 		}),
 	);

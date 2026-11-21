@@ -1,10 +1,10 @@
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, Planner } from "@cabane/core";
-import { Settings } from "@cabane/extension";
+import { ok, Planner } from "@kabane/core";
+import { Settings } from "@kabane/extension";
 import { LoopAdvice } from "./advice";
 import { loopMcp } from "./mcp";
 import { RunStore } from "./store";

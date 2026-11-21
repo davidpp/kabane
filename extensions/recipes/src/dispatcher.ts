@@ -15,7 +15,7 @@ import type {
 	ProjectScope,
 	Result,
 	TriggerDescriptor,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { runJob } from "./job-command";

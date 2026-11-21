@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // The board's "start loop" trigger against a real tracker and a real git checkout: when it is
 // offered, when it is refused and why, and what its form and preview are built from. Starting a
 // run spawns the runner, which is the sandbox check, not a unit test.
-import "@cabane/core/testing";
+import "@kabane/core/testing";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ok, Planner } from "@cabane/core";
-import { GitFixture } from "@cabane/core/git-fixture";
-import { Settings } from "@cabane/extension";
+import { ok, Planner } from "@kabane/core";
+import { GitFixture } from "@kabane/core/git-fixture";
+import { Settings } from "@kabane/extension";
 import { Loop } from "./commands";
 import { LoopConfig } from "./config";
 import { LoopDispatcher } from "./dispatcher";

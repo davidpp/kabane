@@ -1,5 +1,5 @@
 /**
- * @cabane/dispatch
+ * @kabane/dispatch
  *
  * The dispatch extension: the dispatch skill template, the setup-dispatch skill that fills a
  * project's dispatch skill from it, the grill skill that walks the human through open questions,

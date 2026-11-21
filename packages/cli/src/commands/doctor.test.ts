@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Doctor, parseArgs } from "@cabane/extension";
+import { Doctor, parseArgs } from "@kabane/extension";
 import { DB_NAME } from "../config";
 import { ConfigLayers } from "../config-layers";
 import { openContext } from "../context";
@@ -205,7 +205,7 @@ test("the loop's legacy-lens finding names the dispatch extension and a manual r
 test("extension doctor counts open tier-tagged issues through the CLI store", async () => {
 	const { cli, run, config } = setup();
 	config({
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		deviceId: "test",
 		extensions: ["loop"],
 	});
@@ -246,7 +246,7 @@ test("inspects shared keys only after enabling the directory extension", async (
 test("migrates only this project's legacy blocks and preserves other config", async () => {
 	const { cwd, home, cli, config } = setup();
 	config({
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		deviceId: "test",
 		mystery: true,
 		scopes: {
@@ -355,7 +355,7 @@ test("a throwing, malformed or refused extension doctor costs only that extensio
 		'export default host => ({name: "fine", doctor: async () => host.result.ok([{id: "noted", severity: "mention", summary: "fine ran"}])});',
 	);
 	config({
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		deviceId: "test",
 		extensions: ["throws", "malformed", "refused", "fine"],
 	});
@@ -413,7 +413,7 @@ test("a directory doctor reads the live record and stays staged when config cann
 	});`,
 	);
 	config({
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		deviceId: "test",
 		extensions: ["records"],
 	});
@@ -444,7 +444,7 @@ test("a directory doctor reads the live record and stays staged when config cann
 test("an unreadable store leaves the other doctor findings in text and JSON", async () => {
 	const { home, cwd, config, cli } = setup();
 	config({
-		actor: "cabane://actor/human/test",
+		actor: "kabane://actor/human/test",
 		deviceId: "test",
 		extensions: ["loop"],
 	});
@@ -462,6 +462,57 @@ test("an unreadable store leaves the other doctor findings in text and JSON", as
 		]),
 	);
 	expect(await cli()).toContain("Cannot open the store:");
+});
+
+test("an old-prefix actor stops every other command until a bare --fix rewrites config.json", async () => {
+	const { home, cwd, env, config, cli, run } = setup();
+	config({ actor: "cabane://actor/human/ada", custom: { kept: true } });
+	const refused = async (...args: string[]) => {
+		const outcome = await runCommand(args, env, cwd);
+		return { code: outcome.exitCode, stderr: outcome.text };
+	};
+	const stopped = await refused("list");
+	expect(stopped.code).toBe(1);
+	expect(stopped.stderr).toContain(
+		"config.json's actor is cabane://actor/human/ada",
+	);
+	expect(stopped.stderr).toContain("kabane doctor --fix");
+
+	const report = await cli();
+	expect(report).toContain(
+		"kabane/config-actor-legacy: config.json's actor is cabane://actor/human/ada",
+	);
+	expect(await cli("--fix")).toContain(
+		"config-actor-legacy: actor is now kabane://actor/human/ada",
+	);
+	const stored = JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
+	expect(stored.actor).toBe("kabane://actor/human/ada");
+	expect(stored.custom).toEqual({ kept: true });
+	expect(await cli()).not.toContain("config-actor-legacy");
+	expect(await run("list")).toContain("No tasks");
+
+	// A harness registration from before the rename passes the old prefix with --as.
+	const viaAs = await refused("list", "--as", "cabane://actor/agent/claude");
+	expect(viaAs.code).toBe(1);
+	expect(viaAs.stderr).toContain("--as is cabane://actor/agent/claude");
+});
+
+test("the actor repair keeps what the settings repair moved out of config.json before it", async () => {
+	const { home, cwd, cli, config } = setup();
+	config({
+		actor: "cabane://actor/human/ada",
+		scopes: { pinned: { loop: { concurrency: 2 } } },
+	});
+	const report = JSON.parse(await cli("--fix", "--json"));
+	expect(
+		report.fixes.map((fix: { result: { ok: boolean } }) => fix.result.ok),
+	).toEqual([true, true]);
+	expect(
+		JSON.parse(readFileSync(ConfigLayers.localFile(home, cwd, "loop"), "utf8")),
+	).toEqual({ concurrency: 2 });
+	const stored = JSON.parse(readFileSync(join(home, "config.json"), "utf8"));
+	expect(stored.actor).toBe("kabane://actor/human/ada");
+	expect(stored).not.toHaveProperty("scopes");
 });
 
 test("a named missing fix is visible even with no findings", async () => {

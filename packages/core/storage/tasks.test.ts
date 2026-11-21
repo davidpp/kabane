@@ -91,7 +91,7 @@ describe("task scope edits over MCP", () => {
 			if (!added.value.shortId) throw new Error("Missing short id");
 			const server = createMcpServer({
 				basePath: base,
-				actor: "cabane://actor/agent/codex",
+				actor: "kabane://actor/agent/codex",
 				scopeRequired: true,
 			});
 			if (!server.ok) throw server.error;

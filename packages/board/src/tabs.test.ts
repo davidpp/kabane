@@ -1,8 +1,8 @@
 // The tab bar and the attention queue through the same reducer the keyboard and the mouse drive:
 // which tab is on screen, where `!` lands, what a banner's digits answer and when it clears.
 import { describe, expect, it } from "bun:test";
-import { TASK_STATE_DISPLAY, type Task } from "@cabane/core";
-import type { ActivityCard } from "@cabane/extension";
+import { TASK_STATE_DISPLAY, type Task } from "@kabane/core";
+import type { ActivityCard } from "@kabane/extension";
 import { BoardNav } from "./nav";
 import type { CopilotPermission } from "./ports";
 import { BoardTabs } from "./tabs";

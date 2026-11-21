@@ -15,7 +15,7 @@ import {
 	type SqlValue,
 	TABLES,
 	withDb,
-} from "@cabane/core";
+} from "@kabane/core";
 import { monotonicFactory } from "ulid";
 import { validateAnswer } from "./answer";
 import { formatDecisionBody, parseDecisionBody } from "./body";

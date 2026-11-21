@@ -1,6 +1,6 @@
 // Questions belong to the run. Only the runner writes their journal; human surfaces append answers to its inbox.
-import type { Result } from "@cabane/core";
-import type { Host } from "@cabane/extension";
+import type { Result } from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { answersContext, isAnswerTo, parseQuestionBody } from "./question-body";
 import { ok } from "./result";
 import { RunStore } from "./store";

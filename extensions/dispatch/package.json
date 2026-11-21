@@ -1,5 +1,5 @@
 {
-	"name": "@cabane/dispatch",
+	"name": "@kabane/dispatch",
 	"version": "0.1.0",
 	"description": "Serves the setup-dispatch and grill skills, writes a project's dispatch skill from its own template, and reports when a project's copy has fallen behind it.",
 	"license": "MIT",
@@ -18,8 +18,8 @@
 		"build": "bun scripts/build.ts"
 	},
 	"devDependencies": {
-		"@cabane/core": "workspace:*",
-		"@cabane/extension": "workspace:*",
+		"@kabane/core": "workspace:*",
+		"@kabane/extension": "workspace:*",
 		"@types/bun": "1.4.4",
 		"tsgo": "npm:typescript@7.0.2"
 	},

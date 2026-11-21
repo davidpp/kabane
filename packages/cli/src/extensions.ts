@@ -15,14 +15,14 @@ import {
 	type Result,
 	tryCatch,
 	trySync,
-} from "@cabane/core";
+} from "@kabane/core";
 import {
 	type Doctor,
 	failure,
 	type Extension,
 	type Host,
 	type Settings,
-} from "@cabane/extension";
+} from "@kabane/extension";
 import { z } from "zod";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";

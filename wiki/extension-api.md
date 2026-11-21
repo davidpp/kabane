@@ -6,14 +6,14 @@ each one goes, the alternatives weighed for the record half of `host` and for th
 slots, and the research it rests on. The rules themselves are in `ARCHITECTURE.md`; where this
 note and that file disagree, that file is current.
 
-## The loop imports 61 names from nine `@cabane/*` entry points in 32 of its 40 source files
+## The loop imports 61 names from nine `@kabane/*` entry points in 32 of its 40 source files
 
 Counted over `extensions/loop/src`, test files excluded, by reading each `import { ... } from
-"@cabane/..."` statement and splitting type-only names from values; a name imported from two entry
+"@kabane/..."` statement and splitting type-only names from values; a name imported from two entry
 points counts twice. 32 of the 40 non-test files import from kabane, and 30 of them import at
-least one value. Import statements per entry point: `@cabane/core` 28, `@cabane/acp` 12,
-`@cabane/board/ports` 5, `@cabane/extension` 3, and one each from `@cabane/board`,
-`@cabane/board/form-field`, `@cabane/checklist`, `@cabane/core/scope` and `@cabane/core/self`.
+least one value. Import statements per entry point: `@kabane/core` 28, `@kabane/acp` 12,
+`@kabane/board/ports` 5, `@kabane/extension` 3, and one each from `@kabane/board`,
+`@kabane/board/form-field`, `@kabane/checklist`, `@kabane/core/scope` and `@kabane/core/self`.
 
 Each value goes in one of four columns:
 
@@ -30,34 +30,34 @@ compiler erases it. The types are listed after the values.
 
 | Import | Files | Used as | Column | Where it lands |
 |---|---|---|---|---|
-| `@cabane/core` `Planner` | 8 | see the next table | on host | `host.record`, operation by operation |
-| `@cabane/core` `ok`, `err` | 22, 19 | building `Result`s | on host | `host.result` |
-| `@cabane/core` `tryCatch`, `trySync` | 4, 7 | wrapping throwing calls | on host | `host.result` |
-| `@cabane/core` `Runtime` | 2 | `Runtime.actor()` (`parent.ts:226`, `:316`) | dropped | `ctx.actor`, already on `Extension.Ctx` |
+| `@kabane/core` `Planner` | 8 | see the next table | on host | `host.record`, operation by operation |
+| `@kabane/core` `ok`, `err` | 22, 19 | building `Result`s | on host | `host.result` |
+| `@kabane/core` `tryCatch`, `trySync` | 4, 7 | wrapping throwing calls | on host | `host.result` |
+| `@kabane/core` `Runtime` | 2 | `Runtime.actor()` (`parent.ts:226`, `:316`) | dropped | `ctx.actor`, already on `Extension.Ctx` |
 | | | `Runtime.modules()`, to ask whether the checklist module is registered (`checklists.ts:16-17`) | dropped | `host.record.call` returns `err` for a tool no registered module provides |
-| `@cabane/core` `Lint` | 1 | `Lint.run` (`commands.ts:568`) | moved into the extension | with `lint/` (JCAB-338); its collectors call `getTask` and `queryTasks` (`lint/collectors.ts:92`, `:95`), which the counts under "What the loop asks of `Planner`" predate |
-| `@cabane/core` `RiskAnalyzer` | 1 | `checkFileOverlap` (`advice.ts:113`) | moved into the extension | with `lint/` (JCAB-338) |
-| `@cabane/core` `defineTool` | 1 | typing `kabane_loop_advise`'s handler against its input (`mcp.ts:10`); added by JCAB-275 after the baseline, so not in the counts above | on host | `host.defineTool` |
-| `@cabane/core` `ScopeUri` | 1 | `getScopeId` (`commands.ts:343`) | on host | `host.scope.idOf`; parsing a stored URI, both schemes, stays with core |
-| `@cabane/core` `authorTypeOf` | 1 | stamping a comment's author type (`parent.ts`) | dropped | `host.record.comment` stamps it, as `kabane_comment` does (`mcp/tools.ts`, `authorType: authorTypeOf(ctx.actor)`) |
-| `@cabane/core` `answersContext`, `isAnswerTo` | 1, 2 | matching an answer activity to its question | open | JCAB-316:7 |
-| `@cabane/core` `formatQuestionBody`, `parseQuestionBody` | 2, 1 | a session question's body | open | JCAB-316:7 |
-| `@cabane/core/scope` `detectScope` | 1 | a run's project scope (`commands.ts:310`, `:338`) | on host | `host.scope.detect` |
-| `@cabane/core/self` `Self` | 1 | `Self.executable` (`extension.ts:47`) | on host | `host.kabane.executable` |
-| `@cabane/acp` `AcpClient` | 3 | sessions, prompts, permission and elicitation requests | own dependency | `@cabane/acp` |
-| `@cabane/acp` `Harnesses` | 7 | ids, modes, launch resolution, agent definitions | own dependency | `@cabane/acp` |
-| `@cabane/acp` `ToolCalls` | 1 | folding tool calls into a detail (`dispatch.ts`) | own dependency | `@cabane/acp` |
-| `@cabane/acp` `CopilotInstructions` | 4 | `actorUri(harness)` (`checklists.ts:85`, `dispatch.ts:226`) | moves into the extension | the `cabane://actor/agent/<harness>` form is stored in rows, so a copy cannot drift |
+| `@kabane/core` `Lint` | 1 | `Lint.run` (`commands.ts:568`) | moved into the extension | with `lint/` (JCAB-338); its collectors call `getTask` and `queryTasks` (`lint/collectors.ts:92`, `:95`), which the counts under "What the loop asks of `Planner`" predate |
+| `@kabane/core` `RiskAnalyzer` | 1 | `checkFileOverlap` (`advice.ts:113`) | moved into the extension | with `lint/` (JCAB-338) |
+| `@kabane/core` `defineTool` | 1 | typing `kabane_loop_advise`'s handler against its input (`mcp.ts:10`); added by JCAB-275 after the baseline, so not in the counts above | on host | `host.defineTool` |
+| `@kabane/core` `ScopeUri` | 1 | `getScopeId` (`commands.ts:343`) | on host | `host.scope.idOf`; parsing a stored URI, both schemes, stays with core |
+| `@kabane/core` `authorTypeOf` | 1 | stamping a comment's author type (`parent.ts`) | dropped | `host.record.comment` stamps it, as `kabane_comment` does (`mcp/tools.ts`, `authorType: authorTypeOf(ctx.actor)`) |
+| `@kabane/core` `answersContext`, `isAnswerTo` | 1, 2 | matching an answer activity to its question | open | JCAB-316:7 |
+| `@kabane/core` `formatQuestionBody`, `parseQuestionBody` | 2, 1 | a session question's body | open | JCAB-316:7 |
+| `@kabane/core/scope` `detectScope` | 1 | a run's project scope (`commands.ts:310`, `:338`) | on host | `host.scope.detect` |
+| `@kabane/core/self` `Self` | 1 | `Self.executable` (`extension.ts:47`) | on host | `host.kabane.executable` |
+| `@kabane/acp` `AcpClient` | 3 | sessions, prompts, permission and elicitation requests | own dependency | `@kabane/acp` |
+| `@kabane/acp` `Harnesses` | 7 | ids, modes, launch resolution, agent definitions | own dependency | `@kabane/acp` |
+| `@kabane/acp` `ToolCalls` | 1 | folding tool calls into a detail (`dispatch.ts`) | own dependency | `@kabane/acp` |
+| `@kabane/acp` `CopilotInstructions` | 4 | `actorUri(harness)` (`checklists.ts:85`, `dispatch.ts:226`) | moves into the extension | the `kabane://actor/agent/<harness>` form is stored in rows, so a copy cannot drift |
 | | | `SERVER_NAME` (`brief.ts:153`, `dispatch.ts:220`) | moves into the extension | the name the loop gives its sessions' MCP server |
 | | | `DISPATCH_TEMPLATE` (`lenses.ts:24`), the directory the shipped lenses are read from | moves into the extension | with the templates (JCAB-327); see "Open points" |
-| `@cabane/board` `Theme`, `useTheme` | 1 | drawing the run header (`header.tsx:12-18`) | dropped | the header becomes `PanelLine`s |
-| `@cabane/board/form-field` `FormField` | 1 | judging an answer to a harness form (`elicitation.ts:20`) | own dependency | `@cabane/acp`, where JCAB-320 moves it |
-| `@cabane/board/ports` `STOP_ACTION` | 1 | the stop action's id (`activity.ts:41`, `:134`) | dropped | the string literal `"stop"`, typed by the contract |
-| `@cabane/checklist` `Checklist` | 1 | `list`, `progress` (`checklists.ts:27`, `:39`) | on host | through `kabane_checklist` (JCAB-336) |
-| `@cabane/checklist` `checklistModule` | 1 | its `name`, for the registration check | dropped | as `Runtime.modules()` above |
-| `@cabane/extension` `Settings` | 3 | `fields`, `groupsOf`, `lookOf`, `options` | on host | `host.settings` |
-| `@cabane/extension` `success`, `failure`, `usage` | 1 | a command's outcome | on host | `host.outcome` |
-| `@cabane/extension` `flagBool`, `flagString`, `flagList` | 1 | reading parsed flags | on host | `host.args` |
+| `@kabane/board` `Theme`, `useTheme` | 1 | drawing the run header (`header.tsx:12-18`) | dropped | the header becomes `PanelLine`s |
+| `@kabane/board/form-field` `FormField` | 1 | judging an answer to a harness form (`elicitation.ts:20`) | own dependency | `@kabane/acp`, where JCAB-320 moves it |
+| `@kabane/board/ports` `STOP_ACTION` | 1 | the stop action's id (`activity.ts:41`, `:134`) | dropped | the string literal `"stop"`, typed by the contract |
+| `@kabane/checklist` `Checklist` | 1 | `list`, `progress` (`checklists.ts:27`, `:39`) | on host | through `kabane_checklist` (JCAB-336) |
+| `@kabane/checklist` `checklistModule` | 1 | its `name`, for the registration check | dropped | as `Runtime.modules()` above |
+| `@kabane/extension` `Settings` | 3 | `fields`, `groupsOf`, `lookOf`, `options` | on host | `host.settings` |
+| `@kabane/extension` `success`, `failure`, `usage` | 1 | a command's outcome | on host | `host.outcome` |
+| `@kabane/extension` `flagBool`, `flagString`, `flagList` | 1 | reading parsed flags | on host | `host.args` |
 
 ### What the loop asks of `Planner`
 
@@ -80,7 +80,7 @@ compiler erases it. The types are listed after the values.
 
 JCAB-316:7 decided Split: issue outcomes become replicated timeline entries, the session is a
 `session:` URI in the work log, and its stream stays with the runtime that drove it. JCAB-329
-builds `@cabane/outcome` and the activity question/answer port; JCAB-340 moves the loop's
+builds `@kabane/outcome` and the activity question/answer port; JCAB-340 moves the loop's
 sessions and stream to its store; JCAB-343 migrates legacy outcomes and removes core session
 storage.
 
@@ -266,7 +266,7 @@ ports and MCP handlers (a missed `activity.load` shows stale cards; a missed han
   extension's (`extensions/dispatch/templates/dispatch/references/lenses/`, JCAB-327), keeps its
   own for the skill's close review. API v1 has no dependency between extensions, so neither reads
   the other's, and the two copies may drift.
-- **`@cabane/acp` imports `@cabane/core` for `Result`** (`packages/acp/src/client.ts:33`). An
+- **`@kabane/acp` imports `@kabane/core` for `Result`** (`packages/acp/src/client.ts:33`). An
   extension that bundles the harness client bundles that import too. Whether the harness client
   keeps a dependency on core, or the bundle's tree shaking keeps it to `result.ts`, is for
   JCAB-326 to measure.

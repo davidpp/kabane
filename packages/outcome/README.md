@@ -1,4 +1,4 @@
-# @cabane/outcome
+# @kabane/outcome
 
 Session outcomes kept on an issue's timeline. The module declares four entry kinds, each
 rendered in the brief's Discussion by core:
@@ -14,7 +14,7 @@ Register `outcomeModule` with `Runtime.configure`. The CLI and hub register it a
 `handoffModule`. It has no tables, migrations, tools or section renderer: outcomes are
 ordinary entries in core's replicated timeline. Write one with `kabane_comment`, giving its
 `kind`, or with `Planner.addEntry`. Templates guide the body without validating its prose.
-The `handoff` kind remains in `@cabane/handoff`.
+The `handoff` kind remains in `@kabane/handoff`.
 
 Exports: `outcomeModule` and `OUTCOME_KINDS`, an object with `decision`, `finding`,
 `verification` and `summary` keys containing those kind names.

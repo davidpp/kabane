@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { err, ok, tryCatch, trySync } from "@cabane/core";
+import { err, ok, tryCatch, trySync } from "@kabane/core";
 import { Harness } from "./harness";
 import { Kabane } from "./result";
 

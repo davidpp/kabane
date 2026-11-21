@@ -12,8 +12,8 @@ import {
 	type Task,
 	type TaskLink,
 	type TaskState,
-} from "@cabane/core";
-import type { Host } from "@cabane/extension";
+} from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { err, ok } from "./result";
 
 export namespace LoopPlan {
@@ -129,6 +129,23 @@ export namespace LoopPlan {
 			if (blocker.value) outside.set(id, blocker.value);
 		}
 		return ok({ parent: parent.value, nodes, outside });
+	};
+
+	/**
+	 * The parent's children as nodes, without their links: what a run's steps count from, at one
+	 * read where `load` takes one per child.
+	 */
+	export const children = async (
+		record: Host.Record,
+		parentId: string,
+	): Promise<Result<Node[]>> => {
+		const listed = await record.list({
+			parentTaskId: parentId,
+			includeClosed: true,
+			includeDeferred: true,
+			limit: CHILD_LIMIT,
+		});
+		return listed.ok ? ok(listed.value.map((task) => node(task, []))) : listed;
 	};
 
 	/**

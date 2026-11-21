@@ -25,8 +25,8 @@ import type {
 	Result,
 	Row,
 	SqlValue,
-} from "@cabane/core";
-import { err, ok, toError } from "@cabane/core";
+} from "@kabane/core";
+import { err, ok, toError } from "@kabane/core";
 
 /**
  * What `SqlStorage.exec` accepts. Booleans and bigints are ours to translate:

@@ -4,7 +4,7 @@
 // its newest run's state, so a run waiting on the human stands out from any distance: `?` and
 // `? waiting` in the accent, the one hue that means a human is needed. A run is never shown here:
 // its row carries the command that opens it in a terminal.
-import type { JobFacts, JobRunState } from "@cabane/extension";
+import type { JobFacts, JobRunState } from "@kabane/extension";
 import { TextAttributes } from "@opentui/core";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";

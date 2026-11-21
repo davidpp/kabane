@@ -3,15 +3,15 @@
  * Builds the publishable `kabane` package into packages/cli/dist, the directory `npm pack` and
  * `npm publish` run in (docs/release.md):
  *
- *   bin/kabane.js         the CLI bundled for Bun, its `@cabane/*` workspace dependencies inlined
+ *   bin/kabane.js         the CLI bundled for Bun, its `@kabane/*` workspace dependencies inlined
  *   bin/chunk-<hash>.js  lazy command modules and shared code
  *   types/extension.d.ts the extension contract's types, published as `kabane/extension`
  *   package.json          generated from packages/cli/package.json, no workspace dependency left
  *   README.md, LICENSE    the repository's own
  *
  * The workspace manifest stays the development one (source entry, `workspace:*` siblings), so the
- * published one is written here rather than rewritten in place: `npm cabane` and the `@cabane`
- * scope belong to other people, and a published `@cabane/*` dependency would install their code.
+ * published one is written here rather than rewritten in place: the `@kabane/*` packages are
+ * private and never published, so a published dependency on one would not resolve.
  */
 
 import {
@@ -137,7 +137,7 @@ const buildExtensionTypes = (into: string): void => {
 			compilerOptions: {
 				typeRoots: [join(ROOT, "node_modules/@types")],
 				paths: {
-					"@cabane/core": [join(ROOT, "packages/core/index.ts")],
+					"@kabane/core": [join(ROOT, "packages/core/index.ts")],
 				},
 			},
 		}),
@@ -148,7 +148,7 @@ const buildExtensionTypes = (into: string): void => {
 				{
 					filePath: join(ROOT, "packages/extension/types.ts"),
 					libraries: {
-						inlinedLibraries: ["@cabane/core", "zod"],
+						inlinedLibraries: ["@kabane/core", "zod"],
 						allowedTypesLibraries: [],
 					},
 					output: { exportReferencedTypes: false },

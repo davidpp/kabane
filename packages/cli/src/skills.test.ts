@@ -256,7 +256,7 @@ it("kabane mcp lists and serves an enabled extension's skill over stdio", async 
 			bin,
 			"init",
 			"--actor",
-			"cabane://actor/human/skills",
+			"kabane://actor/human/skills",
 			"--device",
 			"skills",
 		],

@@ -1,15 +1,13 @@
-# cabane-worker
+# kabane-worker
 
 The Kabane hub on Cloudflare Workers, two SQLite-backed Durable Objects behind
-Cloudflare Access, on a custom domain of whoever deploys it. The Worker, its classes and
-its bindings keep the project's earlier name, Cabane, because a deployed hub stores data
-under them:
+Cloudflare Access, on a custom domain of whoever deploys it:
 
-- **`CabaneLog`** is the ordered sync oplog every device pushes to and pulls
+- **`KabaneLog`** is the ordered sync oplog every device pushes to and pulls
   from. Two tables, opaque JSON payloads, no planner schema.
-- **`CabaneHub`** is the cloud device: the `@cabane/core` storage running on
+- **`KabaneHub`** is the cloud device: the `@kabane/core` storage running on
   this object's SQLite through the `Db` port, serving MCP over Streamable HTTP,
-  and syncing with `CabaneLog` under the device identity `cloud`.
+  and syncing with `KabaneLog` under the device identity `cloud`.
 
 ```bash
 bun run --cwd packages/worker test   # tsc --noEmit && vitest run
@@ -29,8 +27,8 @@ someone the Worker knows (`src/access.ts`):
 
 | Assertion carries | Admitted when | Actor stamped on writes |
 |---|---|---|
-| `common_name` (a service token) | its client id is a key in `SERVICE_ACTORS`, and no entry maps to a human actor | the mapped URI, e.g. `cabane://actor/agent/hermes` |
-| `email` (a human) | it equals `HUMAN_EMAIL` | `cabane://actor/human/<local part>` |
+| `common_name` (a service token) | its client id is a key in `SERVICE_ACTORS`, and every entry maps to an agent actor | the mapped URI, e.g. `kabane://actor/agent/hermes` |
+| `email` (a human) | it equals `HUMAN_EMAIL` | `kabane://actor/human/<local part>` |
 
 Anything else is `401`, before any stub is obtained. Empty `HUMAN_EMAIL` and
 `SERVICE_ACTORS` mean nobody is admitted, which is the state a fresh deploy is
@@ -53,7 +51,7 @@ built by `src/test-access.ts`); it must never appear in `wrangler.jsonc`.
 
 The log routes keep their own bearer check so a device presents two things: the
 Access service token (its identity) and the log secret. A device configures
-both through `sync.url`, `sync.token`, and `sync.headers` in `@cabane/core`'s
+both through `sync.url`, `sync.token`, and `sync.headers` in `@kabane/core`'s
 `SyncConfig`; the CLI's `config.json` carries them under `sync`. `GET /mcp`
 (the SSE stream) is refused with `405`; each POST is a fresh server and
 transport, so the object holds no MCP session state.
@@ -68,14 +66,14 @@ promised, and `throughSeq` is the cursor, never `ops.at(-1)`.
 
 On boot the hub arms capture as device `cloud` (`SyncDevice.arm`), so every
 MCP write lands in its oplog like a CLI write does on a laptop. It reaches the
-log through the `CabaneLog` stub (`src/log-transport.ts`), never HTTP, and:
+log through the `KabaneLog` stub (`src/log-transport.ts`), never HTTP, and:
 
 - **after every MCP write** pushes in `waitUntil`, off the response path;
 - **on an alarm every `SYNC_INTERVAL_MINUTES`** (default 5) pulls, applies,
   and pushes, then reschedules. The alarm never throws: a transient log failure
   waits for the next interval rather than triggering platform retries.
 
-The actor for a request comes from the `X-Cabane-Actor` header the edge sets
+The actor for a request comes from the `X-Kabane-Actor` header the edge sets
 after Access verification, read through an `AsyncLocalStorage` so concurrent
 requests in one object cannot see each other's identity. Writes at the hub
 require `scopeUri` (there is no working directory to detect one from); the
@@ -99,7 +97,7 @@ repository variables, `docs/deploy.md` 1.0 and 1.5).
 | vars (`--var`, CI: repository variables) | `ACCESS_TEAM_DOMAIN` | `https://<team>.cloudflareaccess.com` |
 | | `ACCESS_AUD` | the Access application's AUD tag |
 | | `HUMAN_EMAIL` | the one human allowed in |
-| | `SERVICE_ACTORS` | JSON, service-token client id → `cabane://actor/agent/<runtime>` |
+| | `SERVICE_ACTORS` | JSON, service-token client id → `kabane://actor/agent/<runtime>` |
 | | `KABANE_TIMEZONE` | the owner's IANA timezone (`America/Toronto`): which day is today and when a date deadline's day ends for MCP clients; unset is UTC, an unknown name stops the hub from booting |
 | `wrangler.jsonc` vars | `SYNC_INTERVAL_MINUTES` | scheduled pass interval, default `5` |
 | `wrangler secret put` | `SYNC_TOKEN` | the log bearer secret every device carries |
@@ -129,7 +127,7 @@ the edge end to end (initialize, tools/list, every tool once, 401 and 405, actor
 stamping for human and service, and both sync directions through the log,
 including `runDurableObjectAlarm`). `src/hub.test.ts` runs the core's **Db port
 conformance suite**
-(`conformanceCases()` from `@cabane/core`, the same cases `packages/sqlite`
+(`conformanceCases()` from `@kabane/core`, the same cases `packages/sqlite`
 runs under `bun:test`) against `DoDb`, then a storage smoke over the hub: add,
 link, FTS search, agent session with activity, comment, `assembleContext`.
 

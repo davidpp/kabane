@@ -1,7 +1,7 @@
 // The recipes extension: `kabane run`, `kabane runs` and `kabane job`, its settings, its doctor checks (hc, and the user-level `job` skill), and on
 // the board a card per run that names an issue, `a` offering the recipes that work on one (and
 // running a job now), and the facts of every job for the Jobs tab.
-import type { Extension, Host } from "@cabane/extension";
+import type { Extension, Host } from "@kabane/extension";
 import { RecipeActivity } from "./activity";
 import { RecipeDispatcher } from "./dispatcher";
 import { jobCommand } from "./job-command";

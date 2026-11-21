@@ -1,4 +1,4 @@
-import { err, type Result, tryCatch } from "@cabane/core";
+import { err, type Result, tryCatch } from "@kabane/core";
 import type { Extension } from "./contract";
 
 export namespace Doctor {

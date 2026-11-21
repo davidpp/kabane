@@ -6,7 +6,7 @@
 // the pass as a red gate would.
 // A subtask's pass goes on its work log, and a red one reopens it; the run's own final pass goes
 // on the parent's.
-import { type Result } from "@cabane/core";
+import { type Result } from "@kabane/core";
 import { Checklists } from "./checklists";
 import { Gates } from "./gates";
 import { ok } from "./result";

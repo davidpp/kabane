@@ -2,8 +2,8 @@
 // (`esc` widens to all scopes) and open on the issue the host named, the issues the host asks it to
 // open later, a 5s poll that keeps it fresh, the reload a write asks for, and the FTS search merged
 // into the rows. Selection survives every reload by task id (BoardNav.withSections).
-import type { Task } from "@cabane/core";
-import type { ActivitySource, JobSource } from "@cabane/extension";
+import type { Task } from "@kabane/core";
+import type { ActivitySource, JobSource } from "@kabane/extension";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BoardActivity } from "./activity";

@@ -6,7 +6,7 @@
 // `stop` action is `X`, reserved for it as `x` is on a card's tab: with nothing to stop it does
 // nothing, and never falls through to cancelling the task. An action aimed at a lane is not offered:
 // the detail has no lane to aim it at, and `h/l` walk its sections.
-import type { CardAction, StopAction } from "@cabane/extension";
+import type { CardAction, StopAction } from "@kabane/extension";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { BoardPrompt } from "./prompt";

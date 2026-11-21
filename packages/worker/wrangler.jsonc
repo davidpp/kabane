@@ -1,10 +1,10 @@
 {
-	// The Cabane hub. Two SQLite-backed Durable Object classes: CabaneLog is the
-	// ordered oplog every device syncs through; CabaneHub is the cloud device that
+	// The Kabane hub. Two SQLite-backed Durable Object classes: KabaneLog is the
+	// ordered oplog every device syncs through; KabaneHub is the cloud device that
 	// runs the core on DO SQLite, serves MCP over Streamable HTTP, and syncs with
 	// the log on an alarm.
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "cabane-worker",
+	"name": "kabane-worker",
 	"main": "src/index.ts",
 	// >= 2024-04-03 is what makes RPC methods available on the DO stub.
 	"compatibility_date": "2026-07-01",
@@ -20,14 +20,14 @@
 	"observability": { "enabled": true },
 	"durable_objects": {
 		"bindings": [
-			{ "name": "CABANE_LOG", "class_name": "CabaneLog" },
-			{ "name": "CABANE_HUB", "class_name": "CabaneHub" }
+			{ "name": "KABANE_LOG", "class_name": "KabaneLog" },
+			{ "name": "KABANE_HUB", "class_name": "KabaneHub" }
 		]
 	},
 	// new_sqlite_classes (not new_classes): both objects keep their state in DO
 	// SQLite, whose input/output gates give the total order the sync design rests on.
 	"migrations": [
-		{ "tag": "v1", "new_sqlite_classes": ["CabaneLog", "CabaneHub"] }
+		{ "tag": "v1", "new_sqlite_classes": ["KabaneLog", "KabaneHub"] }
 	],
 	// Access wiring. ACCESS_TEAM_DOMAIN, ACCESS_AUD, HUMAN_EMAIL and
 	// SERVICE_ACTORS are placeholders filled from the Zero Trust dashboard at

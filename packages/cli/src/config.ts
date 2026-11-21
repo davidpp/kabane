@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, hostname, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import {
+	ActorUri,
 	err,
 	ok,
 	type Result,
@@ -17,14 +18,14 @@ import {
 	toError,
 	tryCatch,
 	trySync,
-} from "@cabane/core";
-import type { Extension } from "@cabane/extension";
+} from "@kabane/core";
+import type { Extension } from "@kabane/extension";
 import { z } from "zod";
 import { findProjectRoot, localPinPath, SCOPE_FILE } from "./scope/detect";
 
 const CopilotConfigSchema = z.object({
 	// A plain string, not an enum, so a config naming a harness a newer kabane added still loads.
-	// `config set` and `kabane board` check it against @cabane/acp/harnesses, which is ID-only:
+	// `config set` and `kabane board` check it against @kabane/acp/harnesses, which is ID-only:
 	// the package root would load the ACP SDK on every command.
 	harness: z
 		.string()
@@ -60,7 +61,7 @@ const HarnessConfigSchema = z.object({
 	 * manual mode to the harness's own auto mode, where the harness decides
 	 * which tool calls need a human; `default` leaves the mode the harness and
 	 * your own settings start it in. Literal values for the same reason as
-	 * `copilot.harness`; `@cabane/acp` names them `Harnesses.MODES`.
+	 * `copilot.harness`; `@kabane/acp` names them `Harnesses.MODES`.
 	 */
 	mode: z
 		.enum(["auto", "default"])
@@ -128,8 +129,7 @@ export const resolveHome = (env: NodeJS.ProcessEnv = process.env): string =>
 
 export const configPath = (home: string): string => join(home, CONFIG_FILE);
 
-export const defaultActor = (): string =>
-	`cabane://actor/human/${userInfo().username}`;
+export const defaultActor = (): string => ActorUri.human(userInfo().username);
 
 export const defaultDeviceId = (): string =>
 	hostname().split(".")[0] ?? "device";
@@ -250,4 +250,4 @@ export const writeLocalScope = async (
 
 /** Human authors comment as `human`; agent actor URIs comment as `ai`. */
 export const authorTypeOf = (actor: string): "human" | "ai" =>
-	actor.startsWith("cabane://actor/agent/") ? "ai" : "human";
+	actor.startsWith(ActorUri.AGENT) ? "ai" : "human";

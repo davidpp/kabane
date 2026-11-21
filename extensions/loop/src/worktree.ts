@@ -9,7 +9,7 @@
 // is not a linked worktree, so a run without one cannot reach them by mistake.
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { type Result } from "@cabane/core";
+import { type Result } from "@kabane/core";
 import { Exec } from "./exec";
 import { FileLock } from "./lock";
 import { err, ok, trySync } from "./result";

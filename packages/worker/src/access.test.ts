@@ -19,13 +19,13 @@ const ENV = {
 	ACCESS_AUD: "aud",
 	HUMAN_EMAIL: "david@example.com",
 	SERVICE_ACTORS: JSON.stringify({
-		"hermes-client-id.access": "cabane://actor/agent/hermes",
+		"hermes-client-id.access": "kabane://actor/agent/hermes",
 	}),
 	ACCESS_DEV_UNVERIFIED: "true",
 };
 
 const request = (token?: string): Request =>
-	new Request("https://cabane.test/mcp", {
+	new Request("https://kabane.test/mcp", {
 		headers: token ? { "Cf-Access-Jwt-Assertion": token } : {},
 	});
 
@@ -45,7 +45,7 @@ describe("Access.principal", () => {
 			value: {
 				kind: "service",
 				subject: "hermes-client-id.access",
-				actor: "cabane://actor/agent/hermes",
+				actor: "kabane://actor/agent/hermes",
 			},
 		});
 	});
@@ -56,7 +56,7 @@ describe("Access.principal", () => {
 
 	it("maps the configured human to a human actor from the email local part", () => {
 		const p = Access.principal(app({ email: "David@Example.com" }), ENV);
-		expect(p.ok && p.value.actor).toBe("cabane://actor/human/David");
+		expect(p.ok && p.value.actor).toBe("kabane://actor/human/David");
 	});
 
 	it("refuses any other human, and everyone when no human is configured", () => {
@@ -85,24 +85,31 @@ describe("Access.principal", () => {
 		if (!p.ok) expect(p.error.message).toContain("SERVICE_ACTORS");
 	});
 
-	it("refuses SERVICE_ACTORS mapping a service to a human actor, which could relay answers as the human", () => {
-		const p = Access.principal(
-			app({ common_name: "hermes-client-id.access" }),
-			{
-				...ENV,
-				SERVICE_ACTORS: JSON.stringify({
-					"hermes-client-id.access": "cabane://actor/agent/hermes",
-					"spoof-client-id.access": "cabane://actor/human/david",
-				}),
-			},
-		);
-		expect(p).toEqual({
-			ok: false,
-			error: new Error(
-				'SERVICE_ACTORS maps service "spoof-client-id.access" to the human actor cabane://actor/human/david; map a service token to an agent actor (cabane://actor/agent/<name>)',
-			),
+	// A human actor could relay answers as the human; a retired scheme's names nobody kabane
+	// reads; the bare prefix names no agent.
+	for (const actor of [
+		"kabane://actor/human/david",
+		"cabane://actor/agent/claude",
+		"kabane://actor/agent/",
+	])
+		it(`refuses SERVICE_ACTORS mapping a service to ${actor}`, () => {
+			const p = Access.principal(
+				app({ common_name: "hermes-client-id.access" }),
+				{
+					...ENV,
+					SERVICE_ACTORS: JSON.stringify({
+						"hermes-client-id.access": "kabane://actor/agent/hermes",
+						"spoof-client-id.access": actor,
+					}),
+				},
+			);
+			expect(p).toEqual({
+				ok: false,
+				error: new Error(
+					`SERVICE_ACTORS maps service "spoof-client-id.access" to ${actor}; map a service token to an agent actor (kabane://actor/agent/<name>)`,
+				),
+			});
 		});
-	});
 });
 
 describe("Access.authenticate (dev verifier)", () => {
@@ -116,9 +123,9 @@ describe("Access.authenticate (dev verifier)", () => {
 
 	it("admits the fixtures the rest of the suite relies on", async () => {
 		const human = await Access.authenticate(request(HUMAN), ENV);
-		expect(human.ok && human.value.actor).toBe("cabane://actor/human/david");
+		expect(human.ok && human.value.actor).toBe("kabane://actor/human/david");
 		const hermes = await Access.authenticate(request(HERMES), ENV);
-		expect(hermes.ok && hermes.value.actor).toBe("cabane://actor/agent/hermes");
+		expect(hermes.ok && hermes.value.actor).toBe("kabane://actor/agent/hermes");
 		expect((await Access.authenticate(request(STRANGER), ENV)).ok).toBe(false);
 		expect((await Access.authenticate(request(UNKNOWN_SERVICE), ENV)).ok).toBe(
 			false,

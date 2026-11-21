@@ -1,19 +1,19 @@
-# @cabane/board
+# @kabane/board
 
 Terminal kanban for the Kabane tracker, built on OpenTUI. It reads the tracker through
-`@cabane/core` and learns about the host's running work, its dispatch targets and its copilot
+`@kabane/core` and learns about the host's running work, its dispatch targets and its copilot
 through three ports, so the same board runs standalone or inside another host.
 
 Activity, dispatch, header, panel, settings field and shortcut types come from
-`@cabane/extension`. Form types and `FormField` come from `@cabane/acp/form-field`.
-Board-only ports and their no-op defaults remain in `@cabane/board/ports`.
+`@kabane/extension`. Form types and `FormField` come from `@kabane/acp/form-field`.
+Board-only ports and their no-op defaults remain in `@kabane/board/ports`.
 
 ## Start it
 
 ```ts
-import { Runtime } from "@cabane/core";
-import { SqliteDb } from "@cabane/sqlite";
-import { startBoard } from "@cabane/board";
+import { Runtime } from "@kabane/core";
+import { SqliteDb } from "@kabane/sqlite";
+import { startBoard } from "@kabane/board";
 
 Runtime.configure({ provider: SqliteDb.provider() });
 await startBoard({ cwd: process.cwd(), basePath: "~/.kabane" });
@@ -62,8 +62,10 @@ interface ActivitySource {
 
 `load()` returns flat cards, newest first, already capped. A card carries `kind` (what the
 header strip counts it as — the host picks the word, `"loops"`, `"runs"`), `label`, `status`
-(`pending | running | paused | completed | stopped | failed`; `stopped` is over but not failed,
-halted on purpose with why in `error`), an optional `taskId` or `taskShortId`, and `detail` lines
+(`pending | running | paused | unreported | completed | stopped | failed`; `unreported` is in
+flight with nothing saying whether it works or waits, drawn `◌ <label> · no status reported` with
+no spinner and no pause; `stopped` is over but not failed, halted on purpose with why in
+`error`), an optional `taskId` or `taskShortId`, and `detail` lines
 joined with ` · ` after the label. The board renders:
 
 - a row badge for the first in-flight card of a task: `· ● loop · implement 3`, plus `· ● +n` for more
@@ -140,9 +142,10 @@ type Header = (card: ActivityCard, view: HeaderView) => Promise<Result<readonly 
 ```
 
 `headers` maps card kinds to functions returning lines of toned text. The board draws them above
-lane chips in place of its one-line title, on a raised surface with one column of padding on
-each side. `view.width` is the space inside that padding. Each line occupies one row, clipped
-rather than wrapped. `e` expands the header per card, kept across tab switches.
+the map or the lane chips in place of its one-line title, on a raised surface with one column of
+padding on each side. `view.width` is the space inside that padding. Each line occupies one row; a
+line longer than `view.width` is cut there and ends on `…`, rather than wrapped. On a card without
+steps, `e` expands the header per card, kept across tab switches.
 
 The board calls the header once a second while its tab is open, without overlapping calls. It
 keeps the last good lines when a call fails, throws or remains pending, and shows `loading…`
@@ -159,13 +162,15 @@ act?(id: string, actionId: string, input: { text?: string; lane?: string }): Pro
 A card may list `actions` (`{ id, key, label, input?, lane? }`) the human can press on its tab; the
 source's `act` runs them and resolves to the footer notice. The footer leads with them, and the `?`
 sheet lists them as `this card`. The board's own keys on a card's tab come first and cannot be taken
-(`h/l`, `j/k`, `g/G`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys), and `x` is reserved for the
-action whose id is `stop` (`StopAction` in `@cabane/extension`), as it stops the copilot's turn on its transcript: `x` runs
+(`h/l`, `j/k`, `g/G`, `e`, `o`, `w`, `q`, `t`, the digits, the everywhere keys, and `f` on a card with steps), and `x` is reserved for the
+action whose id is `stop` (`StopAction` in `@kabane/extension`), as it stops the copilot's turn on its transcript: `x` runs
 it while the card is in flight, and does nothing on a card that offers none. An action passes the
 lane on screen. One with `lane: true` is aimed at a single lane: the one on screen, else, on the
-all-lanes view, one of the card's `liveLanes` (every lane when the host lists none). With one, it goes
+all-lanes view, one of the card's `liveLanes` (every lane when the host lists none); on a map, the
+live session under the cursor comes first. With one, it goes
 there; with several, its prompt opens aimed at the first and `tab`/`⇧tab` walk the others; with none
-the footer leaves it out. One with no prompt and several to choose from asks for a lane (`h/l`).
+the footer leaves it out. One with no prompt and several to choose from asks for a lane (`h/l`, or
+the cursor on a map).
 
 A card without a tab is acted on from its task's detail instead. There `x` cancels the task, so `X`
 runs the `stop` of the newest such card that offers one (the footer says `X stop <label>`), whatever
@@ -188,7 +193,7 @@ has several, `esc` drops it, and a click on the board closes it.
 The Jobs tab lists every open job on the device, whatever the board's scope, in one section per
 scope, and is in the bar only while there is one. A host's optional `JobSource` (`deps.jobs`,
 `BoardPorts.jobs` for an extension) gives each job's facts, the `JobFacts` of
-`@cabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
+`@kabane/extension`: schedule, next fire, recipe, inputs, harness, session mode, folder and newest runs, each
 with its state and the command that opens it. A row leads with its newest run's state; a
 `waiting` run reads `? waiting` in the accent, and the tab's `?n` counts those jobs. A section is
 named after its jobs' folder when the source gives one, else the scope's id. Without a source a
@@ -200,6 +205,30 @@ hiding the request and comments; `esc` comes back to the tab. `s` pauses the job
 resumes it (`next`), and `a` opens the dispatcher on it, where a host offers what it can start
 on a job (the recipes extension's `run now`). `esc` or `q` on the list goes to the tracker. A
 click selects a row, and a click on the selected row opens it.
+
+#### A card's map
+
+A card may list its `steps` (`ActivityStep[]`), in the order they run and the ones still to come
+included: each a `name`, a `state` (`pending | running | done | failed | stopped`), a one-line
+`result` whose ` · ` parts a narrow row drops from the tail, `startedAt` while it runs or
+`durationMs` once it is over, and its `sessions` (`ActivitySession[]`, the same fields plus the
+`lane` that holds a session's events). Once over, it may list what it `left` for the human
+(`ActivityLeft[]`): an issue by `taskId` or `taskShortId` with `how` it was left and a one-line
+`reason`, or with neither id a line of its own (a branch kept for review). All of it is in the
+host's words; the board knows no step by name. A card may also list the `facts` it runs with
+(`ActivityFact[]`, a `label` and a `value` each, such as `slots` `1/2`), which the `?` sheet on its
+tab lists after the keys, under the card's name.
+
+A card with steps has a map on its tab in place of the lane chips, under the header: one row per
+step, a running step opened to its sessions, finished ones folded. A cursor follows the newest
+live session, or the session a question waits on, until the human moves it with `j/k` or `↑↓`;
+`f` hands it back to the run. `h/l` fold and open the step under it, `enter` opens the session's
+events in place of the stream (`esc` closes them, a second `esc` goes to the tracker) and, on an
+issue the card left, opens that issue on the tracker (by `taskId`, else by a `taskShortId` the
+board holds). `g/G` and `⌃d/⌃u` scroll the stream under the map. A click puts the cursor on a row and a
+second click is `enter`. The question its sessions wait on sits under the map and names the
+session's lane. A finished card that left an issue keeps an accent `?` as its tab's glyph until
+its tab has been on screen. A card without steps keeps the lanes below.
 
 #### Lanes on a card's tab
 
@@ -421,7 +450,7 @@ stamped with `actor` since the turn opened. The glyphs go the way the finished-t
 does — on the next keypress — so one press acknowledges the whole turn. A copilot that names no
 `actor` never glyphs anything.
 
-The port is protocol-free on purpose: `@cabane/acp` implements it over an ACP harness, and a
+The port is protocol-free on purpose: `@kabane/acp` implements it over an ACP harness, and a
 test can implement it with a scripted async generator. `noCopilot` is an explicit no-op whose
 every turn ends with `no copilot configured`.
 
@@ -560,7 +589,7 @@ and the end.
 
 ## Decisions agents file
 
-An agent that needs a human's call on an issue files it with `kabane_ask` (`@cabane/questions`):
+An agent that needs a human's call on an issue files it with `kabane_ask` (`@kabane/questions`):
 the question, its choices, the one it recommends and why, and the issue goes to `waiting`. The
 board reads these through `Questions.list` when the host registered the questions module (the CLI
 does; a host that did not shows none). They are not the `!` queue, which stays the live sessions'
@@ -598,7 +627,7 @@ key hint does what its key does.
 
 ## Checklists
 
-An agent or a shell breaks one change into steps with a checklist (`@cabane/checklist`:
+An agent or a shell breaks one change into steps with a checklist (`@kabane/checklist`:
 `kabane_checklistAdd`, `kabane checklist add`). The board reads it through `Checklist.progress`
 and `Checklist.list` when the host registered the checklist module (the CLI does; a host that did
 not shows none). It adds no items: agents and the CLI do.
@@ -626,7 +655,7 @@ one poll.
 
 ## Timeline entries
 
-An issue's timeline holds entries of a kind: a plain comment, a handoff (`@cabane/handoff`), or
+An issue's timeline holds entries of a kind: a plain comment, a handoff (`@kabane/handoff`), or
 any kind a writer names (`kabane comment <id> "…" --kind review`). The board reads them all with
 `Planner.getEntries` and writes none.
 
@@ -731,7 +760,7 @@ real light/dark switch.
 ## The ACP copilot
 
 ```ts
-import { BoardCopilot } from "@cabane/board";
+import { BoardCopilot } from "@kabane/board";
 
 const copilot = BoardCopilot.create({
   harness: "claude",
@@ -744,7 +773,7 @@ const copilot = BoardCopilot.create({
 ```
 
 Nothing is spawned until the first `run`. The session opens with one stdio MCP server,
-`kabane mcp --scope <uri> --as cabane://actor/agent/<harness>`, so every write goes through
+`kabane mcp --scope <uri> --as kabane://actor/agent/<harness>`, so every write goes through
 the same tools and database the board reads and arrives stamped as an agent's.
 `kabaneBin` is asked again each time a session opens, because a board outlives the kabane it
 was started from: the CLI answers with that path while it exists, else `kabane` on PATH. When it

@@ -1,7 +1,7 @@
 // The decisions on the board's state: `u`'s filter and its place in the esc chain, and a decision
 // asked on the detail view with the copilot form's keys, through the one key router.
 import { describe, expect, it } from "bun:test";
-import type { QuestionView } from "@cabane/questions";
+import type { QuestionView } from "@kabane/questions";
 import { BoardDecisions } from "./decisions";
 import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";

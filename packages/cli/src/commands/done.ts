@@ -1,5 +1,5 @@
-import { Planner } from "@cabane/core";
-import { conciseSuccess, failure, success, usage } from "@cabane/extension";
+import { Planner } from "@kabane/core";
+import { conciseSuccess, failure, success, usage } from "@kabane/extension";
 import type { Command } from "../context";
 import { formatTaskLine } from "../output";
 import { responseFormat } from "../response-format";

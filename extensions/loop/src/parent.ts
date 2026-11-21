@@ -12,8 +12,8 @@
 // while its work waits to be merged. One a human gives a work child during the run is a parent
 // from then on: once its own session has ended, the run takes it as it takes any parent, and the
 // end of the run says it changed shape.
-import { type Result, type Task } from "@cabane/core";
-import type { Host } from "@cabane/extension";
+import { type Result, type Task } from "@kabane/core";
+import type { Host } from "@kabane/extension";
 import { LoopPlan } from "./plan";
 import { ok } from "./result";
 import { RunState } from "./state";
