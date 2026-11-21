@@ -564,6 +564,27 @@ describe("LoopPlan.load on a single issue", () => {
 		expect((await load(task)).nodes).toEqual([]);
 	});
 
+	it("counts the same work through children, which the run's card reads, as through load", async () => {
+		const work = async (id: string) => {
+			const nodes = await LoopPlan.children(testHost(base).record, id);
+			if (!nodes.ok) throw nodes.error;
+			return [
+				nodes.value.filter(LoopPlan.isWork).map((n) => n.task.id),
+				(await load(id)).nodes.filter(LoopPlan.isWork).map((n) => n.task.id),
+			];
+		};
+		const lone = await add({ title: "lone" });
+		await add({
+			title: "finding",
+			parentTaskId: lone,
+			tags: ["finding", "p2"],
+		});
+		expect(await work(lone)).toEqual([[lone], [lone]]);
+		const parent = await add({ title: "parent" });
+		const subtask = await add({ title: "subtask", parentTaskId: parent });
+		expect(await work(parent)).toEqual([[subtask], [subtask]]);
+	});
+
 	it("holds the target as work only while the plan is single", async () => {
 		const issue = await add({ title: "lone" });
 		const single = await load(issue);
