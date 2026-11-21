@@ -82,14 +82,22 @@ space toggle · enter confirm · esc quit
   `none found on PATH`; install one, then run `kabane mcp install`. With `KABANE_HARNESSES`
   set and nothing it names on your PATH, the row reads `install off` instead (that is what
   `bun run sandbox` shows).
+- **extensions** lists the [extensions](extensions.md) that come with a release install (the
+  standalone binary from Homebrew, mise or the installer): `dispatch`, `loop` and `recipes`,
+  each with what it adds, cut to one line until its row has focus. None is checked; space
+  checks the ones you want on, and enter adds them to `extensions` and links each into
+  `~/.kabane/extensions/`. Run from a source checkout, kabane ships none, and the section is
+  not there.
 - The lines under **enter** follow the form: uncheck every agent and the `adds` and
-  `files` lines go. Outside a project, there is no `files` line. A long config path is cut
+  `files` lines go, and a checked extension adds a `turns on` line. Outside a project, there
+  is no `files` line. A long config path is cut
   from the left, `…/.kabane/config.json`, to fit the pane.
 
 The screen does not ask for a device name: setup saves the short hostname. It only matters
 once sync is set up, and [deploy.md](deploy.md) says how to change it before the first push.
 To change your name later, edit `actor` in `~/.kabane/config.json`; to add an agent later,
-run `kabane mcp install`.
+run `kabane mcp install`; to turn on an extension later, see
+[extensions.md](extensions.md#turn-on-the-ones-that-came-with-kabane).
 
 Enter saves the config, adds kabane to each checked harness, and files your first issue.
 What happened and the first issue each get a panel, with the phrase to say highlighted:

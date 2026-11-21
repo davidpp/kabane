@@ -1,11 +1,11 @@
 # Extensions
 
 Kabane on its own is the tracker, the board and its copilot, the MCP server your coding agents
-use, and sync. It bundles no extension. An extension is a directory under
-`$KABANE_HOME/extensions/<name>/` (default `~/.kabane/extensions/<name>/`), and it runs only once
-its name is in the `extensions` setting.
+use, and sync. An extension is a directory under `$KABANE_HOME/extensions/<name>/` (default
+`~/.kabane/extensions/<name>/`), and it runs only once its name is in the `extensions` setting.
 
-This repository has three:
+This repository has three, and every release archive ships them, built from the same commit as
+the binary, in `extensions/` beside the `kabane` executable. None is on until you turn it on:
 
 | Extension | What it adds |
 |---|---|
@@ -18,10 +18,43 @@ project's recipes that target an issue, or both. Without the loop and recipes it
 Without dispatch, kabane serves neither the setup-dispatch nor the grill skill, and the copilot does not offer `/setup-dispatch`. Without
 recipes, kabane has no `run` or `runs`, and the board shows no run cards.
 
+## Turn on the ones that came with kabane
+
+Installed from a release (Homebrew, mise, the installer, or an extracted archive), kabane offers
+the three on its first-run setup screen, unchecked ([getting started](getting-started.md#run-kabane)).
+Later, enable them by name. `extensions` is a list and a `set` replaces it whole, so read it
+first and name every extension you want on:
+
+```bash
+kabane config get extensions
+kabane config set extensions loop,dispatch --layer global
+```
+
+```text
+extensions = ["loop","dispatch"] (global); linked loop, dispatch from this install
+```
+
+Enabling one that ships with this install links `~/.kabane/extensions/<name>` to its directory
+in the install, through a path an upgrade keeps: `<prefix>/opt/kabane/libexec/extensions/<name>`
+for Homebrew, mise's `latest` link for mise, and the install's own directory for the installer
+(its prefix is replaced in place) or an extracted archive. `brew upgrade`, `mise up` or running
+the installer again brings the new version of each extension with the binary, with no copy to
+refresh. The copilot's `/setup` shortcut on the board writes the same setting, so it links them
+too. A directory already at `~/.kabane/extensions/<name>`, such as one you built from a checkout,
+is yours and is never replaced.
+
+A link whose target is gone, after the install was removed or moved, loads nothing: each command
+prints `Extension dispatch: <home>/extensions/dispatch links to <old path>, which is gone`, and
+`kabane doctor` reports it as `dispatch/extension-refused` under `auto`. `kabane doctor --fix`
+links it to the running install's copy.
+
+`kabane update` on an extracted archive or an installer install replaces the binary and
+`templates/` only, so the linked extensions stay at the version installed before it; run the
+installer again to bring them along.
+
 ## Build them from a kabane checkout
 
-There is no install command or registry for extensions yet. You build each one from a clone of
-this repository, which needs git and [Bun](https://bun.sh) 1.4 or later, the standalone binary
+To run an extension from a clone instead, build it from this repository, which needs git and [Bun](https://bun.sh) 1.4 or later, the standalone binary
 included. Build from the same kabane version you run: the extensions are tested against the kabane
 built beside them.
 
