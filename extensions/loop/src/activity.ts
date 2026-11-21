@@ -341,8 +341,14 @@ export namespace LoopActivity {
 	};
 
 	// What became of an over run's worktree. Its event log is read only once the directory is gone, to
-	// tell `kabane loop prune`'s removal, which follows a merge, from a directory removed by hand.
-	const afterOf = (home: string, run: RunStore.Run): RunSteps.After => {
+	// tell `kabane loop prune`'s removal, which follows a merge, from a directory removed by hand; a
+	// run found pruned goes in `pruned`, since a prune is never taken back, and is not read again.
+	const afterOf = (
+		home: string,
+		run: RunStore.Run,
+		pruned: Set<string>,
+	): RunSteps.After => {
+		if (pruned.has(run.id)) return { worktree: "pruned" };
 		if (
 			RunStore.isLive(run.status) ||
 			run.worktree === undefined ||
@@ -350,12 +356,10 @@ export namespace LoopActivity {
 		)
 			return {};
 		const events = RunStore.readEvents(home, run.id);
-		return {
-			worktree:
-				events.ok && events.value.some((e) => e.type === "pruned")
-					? "pruned"
-					: "missing",
-		};
+		if (!events.ok || !events.value.some((e) => e.type === "pruned"))
+			return { worktree: "missing" };
+		pruned.add(run.id);
+		return { worktree: "pruned" };
 	};
 
 	/**
@@ -370,6 +374,7 @@ export namespace LoopActivity {
 		actor,
 		kabaneBin,
 	}: ActDeps & { actor: string }): ActivitySource => {
+		const pruned = new Set<string>();
 		// A run whose children cannot be read still gets its card, its steps from run.json alone.
 		const cardOf = async (run: RunStore.Run): Promise<ActivityCard> => {
 			const nodes = await LoopPlan.children(host.record, run.parentId);
@@ -377,7 +382,7 @@ export namespace LoopActivity {
 				run,
 				nodes.ok ? nodes.value : null,
 				new Date(),
-				afterOf(home, run),
+				afterOf(home, run, pruned),
 			);
 		};
 		return {
