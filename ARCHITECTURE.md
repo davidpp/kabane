@@ -123,7 +123,7 @@ The verdicts for what core holds that is not obviously the record:
 refuses in a production file. What failed a question lives with its one consumer or its host:
 scope detection, executable discovery (`Self`) and `serveStdio` in the CLI
 (`packages/cli/src/scope/`, `self.ts`, `mcp-stdio.ts`), reaching extensions as
-`host.scope.detect` and `host.kabane.executable`; `handleHttpRequest` in the hub
+`host.scope.detect`, `host.kabane.executable` and `host.kabane.current`; `handleHttpRequest` in the hub
 (`packages/worker/src/mcp-http.ts`); plan lint in the loop (`extensions/loop/src/lint/`). Core
 keeps no agent session (below).
 
@@ -309,6 +309,11 @@ type Host = {
 		readonly version: string;
 		/** A path that runs this kabane with nothing in front of it, for a detached runner or a session's MCP server. */
 		readonly executable: string;
+		/**
+		 * `executable` asked again at each spawn by a process that outlives an update (a loop runner,
+		 * the board): that path while it is still there, else `kabane` on PATH, else null.
+		 */
+		readonly current?: () => string | null;
 	};
 	readonly record: Host.Record;
 	readonly harnessMode: "auto" | "default";

@@ -26,7 +26,15 @@ import type { Settings } from "./settings";
 
 export type Host = {
 	readonly api: 1;
-	readonly kabane: { readonly version: string; readonly executable: string };
+	readonly kabane: {
+		readonly version: string;
+		readonly executable: string;
+		/**
+		 * `executable` asked again, for a process that outlives an update: that path while it is
+		 * still there, else `kabane` on PATH, else null. Absent on a host older than it.
+		 */
+		readonly current?: () => string | null;
+	};
 	readonly record: Host.Record;
 	readonly scope: {
 		detect(dir: string): Promise<Result<ProjectScope | null>>;

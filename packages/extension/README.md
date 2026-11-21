@@ -9,9 +9,13 @@ Import `Extension` and `Host` with `import type` from `kabane/extension`. The pu
 package exports types only, including named record, command, settings, board and doctor
 types and the reachable core and zod types; no `@kabane/*` package or additional type dependency is required.
 
-The factory receives API 1 with `kabane.version`, `kabane.executable`, `record`, `scope`,
+The factory receives API 1 with `kabane.version`, `kabane.executable`, `kabane.current`, `record`, `scope`,
 `harnessMode`, `store` (for the extension's own data modules), `z`, `defineTool`, and the
 `result`, `args`, `outcome` and `settings` helpers.
+A process that outlives an update, such as a detached runner, calls `kabane.current()` each
+time it spawns kabane instead of keeping `executable`: it returns null once the kabane it
+started from is gone and no `kabane` is on PATH. A host older than `current` has no such
+member, so check for it before calling.
 Build settings and tool schemas with `host.z`, even when the extension installs its own zod.
 
 `host.record` wraps MCP operations with validated inputs and full, unserialized results.
