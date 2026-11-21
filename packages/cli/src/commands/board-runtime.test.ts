@@ -237,3 +237,44 @@ test.each([
 		expect(notice.value).not.toContain("…");
 	},
 );
+
+test("the real board announcer names a cached release, unless it was just offered before the board", async () => {
+	const home = join(HOME, "offered");
+	mkdirSync(home, { recursive: true });
+	writeFileSync(
+		configPath(home),
+		JSON.stringify({ actor: "test", deviceId: "test" }),
+	);
+	const script = `
+  const {version} = await import(${JSON.stringify(join(import.meta.dir, "../../package.json"))});
+  const next = version.replace(/^(\\d+\\.\\d+\\.)\\d+.*$/, "$199999");
+  await Bun.write(${JSON.stringify(join(home, "update-check.json"))}, JSON.stringify({latest:next, checkedAt:new Date().toISOString()}));
+  const {parseArgs} = await import("@kabane/extension");
+  const {openContext} = await import(${JSON.stringify(join(import.meta.dir, "../context.ts"))});
+  const {boardDeps} = await import(${JSON.stringify(join(import.meta.dir, "board-runtime.ts"))});
+  const args = parseArgs([]);
+  const ctx = await openContext(${JSON.stringify(home)}, ${JSON.stringify(home)}, args);
+  if (!ctx.ok) throw ctx.error;
+  const notices = [];
+  for (const offered of [undefined, next]) {
+    const wired = await boardDeps(args, ctx.value, "claude", offered ? {offered} : {});
+    try { notices.push((await wired.announcer.announce()).value); } finally { wired.copilot.close(); }
+  }
+  console.log(JSON.stringify(notices));
+ `;
+	const proc = Bun.spawn([process.execPath, "-e", script], {
+		cwd: join(import.meta.dir, "../.."),
+		env: { ...process.env, KABANE_BUNDLED: "1" },
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [out, err, code] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	expect({ code, err }).toEqual({ code: 0, err: "" });
+	const [named, declined] = JSON.parse(out);
+	expect(named).toContain("is out ·");
+	expect(declined).toBeNull();
+});

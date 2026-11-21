@@ -133,4 +133,20 @@ export namespace Self {
 			? recorded
 			: which("kabane");
 	};
+
+	/**
+	 * The kabane to start once its install has taken a release: the link Homebrew or mise keeps,
+	 * which now names the new version, else `current`. Not `executable`, which names the link only
+	 * while it still points at this binary, and after an upgrade it no longer does.
+	 */
+	export const upgraded = (
+		host: Host = HOST,
+		exists: (path: string) => boolean = isFile,
+		which: (name: string) => string | null = (name) => Bun.which(name),
+	): string | null => {
+		const linked = compiled(host) ? linkTo(host.execPath) : undefined;
+		return linked !== undefined && exists(linked)
+			? linked
+			: current(host, exists, which);
+	};
 }

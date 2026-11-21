@@ -387,12 +387,23 @@ from, at most once a day, after its first frame, and keeps them in
 `KABANE_HOME/update-check.json`. Bun's registry and proxy settings do not apply to that read.
 When GitHub cannot be reached, nothing is shown and the board carries on. Only the board
 checks: `kabane mcp`, a piped command and every other command never do, and a run from a
-source checkout never shows the line. The check installs nothing. To turn
+source checkout never shows the line. The check itself installs nothing. To turn
 it off:
 
 ```bash
 kabane config set updates.check false
 ```
+
+Before the board opens, `kabane` and `kabane board` ask once about the same release, as a plain
+question: `kabane 1.0.1 is out (you have 1.0.0). Upgrade now with "brew upgrade kabane"? [Y]es /
+[n]o, continue / [s]kip this version`. `y` or Enter runs that command, its output on screen, and
+opens the board on the new version; if it fails, kabane says how and opens the board on the
+version you have. `n` opens the board and the line over its footer stays away for that start.
+`s` records the version in `update-check.json`, and kabane names it neither here nor on the board
+again; a later release is offered as usual. An install kabane cannot update names the release
+page instead. It asks only at a terminal, never under `CI`, never from a source checkout or a main
+build, and not at all with `updates.check` false. It waits at most 1.5 seconds on GitHub; a slower
+answer reaches the board's line instead.
 
 ### Keeping kabane current
 

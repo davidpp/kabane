@@ -6,7 +6,8 @@
  * too, which also means Bun's registry and proxy settings do not apply. Every failure says
  * nothing: a notice is never worth an error on screen. The hint is the install's own:
  * `kabane update`, `brew upgrade kabane`, mise's `mise up <tool>`, or a manual update where
- * `kabane update` would refuse.
+ * `kabane update` would refuse. A release the human skipped at the offer before the board
+ * (upgrade-offer.ts) is kept in the cache as `skipped` and never named again.
  *
  * A main build hears of main instead (update-main.ts): how many commits main has past its stamp,
  * cached for an hour in `KABANE_HOME/update-check-main.json`, since main moves more often than
@@ -42,6 +43,8 @@ export namespace UpdateNotice {
 
 	const CacheSchema = DistTagsSchema.extend({
 		checkedAt: z.iso.datetime(),
+		/** The release the human chose to skip; kept across each day's read. */
+		skipped: z.string().optional(),
 	});
 	type Cache = z.infer<typeof CacheSchema>;
 
@@ -101,10 +104,19 @@ export namespace UpdateNotice {
 		timeoutMs?: number;
 	};
 
+	// The candidate, unless it is the release the human skipped.
+	const unskipped = (
+		version: string,
+		cache: DistTags & { skipped?: string },
+	): string | undefined => {
+		const release = candidate(version, cache);
+		return release === cache.skipped ? undefined : release;
+	};
+
 	/**
 	 * The release to tell the human about, read from the cache while it is under a day old, else
 	 * from the releases API and written back. An API that cannot be read leaves the cache as it was
-	 * and falls back on it; with nothing usable either way, undefined.
+	 * and falls back on it; with nothing usable either way, undefined. A skipped release is none.
 	 */
 	export const check = async ({
 		home,
@@ -114,18 +126,31 @@ export namespace UpdateNotice {
 		timeoutMs = TIMEOUT_MS,
 	}: Options): Promise<string | undefined> => {
 		const cached = await readCache(home);
-		if (cached && fresh(cached, now)) return candidate(version, cached);
+		if (cached && fresh(cached, now)) return unskipped(version, cached);
 		const fetched = await UpdateBinary.fetchReleases(api, version, timeoutMs);
-		if (!fetched.ok) return cached && candidate(version, cached);
-		await writeCache(cachePath(home), {
+		if (!fetched.ok) return cached && unskipped(version, cached);
+		const written = {
 			...fetched.value,
 			checkedAt: new Date(now).toISOString(),
-		});
-		return candidate(version, fetched.value);
+			...(cached?.skipped === undefined ? {} : { skipped: cached.skipped }),
+		};
+		await writeCache(cachePath(home), written);
+		return unskipped(version, written);
+	};
+
+	/** Never name `release` again, on the board or before it; a later release clears it. */
+	export const skip = async (
+		home: string,
+		release: string,
+	): Promise<Result<void>> => {
+		// The offer only follows a check, which wrote the cache it named the release from.
+		const cached = await readCache(home);
+		if (!cached) return ok(undefined);
+		return writeCache(cachePath(home), { ...cached, skipped: release });
 	};
 
 	/** How this install takes a release, as `kabane update` would judge it. */
-	type Install = "binary" | "bun" | "manual" | UpdateBinary.Manager;
+	export type Install = "binary" | "bun" | "manual" | UpdateBinary.Manager;
 
 	/** What the process says about itself; tests pass their own. */
 	type Host = {
@@ -242,9 +267,10 @@ export namespace UpdateNotice {
 	 * The board's announcer for this device. Only the published bundle hears of a release: a run
 	 * from source is ahead of the release its package.json names, and `kabane update` does not
 	 * replace it. That is the build's flag, not a look at git. The line ends with what this install
-	 * runs to take the release (`install`).
+	 * runs to take the release (`install`). `declined` is the release the human was just offered
+	 * before the board and turned down: the board does not name it again in this start.
 	 */
-	export const announcer = (home: string): Announcer => ({
+	export const announcer = (home: string, declined?: string): Announcer => ({
 		announce: async () => {
 			if (!bundled) return ok(null);
 			if (mainBuild) {
@@ -254,7 +280,11 @@ export namespace UpdateNotice {
 				);
 			}
 			const release = await check({ home, version });
-			return ok(release === undefined ? null : line(release, await install()));
+			return ok(
+				release === undefined || release === declined
+					? null
+					: line(release, await install()),
+			);
 		},
 	});
 }

@@ -271,3 +271,39 @@ test("the line names what this install runs to take the release", async () => {
 		"kabane 1.2.0 is out · update it the way you installed it",
 	);
 });
+
+test("a skipped release is never named again, its skip outlives a day's read, and a later release is", async () => {
+	seed({ checkedAt: new Date(NOW - HOUR).toISOString(), latest: "1.4.0" });
+	expect(await check("1.0.0")).toBe("1.4.0");
+	expect(await UpdateNotice.skip(home, "1.4.0")).toEqual({
+		ok: true,
+		value: undefined,
+	});
+	expect(await check("1.0.0")).toBeUndefined();
+
+	answer = releases("1.4.0");
+	const later = (version: string) =>
+		UpdateNotice.check({
+			home,
+			version,
+			now: NOW + 25 * HOUR,
+			api: `${api.url.origin}/releases`,
+		});
+	expect(await later("1.0.0")).toBeUndefined();
+	expect(JSON.parse(readFileSync(cacheFile(), "utf8")).skipped).toBe("1.4.0");
+
+	answer = releases("1.5.0");
+	expect(
+		await UpdateNotice.check({
+			home,
+			version: "1.0.0",
+			now: NOW + 50 * HOUR,
+			api: `${api.url.origin}/releases`,
+		}),
+	).toBe("1.5.0");
+});
+
+test("skipping with no cache writes nothing", async () => {
+	expect((await UpdateNotice.skip(home, "1.4.0")).ok).toBe(true);
+	expect(existsSync(cacheFile())).toBe(false);
+});
