@@ -303,7 +303,7 @@ it("an enabled directory's files reach the board's copilot, and a refused one it
 			"kabane doctor: notes file copilot/shortcuts/split.md: /split is a built-in shortcut, which wins",
 		);
 	} finally {
-		wired.copilot.close();
+		await wired.copilot.close();
 	}
 });
 
@@ -376,8 +376,8 @@ it("more than one refusal of any kind is counted after the pointer to doctor, an
 		);
 		expect(row(single, 40)).toBe("Extension dead refused: package.json is");
 	} finally {
-		wired.copilot.close();
-		both.copilot.close();
-		dead.copilot.close();
+		await wired.copilot.close();
+		await both.copilot.close();
+		await dead.copilot.close();
 	}
 });

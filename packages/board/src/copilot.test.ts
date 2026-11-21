@@ -1,6 +1,9 @@
 // The copilot against the SDK's in-process agent: what reaches the harness on session/new and on
 // each prompt, and what the board gets back. No subprocess, no npx, same wire as client.test.ts.
 import { describe, expect, it } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type AgentApp,
 	agent as agentApp,
@@ -305,7 +308,7 @@ describe("BoardCopilot", () => {
 		expect(copilot.shortcuts().map((s) => s.name)).toContain("triage");
 		await collect(copilot.run("triage this", context()));
 		expect(connects).toBe(1);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("gives session/new the scope dir and kabane mcp as its one tool server", async () => {
@@ -332,7 +335,7 @@ describe("BoardCopilot", () => {
 				systemPrompt: { append: CopilotInstructions.systemPrompt(SETUP, BIN) },
 			},
 		});
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("uses the host-supplied bin for both the shell and MCP server, quoting the shell path", async () => {
@@ -344,7 +347,7 @@ describe("BoardCopilot", () => {
 			.mcpServers[0];
 		expect(server?.command).toBe(bin);
 		expect(textOf(seen.prompts[0], 0)).toContain(`\`'${bin}' --help\``);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("asks the host for kabane again at each new session", async () => {
@@ -352,7 +355,7 @@ describe("BoardCopilot", () => {
 		let bin = "/old/kabane";
 		const copilot = copilotOver(scriptedAgent(seen), { kabaneBin: () => bin });
 		await collect(copilot.run("go", context()));
-		copilot.close();
+		await copilot.close();
 		bin = "/new/kabane";
 		await collect(copilot.run("go", context()));
 		const commands = seen.newSession.map(
@@ -360,7 +363,7 @@ describe("BoardCopilot", () => {
 				(s as { mcpServers: { command: string }[] }).mcpServers[0]?.command,
 		);
 		expect(commands).toEqual(["/old/kabane", "/new/kabane"]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("says to restart the board, opening no session, when no kabane is left", async () => {
@@ -382,7 +385,7 @@ describe("BoardCopilot", () => {
 			}),
 		]);
 		expect(connects).toBe(0);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("omits --scope when the board is open on every scope", async () => {
@@ -396,7 +399,7 @@ describe("BoardCopilot", () => {
 			"--as",
 			"kabane://actor/agent/claude",
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("carries the instruction block on the first prompt only, the context block on every one", async () => {
@@ -423,7 +426,7 @@ describe("BoardCopilot", () => {
 			"scope: kabane://scope/cabane",
 		);
 		expect(textOf(seen.prompts[1], 1)).toBe("now split the first one");
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("opens the session's first turn on the mode it runs in, and shows the harness's own moves", async () => {
@@ -438,7 +441,7 @@ describe("BoardCopilot", () => {
 		// Neither line again once the session is open and the harness stays put.
 		const second = await collectAll(copilot.run("again", context()));
 		expect(types(second)).toEqual(["text", "done"]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("shows the harness's notice as a notice step of the turn, after the mode line", async () => {
@@ -462,7 +465,7 @@ describe("BoardCopilot", () => {
 			["notice", "claude: Auto mode unavailable: Using Accept edits instead."],
 		]);
 		expect(updates[1]).toMatchObject({ severity: "warning" });
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("hands the board the harness's commands, and sends a prompt that runs one alone and as typed", async () => {
@@ -488,7 +491,7 @@ describe("BoardCopilot", () => {
 			"scope: kabane://scope/cabane",
 		);
 		expect(textOf(seen.prompts[2], 1)).toBe("/nope");
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("hands the board the harness's reading of its context window", async () => {
@@ -500,7 +503,7 @@ describe("BoardCopilot", () => {
 			used: 84_000,
 			size: 200_000,
 		});
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("leaves the mode alone when the config turns auto mode off", async () => {
@@ -509,7 +512,7 @@ describe("BoardCopilot", () => {
 		});
 		const updates = await collectAll(copilot.run("go", context()));
 		expect(updates[0]?.summary).toBe("mode default: auto mode is off");
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("every call that completes yields tool_result; only a kabane write is marked a write", async () => {
@@ -539,7 +542,7 @@ describe("BoardCopilot", () => {
 			["tool_result", "kabane_edit", true],
 			["done", "end_turn", false],
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("names a call's steps by its id, and its end carries the refined title, the input and the diff", async () => {
@@ -587,7 +590,7 @@ describe("BoardCopilot", () => {
 			{ type: "tool_call", summary: "Bash", callId: "t2" },
 			{ type: "tool_failed", summary: "Bash", callId: "t2" },
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	// Recording a link is what makes the row's linked-issue glyph appear, so it has to reach the
@@ -608,7 +611,7 @@ describe("BoardCopilot", () => {
 		);
 		const updates = await collect(copilot.run("/linear", context()));
 		expect(types(updates)).toEqual(["tool_call", "tool_result", "done"]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("recognises a write through a namespaced title and a call that completes in one step", async () => {
@@ -636,7 +639,7 @@ describe("BoardCopilot", () => {
 			["tool_result", false],
 			["done", false],
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("joins a run of prose deltas into one update, and keeps runs either side of a tool call apart", async () => {
@@ -660,7 +663,7 @@ describe("BoardCopilot", () => {
 		expect(first?.summary).toBe("I'll read the issue's context first.");
 		// The run that follows the tool call is its own message, not a continuation.
 		expect(second?.summary).toBe("Two are stale.");
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a thought run and a message run stay separate updates", async () => {
@@ -679,7 +682,7 @@ describe("BoardCopilot", () => {
 		expect(types(updates)).toEqual(["thought", "text", "done"]);
 		expect(updates[0]?.summary).toBe("weighing the options");
 		expect(updates[1]?.summary).toBe("Here is what I found.");
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("streams the harness's plan through, entry for entry", async () => {
@@ -721,7 +724,7 @@ describe("BoardCopilot", () => {
 				{ content: "split it", status: "in_progress" },
 			],
 		});
-		copilot.close();
+		await copilot.close();
 	});
 
 	// The turn is BLOCKED from the request until the answer, so these drive the stream by hand:
@@ -761,7 +764,7 @@ describe("BoardCopilot", () => {
 		expect(seen.permissions).toEqual([
 			{ outcome: "selected", optionId: "allow" },
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a decline reaches the harness as cancelled, and the turn carries on", async () => {
@@ -774,7 +777,7 @@ describe("BoardCopilot", () => {
 		);
 		expect(types(updates)).toEqual(["permission", "text", "done"]);
 		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("cancel lets go of a request nobody answered, so the harness is not left waiting", async () => {
@@ -785,7 +788,7 @@ describe("BoardCopilot", () => {
 		const updates = await answering(copilot, () => copilot.cancel());
 		expect(types(updates)).toContain("permission");
 		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("answering a request that is no longer outstanding changes nothing", async () => {
@@ -802,7 +805,7 @@ describe("BoardCopilot", () => {
 		expect(seen.permissions).toEqual([
 			{ outcome: "selected", optionId: "allow" },
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	// A form blocks the turn the same way, so it is answered from inside the loop as well.
@@ -853,7 +856,7 @@ describe("BoardCopilot", () => {
 		expect(seen.forms).toEqual([
 			{ action: "accept", content: { question_0: "Redis" } },
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a declined form reaches the harness as declined, and a multi-select as a list", async () => {
@@ -874,7 +877,7 @@ describe("BoardCopilot", () => {
 			{ action: "decline" },
 			{ action: "accept", content: { picks: ["a", "b"] } },
 		]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a form kabane cannot put to the human reaches the harness as cancel and the board as an error notice", async () => {
@@ -902,7 +905,7 @@ describe("BoardCopilot", () => {
 				'claude: form "Pick a theme" answered cancel, never shown: required field accent has a type kabane cannot ask: _color',
 		});
 		expect(seen.forms).toEqual([{ action: "cancel" }]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("cancel lets go of a form nobody filled in, and nothing answers it twice", async () => {
@@ -921,7 +924,7 @@ describe("BoardCopilot", () => {
 				content: { question_0: "Redis" },
 			});
 		expect(seen.forms).toEqual([{ action: "cancel" }]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a permission the harness withdraws reaches the board as withdrawn, and a late answer is dropped", async () => {
@@ -944,7 +947,7 @@ describe("BoardCopilot", () => {
 			summary: "withdrawn by the harness: kabane_edit",
 		});
 		expect(seen.permissions).toEqual([{ outcome: "cancelled" }]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a form the harness withdraws reaches the board as withdrawn, by the id the board knows it by", async () => {
@@ -976,7 +979,7 @@ describe("BoardCopilot", () => {
 			summary: "withdrawn by the harness: Which store should the cache use?",
 		});
 		expect(seen.forms).toEqual([{ action: "cancel" }]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a request the board let go of first is not reported withdrawn when the harness takes it back", async () => {
@@ -992,7 +995,7 @@ describe("BoardCopilot", () => {
 			copilot.answerPermission(request.id, "allow"),
 		);
 		expect(types(updates)).toEqual(["permission", "text", "done"]);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("a harness that will not start ends the turn as one error update", async () => {
@@ -1005,7 +1008,7 @@ describe("BoardCopilot", () => {
 		expect(updates[0]?.summary).toBe(
 			"npx: command not found · another harness: copilot.harness in /home/me/.kabane/config.json, or kabane board --copilot <harness>",
 		);
-		copilot.close();
+		await copilot.close();
 	});
 
 	it("cancel before any turn is a no-op, and shortcuts are stable names with templates", async () => {
@@ -1029,10 +1032,10 @@ describe("BoardCopilot", () => {
 			expect(shortcut.template.length).toBeGreaterThan(20);
 			expect(shortcut.hint).not.toBe("");
 		}
-		copilot.close();
+		await copilot.close();
 	});
 
-	it("offers the built-in shortcuts first, then the ones extensions contribute", () => {
+	it("offers the built-in shortcuts first, then the ones extensions contribute", async () => {
 		const copilot = copilotOver(scriptedAgent(fresh()), {
 			setup: {
 				...SETUP,
@@ -1044,6 +1047,103 @@ describe("BoardCopilot", () => {
 			CopilotInstructions.SHORTCUTS.map((s) => s.name),
 		);
 		expect(names.at(-1)).toBe("start-run");
-		copilot.close();
+		await copilot.close();
+	});
+});
+
+// Nobody but the client holds a harness still in its handshake, so a board quit then has to stop
+// it through the copilot: a real child that never answers, as an adapter stuck in an npx download
+// would be.
+describe("BoardCopilot close during the harness's handshake", () => {
+	const alive = (pid: number): boolean => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+
+	it("kills the harness before close settles, and the turn ends as an error", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "copilot-stop-"));
+		const pidfile = join(dir, "harness.pid");
+		const copilot = BoardCopilot.create({
+			harness: "claude",
+			scopeDir: dir,
+			kabaneBin: () => BIN,
+			home: join(dir, ".kabane"),
+			setup: SETUP,
+			overrides: {
+				command: "sh",
+				args: ["-c", 'echo $$ > "$0"; exec sleep 600', pidfile],
+			},
+		});
+		const turn = collectAll(copilot.run("go", context()));
+		// sh creates the file before echo fills it: an empty read would be pid 0, always alive.
+		const written = () =>
+			existsSync(pidfile) ? readFileSync(pidfile, "utf8").trim() : "";
+		for (let i = 0; i < 400 && !written(); i++) await Bun.sleep(5);
+		const pid = Number(written());
+		expect(alive(pid)).toBe(true);
+
+		await copilot.close();
+		// The host exits as soon as close settles, so the child has to be gone by then; only
+		// its reaping may lag the kill.
+		for (let i = 0; i < 20 && alive(pid); i++) await Bun.sleep(5);
+		const updates = await turn;
+		rmSync(dir, { recursive: true, force: true });
+		expect(alive(pid)).toBe(false);
+		expect(types(updates)).toEqual(["error"]);
+		expect(updates[0]?.summary).toStartWith(
+			"claude: stopped before it answered ACP initialize",
+		);
+	});
+
+	it("closes a connection whose session/new has not answered, and the next run starts afresh", async () => {
+		const seen = fresh();
+		// Answers initialize, then never session/new.
+		const stuck = agentApp({ name: "stuck" })
+			.onRequest(methods.agent.initialize, () => ({
+				protocolVersion: PROTOCOL_VERSION,
+				agentCapabilities: { loadSession: false },
+			}))
+			.onRequest(methods.agent.session.new, (c) => {
+				seen.newSession.push(c.params);
+				return new Promise<never>(() => {});
+			});
+		const agents = [stuck, scriptedAgent(seen)];
+		let closes = 0;
+		const copilot = copilotOver(stuck, {
+			connect: async (handlers) => {
+				const agent = agents.shift();
+				if (!agent) throw new Error("a third connect");
+				const opened = await AcpClient.connect("claude", agent, handlers);
+				if (!opened.ok) return opened;
+				const close = opened.value.close;
+				opened.value.close = () => {
+					closes += 1;
+					close();
+				};
+				return opened;
+			},
+		});
+		const turn = collectAll(copilot.run("go", context()));
+		for (let i = 0; i < 400 && seen.newSession.length === 0; i++)
+			await Bun.sleep(5);
+		expect(seen.newSession).toHaveLength(1);
+
+		await copilot.close();
+		expect(closes).toBe(1);
+		const ended = await Promise.race([
+			turn.then(types),
+			Bun.sleep(500).then(() => ["still waiting"]),
+		]);
+		expect(ended).toEqual(["error"]);
+
+		await collect(copilot.run("go", context()));
+		expect(seen.newSession).toHaveLength(2);
+		expect(seen.prompts).toHaveLength(1);
+		await copilot.close();
+		expect(closes).toBe(2);
 	});
 });

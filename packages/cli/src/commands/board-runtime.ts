@@ -438,8 +438,10 @@ export const runBoard: Command["run"] = async (args, ctx) => {
 	try {
 		await startBoard(deps);
 	} finally {
-		// Nothing was spawned unless the human pressed `A`, and then this kills it.
-		deps.copilot.close();
+		// Nothing was spawned unless the human asked the copilot something, and then this kills it.
+		// Awaited: `index.ts` exits once this returns, and a harness still in its ACP handshake
+		// is killed only after the client has let go of it.
+		await deps.copilot.close();
 		control.close();
 	}
 	return success({ closed: true }, "");
