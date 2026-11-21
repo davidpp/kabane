@@ -1098,4 +1098,52 @@ describe("BoardCopilot close during the harness's handshake", () => {
 			"claude: stopped before it answered ACP initialize",
 		);
 	});
+
+	it("closes a connection whose session/new has not answered, and the next run starts afresh", async () => {
+		const seen = fresh();
+		// Answers initialize, then never session/new.
+		const stuck = agentApp({ name: "stuck" })
+			.onRequest(methods.agent.initialize, () => ({
+				protocolVersion: PROTOCOL_VERSION,
+				agentCapabilities: { loadSession: false },
+			}))
+			.onRequest(methods.agent.session.new, (c) => {
+				seen.newSession.push(c.params);
+				return new Promise<never>(() => {});
+			});
+		const agents = [stuck, scriptedAgent(seen)];
+		let closes = 0;
+		const copilot = copilotOver(stuck, {
+			connect: async (handlers) => {
+				const agent = agents.shift();
+				if (!agent) throw new Error("a third connect");
+				const opened = await AcpClient.connect("claude", agent, handlers);
+				if (!opened.ok) return opened;
+				const close = opened.value.close;
+				opened.value.close = () => {
+					closes += 1;
+					close();
+				};
+				return opened;
+			},
+		});
+		const turn = collectAll(copilot.run("go", context()));
+		for (let i = 0; i < 400 && seen.newSession.length === 0; i++)
+			await Bun.sleep(5);
+		expect(seen.newSession).toHaveLength(1);
+
+		await copilot.close();
+		expect(closes).toBe(1);
+		const ended = await Promise.race([
+			turn.then(types),
+			Bun.sleep(500).then(() => ["still waiting"]),
+		]);
+		expect(ended).toEqual(["error"]);
+
+		await collect(copilot.run("go", context()));
+		expect(seen.newSession).toHaveLength(2);
+		expect(seen.prompts).toHaveLength(1);
+		await copilot.close();
+		expect(closes).toBe(2);
+	});
 });
