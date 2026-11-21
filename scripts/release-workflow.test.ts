@@ -23,6 +23,7 @@ const Job = z
 const Workflow = z.object({
 	on: z
 		.object({
+			push: z.object({ tags: z.array(z.string()) }).strict(),
 			workflow_dispatch: z.object({
 				inputs: z
 					.object({
@@ -41,15 +42,20 @@ const Workflow = z.object({
 			"native-binaries": Job,
 			prepare: Job,
 			"installed-smoke": Job,
+			attest: Job,
 			publish: Job,
+			homebrew: Job,
 		})
 		.strict(),
 });
-test("release workflow default is nonpublishing, exact-artifact and permission-separated", () => {
-	const raw = readFileSync(
+const workflow = () =>
+	readFileSync(
 		join(import.meta.dir, "../.github/workflows/release.yml"),
 		"utf8",
 	);
+
+test("release workflow default is nonpublishing, exact-artifact and permission-separated", () => {
+	const raw = workflow();
 	const parsed = Workflow.safeParse(Bun.YAML.parse(raw));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
@@ -92,7 +98,9 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 		"id-token": "write",
 		actions: "read",
 	});
-	expect(publish.if).toContain("inputs.publish");
+	expect(publish.if).toContain(
+		"(github.event_name == 'push' || inputs.publish)",
+	);
 	expect(publish.if).toContain("github.ref_type == 'tag'");
 	expect(publish.if).toContain("github.repository == 'davidpp/kabane'");
 	expect(publish.concurrency).toEqual({
@@ -102,15 +110,10 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 	expect(
 		publish.steps.find((step) => step.run?.includes("release.ts publish"))?.env,
 	).toMatchObject({
-		RELEASE_PUBLISH: "${{ inputs.publish }}",
+		RELEASE_PUBLISH: "${{ github.event_name == 'push' || inputs.publish }}",
 		RELEASE_SETUP_CONFIRMED: "${{ vars.RELEASE_SETUP_CONFIRMED }}",
 	});
-	for (const job of [
-		parsed.data.jobs["native-binaries"],
-		prepare,
-		smoke,
-		publish,
-	])
+	for (const job of Object.values(parsed.data.jobs))
 		for (const step of job.steps) {
 			if (step.uses) expect(step.uses).toMatch(/^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
 			expect(step.env?.NODE_AUTH_TOKEN).toBeUndefined();
@@ -120,14 +123,7 @@ test("release workflow default is nonpublishing, exact-artifact and permission-s
 });
 
 test("native matrix retains four archives and smoke consumes the assembled bytes", () => {
-	const parsed = Workflow.safeParse(
-		Bun.YAML.parse(
-			readFileSync(
-				join(import.meta.dir, "../.github/workflows/release.yml"),
-				"utf8",
-			),
-		),
-	);
+	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
 	expect(parsed.success).toBe(true);
 	if (!parsed.success) return;
 	const native = parsed.data.jobs["native-binaries"];
@@ -173,4 +169,66 @@ test("native matrix retains four archives and smoke consumes the assembled bytes
 			step.run?.includes("smoke.ts --binary"),
 		),
 	).toBe(true);
+});
+
+test("a pushed release tag publishes behind the same approval, after the archives are attested", () => {
+	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
+	expect(parsed.success).toBe(true);
+	if (!parsed.success) return;
+	const { attest, publish, prepare } = parsed.data.jobs;
+	expect(parsed.data.on.push.tags).toEqual([
+		"v[0-9]+.[0-9]+.[0-9]+",
+		"v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+",
+	]);
+	expect(
+		prepare.steps.find((step) => step.run?.includes("release.ts prepare"))?.env
+			?.RELEASE_PUBLISH,
+	).toBe("${{ github.event_name == 'push' || inputs.publish }}");
+	expect(publish.needs).toEqual(["prepare", "installed-smoke", "attest"]);
+	expect(attest.permissions).toEqual({
+		contents: "read",
+		"id-token": "write",
+		attestations: "write",
+	});
+	const subjects = attest.steps.find((step) =>
+		step.uses?.startsWith("actions/attest-build-provenance@"),
+	)?.with?.["subject-path"];
+	for (const subject of ["*.tgz", "*.tar.gz", "install.sh"])
+		expect(subjects).toContain(`release/${subject}`);
+	expect(
+		prepare.steps.some((step) => step.run?.includes("release-formula.ts")),
+	).toBe(true);
+	const upload = prepare.steps.find((step) =>
+		step.uses?.startsWith("actions/upload-artifact@"),
+	);
+	expect(upload?.with?.path).toContain("release/kabane.rb");
+	expect(upload?.with?.path).toContain("release/install.sh");
+	for (const job of Object.values(parsed.data.jobs))
+		for (const step of job.steps)
+			if (step.uses?.startsWith("oven-sh/setup-bun@"))
+				expect(step.with?.["no-cache"]).toBe(true);
+});
+
+test("the tap takes a stable release's formula once its GitHub release is public, with its own key", () => {
+	const parsed = Workflow.safeParse(Bun.YAML.parse(workflow()));
+	expect(parsed.success).toBe(true);
+	if (!parsed.success) return;
+	const { homebrew } = parsed.data.jobs;
+	expect(homebrew.needs).toEqual(["prepare", "publish"]);
+	expect(homebrew.if).toContain("!contains(github.ref_name, '-')");
+	expect(homebrew.permissions).toEqual({});
+	const runs = homebrew.steps.map((step) => step.run ?? "").join("\n");
+	expect(runs).toContain(
+		"https://github.com/davidpp/kabane/releases/download/$TAG/SHA256SUMS",
+	);
+	expect(runs).toContain("cmp published-SHA256SUMS release/SHA256SUMS");
+	expect(runs).toContain("cp release/kabane.rb tap/Formula/kabane.rb");
+	expect(runs).not.toMatch(/npm|gh release/);
+	expect(
+		homebrew.steps.find((step) => step.uses?.startsWith("actions/checkout@"))
+			?.with,
+	).toMatchObject({
+		repository: "davidpp/homebrew-tap",
+		"ssh-key": "${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}",
+	});
 });
