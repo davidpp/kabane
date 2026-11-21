@@ -57,8 +57,12 @@ kabane job add <recipe> --title "<title>" --schedule "<cron>" \
 
 It prints `Added job <id> (…); it fires next at <time>.` Run `kabane job show <id>` and tell the
 human, in one or two lines: the job's id and title, when it fires next, the folder, and the harness
-the `harness` line names. When `job add` fails, its error says which flag is wrong: fix that flag
-and run it again, and ask the human only when the fix needs their choice.
+the `harness` line names. When `job add` also prints that nothing runs `kabane job tick` on this
+machine, the job will not fire until something does: tell the human, and ask whether to install
+it. Run the `kabane doctor --fix recipes/job-tick-missing` it names only on their yes.
+
+When `job add` fails, its error says which flag is wrong: fix that flag and run it again, and ask
+the human only when the fix needs their choice.
 
 Ask the human only for what the prompt leaves open and has no default: the time of day, which
 project when the folder is in none, a required recipe input. Never ask for the harness, the
@@ -84,6 +88,6 @@ After any of these, `kabane job show <id>`, and tell the human its state and nex
 
 ## What this skill does not do
 
-It does not write recipes, edit the scheduler that calls `kabane job tick`, or answer a running
+It does not write recipes, install the scheduler that calls `kabane job tick` unasked, or answer a running
 job's session (`kabane runs attach <run id>` opens it). It runs no flag the commands above do not
 list.

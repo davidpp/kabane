@@ -455,8 +455,8 @@ kabane config set recipes.onAttention \
 ```
 
 A hook that exits nonzero is reported on the tick's output with its last line of stderr, and
-changes nothing else: it is not retried. Under launchd, the command must be on the plist's
-`PATH`.
+changes nothing else: it is not retried. The tick runs it with the `PATH` it was installed with
+([Tick on a schedule](#tick-on-a-schedule)).
 
 ### Jobs on the board
 
@@ -484,10 +484,23 @@ title, project and whether they are paused.
 
 ### Tick on a schedule
 
-On macOS, `docs/schedule/com.kabane.job-tick.plist` runs `kabane job tick` every minute with
-launchd; the comment at its top says how to install and remove it. On Linux,
-`docs/schedule/kabane-job-tick.cron` is the same as a crontab line. A tick with nothing due does
-nothing, so ticking every minute is cheap.
+A job fires only when something runs `kabane job tick`. When nothing does on this machine,
+`kabane job add` at a terminal asks whether to install it: on macOS a launchd agent,
+`~/Library/LaunchAgents/com.kabane.job-tick.plist`, and on Linux a crontab line, each running the
+tick every minute. Run elsewhere, as an agent runs it, `job add` prints the command that installs it
+instead, and `kabane doctor` reports `recipes/job-tick-missing` while this machine has a job and
+nothing ticks it:
+
+```bash
+kabane doctor --fix recipes/job-tick-missing
+```
+
+The tick runs the kabane that installed it, with that shell's `PATH`, so it finds `hc`, the
+harnesses and the `recipes.onAttention` command as your shell does, and with its `KABANE_HOME`.
+After you change your `PATH` or move kabane, remove the tick and install it again. To remove it on
+macOS, `launchctl bootout gui/$(id -u)/com.kabane.job-tick` and delete the file; on Linux, delete
+the line with `crontab -e`. Its output goes to `job-tick.log` and `job-tick.error.log` in
+`KABANE_HOME`. A tick with nothing due does nothing, so ticking every minute is cheap.
 
 ## Settings
 

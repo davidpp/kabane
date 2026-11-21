@@ -16,6 +16,7 @@ import type {
 } from "@kabane/extension";
 import { Harness } from "./harness";
 import { Inputs } from "./inputs";
+import { JobTick } from "./job-tick";
 import { Jobs } from "./jobs";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
@@ -26,6 +27,7 @@ import {
 	requestPromptOf,
 	type settingsSchema,
 	startRun,
+	terminalAsk,
 } from "./run-command";
 import { Runs } from "./runs";
 import { pad } from "./runs-command";
@@ -63,12 +65,12 @@ export type Deps = {
 };
 
 /** Every open job, with its item. A closed job (`kabane done`) is gone from here. */
-const entries = async (d: Deps): Promise<Result<Entry[]>> => {
-	const jobs = await Jobs.all(d.host);
+export const entries = async (host: Host): Promise<Result<Entry[]>> => {
+	const jobs = await Jobs.all(host);
 	if (!jobs.ok) return jobs;
 	const found: Entry[] = [];
 	for (const job of jobs.value) {
-		const task = await d.host.record.get({ id: job.taskId });
+		const task = await host.record.get({ id: job.taskId });
 		if (!task.ok) return task;
 		if (task.value === null || ["done", "cancelled"].includes(task.value.state))
 			continue;
@@ -412,6 +414,30 @@ const ownOf = (
 	};
 };
 
+/**
+ * After `job add`, when nothing ticks this machine: at a terminal, ask to install the tick and
+ * install it on yes; elsewhere (an agent's shell) or on no, the line that says how. No line when
+ * something ticks already.
+ */
+const offerTick = (ctx: Extension.Ctx, host: Host): string[] => {
+	const platform = JobTick.platformOf(process.platform);
+	const home = homedir();
+	if (platform === undefined || JobTick.installed(platform, home)) return [];
+	const nothing =
+		"Nothing runs kabane job tick on this machine yet, so no job fires";
+	const how = `${nothing}: \`kabane doctor --fix recipes/job-tick-missing\` installs ${JobTick.what(platform)}.`;
+	const answer = terminalAsk()?.(
+		`${nothing}. Install ${JobTick.what(platform)}? [y/N]`,
+	);
+	if (!/^y(es)?$/i.test(answer?.trim() ?? "")) return [how];
+	const installed = JobTick.install(
+		platform,
+		JobTick.targetOf(host, ctx.home),
+		home,
+	);
+	return [installed.ok ? installed.value : installed.error.message];
+};
+
 const add = async (
 	d: Deps,
 	args: ParsedArgs,
@@ -473,14 +499,17 @@ const add = async (
 	const short = task.data.shortId ?? task.data.id;
 	return d.host.outcome.success(
 		{ job: task.data.id, shortId: short, next: valid.value.toISOString() },
-		`Added job ${short} (${[
-			recipe?.name ?? "no recipe",
-			`"${schedule}"`,
-			`${session} session`,
-			...(own.check === undefined
-				? []
-				: [`only when \`${own.check}\` exits 0`]),
-		].join(", ")}); it fires next at ${when(valid.value)}.`,
+		[
+			`Added job ${short} (${[
+				recipe?.name ?? "no recipe",
+				`"${schedule}"`,
+				`${session} session`,
+				...(own.check === undefined
+					? []
+					: [`only when \`${own.check}\` exits 0`]),
+			].join(", ")}); it fires next at ${when(valid.value)}.`,
+			...offerTick(ctx, d.host),
+		].join("\n"),
 	);
 };
 
@@ -497,7 +526,7 @@ const list = async (
 	}
 	const roots = await Jobs.roots(d.host);
 	if (!roots.ok) return d.host.outcome.failure(roots.error);
-	const found = await entries(d);
+	const found = await entries(d.host);
 	if (!found.ok) return d.host.outcome.failure(found.error);
 	const shown = found.value.filter(
 		({ task }) => scope === undefined || task.scopeUri === scope,
@@ -892,7 +921,7 @@ const notify = async (
 
 const tick = async (d: Deps, ctx: Extension.Ctx): Promise<Outcome> => {
 	const now = new Date();
-	const found = await entries(d);
+	const found = await entries(d.host);
 	if (!found.ok) return d.host.outcome.failure(found.error);
 	const roots = await Jobs.roots(d.host);
 	if (!roots.ok) return d.host.outcome.failure(roots.error);

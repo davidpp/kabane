@@ -626,3 +626,39 @@ test("doctor offers the user-level job skill, and --fix installs it for every ha
 		findings().filter((f: { id: string }) => f.id.startsWith("job-skill")),
 	).toEqual([]);
 });
+
+test("with nothing ticking this machine, job add says how to install the tick and doctor offers it once a job exists", () => {
+	const { kabane, home } = setup();
+	const user = join(home, "user");
+	mkdirSync(user);
+	const tickFindings = () =>
+		JSON.parse(
+			kabane(["doctor", "--json"], { home: user }).stdout,
+		).findings.filter((f: { id: string }) => f.id === "job-tick-missing");
+	expect(tickFindings()).toEqual([]);
+	const added = kabane(
+		[
+			"job",
+			"add",
+			"--title",
+			"Tidy",
+			"--schedule",
+			"0 9 * * *",
+			"--request",
+			"Tidy the inbox",
+		],
+		{ home: user },
+	);
+	expect(added.code).toBe(0);
+	// stdin is not a terminal, as in an agent's shell: a line to relay, and nothing installed.
+	expect(added.stdout).toContain(
+		"Nothing runs kabane job tick on this machine yet, so no job fires: `kabane doctor --fix recipes/job-tick-missing` installs a",
+	);
+	expect(tickFindings()).toEqual([
+		expect.objectContaining({
+			source: "recipes",
+			severity: "suggest",
+			fixable: true,
+		}),
+	]);
+});
