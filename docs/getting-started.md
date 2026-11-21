@@ -17,29 +17,35 @@ Syncing several machines through a Cloudflare hub is optional and lives in
 
 ## Install
 
-Install the npm package with Bun:
+Install kabane one of these ways. The first three install the standalone binary, which carries
+its own Bun, so the Bun prerequisite above does not apply to them; they work from the first
+release that ships binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases).
+Until then, use Bun.
 
 ```bash
-bun add -g kabane
+brew install davidpp/tap/kabane                  # Homebrew (recommended)
+curl -fsSL https://github.com/davidpp/kabane/releases/latest/download/install.sh | sh
+mise use -g github:davidpp/kabane                # mise's GitHub backend
+bun add -g kabane                                # the npm package, with Bun
 kabane --help | head -1
 ```
 
 The last line prints `kabane — local-first tracker for humans and agent runtimes`. If it
-prints `command not found` instead, add `~/.bun/bin` to your PATH. Install globally before
-setup registers coding agents: their MCP entries point at the installed file. To work on
-Kabane itself from source, use the [clone and `bun link` path](../README.md#install).
+prints `command not found` instead, add the directory the install used to your PATH:
+`$(brew --prefix)/bin`, `~/.local/bin` for the installer (it says so when it is missing), or
+`~/.bun/bin`. Install before setup registers coding agents: their MCP entries point at the
+installed file. A Homebrew install registers `$(brew --prefix)/bin/kabane`, which
+`brew upgrade` keeps. To work on Kabane itself from source, use the
+[clone and `bun link` path](../README.md#install).
 
-`bun add -g kabane@beta` installs the current beta, which updates along its own channel
-([beta installs](#beta-installs)).
+Homebrew installs stable releases only. For a beta, run the installer with
+`sh -s -- --version X.Y.Z-beta.N`, use `mise use -g github:davidpp/kabane@X.Y.Z-beta.N`, or
+`bun add -g kabane@beta`, which updates along its own channel ([beta installs](#beta-installs)).
 
-Standalone binaries arrive with the first release that ships binary assets; until then,
-install with Bun as above. From such a release, download its `kabane-<os>-<arch>.tar.gz` and
-`SHA256SUMS` from that [GitHub release](https://github.com/davidpp/kabane/releases), verify and
-extract it following [the README](../README.md#install), and add the extracted directory to
-PATH. macOS arm64/x64 and Linux arm64/x64 are planned; Linux x64 uses Bun's baseline CPU
-target. Keep the extracted directory whole: `kabane update` knows a release by the
-`templates/` directory beside the executable. A binary does not need the Bun prerequisite
-above; git and your chosen harness's runtime requirements still apply.
+The README's [install section](../README.md#install) says what the installer and mise check
+and how to install a release archive by hand. Binaries cover macOS arm64/x64 and Linux
+arm64/x64 with glibc; Linux x64 uses Bun's baseline CPU target. git and your chosen harness's
+runtime requirements still apply.
 
 ## Run `kabane`
 
@@ -358,12 +364,22 @@ a silent UTC.
 
 ## Updating
 
+Each install updates with its own command:
+
+| Installed with | Update with |
+|---|---|
+| Homebrew | `brew upgrade kabane` |
+| the installer, or an extracted release archive | `kabane update` |
+| mise | `mise up github:davidpp/kabane` |
+| `bun add -g` | `kabane update` |
+
 ### Hearing about a release
 
 The board says when a release your install would update to is out: a line over its footer,
-`kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A binary mise
-installed says `run mise up kabane` instead, and an install `kabane update` would refuse says
-`update it the way you installed it`. It is the newest release on your channel and within your
+`kabane <version> is out · run kabane update`, until `esc` or a click on it dismisses it. A
+Homebrew install says `run brew upgrade kabane` instead, a binary mise installed names mise's
+upgrade for the tool as mise knows it (`run mise up github:davidpp/kabane`), and an install
+`kabane update` would refuse says `update it the way you installed it`. It is the newest release on your channel and within your
 major (minor for `0.x`), the one `kabane update --check` names on a binary.
 The board reads the latest release and the betas from
 [GitHub releases](https://github.com/davidpp/kabane/releases), where the binaries download
@@ -420,7 +436,8 @@ Use `--force` or the named doctor repair only when you want to re-point it.
 
 ### Standalone binaries
 
-This applies once a release ships binaries ([install](#install)).
+This applies once a release ships binaries ([install](#install)), to a binary the installer put
+in place or one you extracted yourself.
 
 ```bash
 kabane update --check        # metadata only: the candidate from GitHub releases
@@ -441,9 +458,11 @@ install as it was. The executable needs `templates/` beside it, as extracted fro
 and its directory must be writable; otherwise replace the directory with a verified download
 by hand. Restart running board/MCP sessions afterwards.
 
-When the executable sits under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
-`~/.local/share/mise`), `kabane update` reports the candidate and leaves the file to mise: run
-`mise up kabane`. No tracker DB is opened and no harness entry is rewired.
+When Homebrew or mise owns the executable, `kabane update` reports the candidate and leaves the
+file to them: `brew upgrade kabane` for one in Homebrew's `Cellar/kabane/`, and `mise up <tool>`
+for one under a mise installs directory (`$MISE_DATA_DIR`, `$XDG_DATA_HOME/mise` or
+`~/.local/share/mise`), with the tool named as mise names it (`github:davidpp/kabane`, or
+`kabane` from mise's registry). No tracker DB is opened and no harness entry is rewired.
 
 ### Upgrading: kabane needs Bun 1.4.4
 

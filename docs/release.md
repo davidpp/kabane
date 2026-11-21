@@ -53,6 +53,9 @@ fresh preparation to supply your own public notes.
 After verification it enables GitHub release immutability if disabled, creates an annotated
 `v<selected-version>` tag (honoring configured Git signing), and atomically pushes main plus that tag.
 It never moves an existing tag. A configured signing key may require its own authentication.
+Pushing the tag also starts the Actions [publishing run](#human-publishing-run), which waits for
+the `npm-release` approval: reject that approval when you publish locally, since the local
+route publishes npm-only and the Actions run would then find a conflicting release.
 **Preparation does not publish, run npm login, replace your installed Kabane, or open tracker
 config/data.** These source/tag/settings writes are authorization granted by the human
 running the command; agents must not execute the release flow against real accounts.
@@ -200,8 +203,17 @@ byte verification, no-overwrite and immutable finalization checks. It never rebu
 The local release command still produces npm-only releases; use Actions for all-platform
 binary releases. Older npm-only retained manifests remain valid for partial-release recovery.
 Do not add binaries to an already published immutable release or replace retained bytes.
-Binary self-update is `kabane update` ([standalone binaries](getting-started.md#standalone-binaries));
-an installer, Homebrew and a mise registry entry are separate work.
+Binary self-update is `kabane update` ([standalone binaries](getting-started.md#standalone-binaries)).
+
+A release with binaries also carries `install.sh`, the curl installer copied from
+`packaging/install.sh` at assembly; the manifest records its SHA-256 (`installerSha256`) and
+publication verifies and uploads it like the archives. `SHA256SUMS` keeps listing only the
+archives. Preparation also renders `kabane.rb` from `packaging/homebrew/kabane.rb.tmpl`
+(`scripts/release-formula.ts`): one url and SHA-256 per platform archive, installed under
+`libexec` with `bin/kabane` linked to it. It travels in the Actions artifact, not in the
+release. mise's `github:davidpp/kabane` backend takes the release archives as they are: it
+picks `kabane-<os>-<arch>.tar.gz`, checks it against `SHA256SUMS` and strips the `kabane/`
+directory.
 
 Local host verification (no publishing):
 
@@ -306,11 +318,15 @@ restore a backup taken before the migration, which loses what changed since.
    GitHub-hosted runners. Explicitly permit **direct `npm publish`**: current npm defaults
    newly configured publishers to staged-publish permission only. No long-lived token
    fallback is provided. Public package/repository are needed for automatic provenance.
-4. Only after checking those settings, set environment variable
+4. For the tap: add a deploy key with write access to `davidpp/homebrew-tap`, and store its
+   private half as the repository secret **`HOMEBREW_TAP_DEPLOY_KEY`** in `davidpp/kabane`.
+   Without it, the `homebrew` job fails after a stable release and nothing else changes; rerun
+   it once the secret exists.
+5. Only after checking those settings, set environment variable
    **`RELEASE_SETUP_CONFIRMED=true`** in `npm-release`. This is a human assertion, not
    programmatic proof that reviewers, tag protection, immutability or OIDC are configured.
    `npm whoami` is not an OIDC permission check.
-5. Review compatibility and prepare notes, linking each upgrade section under
+6. Review compatibility and prepare notes, linking each upgrade section under
    [Updating](getting-started.md#updating) that this release adds. The pipeline compares the existing tag's commit
    but does not authenticate a maintainer signing key; signed-tag review is a human step.
 
@@ -380,16 +396,20 @@ Bun/npm versions, archive SHA256/SHA512 and notes SHA256. Dirty or branch artifa
 be checked but are nonpromotable. Remove your disposable directory afterward; preserve it
 on failure for investigation. Never substitute a rebuilt archive in partial-release recovery.
 
-GitHub's **verified release** workflow is `workflow_dispatch` only; `publish` defaults
-false. Branch verification is allowed. A human may run nonpublishing verification on an
+GitHub's **verified release** workflow runs on `workflow_dispatch`, where `publish` defaults
+false, and on a pushed `vX.Y.Z` or `vX.Y.Z-beta.N` tag, which takes the publishing path below.
+Branch verification is allowed. A human may run nonpublishing verification on an
 existing tag, inspect the retained Actions artifact and review its notes/checksums. It
 executes no `npm publish` (including `--dry-run`), draft/tag/release writes or OIDC exchange.
 This tests artifact preparation/transfer/install, not publisher authentication.
 
 ## Human publishing run
 
-Dispatch on the **existing `v<version>` tag ref**, with `publish=true` and reviewed public
-notes. Do not dispatch a branch and substitute a different checkout ref. The workflow:
+Push the `v<version>` tag, or dispatch on the **existing `v<version>` tag ref** with
+`publish=true` and reviewed public notes. A pushed tag has no notes input, so its release carries
+the default notes, a placeholder that names the source commit and asks for review; dispatch
+when the release needs written notes. Do not
+dispatch a branch and substitute a different checkout ref. The workflow:
 
 1. Frozen install and full gates on Linux; build/pack one release archive, inspect and
    upload that immutable Actions artifact identity.
@@ -406,9 +426,20 @@ notes. Do not dispatch a branch and substitute a different checkout ref. The wor
 5. Publish the **archive path**, not dist, using npm OIDC; bounded registry readback confirms
    integrity/stable-tag state. Publish the draft only afterward; verify final asset hashes
    and immutability. Notes/title can still be edited on GitHub, so the reviewed notes file
-   is also an immutable asset. Checksums establish bytes, not independently trusted origin.
+   is also an immutable asset. Checksums establish bytes, not independently trusted origin;
+   the `attest` job, which runs before publication on every run in `davidpp/kabane`, records
+   build provenance for the npm archive, the binaries and `install.sh` with
+   `actions/attest-build-provenance`, which `install.sh` checks with `gh attestation verify`.
+6. For a stable release, the `homebrew` job downloads the release's `SHA256SUMS` from its public
+   download URL, which answers only once the GitHub release is final, and requires it to
+   match this run's. It then commits this run's `kabane.rb` to `davidpp/homebrew-tap` as
+   `Formula/kabane.rb`, with no commit when it already matches. It writes with the
+   `HOMEBREW_TAP_DEPLOY_KEY` deploy key, never the repository token. A beta leaves the tap
+   alone. The publish job finalizes GitHub only after npm, so today a failed npm publish
+   also holds the tap back; the tap job itself reads nothing from npm.
 
-Only publication has GitHub contents-write/id-token-write permissions. Its package-wide
+Only publication has GitHub contents-write permission; publication and attestation have
+id-token-write. Its package-wide
 concurrency group does not cancel an in-flight publication and is separate from superseding
 CI gates. Pending runs can be replaced; external publishers are not locked by Actions.
 Tag protection and human setup remain important because the remote services are not an

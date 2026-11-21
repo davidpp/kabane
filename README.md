@@ -31,32 +31,49 @@ your own.
 
 ## Install
 
-Install the npm package with [Bun](https://bun.sh) 1.4.4 or later (not Node):
+Releases ship a standalone binary, which includes Bun, for macOS (`darwin-arm64`, `darwin-x64`)
+and Linux (`linux-x64`, `linux-arm64`, glibc), starting with the first release that carries
+binaries on [GitHub Releases](https://github.com/davidpp/kabane/releases). Until then, install
+the npm package with Bun. Any one of these puts `kabane` on PATH:
 
 ```bash
-bun add -g kabane           # `kabane` on PATH, in ~/.bun/bin
+brew install davidpp/tap/kabane                  # Homebrew (recommended)
+curl -fsSL https://github.com/davidpp/kabane/releases/latest/download/install.sh | sh
+mise use -g github:davidpp/kabane                # mise's GitHub backend
+bun add -g kabane                                # npm package; needs Bun 1.4.4 or later (not Node)
 kabane --version
 ```
 
-`bun add -g kabane@beta` installs the current beta instead.
+- **Homebrew** installs the latest stable release from the [`davidpp/tap`](https://github.com/davidpp/homebrew-tap)
+  tap, whose formula this repository's release workflow commits and pins by SHA-256. In a
+  Brewfile: `tap "davidpp/tap"` and `brew "davidpp/tap/kabane", trusted: true` (`brew bundle`
+  refuses formulae from a third-party tap it has not been told to trust).
+- **The installer** downloads the archive for this machine and the release's `SHA256SUMS`,
+  refuses the archive on a mismatch, and checks its build provenance with
+  `gh attestation verify` when an authenticated `gh` is on PATH. It installs the release
+  directory as `~/.local/share/kabane` and links `~/.local/bin/kabane`. `sh -s -- --version
+  X.Y.Z-beta.N` installs a beta; `--prefix <dir>` and `--bin <dir>` choose other places.
+- **mise** downloads the same archive for your platform and checks it against `SHA256SUMS`.
+- **Bun**: `bun add -g kabane@beta` installs the current beta instead. `bunx kabane` runs it
+  once without installing; install it globally before you let setup wire your coding agents,
+  since their MCP entries point at the installed file.
 
-`bunx kabane` runs it once without installing. Install it globally before you let setup
-wire your coding agents: their MCP entries point at the installed file.
+Each install updates with its own command; the board's update notice names it:
 
-Standalone binaries will be available starting with the first release that ships binary assets
-on [GitHub Releases](https://github.com/davidpp/kabane/releases), for macOS (`darwin-arm64`,
-`darwin-x64`) and Linux (`linux-x64`, `linux-arm64`). From such a release, download its
-`kabane-<os>-<arch>.tar.gz` and `SHA256SUMS` from the same release. Verify the archive with
-`sha256sum --check --ignore-missing SHA256SUMS` on Linux, or
-`shasum -a 256 --check --ignore-missing SHA256SUMS` on macOS, then extract with
-`tar -xzf kabane-<os>-<arch>.tar.gz`. Keep the whole extracted `kabane/` directory together:
-`kabane update` knows an extracted release by the `templates/` directory beside the executable,
-empty now that kabane ships no template. Put that directory on PATH or symlink its
-`kabane` executable into a directory already on PATH. Run `kabane --version` to check.
+| Installed with | Update with |
+|---|---|
+| Homebrew | `brew upgrade kabane` |
+| the installer, or an extracted release archive | `kabane update` |
+| mise | `mise up github:davidpp/kabane` |
+| `bun add -g` | `kabane update` |
+
+To install a release archive by hand, download its `kabane-<os>-<arch>.tar.gz` and `SHA256SUMS`
+from the same release, check it with `shasum -a 256 --check --ignore-missing SHA256SUMS`
+(`sha256sum` on Linux) and extract it with `tar -xzf`. Keep the extracted `kabane/` directory
+whole: `kabane update` knows an extracted release by the `templates/` directory beside the
+executable. Put that directory on PATH or symlink its `kabane` into one that is.
 The binary includes Bun; git is still used for project scopes, and coding harness adapters
 still need their own runtime (currently Node/npx). Windows and notarization are not provided.
-`kabane update` replaces the executable and `templates/` in place with a verified newer
-release; a binary under a mise installs directory is left to `mise up kabane`.
 
 To work on kabane itself, run it from a clone instead:
 
@@ -71,7 +88,7 @@ version (or select `--bump patch|minor|major`, or `--version X.Y.Z-beta.N` for a
 `beta`), then authenticate to npm and resume with `bun run release:local publish`. Publication reuses the selected version and original bytes.
 See [`docs/release.md`](docs/release.md) for retained artifacts, recovery and the optional Actions route.
 For a standalone binary, `kabane update --check` reports a candidate from GitHub releases,
-and `kabane update` downloads that release's archive for your platform, verifies it against
+and, unless Homebrew or mise owns the install, `kabane update` downloads that release's archive for your platform, verifies it against
 its `SHA256SUMS`, checks that the new executable prints the candidate version, then renames it
 and `templates/` over the real executable (symlinks followed); any failure before that leaves
 the old install as it was. For a positively verified hoisted Bun global registry install,
@@ -81,7 +98,7 @@ install follows `latest` (npm's for a Bun install, GitHub's for a binary); a bet
 the higher of `beta` and `latest`. Updates
 stay within major, or minor for `0.x`; source links, local tarballs and unknown/missing-bin
 layouts refuse replacement. The board shows `kabane <version> is out` when that candidate
-exists, with what your install runs to take it: `kabane update`, or `mise up kabane`. It reads GitHub releases at most once a day and installs nothing;
+exists, with what your install runs to take it: `kabane update`, `brew upgrade kabane` or `mise up <tool>`. It reads GitHub releases at most once a day and installs nothing;
 `kabane config set updates.check false` turns it off. `kabane mcp` and other commands never
 check, and `kabane update` opens no tracker DB and rewires no MCP entry.
 After an update, `kabane doctor` reports what kabane wrote that the new version has moved past:
