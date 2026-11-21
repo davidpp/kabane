@@ -19,8 +19,8 @@ const ROOT = resolve(import.meta.dir, "..");
 const REPOSITORY = "davidpp/kabane";
 export const RELEASE_HELP = `Usage: bun run release [--version X.Y.Z[-beta.N] | --bump auto|major|minor|patch] [--notes-file path] [--dry-run]
 
-From a clean main that matches origin: run the gate, set packages/cli/package.json to the
-version and commit it with bun.lock, tag v<version>, push main and the tag, start release.yml
+From a clean main that matches origin: set packages/cli/package.json to the version, run the
+gate on that tree, commit it with bun.lock, tag v<version>, push main and the tag, start release.yml
 with publish=true on that tag, and watch the run. The run publishes the GitHub release, its
 four binaries, the installer and SHA256SUMS, and for a stable version the davidpp/tap formula.
 Nothing goes to npm, so no npm login.
@@ -78,8 +78,9 @@ export const parseReleaseArgs = (argv: string[]): Result<ReleaseArgs> => {
 type Step = { say: string; argv: string[] };
 
 /**
- * Every write a release makes, in order, after the version is written to the CLI manifest. The
- * dispatch names the tag as its ref, so the run publishes exactly the tagged commit.
+ * Every step a release runs, in order, once the version is written to the CLI manifest: the gate
+ * runs on that tree, which is the one the tag names. The dispatch names the tag as its ref, so
+ * the run publishes exactly the tagged commit.
  */
 export const releaseSteps = (version: string, notes: string): Step[] => {
 	const tag = `v${version}`;
@@ -88,6 +89,10 @@ export const releaseSteps = (version: string, notes: string): Step[] => {
 			say: "Refresh bun.lock for the new CLI version",
 			argv: ["bun", "install", "--lockfile-only", "--ignore-scripts"],
 		},
+		...["check", "typecheck", "test"].map((gate) => ({
+			say: "Run the gate",
+			argv: ["bun", "run", gate],
+		})),
 		{
 			say: "Stage the version",
 			argv: ["git", "add", "--", "packages/cli/package.json", "bun.lock"],
@@ -357,7 +362,6 @@ const printPlan = (
 	print: (line: string) => void,
 ): Result<string> => {
 	print(`kabane ${version}, from ${root}. A real run would:`);
-	print("  Run the gate: bun run check, bun run typecheck, bun run test");
 	print(`  Set packages/cli/package.json to ${version}`);
 	for (const step of steps)
 		print(
@@ -379,21 +383,13 @@ const printPlan = (
 	return fail("Dry run: preconditions unmet; nothing was run.");
 };
 
-/** The gate, the version commit, the tag, the push and the dispatch, stopping at the first failure. */
+/** The version, its gate, commit, tag, push and dispatch, stopping at the first failure. */
 const cutRelease = async (
 	version: string,
 	steps: Step[],
 	root: string,
 	env: NodeJS.ProcessEnv,
 ): Promise<Result<void>> => {
-	for (const gate of ["check", "typecheck", "test"]) {
-		const checked = await runReleaseInteractive(
-			[process.execPath, "run", gate],
-			root,
-			env,
-		);
-		if (!checked.ok) return checked;
-	}
 	const manifest = join(root, "packages/cli/package.json");
 	const source = JSON.parse(readFileSync(manifest, "utf8")) as Record<
 		string,

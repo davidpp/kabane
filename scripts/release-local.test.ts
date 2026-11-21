@@ -32,12 +32,15 @@ test("a release takes one version selector, notes and a dry run", () => {
 		expect(parseReleaseArgs(argv).ok).toBe(false);
 });
 
-test("the steps commit the version with its lock, push main and the tag at once, and dispatch on the tag", () => {
+test("the steps gate the versioned tree, commit it with its lock, push main and the tag at once, and dispatch on the tag", () => {
 	const steps = releaseSteps("1.0.0", "# kabane 1.0.0\n").map(
 		(step) => step.argv,
 	);
 	expect(steps).toEqual([
 		["bun", "install", "--lockfile-only", "--ignore-scripts"],
+		["bun", "run", "check"],
+		["bun", "run", "typecheck"],
+		["bun", "run", "test"],
 		["git", "add", "--", "packages/cli/package.json", "bun.lock"],
 		["git", "commit", "-m", "chore: release kabane 1.0.0"],
 		["git", "tag", "-a", "v1.0.0", "-m", "kabane 1.0.0"],

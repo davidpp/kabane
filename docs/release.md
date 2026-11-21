@@ -34,8 +34,8 @@ Before it writes anything, the command checks:
 - the `release` environment exists. A job naming a missing environment would create it,
   without protection and without the tap's deploy key.
 
-Then it runs `bun run check`, `typecheck` and `test`, sets the version in
-`packages/cli/package.json`, refreshes `bun.lock`, commits both as
+Then it sets the version in `packages/cli/package.json`, refreshes `bun.lock`, runs
+`bun run check`, `typecheck` and `test` on that tree, commits both files as
 `chore: release kabane <version>`, creates the annotated tag `v<version>` (honoring configured
 Git signing), pushes `main` and the tag in one atomic push, dispatches `release.yml` on the tag
 with `publish=true` and the release notes, and watches that run until it ends, printing its
@@ -52,7 +52,8 @@ example
 [settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)).
 
 A step that fails stops the command and names it; the steps before it stay done. A failed gate
-leaves nothing changed. A failed publishing run leaves `main` and the tag pushed: rerun its
+leaves the version edit uncommitted: `git checkout -- packages/cli/package.json bun.lock` undoes
+it. A failed publishing run leaves `main` and the tag pushed: rerun its
 failed jobs from the run page, or fix the cause and release the next version. Nothing moves or
 deletes a tag.
 
