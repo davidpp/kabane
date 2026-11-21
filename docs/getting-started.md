@@ -394,7 +394,7 @@ it off:
 kabane config set updates.check false
 ```
 
-Before the board opens, `kabane` and `kabane board` ask once about the same release, as a plain
+Before the board opens, `kabane` and `kabane board` ask about the same release, as a plain
 question: `kabane 1.0.1 is out (you have 1.0.0). Upgrade now with "brew upgrade kabane"? [Y]es /
 [n]o, continue / [s]kip this version`. `y` or Enter runs that command, its output on screen, and
 opens the board on the new version; if it fails, kabane says how and opens the board on the
@@ -402,8 +402,8 @@ version you have. `n` opens the board and the line over its footer stays away fo
 `s` records the version in `update-check.json`, and kabane names it neither here nor on the board
 again; a later release is offered as usual. An install kabane cannot update names the release
 page instead. It asks only at a terminal, never under `CI`, never from a source checkout or a main
-build, and not at all with `updates.check` false. It waits at most 1.5 seconds on GitHub; a slower
-answer reaches the board's line instead.
+build, and not at all with `updates.check` false. It gives GitHub 1.5 seconds a request rather than 5; a
+slower answer reaches the board's line instead.
 
 ### Keeping kabane current
 

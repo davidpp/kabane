@@ -147,16 +147,25 @@ export namespace UpgradeOffer {
 		if (said === "skip") await UpdateNotice.skip(home, release);
 		const upgrade = said === "yes" ? command(install) : undefined;
 		if (upgrade === undefined) return { kind: "board", offered: release };
-		const ran = Bun.spawnSync(upgrade, {
-			stdio: ["inherit", "inherit", "inherit"],
-			env,
-		});
-		const next = ran.exitCode === 0 ? Self.upgraded() : null;
+		// A manager that is not on PATH throws rather than exits.
+		const ran = trySync(() =>
+			Bun.spawnSync(upgrade, {
+				stdio: ["inherit", "inherit", "inherit"],
+				env,
+			}),
+		);
+		if (!ran.ok)
+			return stay(
+				`"${upgrade.join(" ")}" did not start (${ran.error.message})`,
+				release,
+			);
+		const { exitCode, signalCode } = ran.value;
+		const next = exitCode === 0 ? Self.upgraded() : null;
 		if (next === null)
 			return stay(
-				ran.exitCode === 0
+				exitCode === 0
 					? "Upgraded, but no kabane to start was found"
-					: `"${upgrade.join(" ")}" exited with ${ran.exitCode ?? ran.signalCode}`,
+					: `"${upgrade.join(" ")}" exited with ${exitCode ?? signalCode}`,
 				release,
 			);
 		const started = trySync(() => {
