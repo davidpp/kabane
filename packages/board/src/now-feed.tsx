@@ -157,6 +157,10 @@ export const NowFeed = ({
 		() => (live ? nowLines(events, lanes) : trace(card, events)),
 		[live, events, lanes, card],
 	);
+	const hues = useMemo(
+		() => Theme.liveHues(theme, card.lanes ?? lanes, lanes),
+		[theme, card.lanes, lanes],
+	);
 	const tags = shortTags(card, lanes.length > 1 ? lanes : EMPTY);
 	const cols = Math.max(0, ...Array.from(tags.values(), (tag) => tag.length));
 	return (
@@ -196,7 +200,7 @@ export const NowFeed = ({
 					if (tag && line.lane)
 						parts.push({
 							text: tag.padEnd(cols) + " ",
-							fg: Theme.liveHue(theme, lanes, line.lane),
+							fg: hues.get(line.lane) ?? theme.secondary,
 						});
 					const glyph = running
 						? spinnerFrame

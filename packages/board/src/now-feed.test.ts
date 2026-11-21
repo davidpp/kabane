@@ -56,26 +56,32 @@ it("updates each fold at its first call across other lanes, until its own lane s
 });
 
 it("only live sessions consume the six distinct series hues", () => {
-	const lanes = ["g", "h", "i", "j", "k", "l"];
-	expect(lanes.map((lane) => Theme.liveHue(Theme.DARK, lanes, lane))).toEqual([
-		...Theme.DARK.series,
-	]);
-	expect(Theme.liveHue(Theme.DARK, lanes, "a")).toBe(Theme.DARK.secondary);
+	const lanes = ["a", "g", "h", "i", "j", "k", "l", "m"];
+	const live = lanes.slice(1);
+	const hues = Theme.liveHues(Theme.DARK, lanes, live);
+	expect(hues.has("a")).toBe(false);
+	expect(new Set(live.slice(0, 6).map((lane) => hues.get(lane))).size).toBe(6);
+	expect(hues.get("m")).toBe(Theme.DARK.secondary);
 });
 
-it("assigns hues in claim order as newer sessions join", () => {
-	const lanes = ["ended", "first", "second", "third"];
-	for (const liveLanes of [
+it("keeps a live session's hue while others start and end", () => {
+	const lanes = ["first", "second", "third", "fourth"];
+	const steps = [
 		["first"],
 		["second", "first"],
-		["third", "second", "first"],
-	]) {
+		["third", "second"],
+		["fourth", "third"],
+	];
+	const seen = new Map<string, Set<string | undefined>>();
+	for (const liveLanes of steps) {
 		const ordered = orderedLiveLanes({ lanes, liveLanes });
-		expect(Theme.liveHue(Theme.DARK, ordered, "first")).toBe(
-			Theme.seriesOf(Theme.DARK, 0),
-		);
 		expect(ordered).toEqual(liveLanes.toReversed());
+		const hues = Theme.liveHues(Theme.DARK, lanes, ordered);
+		expect(new Set(hues.values()).size).toBe(ordered.length);
+		for (const lane of ordered)
+			seen.set(lane, (seen.get(lane) ?? new Set()).add(hues.get(lane)));
 	}
+	for (const hues of seen.values()) expect(hues.size).toBe(1);
 });
 
 it("traces timed steps from the card and run events from completion onwards", () => {
