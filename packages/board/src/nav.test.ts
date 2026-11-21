@@ -765,6 +765,41 @@ describe("status keys in the detail view target the open task", () => {
 		});
 	});
 
+	it("d marks the open task done, undoably, and the detail stays on it", () => {
+		const done = reduce(open, { name: "d" });
+		expect(done.effect).toEqual({
+			type: "markDone",
+			id: "b",
+			notice: "MILL-1 done",
+		});
+		expect(done.state.view).toEqual({ type: "detail", taskId: "b" });
+		expect(done.state.undo).toMatchObject([
+			{ id: "b", patch: { state: "next" } },
+		]);
+	});
+
+	it("[/] step the open task's state", () => {
+		expect(reduce(open, { name: "]" }).effect).toMatchObject({
+			type: "setState",
+			id: "b",
+			state: "in_progress",
+		});
+		expect(reduce(open, { name: "[" }).effect).toMatchObject({
+			type: "setState",
+			id: "b",
+			state: "inbox",
+		});
+	});
+
+	it("d and [/] do nothing while the open task is not loaded", () => {
+		const unloaded = {
+			...open,
+			view: { type: "detail" as const, taskId: "gone" },
+		};
+		for (const name of ["d", "[", "]"])
+			expect(reduce(unloaded, { name }).effect).toEqual({ type: "none" });
+	});
+
 	it("v reviews the open task when flagged, no-ops with a flash otherwise", () => {
 		expect(reduce(open, { name: "v" }).effect).toMatchObject({
 			type: "markReviewed",
