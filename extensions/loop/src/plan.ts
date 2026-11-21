@@ -84,6 +84,17 @@ export namespace LoopPlan {
 		severity: severityOf(task),
 	});
 
+	// The one work-node rule every read of a plan shares: an issue with no work child is its own work
+	// node, first, even when it is itself a finding someone chose to run, since it is what the run was
+	// started on.
+	const ownWork = (parent: Task, nodes: readonly Node[]): boolean =>
+		parent.kind === "issue" && !nodes.some(isWork);
+
+	const target = (parent: Task, blockedBy: string[]): Node => ({
+		...node(parent, blockedBy),
+		finding: false,
+	});
+
 	// A parent with more children than this is not a loop's plan; it is a backlog.
 	const CHILD_LIMIT = 500;
 
@@ -110,14 +121,10 @@ export namespace LoopPlan {
 			if (!links.ok) return links;
 			nodes.push(node(task, blockersOf(task.id, links.value)));
 		}
-		// Work, even when it is itself a finding someone chose to run: it is what the run was started on.
-		if (parent.value.kind === "issue" && !nodes.some(isWork)) {
+		if (ownWork(parent.value, nodes)) {
 			const links = await record.links({ id: parentId });
 			if (!links.ok) return links;
-			nodes.unshift({
-				...node(parent.value, blockersOf(parentId, links.value)),
-				finding: false,
-			});
+			nodes.unshift(target(parent.value, blockersOf(parentId, links.value)));
 		}
 		const inside = new Set(nodes.map((n) => n.task.id));
 		const outside = new Map<string, Task>();
@@ -132,20 +139,28 @@ export namespace LoopPlan {
 	};
 
 	/**
-	 * The parent's children as nodes, without their links: what a run's steps count from, at one
-	 * read where `load` takes one per child.
+	 * The plan's nodes without their links, the target included as `load` includes it: what a run's
+	 * steps count from, at two reads where `load` takes one per child.
 	 */
 	export const children = async (
 		record: Host.Record,
 		parentId: string,
 	): Promise<Result<Node[]>> => {
+		const parent = await record.get({ id: parentId });
+		if (!parent.ok) return parent;
 		const listed = await record.list({
 			parentTaskId: parentId,
 			includeClosed: true,
 			includeDeferred: true,
 			limit: CHILD_LIMIT,
 		});
-		return listed.ok ? ok(listed.value.map((task) => node(task, []))) : listed;
+		if (!listed.ok) return listed;
+		const nodes = listed.value.map((task) => node(task, []));
+		return ok(
+			parent.value && ownWork(parent.value, nodes)
+				? [target(parent.value, []), ...nodes]
+				: nodes,
+		);
 	};
 
 	/**

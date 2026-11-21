@@ -11,8 +11,12 @@ import type {
 	ActivityStep,
 	ActivityStepState,
 } from "@kabane/extension";
-import { type ColorInput, TextAttributes } from "@opentui/core";
-import type { ReactNode } from "react";
+import {
+	type BoxRenderable,
+	type ColorInput,
+	TextAttributes,
+} from "@opentui/core";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { elapsed, took } from "./elapsed";
 import { RunMap } from "./run-map";
 import { type Theme, useTheme } from "./theme";
@@ -30,7 +34,7 @@ const MIN_REASON_COLS = 12;
 // A left issue with no short id shows this much of its id.
 const ID_COLS = 10;
 
-type Cell = { text: string; fg: ColorInput; bold?: boolean };
+export type Cell = { text: string; fg: ColorInput; bold?: boolean };
 // One drawn row and the keys of the map rows it stands for: one, or several finished steps that
 // share it. A key holds `+` in a grouped session's lane, so keys are compared whole.
 type Line = { keys: readonly string[]; cells: Cell[] };
@@ -49,7 +53,8 @@ const fitResult = (result: string, room: number): string => {
 	return cut(parts.join(" · "), room);
 };
 
-const timeOf = (
+/** A step or session's time: how long it took once over, how long it has run while it runs. */
+export const timeOf = (
 	item: Pick<ActivityStep, "state" | "startedAt" | "durationMs">,
 ): string =>
 	item.durationMs !== undefined
@@ -58,7 +63,8 @@ const timeOf = (
 			? elapsed(item.startedAt)
 			: "";
 
-const glyphOf = (
+/** A step's or session's state as its glyph; a live session spins, a live step holds a still `●`. */
+export const glyphOf = (
 	state: ActivityStepState,
 	session: boolean,
 	spinnerFrame: string,
@@ -315,12 +321,13 @@ const entryKey = (entry: Entry): string =>
 
 // The entries a window of `max` rows keeps around the cursor, with how many it left out each side:
 // the steps and what was left share it, so a long list of findings never puts the cursor below the
-// screen.
+// screen. A side with nothing left out spends no row on its marker.
 const windowed = (
 	entries: readonly Entry[],
 	cursor: string | undefined,
 	max: number,
 ): { shown: readonly Entry[]; above: number; below: number } => {
+	if (max <= 0) return { shown: [], above: 0, below: 0 };
 	if (entries.length <= max) return { shown: entries, above: 0, below: 0 };
 	const at = Math.max(
 		0,
@@ -329,11 +336,18 @@ const windowed = (
 				entry.kind === "line" && entry.line.keys.includes(cursor ?? ""),
 		),
 	);
-	const room = Math.max(1, max - 2);
-	const start = Math.max(
-		0,
-		Math.min(entries.length - room, at - Math.floor(room / 2)),
-	);
+	const startOf = (room: number): number =>
+		Math.max(0, Math.min(entries.length - room, at - Math.floor(room / 2)));
+	if (max < 3) {
+		const start = startOf(max);
+		return { shown: entries.slice(start, start + max), above: 0, below: 0 };
+	}
+	let room = max - 1;
+	let start = startOf(room);
+	if (start > 0 && start + room < entries.length) {
+		room = max - 2;
+		start = startOf(room);
+	}
 	return {
 		shown: entries.slice(start, start + room),
 		above: start,
@@ -345,14 +359,16 @@ const MapLine = ({
 	line,
 	selected,
 	theme,
+	surface,
 	onRow,
 }: {
 	line: Line;
 	selected: boolean;
 	theme: Theme.Tokens;
+	surface: string | undefined;
 	onRow?: (key: string) => void;
 }): ReactNode => {
-	const bg = selected ? theme.surface.selected : undefined;
+	const bg = selected ? theme.surface.selected : surface;
 	return (
 		<text
 			bg={bg}
@@ -368,9 +384,13 @@ const MapLine = ({
 					// Index keys: a row's cells are positional.
 					key={at}
 					bg={bg}
-					// The terminal's own foreground reads on the unpainted background; on the selected
-					// surface the Selection Rule wants it explicit.
-					fg={selected && cell.fg === theme.defaultFg ? theme.text : cell.fg}
+					// The terminal's own foreground reads on the unpainted background; on a painted one
+					// (the selected row, the split's raised column) it has to be explicit.
+					fg={
+						bg !== undefined && cell.fg === theme.defaultFg
+							? theme.text
+							: cell.fg
+					}
 					attributes={cell.bold ? TextAttributes.BOLD : 0}
 				>
 					{cell.text}
@@ -380,9 +400,17 @@ const MapLine = ({
 	);
 };
 
-const More = ({ count, theme }: { count: number; theme: Theme.Tokens }) =>
+const More = ({
+	count,
+	theme,
+	surface,
+}: {
+	count: number;
+	theme: Theme.Tokens;
+	surface: string | undefined;
+}) =>
 	count > 0 ? (
-		<text fg={theme.muted} style={{ height: 1, flexShrink: 0 }}>
+		<text bg={surface} fg={theme.muted} style={{ height: 1, flexShrink: 0 }}>
 			{`   … ${count} more`}
 		</text>
 	) : null;
@@ -391,23 +419,32 @@ export const RunMapView = ({
 	card,
 	view,
 	asking,
+	asked,
 	width,
 	maxRows,
 	spinnerFrame,
+	surface,
 	onRow,
+	onLeftShown,
 }: {
 	card: RunMap.Card;
 	view: RunMap.View;
 	asking: ReadonlySet<string>;
+	// The lane of the question the tab shows, which the cursor follows.
+	asked?: string;
 	width: number;
 	// The rows the steps and what was left may take, the cursor kept in sight within them.
 	maxRows: number;
 	spinnerFrame: string;
+	// The painted surface the map sits on, if any (the split's raised column).
+	surface?: string;
 	onRow?: (key: string) => void;
+	// Once the window, as laid out, shows a line of what the card left for the human.
+	onLeftShown?: () => void;
 }): ReactNode => {
 	const theme = useTheme();
 	const rows = RunMap.rows(card, view);
-	const cursor = RunMap.cursor(card, view, asking);
+	const cursor = RunMap.cursor(card, view, asked);
 	// The gutter's three cells come out of the row, which stops at MAX_COLS so a wide pane keeps
 	// each result near its time.
 	const inner = Math.max(20, Math.min(width, MAX_COLS) - 3);
@@ -431,13 +468,40 @@ export const RunMapView = ({
 				]
 			: []),
 	];
-	const { shown, above, below } = windowed(entries, cursor, maxRows);
+	// The header, question and footer take their actual height first. Window around the
+	// cursor using the rows flex layout leaves after the feed has its minimum; until the layout
+	// has said, `maxRows`.
+	const [laidOut, setHeight] = useState<number | undefined>(undefined);
+	const { shown, above, below } = windowed(entries, cursor, laidOut ?? maxRows);
+	// What the card left counts as seen once a line of it is in the window the layout leaves, not in
+	// the first guess at it.
+	const leftShown =
+		laidOut !== undefined &&
+		shown.some((entry) => entry.kind === "line" && left.includes(entry.line));
+	const reportRef = useRef(onLeftShown);
+	reportRef.current = onLeftShown;
+	useEffect(() => {
+		if (leftShown) reportRef.current?.();
+	}, [leftShown]);
 	const issues = (card.left ?? []).filter(
 		(item) => item.taskId !== undefined || item.taskShortId !== undefined,
 	).length;
 	return (
-		<box style={{ flexDirection: "column", flexShrink: 0 }}>
-			<More count={above} theme={theme} />
+		<box
+			style={{
+				flexDirection: "column",
+				// A basis, not a height: OpenTUI drops a box's shrink once its numeric height changes, and
+				// the map has to give way to the feed and the footer.
+				flexBasis: Math.min(entries.length, maxRows),
+				flexShrink: 1,
+				minHeight: 0,
+				overflow: "hidden",
+			}}
+			onSizeChange={function (this: BoxRenderable) {
+				setHeight(this.height);
+			}}
+		>
+			<More count={above} theme={theme} surface={surface} />
 			{shown.map((entry) =>
 				entry.kind === "line" ? (
 					<MapLine
@@ -445,22 +509,26 @@ export const RunMapView = ({
 						line={entry.line}
 						selected={cursor !== undefined && entry.line.keys.includes(cursor)}
 						theme={theme}
+						surface={surface}
 						onRow={onRow}
 					/>
 				) : entry.kind === "gap" ? (
-					<text key="gap" style={{ height: 1, flexShrink: 0 }}>
+					<text key="gap" bg={surface} style={{ height: 1, flexShrink: 0 }}>
 						{" "}
 					</text>
 				) : (
-					<text key="heading" style={{ height: 1, flexShrink: 0 }}>
-						<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
+					<text key="heading" bg={surface} style={{ height: 1, flexShrink: 0 }}>
+						<span
+							fg={surface === undefined ? theme.defaultFg : theme.text}
+							attributes={TextAttributes.BOLD}
+						>
 							{" left for you"}
 						</span>
 						{issues > 0 ? <span fg={theme.muted}>{` · ${issues}`}</span> : null}
 					</text>
 				),
 			)}
-			<More count={below} theme={theme} />
+			<More count={below} theme={theme} surface={surface} />
 		</box>
 	);
 };

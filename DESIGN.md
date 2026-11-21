@@ -117,7 +117,9 @@ sleek pass on the board: keep what explained a decision, drop what had to be for
 replace the metaphor if it stops earning its keep.*
 
 **Key Characteristics:**
-- Forty columns is the design target; wider panes get more room, never a different layout.
+- Forty columns is the tracker's design target; wider panes get more room, never a different
+  layout. A run's card tab is opened to watch, so its home is a wide terminal (200×50): from 160
+  columns it splits in two, with the same regions and keys, and forty stays a checked fallback.
 - No lines. Background tone separates regions; herdr draws the frames.
 - Hue is meaning, contrast is time.
 - One accent, and it always means a human is needed.
@@ -173,7 +175,11 @@ which is why the `-light` ramp has grays of its own rather than reusing the dark
 - **Session tags** (`Theme.seriesOf`): six categorical hues for telling sources apart, a lane's
   chip and the tag on each of its lines in a card's stream. Cyan, magenta, yellow, violet, teal
   and pink, a step darker on a light terminal; none is a status hue or the accent, so a tag never
-  reads as a state. A lane keeps its hue by its place in the card's list.
+  reads as a state. In a map's `now` feed, only live sessions take a series slot, and a session
+  keeps its slot while others start and end, even when the session whose slot it gave way to ends
+  (`Theme.liveSlots`); a freed slot goes to a session that starts later. Their short names carry
+  identity with colour off and past six concurrent sessions. A single session needs no tag. On a card with
+  lane chips, a lane keeps its hue by its place in the card’s list.
 
 ### Named Rules
 **The Cocked Strip Rule.** The accent means a human is needed, and it is never used for
@@ -303,7 +309,7 @@ against every glyph already here.
 | `⊘` | the detail's trail: a blocker still open | accent |
 | `⚙` `▶` `·` `$` | transcript: a tool call nothing said the end of, phase, progress, cost | muted, working, muted, muted |
 | spinner `✓` `✗` | transcript: a tool call running, ended, failed (its row recedes: a check is muted) | working, muted, failed |
-| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open; a running call spins the group glyph | muted, working |
+| `▸` `▾` | transcript: a run of tool calls folded into one row, closed and open, timed from its first start to its last end so calls side by side count once, in the log and in `now` alike; a running call spins the group glyph | muted, working |
 | `!` | transcript: a harness's notice by its severity, or a loop's warning; a warning in the accent, since the session is not running as asked, an error in the failed hue, information muted | accent, failed, muted |
 
 ### Footer
@@ -325,8 +331,9 @@ against every glyph already here.
 - **Motion:** only the tab on screen animates its spinner. A running card on another tab
   shows the still `●`. The glyph reads the state the tab's own poll last saw, so it stops the
   moment the run row says the run is over.
-- **Left for you:** a finished card that left issues for the human shows the accent `?` as its
-  glyph until its tab has been on screen.
+- **Left for you:** a finished card that left anything for the human (an issue, a kept branch)
+  shows the accent `?` as its glyph until its map has had a line of that list on screen; a short
+  pane that counts it under `… n more` has not shown it.
 
 ### Run map
 - **What:** a card tab whose card has steps opens on its map, under the run row: one row per
@@ -338,10 +345,14 @@ against every glyph already here.
   them), `✓` done, `○` to come, `✗` failed, `⏹` stopped, and the accent `?` on a session a
   question waits on and on its step, whose result then starts `asks you`.
 - **Cursor:** one row on selected under the Selection Rule, behind a `›`. It starts on and
-  follows the newest live session, or the session that asks, until the human moves it; `f` gives
-  it back to the run. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
+  follows the newest live session, or the session whose question the banner shows, until the human
+  moves it; `f` gives it back to the run, and so does `!`, which also closes a log `enter` opened.
+  Every session a question waits on keeps its `?`; the banner's alone has the cursor, the log and
+  an action aimed at a session. `↑↓` and `j/k` move it, `h/l` fold and open a step, `enter` opens the
   session's log in place of the stream with its name over it, and `esc` closes the log before it
   goes back to the tracker.
+  The footer's `enter` says what it does on the cursor's row (`open issue`, `open` or `fold` a
+  step, `log`, or `pin log` in the split) and is gone where it does nothing.
   `g/G` and `⌃d/⌃u` scroll the stream. The `?` sheet lists what the card runs with after its
   keys, under the card's name: label muted, value in the text color.
 - **Left for you:** on a finished card, a blank row and `left for you · n` as a Label under the
@@ -351,9 +362,24 @@ against every glyph already here.
 - **Fit:** a result gives up whole ` · ` parts from its tail before it is cut with `…`. Under
   sixty columns the time column goes (a row with no result keeps its time), and the finished
   steps the cursor is not on share rows, as many names to a row as fit:
-  `✓ implement gates triage review`. The map and its left-for-you list take at most half the tab's
-  rows while the work goes and seven tenths once it is over, and keep the cursor in sight,
-  counting the rows they leave out as `… n more`.
+  `✓ implement gates triage review`. Stacked, the map and its left-for-you list take at most half
+  the tab's rows while the work goes and seven tenths once it is over, and keep the cursor in
+  sight, counting the rows they leave out as `… n more`. Whatever the size, `now` keeps its title
+  and five rows and the footer keeps the bottom row: a question under the map gives up its blank
+  rows first, then the map windows, then the question holds its text to the rows left, down to one
+  that scrolls.
+- **Split:** from 160 columns the tab is two columns under the run row. The left one, 66 wide on
+  raised, holds `map`, the question a session waits on, and `run`: what the card runs with (its
+  facts, the `?` sheet's list), whole facts as many to a row as fit, in the rows the map and the
+  question leave, whole or not at all. The right one, on the terminal's own background, holds
+  `now` (as many rows as it has lines, up to sixteen and half the column) over the log of the
+  session under the cursor, named over it and following the cursor with no key. The log stands
+  alone while it is the one live session, or once `enter` pinned it (`esc` unpins it); `now` fills
+  the column when the cursor is on no session. On a finished card `now` is the run trace, over
+  `sessions · n`: every session the card ran (a skipped lens is not one), one row each with its
+  glyph, name, time and result, until the cursor is on one. `g/G` and `⌃d/⌃u` scroll the log when
+  one is on screen, else `now` or the trace. The raised column is the only seam between them: the
+  No-Line Rule holds.
 - **Without steps:** a card that gives none keeps its stream with a chip per lane under the
   header, `all <noun> · live` first, `h/l` walking them, each in its series hue.
 
@@ -500,7 +526,8 @@ one-row collapsed forms follow the same colors.
 - **Do** reach for OpenTUI's components (tonal panels, selects, tabs, inputs, scrollboxes,
   markdown, diffs) when they read faster than bare text.
 - **Do** pair every hue with a glyph shape, so the board still reads with color off.
-- **Do** check every row at forty columns before anything else.
+- **Do** check every row at forty columns before anything else, on the tracker. On a run's card
+  tab check 200×50 first, then both sides of 160 and forty as the fallback.
 
 ### Don't:
 - **Don't** rebuild Jake's `UpstreamWorkCard`: two panels, cached descriptions, dual

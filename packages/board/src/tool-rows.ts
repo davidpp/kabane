@@ -186,21 +186,19 @@ export namespace ToolRows {
 	export const groupLabel = (group: Group): string => {
 		const counts = new Map<Noun, number>();
 		let failures = 0;
-		let total: number | undefined;
 		let allExplore = true;
 		for (const call of group.calls) {
 			const noun = explores(call);
 			if (noun) counts.set(noun, (counts.get(noun) ?? 0) + 1);
 			else allExplore = false;
 			if (call.status === "failed") failures++;
-			const ms = durationMs(call);
-			if (ms !== undefined) total = (total ?? 0) + ms;
 		}
 		if (failures || !allExplore) {
+			const took = foldTime(group.calls);
 			return [
 				`${group.calls.length} tools`,
 				...(failures ? [`${failures} failed`] : []),
-				...(total !== undefined ? [formatDuration(total)] : []),
+				...(took !== undefined ? [took] : []),
 			].join(" · ");
 		}
 		const parts = (["read", "search", "fetch"] as const).flatMap((noun) => {
@@ -218,6 +216,22 @@ export namespace ToolRows {
 		if (call.endedAt === undefined) return undefined;
 		const ms = Date.parse(call.endedAt) - Date.parse(call.at);
 		return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+	};
+
+	/**
+	 * How long a run of calls took on the clock, from the first start to the last end so far: calls
+	 * that overlap count once, so three parallel 10s calls took 10s. What a fold says on every surface.
+	 */
+	export const foldTime = (calls: readonly Call[]): string | undefined => {
+		const start = Math.min(...calls.map((call) => Date.parse(call.at)));
+		const end = Math.max(
+			...calls.flatMap((call) =>
+				call.endedAt === undefined ? [] : [Date.parse(call.endedAt)],
+			),
+		);
+		return Number.isFinite(end - start) && end >= start
+			? formatDuration(end - start)
+			: undefined;
 	};
 
 	export const duration = (call: Call): string | undefined => {

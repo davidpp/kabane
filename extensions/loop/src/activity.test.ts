@@ -444,6 +444,46 @@ describe("LoopActivity", () => {
 			"2026-10-11T00:00:00.000Z",
 		);
 	});
+
+	it("calls a gone worktree merged only when a prune recorded removing it", async () => {
+		const source = LoopActivity.source({
+			home,
+			basePath: home,
+			host: testHost(home),
+			actor: ACTOR,
+			kabaneBin: "/nonexistent/kabane",
+		});
+		RunStore.create(
+			home,
+			run({
+				status: "completed",
+				exit: undefined,
+				worktree: join(home, "gone"),
+			}),
+		);
+		const landing = async () => {
+			const loaded = await source.card?.("KAB-1-abc");
+			if (!loaded?.ok) throw new Error("no card");
+			return [
+				loaded.value?.steps?.at(-1)?.result,
+				loaded.value?.left?.map((item) => item.how),
+			];
+		};
+		expect(await landing()).toEqual([
+			"none: kept for review · worktree missing",
+			["branch kabane-loop/KAB-1-abc"],
+		]);
+		const log = RunStore.eventLog(home, "KAB-1-abc");
+		if (!log.ok) throw log.error;
+		log.value.append({
+			type: "pruned",
+			summary: "worktree gone and branch kab-1 removed: merged",
+		});
+		expect(await landing()).toEqual([
+			"none: kept for review, since merged and removed",
+			undefined,
+		]);
+	});
 });
 
 it("lists only loop questions with their card and lane, and answers through the port", async () => {
@@ -529,4 +569,97 @@ it("lists only loop questions with their card and lane, and answers through the 
 		},
 	]);
 	expect(await source.questions?.()).toEqual({ ok: true, value: [] });
+});
+
+it("maps loop events across a poll boundary and joins setup only to its own session", () => {
+	const event = (
+		seq: number,
+		type: string,
+		summary: string,
+		lane?: string,
+	): RunStore.Event => ({
+		seq,
+		type,
+		summary,
+		lane,
+		at: "2026-11-20T09:15:00Z",
+	});
+	const log = [
+		event(1, "claim", "codex claims docs", "docs"),
+		event(2, "launch", "run codex", "docs"),
+		event(3, "model", "astra", "docs"),
+		event(4, "model", "another model", "arch"),
+		event(5, "mode", "default", "docs"),
+		event(6, "session_start", "started", "docs"),
+		event(7, "session_end", "done", "docs"),
+		event(8, "gate_passed", "tests pass", "docs"),
+		event(9, "checkpoint", "saved"),
+		event(10, "permission_asked", "Allow?", "arch"),
+	];
+	const rows = LoopActivity.boardEvents(log, 5);
+	expect(rows.map((e) => [e.type, e.summary])).toEqual([
+		["phase", "codex claims docs"],
+		["done", "done"],
+		["done", "gates · tests pass"],
+		["progress", "saved"],
+		["permission", "Allow?"],
+	]);
+	expect(rows[0]?.detail?.input).toBe("run codex\nastra\ndefault");
+	expect(rows[0]?.includes).toEqual([1, 2, 3, 5]);
+	expect(rows[0]?.lane).toBe("docs");
+	expect(rows[2]).toMatchObject({ lane: "docs", run: true });
+	const early = LoopActivity.boardEvents(log.slice(0, 5), 0);
+	expect(early[0]).toMatchObject({ lane: "docs", run: true });
+	expect(early[3]).toMatchObject({ lane: "arch", summary: "another model" });
+	expect(early[3]?.run).toBeUndefined();
+});
+
+it("keeps a launch visible when its session fails to open", () => {
+	const base = { lane: "arch", session: "s1", at: "2026-11-20T09:15:00Z" };
+	const rows = LoopActivity.boardEvents(
+		[
+			{ ...base, seq: 1, type: "launch", summary: "run codex" },
+			{
+				...base,
+				seq: 2,
+				type: "session_end",
+				summary: "error: handshake failed",
+			},
+		],
+		0,
+	);
+	expect(rows.map((row) => [row.type, row.summary, row.includes])).toEqual([
+		["progress", "run codex", undefined],
+		["done", "error: handshake failed", undefined],
+	]);
+});
+
+it("names whose gates a gate row reports", () => {
+	const at = "2026-11-20T09:15:00Z";
+	const rows = LoopActivity.boardEvents(
+		[
+			{
+				seq: 1,
+				at,
+				type: "gate_passed",
+				summary: "slow passed",
+				lane: "JGIT-17",
+				task: "JGIT-17",
+			},
+			{
+				seq: 2,
+				at,
+				type: "gate_failed",
+				summary: "slow failed",
+				task: "JGIT-16",
+			},
+			{ seq: 3, at, type: "gate_passed", summary: "slow passed" },
+		],
+		0,
+	);
+	expect(rows.map((e) => e.summary)).toEqual([
+		"gates · JGIT-17 · slow passed",
+		"gates · JGIT-16 · slow failed",
+		"gates · slow passed",
+	]);
 });

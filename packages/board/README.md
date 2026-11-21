@@ -217,18 +217,38 @@ included: each a `name`, a `state` (`pending | running | done | failed | stopped
 `reason`, or with neither id a line of its own (a branch kept for review). All of it is in the
 host's words; the board knows no step by name. A card may also list the `facts` it runs with
 (`ActivityFact[]`, a `label` and a `value` each, such as `slots` `1/2`), which the `?` sheet on its
-tab lists after the keys, under the card's name.
+tab lists after the keys, under the card's name, and which the split (below) shows under `run`.
 
 A card with steps has a map on its tab in place of the lane chips, under the header: one row per
 step, a running step opened to its sessions, finished ones folded. A cursor follows the newest
-live session, or the session a question waits on, until the human moves it with `j/k` or `↑↓`;
-`f` hands it back to the run. `h/l` fold and open the step under it, `enter` opens the session's
-events in place of the stream (`esc` closes them, a second `esc` goes to the tracker) and, on an
-issue the card left, opens that issue on the tracker (by `taskId`, else by a `taskShortId` the
-board holds). `g/G` and `⌃d/⌃u` scroll the stream under the map. A click puts the cursor on a row and a
-second click is `enter`. The question its sessions wait on sits under the map and names the
-session's lane. A finished card that left an issue keeps an accent `?` as its tab's glyph until
-its tab has been on screen. A card without steps keeps the lanes below.
+live session, or the session whose question the tab shows, until the human moves it with `j/k` or
+`↑↓`; `f` hands it back to the run, and so does `!`, which also closes a log `enter` opened. With
+two sessions asking, both rows show `?`, and the log and an action aimed at a session go to the
+one whose question is on screen. `h/l` fold and open the step under it, `enter` on a session opens
+its log and, on an issue the card left, opens that issue on the tracker (by `taskId`, else by a
+`taskShortId` the board holds). A click puts the cursor on a row and a second click is `enter`.
+The question its sessions wait on names the session's lane. A finished card that left anything
+(an issue, a kept branch) keeps an accent `?` as its tab's glyph until a line of that list has been
+in the map's window on its tab. A card without steps keeps
+the lanes below.
+
+The same regions and keys are arranged two ways (`src/cockpit.ts`):
+
+- **Stacked, under 160 columns:** the map, the question, then `now` (the live sessions' last
+  lines; once the card is over, the run trace: its steps, then the `run` events no step states,
+  by the rule in the `@kabane/extension` README). `enter` shows the session's log in place of `now`,
+  and `esc` goes back to it before a second `esc` goes to the tracker.
+- **Split, from 160 columns:** a left column, 66 wide on the raised surface, with the map, the
+  question and `run` (the card's `facts`, shown whole or not at all in the rows left). The right
+  column holds `now` over the log of the session under the cursor, which follows the cursor; the
+  log stands alone while it is the one live session or once `enter` pinned it (`esc` unpins it).
+  With the cursor on no session, `now` takes the column, and on a finished card the trace sits
+  over `sessions · n`, the sessions that ran.
+
+`g/G` and `⌃d/⌃u` scroll the log when one is on screen, else `now` or the trace. On a short pane
+the question gives up its blank rows first, then the map windows, then the question holds its text
+to the rows left (down to one, which scrolls), so `now` (or a log) keeps five rows and the footer
+keeps the bottom row.
 
 #### Lanes on a card's tab
 

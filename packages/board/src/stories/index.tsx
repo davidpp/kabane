@@ -6,14 +6,17 @@
 import { ok } from "@kabane/core";
 import type {
 	ActivityCard,
+	ActivityEvent,
 	ActivityLeft,
+	ActivitySource,
 	ActivityStep,
+	Header,
 	HeaderPart,
 } from "@kabane/extension";
 import type { QuestionView } from "@kabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { createRef, type ReactNode, useEffect, useRef } from "react";
+import { createRef, type ReactNode, useEffect, useMemo, useRef } from "react";
 import { Board } from "../board";
 import { CardHeader } from "../card-header";
 import { CardTab } from "../card-tab";
@@ -26,17 +29,17 @@ import { BoardDecisions } from "../decisions";
 import { Detail } from "../detail";
 import { DetailModel } from "../detail-model";
 import { ElicitationForm } from "../elicitation-form";
-import { EventView, mapShare } from "../event-view";
+import { EventView, Stream } from "../event-view";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
 import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import { BoardNav } from "../nav";
+import { NowFeed } from "../now-feed";
 import {
 	type CopilotElicitation,
 	type CopilotUpdate,
 	noActivity,
 } from "../ports";
-import { RunMapView } from "../run-map-view";
 import { SettingsOverlay } from "../settings-overlay";
 import { SettingsView } from "../settings-view";
 import { SPINNER_IDLE } from "../spinner";
@@ -792,6 +795,17 @@ const LIVE: ActivityCard = {
 	tab: true,
 	lanes: (RECHECK_LIVE.sessions ?? []).flatMap((s) => (s.lane ? [s.lane] : [])),
 	liveLanes: ["architecture-recheck", "docs-recheck"],
+	facts: [
+		{ label: "slots", value: "2/2" },
+		{ label: "continuations", value: "0/3" },
+		{ label: "spend", value: "$17.50 (codex unpriced)" },
+		{ label: "implementer", value: "claude opus" },
+		{ label: "verifier", value: "codex" },
+		{ label: "review", value: "triage" },
+		{ label: "gates", value: "check·test·build" },
+		{ label: "lenses", value: "functional·quality·docs·architecture·design" },
+		{ label: "land", value: "none" },
+	],
 	steps: [
 		...DONE,
 		RECHECK_LIVE,
@@ -881,45 +895,85 @@ const runRow = (
 	];
 };
 
+// A card that never changes, as a host's source would serve it: the event view polls it as it would
+// a live one.
+const staticSource = (
+	card: ActivityCard,
+	events: readonly ActivityEvent[],
+): ActivitySource => ({
+	load: async () => ok([card]),
+	card: async () => ok(card),
+	events: async (_id, after) => ok(events.filter((e) => e.seq > after)),
+});
+
+// A loop run's tab as the board mounts it: the tab bar over the event view, with the run row, the map
+// (`view` is how the human left it), what needs the human, "now" or a log, the copilot's row and the
+// footer. Stacked under 160 columns, split from there.
 const RunTab = ({
 	card,
 	queue = [],
+	events = [],
 	state,
 	facts,
+	view: patch = {},
 }: {
 	card: ActivityCard;
 	queue?: readonly BoardTabs.Question[];
+	events?: readonly ActivityEvent[];
 	state: HeaderPart;
 	facts: readonly string[];
+	view?: Partial<BoardTabs.CardView>;
 }): ReactNode => {
-	const { width, height } = useTerminalDimensions();
 	const { tabs } = BoardTabs.withActivity(
 		BoardNav.init([], { scoped: false }),
 		[card],
 		queue,
 	);
 	const onTab = { ...tabs, active: card.id };
+	const view = { ...CardTab.view(onTab, card.id), ...patch };
+	const source = useMemo(() => staticSource(card, events), [card, events]);
+	const header = useMemo(
+		(): Header => async (_card, at) => ok([runRow(at.width, state, facts)]),
+		[state, facts],
+	);
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
 			<TabBar tabs={onTab} cards={[card]} spinnerFrame="⠋" />
-			<CardHeader
-				header={async (_card, view) => ok([runRow(view.width, state, facts)])}
-				card={card}
-				width={width - 1}
-				expanded={false}
+			<EventView
+				cardId={card.id}
+				initialCard={card}
+				source={source}
+				resolveShortId={() => undefined}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				tabbed
+				lane={view.lane}
+				header={header}
+				map={{ view, asking: CardTab.asking(onTab, card.id) }}
+				banner={<CardTabQuestion tabs={onTab} onAnswer={() => {}} />}
+				keys={{
+					context: "cardTab",
+					situation: { map: true, log: view.lane !== null },
+				}}
+				pane={<Pane copilot={Fixtures.copilot()} chip={card.taskShortId} />}
 			/>
-			<RunMapView
-				card={card}
-				view={CardTab.view(onTab, card.id)}
-				asking={CardTab.asking(onTab, card.id)}
-				width={width - 1}
-				maxRows={Math.max(8, Math.floor(height * mapShare(card)))}
-				spinnerFrame="⠋"
-			/>
-			<CardTabQuestion tabs={onTab} onAnswer={() => {}} />
 		</box>
 	);
 };
+
+const LIVE_ROW: HeaderPart = { text: "● recheck", tone: "working", bold: true };
+const LIVE_FACTS = ["2 of 5 done", "2/2 live", "40m28s", "$17.50"];
+const ASKED_ROW: HeaderPart = {
+	text: "? docs-recheck waits on you",
+	tone: "accent",
+	bold: true,
+};
+const ASKED_FACTS = ["recheck 2 of 5 done", "2/2 live", "40m28s", "$17.50"];
+const FINISHED_ROW: HeaderPart = {
+	text: "✓ completed",
+	tone: "done",
+	bold: true,
+};
+const FINISHED_FACTS = ["6 findings left for you", "46m52s", "$17.50"];
 
 const RUN_MAP_STORIES: readonly Story[] = [
 	{
@@ -931,8 +985,9 @@ const RUN_MAP_STORIES: readonly Story[] = [
 		render: () => (
 			<RunTab
 				card={LIVE}
-				state={{ text: "● recheck", tone: "working", bold: true }}
-				facts={["2 of 5 done", "2/2 live", "40m28s", "$17.50"]}
+				events={NOW_EVENTS}
+				state={LIVE_ROW}
+				facts={LIVE_FACTS}
 			/>
 		),
 	},
@@ -946,12 +1001,9 @@ const RUN_MAP_STORIES: readonly Story[] = [
 			<RunTab
 				card={LIVE}
 				queue={[ASKED]}
-				state={{
-					text: "? docs-recheck waits on you",
-					tone: "accent",
-					bold: true,
-				}}
-				facts={["recheck 2 of 5 done", "2/2 live", "40m28s", "$17.50"]}
+				events={NOW_EVENTS}
+				state={ASKED_ROW}
+				facts={ASKED_FACTS}
 			/>
 		),
 	},
@@ -962,13 +1014,238 @@ const RUN_MAP_STORIES: readonly Story[] = [
 		height: 30,
 		render: () => (
 			<RunTab
-				card={FINISHED}
-				state={{ text: "✓ completed", tone: "done", bold: true }}
-				facts={["6 findings left for you", "46m52s", "$17.50"]}
+				card={TRACE_CARD}
+				events={TRACE_EVENTS}
+				state={FINISHED_ROW}
+				facts={FINISHED_FACTS}
+			/>
+		),
+	},
+	{
+		name: "run-map-short",
+		about:
+			"a finished run on a short pane, a step opened: the map windows and the footer stays",
+		width: 100,
+		height: 22,
+		render: () => (
+			<RunTab
+				card={TRACE_CARD}
+				events={TRACE_EVENTS}
+				state={FINISHED_ROW}
+				facts={FINISHED_FACTS}
+				view={{
+					folds: new Map([["recheck", true]]),
+					cursor: "step:recheck",
+					follow: false,
+				}}
+			/>
+		),
+	},
+	{
+		name: "cockpit-live",
+		about:
+			"from 160 columns: the map, the question and the run on the left, now over the cursor's log",
+		width: 200,
+		height: 50,
+		render: () => (
+			<RunTab
+				card={LIVE}
+				queue={[ASKED]}
+				events={NOW_EVENTS}
+				state={ASKED_ROW}
+				facts={ASKED_FACTS}
+			/>
+		),
+	},
+	{
+		name: "cockpit-finished",
+		about:
+			"a finished run split: what it left on the left, the trace over every session on the right",
+		width: 200,
+		height: 50,
+		render: () => (
+			<RunTab
+				card={TRACE_CARD}
+				events={TRACE_EVENTS}
+				state={FINISHED_ROW}
+				facts={FINISHED_FACTS}
+			/>
+		),
+	},
+	{
+		name: "cockpit-narrow",
+		about: "the split at its threshold, 160 columns, mid-run",
+		width: 160,
+		height: 40,
+		render: () => (
+			<RunTab
+				card={LIVE}
+				events={NOW_EVENTS}
+				state={LIVE_ROW}
+				facts={LIVE_FACTS}
 			/>
 		),
 	},
 ];
+
+const feedEvent = (
+	seq: number,
+	type: string,
+	summary: string,
+	lane?: string,
+	callId?: string,
+): ActivityEvent => ({
+	seq,
+	at: new Date(2026, 10, 20, 9, 15, seq).toISOString(),
+	type,
+	summary,
+	lane,
+	callId,
+});
+const docs = "docs-recheck";
+const arch = "architecture-recheck";
+const NOW_EVENTS: ActivityEvent[] = [
+	{
+		...feedEvent(1, "done", "gates · check, test, build", "PROJ-41"),
+		run: true,
+	},
+	{
+		...feedEvent(
+			2,
+			"progress",
+			"PROJ-41 merged into the run branch",
+			"PROJ-41",
+		),
+		run: true,
+	},
+	{
+		...feedEvent(3, "progress", "codex claims the docs recheck", docs),
+		run: true,
+	},
+	feedEvent(4, "phase", "codex rechecks the docs findings", docs),
+	feedEvent(5, "phase", "codex rechecks the architecture findings", arch),
+	feedEvent(6, "tool_call", "Read guide", docs, "a"),
+	feedEvent(7, "thought", "**Checking the storage boundary**", arch),
+	feedEvent(8, "tool_call", "Run examples", docs, "b"),
+	feedEvent(9, "tool_failed", "Run examples", docs, "b"),
+	feedEvent(10, "tool_completed", "Read guide", docs, "a"),
+	feedEvent(
+		11,
+		"text",
+		"The guide still names the removed flag. I'll check the replacement.",
+		docs,
+	),
+	feedEvent(12, "tool_call", "Read adapter", arch, "a"),
+	feedEvent(13, "permission", "Run the updated example?", docs),
+];
+const traceEnd: ActivityEvent = {
+	...feedEvent(18, "progress", "completed: plan-done"),
+	run: true,
+};
+const TRACE_CARD: ActivityCard = {
+	...FINISHED,
+	finishedAt: traceEnd.at,
+	steps: [
+		{
+			name: "gates",
+			state: "done",
+			result: "check · test · build",
+			durationMs: 14_000,
+		},
+		{
+			name: "recheck",
+			state: "done",
+			result: "8 confirmed · 1 reopened",
+			durationMs: 635_000,
+			sessions: [
+				{ name: "docs", state: "done", lane: docs },
+				{ name: "architecture", state: "done", lane: arch },
+			],
+		},
+		{ name: "land", state: "done", result: "merged into HEAD" },
+	],
+};
+const TRACE_EVENTS: ActivityEvent[] = [
+	...NOW_EVENTS,
+	feedEvent(14, "done", "docs checked", docs),
+	feedEvent(15, "done", "architecture checked", arch),
+	feedEvent(17, "done", "land · merged into HEAD"),
+	traceEnd,
+	{
+		...feedEvent(
+			19,
+			"done",
+			"pruned · worktree and branch removed: branch merged into HEAD",
+		),
+		run: true,
+	},
+];
+const SessionLog = (): ReactNode => {
+	const { width } = useTerminalDimensions();
+	const claim = "codex claims PROJ-41: update the guide";
+	const launch = "codex-acp";
+	const mode = "mode: review";
+	const events: ActivityEvent[] = [
+		{ ...feedEvent(1, "progress", claim, docs), run: true },
+		feedEvent(2, "progress", launch, docs),
+		feedEvent(3, "progress", mode, docs),
+		{
+			...feedEvent(4, "phase", claim, docs),
+			includes: [1, 2, 3],
+			detail: { input: [launch, mode].join("\n") },
+		},
+		feedEvent(5, "text", "Updated the example in the guide.", docs),
+		{
+			...feedEvent(6, "done", "gates · storage check passed", arch),
+			run: true,
+		},
+		{ ...feedEvent(7, "done", "gates · docs check passed", docs), run: true },
+	];
+	return (
+		<Stream
+			card={LIVE}
+			events={events}
+			lane={docs}
+			lanes={[]}
+			width={width}
+			scrollRef={createRef<ScrollBoxRenderable>()}
+			tabbed
+			spinnerFrame="⠋"
+			toolDetails={false}
+		/>
+	);
+};
+
+const FeedStory = ({
+	card,
+	events,
+}: {
+	card: ActivityCard;
+	events: readonly ActivityEvent[];
+}): ReactNode => {
+	const { width } = useTerminalDimensions();
+	return (
+		<NowFeed
+			card={card}
+			events={events}
+			width={width}
+			scrollRef={useRef<ScrollBoxRenderable>(null)}
+			spinnerFrame="⠋"
+		/>
+	);
+};
+const nowStory = (
+	name: string,
+	about: string,
+	card: ActivityCard,
+	events = NOW_EVENTS,
+): Story => ({
+	name,
+	about,
+	width: 100,
+	height: 12,
+	render: () => <FeedStory card={card} events={events} />,
+});
 
 export const STORIES: readonly Story[] = [
 	{
@@ -1763,6 +2040,32 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	...RUN_MAP_STORIES,
+	{
+		name: "session-log",
+		about: "One session's start details and gate in a concurrent run",
+		width: 100,
+		height: 10,
+		render: () => <SessionLog />,
+	},
+	nowStory(
+		"now-two",
+		"Two sessions interleave while a tool fold updates in place",
+		LIVE,
+	),
+	nowStory("now-one", "The remaining live session drops its tag", {
+		...LIVE,
+		liveLanes: [docs],
+	}),
+	nowStory("now-between", "The run moves between steps", {
+		...LIVE,
+		liveLanes: [],
+	}),
+	nowStory(
+		"run-trace",
+		"The finished steps, landing and pruning",
+		TRACE_CARD,
+		TRACE_EVENTS,
+	),
 ];
 
 export const storyNamed = (name: string): Story | undefined =>

@@ -4,6 +4,8 @@
 import { describe, expect, it } from "bun:test";
 import type { ActivityCard, ActivityStep } from "@kabane/extension";
 import { CardTab } from "./card-tab";
+import { Cockpit } from "./cockpit";
+import { Keymap } from "./keymap";
 import { BoardNav } from "./nav";
 import { RunMap } from "./run-map";
 import { BoardTabs } from "./tabs";
@@ -110,7 +112,7 @@ const cursor = (state: BoardNav.BoardState): string | undefined =>
 	RunMap.cursor(
 		state.tabs.cards.get("loop:r1") ?? {},
 		CardTab.view(state.tabs, "loop:r1"),
-		CardTab.asking(state.tabs, "loop:r1"),
+		CardTab.asked(state.tabs, "loop:r1"),
 	);
 
 const keys = (state: BoardNav.BoardState): string[] =>
@@ -155,6 +157,72 @@ describe("the run map", () => {
 		expect(cursor(onTab([card()], [asked]))).toBe("step:recheck/docs-recheck");
 	});
 
+	describe("with two sessions asking at once", () => {
+		const question = (
+			id: string,
+			lane: string,
+			askedAt: string,
+		): BoardTabs.Question => ({
+			id,
+			cardId: "loop:r1",
+			lane,
+			question: `${lane}?`,
+			choices: ["yes", "no"],
+			multiSelect: false,
+			allowFreeform: false,
+			agent: "codex",
+			askedAt,
+		});
+		const both = [
+			question("q1", "docs-recheck", "2026-11-20T09:16:40.000Z"),
+			question("q2", "architecture-recheck", "2026-11-20T09:16:50.000Z"),
+		];
+		const inject = {
+			id: "inject",
+			key: "i",
+			label: "message",
+			lane: true,
+			input: "a message",
+		};
+		const asking = () => onTab([card({ actions: [inject] })], both);
+		const logOf = (s: BoardNav.BoardState) =>
+			Cockpit.logLane(
+				s.tabs.cards.get("loop:r1") ?? {},
+				CardTab.view(s.tabs, "loop:r1"),
+				CardTab.asked(s.tabs, "loop:r1"),
+			);
+
+		it("follows the question the banner shows, and `!` takes the map, the log and `i` to the next", () => {
+			const first = asking();
+			expect(BoardTabs.cardQuestion(first.tabs)?.id).toBe("q1");
+			expect(cursor(first)).toBe("step:recheck/docs-recheck");
+			const next = press(first, "!");
+			expect(BoardTabs.cardQuestion(next.tabs)?.id).toBe("q2");
+			expect(cursor(next)).toBe("step:recheck/architecture-recheck");
+			expect(logOf(next)).toBe("architecture-recheck");
+			const message = press(next, "i");
+			expect(message.prompt.open?.target).toEqual({
+				type: "act",
+				cardId: "loop:r1",
+				actionId: "inject",
+				lane: "architecture-recheck",
+			});
+			// Both still wait, so both rows keep their `?`.
+			expect([...CardTab.asking(next.tabs, "loop:r1")]).toEqual([
+				"docs-recheck",
+				"architecture-recheck",
+			]);
+		});
+
+		it("`!` gives a cursor the human moved, and a log they pinned, back to the run", () => {
+			const pinned = press(asking(), "k", "enter");
+			expect(CardTab.view(pinned.tabs, "loop:r1").lane).toBe("quality-recheck");
+			const next = press(pinned, "!");
+			expect(CardTab.view(next.tabs, "loop:r1").lane).toBeNull();
+			expect(cursor(next)).toBe("step:recheck/architecture-recheck");
+		});
+	});
+
 	it("stays where the human moves it until f hands it back to the run", () => {
 		const moved = press(onTab(), "k", "k");
 		expect(cursor(moved)).toBe("step:recheck/quality-recheck");
@@ -189,6 +257,26 @@ describe("the run map", () => {
 		expect(closed.tabs.active).toBe("loop:r1");
 		expect(CardTab.view(closed.tabs, "loop:r1").lane).toBeNull();
 		expect(press(closed, "escape").tabs.active).toBeNull();
+	});
+
+	it("moves over a long map without rebuilding it for every row it passes", () => {
+		const sessions = Array.from({ length: 2000 }, (_, n) => ({
+			name: `s${n}`,
+			state: "done" as const,
+			lane: `lane-${n}`,
+		}));
+		const long = {
+			steps: [{ name: "implement", state: "done" as const, sessions }],
+		};
+		const view = {
+			folds: new Map([["implement", true]]),
+			cursor: "step:implement/lane-1999",
+			follow: false,
+		};
+		const start = performance.now();
+		expect(RunMap.move(long, view, -1)).toBe("step:implement/lane-1998");
+		// One rebuild per row searched took about 100ms here; one rebuild takes well under 1ms.
+		expect(performance.now() - start).toBeLessThan(25);
 	});
 
 	it("a card with no steps keeps its lanes on h/l", () => {
@@ -229,19 +317,22 @@ describe("what a finished card left", () => {
 		],
 	});
 
-	it("keeps its tab's `?` until the tab has been on screen", () => {
+	it("keeps its tab's `?` until the map's window has shown the list, not when the tab opens", () => {
 		const elsewhere = BoardTabs.withActivity(
 			BoardNav.init([], { scoped: false }),
 			[finished],
 			[],
 		);
 		expect(BoardTabs.unseen(elsewhere.tabs, "loop:r1")).toBe(true);
-		const seen = press(elsewhere, "}");
+		const onScreen = press(elsewhere, "}");
+		expect(BoardTabs.unseen(onScreen.tabs, "loop:r1")).toBe(true);
+		const seen = BoardTabs.seeLeft(onScreen, "loop:r1");
 		expect(BoardTabs.unseen(seen.tabs, "loop:r1")).toBe(false);
 		expect(BoardTabs.unseen(press(seen, "{").tabs, "loop:r1")).toBe(false);
+		expect(BoardTabs.seeLeft(seen, "loop:r1")).toBe(seen);
 	});
 
-	it("a branch alone is not something to come back for", () => {
+	it("a branch alone is something to come back for", () => {
 		const branchOnly = card({
 			status: "completed",
 			left: [{ how: "branch proj-5", reason: "land: none" }],
@@ -251,7 +342,7 @@ describe("what a finished card left", () => {
 			[branchOnly],
 			[],
 		);
-		expect(BoardTabs.unseen(s.tabs, "loop:r1")).toBe(false);
+		expect(BoardTabs.unseen(s.tabs, "loop:r1")).toBe(true);
 	});
 
 	it("enter on an issue known by its short id alone opens it, or says it is not on the board", () => {
@@ -303,5 +394,90 @@ describe("what a finished card left", () => {
 		const opened = press(on, "enter");
 		expect(opened.tabs.active).toBeNull();
 		expect(opened.view).toEqual({ type: "detail", taskId: "01F1" });
+	});
+});
+
+describe("the enter hint", () => {
+	const finished = card({
+		status: "completed",
+		liveLanes: undefined,
+		steps: [
+			...STEPS.slice(0, 3).map((step) => ({ ...step, state: "done" as const })),
+			{ name: "land", state: "done", result: "none: kept for review" },
+		],
+		left: [
+			{ taskId: "01F1", taskShortId: "PROJ-22", how: "filed by docs" },
+			{ how: "branch proj-5", reason: "land: none" },
+		],
+	});
+	const at = (
+		s: BoardNav.BoardState,
+		cursorKey: string,
+	): BoardNav.BoardState => ({
+		...s,
+		tabs: {
+			...s.tabs,
+			views: new Map(s.tabs.views).set("loop:r1", {
+				...CardTab.view(s.tabs, "loop:r1"),
+				cursor: cursorKey,
+				follow: false,
+			}),
+		},
+	});
+	const hint = (s: BoardNav.BoardState, split = false): string | undefined =>
+		Keymap.footer(
+			"cardTab",
+			BoardNav.keySituation(s, { linked: new Set(), events: false, split }),
+		).find((h) => h.key === "enter")?.label;
+
+	it("names what enter does on the row under the cursor", () => {
+		const live = onTab();
+		expect(hint(live)).toBe("log");
+		expect(hint(live, true)).toBe("pin log");
+		expect(hint(at(live, "step:recheck"))).toBe("fold");
+		expect(hint(at(press(live, "h"), "step:recheck"))).toBe("open");
+		const over = onTab([finished]);
+		expect(hint(at(over, "left:01F1"))).toBe("open issue");
+	});
+
+	it("says nothing where enter does nothing, and enter does nothing there", () => {
+		const over = onTab([finished]);
+		const quiet = [
+			over, // no cursor: the run is over and nothing is live
+			at(over, "left:branch proj-5"), // a line with no issue
+			at(over, "step:land"), // a step with no sessions
+			press(onTab(), "enter"), // the session whose log is open
+		];
+		for (const s of quiet) {
+			expect(hint(s)).toBeUndefined();
+			const pressed = BoardNav.reduceKey(
+				BoardNav.sight(s, 0),
+				key("return"),
+				BoardNav.ARM_MS,
+			);
+			expect(pressed.effect).toEqual({ type: "none" });
+			expect(Bun.deepEquals(pressed.state, BoardNav.sight(s, 0))).toBe(true);
+		}
+	});
+
+	it("leaves enter to a question that takes a typed answer", () => {
+		const typed: BoardTabs.Question = {
+			id: "q1",
+			cardId: "loop:r1",
+			lane: "docs-recheck",
+			question: "which?",
+			choices: [],
+			multiSelect: false,
+			allowFreeform: true,
+			agent: "codex",
+			askedAt: "2026-11-20T09:16:40.000Z",
+		};
+		const s = onTab([card()], [typed]);
+		expect(
+			Keymap.footer(
+				"cardTab",
+				BoardNav.keySituation(s, { linked: new Set(), events: false }),
+			).filter((h) => h.key === "enter"),
+		).toEqual([{ key: "enter", label: "answer" }]);
 	});
 });

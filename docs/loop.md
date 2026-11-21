@@ -67,10 +67,28 @@ subtasks), the gates, triage, the lenses' review, the fixer, the rechecks of its
 landing, each with its result and how long it took. A step that is not configured is left out,
 and a step still to come is listed with `○`. The step under way opens to one row per session; a
 lens triage skipped is listed as done with its reason. A cursor follows the newest live session,
-or the one that asks you something, until you move it with `j/k`; `f` makes it follow again.
+or the one whose question is on screen, until you move it with `j/k`; `f` makes it follow again,
+and `!` moves it to the session of the next question.
 `h/l` fold and open a step, and `enter` on a session shows its own events under the map in
-place of every session's; `esc` goes back. A question waits under the map, naming the session
+place of the feed; `esc` goes back. A question waits under the map, naming the session
 that asked, and its digits answer it.
+
+Under the map, `now` interleaves the live sessions’ last lines, newest last. A short tag names
+each session while several are live. A run of tool calls stays on its first row as the count,
+failures and elapsed time update, even while another session speaks. With one session, the
+tag drops away. Between sessions, the feed shows the run’s own work, including gates, merges
+and claims. Once the run ends, the feed becomes a trace of the steps it reached, then the run's
+own events that no step states, such as subtask merges, warnings, the run's end and any later
+pruning.
+
+From 160 columns wide the tab splits in two. The left column holds the map, the question a
+session asks you, and what the run runs with: its slots, continuations, spend, harnesses, gates,
+lenses and landing, which narrower panes list in the `?` sheet. The right column holds `now` over
+the log of the session under the cursor, so moving the cursor shows another session's log
+without a key; with one session live, its log stands alone. Once the run is over, the right
+column shows the trace over a list of every session the run had, with its time and result. The
+keys are the same at every width, and on a short pane the map gives up rows before the feed and
+the key hints do.
 
 Once the run is over, the map lists what it left for you: each finding still open, reopened by a
 lens's recheck or filed by one, and the branch when it did not land. `enter` on a finding opens

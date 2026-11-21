@@ -15,9 +15,9 @@ import {
 	type ActivitySource,
 	type ActivityStep,
 	type Header,
-	type NoticeSeverity,
 } from "@kabane/extension";
 import {
+	type BoxRenderable,
 	type ColorInput,
 	RGBA,
 	type Renderable,
@@ -29,17 +29,22 @@ import {
 	type ReactNode,
 	type RefObject,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { CardHeader } from "./card-header";
+import { Cockpit } from "./cockpit";
+import { LogLabel, RunFacts, SessionsTable } from "./cockpit-view";
 import { blockOnSurface, PROSE_MEASURE } from "./detail";
 import { elapsed } from "./elapsed";
 import { ErrorBoundary } from "./error-boundary";
+import { eventStyle } from "./event-style";
 import { noticeFg, StatusBar } from "./footer";
 import { Keymap } from "./keymap";
 import type { BoardNav } from "./nav";
+import { type HueMemory, NowFeed } from "./now-feed";
 import { clicks, PermissionBlock } from "./permission-block";
 import { PlanBlock } from "./plan-block";
 import {
@@ -48,9 +53,10 @@ import {
 	type PlanEntry,
 	PROMPT_EVENT,
 } from "./ports";
-import type { RunMap } from "./run-map";
+import { RunMap } from "./run-map";
 import { RunMapView } from "./run-map-view";
 import { useSpinnerFrame } from "./spinner";
+import { BannerRoomContext } from "./tab-bar";
 import { Theme, useMarkdownStyle, useTheme } from "./theme";
 import { ToolRows } from "./tool-rows";
 
@@ -127,69 +133,6 @@ export const promptLines = (
 	return kept;
 };
 
-// Per-event-type glyph and text colors. Types are host-defined strings; the common ones get a glyph,
-// the rest a blank. The glyph carries the hue (DESIGN.md's glyph table): work that ran is the working
-// hue, a question the accent, a failure the failed hue, the rest muted. The agent's own words carry
-// no hue: they read on the terminal's foreground, dark or light; its thoughts are dimmed under them.
-// Tool calls are not here: they are rows of their own (ToolCallRow).
-const eventStyle = (
-	event: ActivityEvent,
-	theme: Theme.Tokens,
-): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	switch (event.type) {
-		case "text":
-			return { glyph: " ", glyphFg: theme.defaultFg, textFg: theme.defaultFg };
-		case "thought":
-			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
-		case "phase":
-			return { glyph: "▶", glyphFg: theme.working, textFg: theme.defaultFg };
-		case "progress":
-			return { glyph: "·", glyphFg: theme.muted, textFg: theme.muted };
-		case "permission":
-			return { glyph: "?", glyphFg: theme.accent, textFg: theme.defaultFg };
-		case "notice":
-			return noticeStyle(
-				event.severity ?? severityPrefix(event.summary),
-				theme,
-			);
-		// The loop's own warnings (a claim it could not take, a question it gave up on).
-		case "warning":
-			return noticeStyle("warning", theme);
-		case "error":
-			return { glyph: "✗", glyphFg: theme.failed, textFg: theme.failed };
-		case "metric":
-			return { glyph: "$", glyphFg: theme.muted, textFg: theme.muted };
-		default:
-			return { glyph: " ", glyphFg: theme.muted, textFg: theme.muted };
-	}
-};
-
-// A notice that carries no severity of its own: the loop writes its harness's as `<severity>: <text>`,
-// and its runs on disk keep them that way.
-const severityPrefix = (summary: string): NoticeSeverity => {
-	const prefix = /^(\w+):/.exec(summary)?.[1];
-	return prefix === "warning" || prefix === "error" ? prefix : "info";
-};
-
-// What a harness wanted the human to know: a warning in the accent, since it says the session is not
-// running the way it was asked to; an error in the failed hue; information muted.
-const noticeStyle = (
-	severity: NoticeSeverity,
-	theme: Theme.Tokens,
-): { glyph: string; glyphFg: ColorInput; textFg: ColorInput } => {
-	const fg =
-		severity === "warning"
-			? theme.accent
-			: severity === "error"
-				? theme.failed
-				: theme.muted;
-	return {
-		glyph: "!",
-		glyphFg: fg,
-		textFg: fg === theme.muted ? theme.muted : theme.defaultFg,
-	};
-};
-
 // Status color for the header.
 const statusColor = (status: string, theme: Theme.Tokens): string => {
 	switch (status) {
@@ -250,25 +193,34 @@ export type EventViewProps = {
 	// row against it, and pressing `t` again starts every row afresh.
 	toolDetails?: boolean;
 	// A card with steps, on its own tab only: the map's cursor and folds, the lanes its questions wait
-	// on, and a click on a row by its key. The map stands in for the lane chips, and the question
-	// sits under it.
+	// on, the lane of the one the tab shows, which the cursor follows, and a click on a row by its key.
+	// The map stands in for the lane chips, and the question sits under it.
 	map?: {
 		view: RunMap.View;
 		asking: ReadonlySet<string>;
+		asked?: string;
 		onRow?: (key: string) => void;
+		// The map's window has shown what the card left for the human.
+		onLeftShown?: () => void;
 	};
 };
 
 const TRANSCRIPT_KEYS: Keymap.Live = { context: "transcript", situation: {} };
 
-/** The events a lane shows: its own, plus the ones the host left on no lane. Null shows them all. */
-const laneEvents = (
+/** Show each lane's events and shared rows, folding earlier events into the row that includes them. */
+export const laneEvents = (
 	events: readonly ActivityEvent[],
 	lane: string | null,
-): readonly ActivityEvent[] =>
-	lane === null
-		? events
-		: events.filter((e) => e.lane === undefined || e.lane === lane);
+): readonly ActivityEvent[] => {
+	const selected =
+		lane === null
+			? events
+			: events.filter((e) => e.lane === undefined || e.lane === lane);
+	const included = new Set(selected.flatMap((event) => event.includes ?? []));
+	return included.size
+		? selected.filter((event) => !included.has(event.seq))
+		: selected;
+};
 
 // The tag column on the all-lanes stream: as wide as the widest lane, but never more than a quarter
 // of the row, so a forty-column pane keeps room for what was said.
@@ -299,6 +251,10 @@ const useCardEvents = (
 	onCardRef.current = onCard;
 	const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const relaunched = initialCard !== undefined && isInFlight(initialCard);
+	// Finished map cards can still acquire a cleanup event. The board's normal card refresh
+	// picks it up while this tab is open, without keeping the live timer running.
+	const finishedMap =
+		!relaunched && initialCard?.steps?.length ? initialCard : undefined;
 	useEffect(() => {
 		let cancelled = false;
 		const poll = async (): Promise<void> => {
@@ -334,7 +290,7 @@ const useCardEvents = (
 			if (timerRef.current) clearInterval(timerRef.current);
 		};
 		// `relaunched` only restarts the poll, which reads the card from the source itself.
-	}, [cardId, source, relaunched]);
+	}, [cardId, source, relaunched, finishedMap]);
 	return { card, events };
 };
 
@@ -361,6 +317,11 @@ export const EventView = ({
 	map,
 }: EventViewProps): ReactNode => {
 	const { card, events } = useCardEvents(cardId, source, initialCard, onCard);
+	// Each session log's opened rows and place, by lane, kept while the arrangement around it changes
+	// (crossing SPLIT_COLS remounts it). One view per card, so per card.
+	const logs = useRef<LogMemory>(new Map()).current;
+	// The live sessions' hues in "now", kept as the arrangement remounts it (NowFeed).
+	const hues = useRef<HueMemory>(new Map()).current;
 	const { width, height } = useTerminalDimensions();
 	const theme = useTheme();
 	const spinnerFrame = useSpinnerFrame(card ? isInFlight(card) : false);
@@ -375,7 +336,11 @@ export const EventView = ({
 
 	const hints = Keymap.footer(keys.context, keys.situation, keys.host);
 	const contentWidth = Math.max(MIN_ENTRY_COLS, width - RESERVED_COLS);
-	const { stream: streamLanes, chips: lanes } = tabLanes(card, tabbed, map);
+	const {
+		stream: streamLanes,
+		chips: lanes,
+		hasMap,
+	} = tabLanes(card, tabbed, map);
 
 	return (
 		<box style={{ flexDirection: "column", flexGrow: 1 }}>
@@ -391,44 +356,58 @@ export const EventView = ({
 			) : (
 				<TitleRow card={card} resolveShortId={resolveShortId} />
 			)}
-			<CardMap
-				card={card}
-				map={map}
-				lane={lane}
-				banner={banner}
-				width={width - 1}
-				height={height}
-				spinnerFrame={spinnerFrame}
-			/>
-			{plan.length > 0 ? (
-				<box style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
-					<PlanBlock
-						plan={plan}
-						spinnerFrame={spinnerFrame}
-						width={contentWidth}
-						maxRows={MAX_PLAN_ROWS}
-					/>
-				</box>
-			) : null}
-			{lanes.length > 0 ? (
-				<LaneStrip
-					lanes={lanes}
+			{hasMap && map ? (
+				<CardCockpit
+					card={card}
+					events={events}
+					map={map}
 					lane={lane}
-					allLabel={`all ${card.laneNoun ?? "lanes"} · live`}
-					{...(onLane ? { onLane } : {})}
+					banner={banner}
+					width={width}
+					height={height}
+					spinnerFrame={spinnerFrame}
+					scrollRef={scrollRef}
+					toolDetails={toolDetails}
+					logs={logs}
+					hues={hues}
 				/>
-			) : null}
-			<Stream
-				card={card}
-				events={laneEvents(events, streamLanes.length > 0 ? lane : null)}
-				// Tags only where lines from several lanes interleave: the all-lanes stream.
-				lanes={lane === null ? streamLanes : []}
-				width={width}
-				scrollRef={scrollRef}
-				tabbed={tabbed}
-				spinnerFrame={spinnerFrame}
-				toolDetails={toolDetails}
-			/>
+			) : (
+				<>
+					{banner}
+					{plan.length > 0 ? (
+						<box
+							style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}
+						>
+							<PlanBlock
+								plan={plan}
+								spinnerFrame={spinnerFrame}
+								width={contentWidth}
+								maxRows={MAX_PLAN_ROWS}
+							/>
+						</box>
+					) : null}
+					{lanes.length > 0 ? (
+						<LaneStrip
+							lanes={lanes}
+							lane={lane}
+							allLabel={`all ${card.laneNoun ?? "lanes"} · live`}
+							{...(onLane ? { onLane } : {})}
+						/>
+					) : null}
+					<Stream
+						card={card}
+						events={events}
+						lane={streamLanes.length > 0 ? lane : null}
+						// Tags only where lines from several lanes interleave: the all-lanes stream.
+						lanes={lane === null ? streamLanes : []}
+						width={width}
+						scrollRef={scrollRef}
+						tabbed={tabbed}
+						spinnerFrame={spinnerFrame}
+						toolDetails={toolDetails}
+					/>
+				</>
+			)}
 			<PermissionDock
 				permissions={permissions}
 				width={contentWidth}
@@ -444,11 +423,9 @@ export const EventView = ({
 	);
 };
 
-// The share of the tab's rows the map takes at most, never fewer than MIN_MAP_ROWS, its cursor kept
-// in sight within them: half while the run goes; once it is over, what it left is the point of the
-// tab and the stream under it is history, so more.
-export const mapShare = (card: ActivityCard): number =>
-	isInFlight(card) ? 0.5 : 0.7;
+// The map requests more room for the results once a run is over. Its window shrinks
+// further when the feed and footer need those rows.
+const mapShare = (card: ActivityCard): number => (isInFlight(card) ? 0.5 : 0.7);
 const MIN_MAP_ROWS = 8;
 
 // Every lane tags a card tab's stream; chips walk them only on a card without a map.
@@ -456,46 +433,285 @@ const tabLanes = (
 	card: ActivityCard,
 	tabbed: boolean,
 	map: EventViewProps["map"],
-): { stream: readonly string[]; chips: readonly string[] } => {
+): { stream: readonly string[]; chips: readonly string[]; hasMap: boolean } => {
 	const stream = tabbed ? (card.lanes ?? []) : [];
-	return { stream, chips: map && (card.steps?.length ?? 0) > 0 ? [] : stream };
+	const hasMap = Boolean(map && (card.steps?.length ?? 0) > 0);
+	return { stream, chips: hasMap ? [] : stream, hasMap };
 };
 
-// Under the header: the map of a card with steps, then what waits on the human, then whose log is
-// open in place of the stream. A card without steps gets the banner alone.
-const CardMap = ({
-	card,
-	map,
-	lane,
-	banner,
-	width,
-	height,
-	spinnerFrame,
-}: {
+// What the tab gives its regions outside them: the tab bar, the run row and the gap under it, the
+// copilot's row and the footer.
+const CHROME_ROWS = 5;
+// A log keeps its label and at least as many rows as "now" does.
+const LOG_MIN_ROWS = 3 + Cockpit.NOW_MIN_ROWS;
+
+type CockpitProps = {
 	card: ActivityCard;
-	map: EventViewProps["map"];
+	events: readonly ActivityEvent[];
+	map: NonNullable<EventViewProps["map"]>;
 	lane: string | null;
 	banner: ReactNode;
 	width: number;
 	height: number;
 	spinnerFrame: string;
-}): ReactNode => {
-	const steps = card.steps ?? [];
-	if (!map || steps.length === 0) return banner;
+	scrollRef: RefObject<ScrollBoxRenderable | null>;
+	toolDetails: boolean | undefined;
+	logs: LogMemory;
+	hues: HueMemory;
+};
+
+// The rows the regions share: what the footer leaves them, and never more, so the footer stays.
+const REGION = {
+	flexGrow: 1,
+	flexShrink: 1,
+	minHeight: 0,
+	overflow: "hidden",
+} as const;
+
+// Every region of a card with steps, between its run row and its footer (Cockpit): stacked below
+// SPLIT_COLS, split from there. The map windows first when rows run short.
+const CardCockpit = (props: CockpitProps): ReactNode =>
+	Cockpit.split(props.width) ? (
+		<SplitCockpit {...props} />
+	) : (
+		<StackedCockpit {...props} />
+	);
+
+// One session's log under its name, taking the rows left to it and keeping a few whatever is above.
+const SessionLog = ({
+	card,
+	events,
+	lane,
+	back,
+	width,
+	spinnerFrame,
+	scrollRef,
+	toolDetails,
+	logs,
+}: Pick<
+	CockpitProps,
+	| "card"
+	| "events"
+	| "width"
+	| "spinnerFrame"
+	| "scrollRef"
+	| "toolDetails"
+	| "logs"
+> & { lane: string; back?: string }): ReactNode => (
+	<box
+		style={{
+			flexDirection: "column",
+			flexGrow: 1,
+			flexShrink: 1,
+			flexBasis: 0,
+			minHeight: LOG_MIN_ROWS,
+		}}
+	>
+		<LogLabel name={sessionName(card.steps ?? [], lane)} back={back} />
+		<Stream
+			card={card}
+			events={events}
+			lane={lane}
+			lanes={[]}
+			width={width}
+			scrollRef={scrollRef}
+			tabbed
+			spinnerFrame={spinnerFrame}
+			toolDetails={toolDetails}
+			memory={logs}
+		/>
+	</box>
+);
+
+// The rows a box was laid out with, for what has to fit them by count rather than by flex: a
+// question's banner, which the layout cannot shrink in order (blank rows, then the question).
+const useLaidOutRows = (
+	guess: number,
+): [number, (this: BoxRenderable) => void] => {
+	const [rows, setRows] = useState(guess);
+	return [
+		rows,
+		function (this: BoxRenderable) {
+			setRows(this.height);
+		},
+	];
+};
+
+// The map, what waits on the human, then "now", or the log `enter` opened in its place. The map gives
+// way first; the question takes what "now" (or the log) leaves.
+const StackedCockpit = (props: CockpitProps): ReactNode => {
+	const { card, events, map, lane, banner, width, height, spinnerFrame } =
+		props;
+	const [rows, onSize] = useLaidOutRows(height - CHROME_ROWS);
+	const below = lane === null ? 2 + Cockpit.NOW_MIN_ROWS : LOG_MIN_ROWS;
+	const mapRows = Math.max(MIN_MAP_ROWS, Math.floor(height * mapShare(card)));
 	return (
-		<>
+		<box style={{ flexDirection: "column", ...REGION }} onSizeChange={onSize}>
 			<RunMapView
 				card={card}
 				view={map.view}
 				asking={map.asking}
-				width={width}
-				maxRows={Math.max(MIN_MAP_ROWS, Math.floor(height * mapShare(card)))}
+				asked={map.asked}
+				width={width - 1}
+				maxRows={mapRows}
 				spinnerFrame={spinnerFrame}
 				onRow={map.onRow}
+				onLeftShown={map.onLeftShown}
 			/>
-			{banner}
-			{lane === null ? null : <LogLabel name={sessionName(steps, lane)} />}
-		</>
+			<BannerRoomContext.Provider
+				value={{
+					rows: rows - below,
+					spare:
+						rows - below - Math.min(mapRows, RunMap.height(card, map.view)),
+					width: width - 2,
+				}}
+			>
+				{banner}
+			</BannerRoomContext.Provider>
+			{lane === null ? (
+				<NowFeed
+					card={card}
+					events={events}
+					width={width}
+					scrollRef={props.scrollRef}
+					spinnerFrame={spinnerFrame}
+					memory={props.hues}
+				/>
+			) : (
+				<SessionLog
+					{...props}
+					key={lane}
+					lane={lane}
+					back={`esc back to ${isInFlight(card) ? "now" : "the run trace"}`}
+				/>
+			)}
+		</box>
+	);
+};
+
+// The left column, raised: the map, what waits on the human and what the run runs with, which gives
+// way first. The right: "now" over the cursor's session's log, the log alone when it is the one live
+// session or `enter` opened it, "now" alone when the cursor is on no session; on a finished run, the
+// trace over every session when the cursor is on none.
+const SplitCockpit = (props: CockpitProps): ReactNode => {
+	const { card, events, map, lane, banner, width, height, spinnerFrame } =
+		props;
+	const theme = useTheme();
+	// The scroll keys (`g/G`, `⌃d/⌃u`) go to the log when one is on screen, else to "now" or the
+	// trace; whichever does not have them keeps a scrollbox of its own.
+	const ownRef = useRef<ScrollBoxRenderable | null>(null);
+	const raised = theme.surface.raised;
+	const right = width - Cockpit.LEFT_COLS - 1;
+	const live = isInFlight(card);
+	const shown = Cockpit.logLane(card, { ...map.view, lane }, map.asked);
+	const [leftRows, onLeftSize] = useLaidOutRows(height - CHROME_ROWS);
+	const now = (keys: boolean, rows?: number): ReactNode => (
+		<NowFeed
+			card={card}
+			events={events}
+			width={right}
+			scrollRef={keys ? props.scrollRef : ownRef}
+			spinnerFrame={spinnerFrame}
+			memory={props.hues}
+			{...(rows === undefined ? {} : { rows })}
+		/>
+	);
+	const cap = Cockpit.nowCap(height - CHROME_ROWS);
+	// `esc` on a log `enter` opened unpins it: the right column follows the cursor again.
+	const log = (at: string, pinned: boolean): ReactNode => (
+		<SessionLog
+			{...props}
+			key={at}
+			lane={at}
+			{...(pinned ? { back: "esc unpin" } : {})}
+			width={right}
+		/>
+	);
+	const column =
+		lane !== null ? (
+			log(lane, true)
+		) : shown === undefined ? (
+			live ? (
+				now(true)
+			) : (
+				<>
+					{now(true, cap)}
+					<SessionsTable
+						steps={card.steps ?? []}
+						width={right}
+						scrollRef={ownRef}
+					/>
+				</>
+			)
+		) : Cockpit.nowOverLog(card, live, shown) ? (
+			<>
+				{now(false, cap)}
+				{log(shown, false)}
+			</>
+		) : (
+			log(shown, false)
+		);
+	return (
+		<box style={{ flexDirection: "row", ...REGION }}>
+			<box
+				style={{
+					flexDirection: "column",
+					width: Cockpit.LEFT_COLS,
+					flexShrink: 0,
+					marginTop: 1,
+					backgroundColor: raised,
+					overflow: "hidden",
+				}}
+				onSizeChange={onLeftSize}
+			>
+				<text
+					bg={raised}
+					fg={theme.text}
+					attributes={TextAttributes.BOLD}
+					style={{ flexShrink: 0 }}
+				>
+					{" map"}
+				</text>
+				<RunMapView
+					card={card}
+					view={map.view}
+					asking={map.asking}
+					asked={map.asked}
+					width={Cockpit.LEFT_COLS - 1}
+					maxRows={height}
+					spinnerFrame={spinnerFrame}
+					surface={raised}
+					onRow={map.onRow}
+					onLeftShown={map.onLeftShown}
+				/>
+				{/* Under the `map` heading, the rest of the column at most. */}
+				<BannerRoomContext.Provider
+					value={{
+						rows: leftRows - 1,
+						spare: leftRows - 1 - RunMap.height(card, map.view),
+						width: Cockpit.LEFT_COLS - 2,
+					}}
+				>
+					{banner}
+				</BannerRoomContext.Provider>
+				<RunFacts
+					facts={card.facts ?? []}
+					width={Cockpit.LEFT_COLS}
+					surface={raised}
+				/>
+			</box>
+			<box
+				style={{
+					flexDirection: "column",
+					flexGrow: 1,
+					flexShrink: 1,
+					minWidth: 0,
+					paddingLeft: 1,
+				}}
+			>
+				{column}
+			</box>
+		</box>
 	);
 };
 
@@ -504,21 +720,6 @@ const sessionName = (steps: readonly ActivityStep[], lane: string): string =>
 	steps
 		.flatMap((step) => step.sessions ?? [])
 		.find((session) => session.lane === lane)?.name ?? lane;
-
-// Over the stream while a map's session log is open: whose log it is, and the way back.
-const LogLabel = ({ name }: { name: string }): ReactNode => {
-	const theme = useTheme();
-	return (
-		<box style={{ flexShrink: 0, marginTop: 1 }}>
-			<text wrapMode="none">
-				<span fg={theme.defaultFg} attributes={TextAttributes.BOLD}>
-					{name}
-				</span>
-				<span fg={theme.muted}>{" · log · esc back to the stream"}</span>
-			</text>
-		</box>
-	);
-};
 
 // The permission the harness is blocked on, the rest of the queue counted beneath it (the
 // `permissions` prop says why it sits here). Nothing while none waits.
@@ -556,33 +757,49 @@ const PermissionDock = ({
 	);
 };
 
-// The events, and how the card ended. A card's tab is a live stream: pinned to the newest line until
-// the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
-// its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
-// closed until clicked, and a run of calls with nothing said between them one row (ToolRows).
-const Stream = ({
-	card,
-	events,
-	lanes,
-	width,
-	scrollRef,
-	tabbed,
-	spinnerFrame,
-	toolDetails,
-}: {
+type StreamProps = {
 	card: ActivityCard;
 	events: readonly ActivityEvent[];
+	lane: string | null;
 	lanes: readonly string[];
 	width: number;
 	toolDetails: boolean | undefined;
 	scrollRef: RefObject<ScrollBoxRenderable | null>;
 	tabbed: boolean;
 	spinnerFrame: string;
-}): ReactNode => {
+	// Where a session's log keeps its opened rows and place across a remount, by its lane.
+	memory?: LogMemory;
+};
+
+// The events, and how the card ended. A card's tab is a live stream: pinned to the newest line until
+// the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
+// its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
+// closed until clicked, and a run of calls with nothing said between them one row (ToolRows).
+export const Stream = ({
+	card,
+	events,
+	lane,
+	lanes,
+	width,
+	scrollRef,
+	tabbed,
+	spinnerFrame,
+	toolDetails,
+	memory,
+}: StreamProps): ReactNode => {
 	const theme = useTheme();
 	const live = isInFlight(card);
-	const rows = useMemo(() => ToolRows.rows(events, live), [events, live]);
-	const { isOpen, toggle } = useOpenRows(rows, scrollRef, toolDetails === true);
+	const rows = useMemo(
+		() => ToolRows.rows(laneEvents(events, lane), live),
+		[events, lane, live],
+	);
+	const { isOpen, toggle } = useOpenRows(
+		rows,
+		scrollRef,
+		toolDetails === true,
+		lane !== null ? memory : undefined,
+		lane ?? "",
+	);
 	const cols = lanes.length > 0 ? tagCols(lanes, width) : 0;
 	const tagRoom = cols > 0 ? cols + 1 : 0;
 	const promptRoom = Math.max(
@@ -674,6 +891,42 @@ const Stream = ({
 	);
 };
 
+// The tool rows a click flipped against the view's `t`, which `t` forgets.
+type Flipped = { allOpen: boolean; keys: ReadonlySet<string> };
+
+/** A session log's opened rows and where it was scrolled, kept by lane while it is off screen. */
+type LogMemory = Map<
+	string,
+	{ flipped?: Flipped; place?: { top: number; following: boolean } }
+>;
+// A log scrolled back keeps its place when it is mounted again; one following its newest line goes
+// on following. Read as it goes, before the reconciler takes its scrollbox away.
+const useKeptPlace = (
+	scrollRef: RefObject<ScrollBoxRenderable | null>,
+	memory: LogMemory | undefined,
+	lane: string,
+): void => {
+	useLayoutEffect(() => {
+		const box = scrollRef.current;
+		if (!memory || !box) return;
+		const place = memory.get(lane)?.place;
+		if (place && !place.following)
+			box.afterLayout(() => {
+				box.scrollTop = place.top;
+			});
+		return () => {
+			if (box.isDestroyed) return;
+			const following =
+				box.scrollTop >= box.scrollHeight - box.viewport.height - 1;
+			memory.set(lane, {
+				...memory.get(lane),
+				place: { top: box.scrollTop, following },
+			});
+		};
+		// The place is read when the log comes on screen and kept as it leaves.
+	}, [scrollRef, memory, lane]);
+};
+
 // Which tool rows are open, by key: every one while `allOpen` (the view's `t`), none otherwise, and
 // the rows a click flipped against that. A new `allOpen` forgets the clicks. A clicked header keeps
 // its place on screen through the layout that follows (ScrollBox.anchor, as opencode's session view
@@ -683,15 +936,20 @@ const useOpenRows = (
 	rows: readonly ToolRows.Row[],
 	scrollRef: RefObject<ScrollBoxRenderable | null>,
 	allOpen: boolean,
+	memory: LogMemory | undefined,
+	lane: string,
 ): {
 	isOpen: (key: string) => boolean;
 	toggle: (key: string, header: Renderable | null) => void;
 } => {
 	const renderer = useRenderer();
-	const [flipped, setFlipped] = useState<{
-		allOpen: boolean;
-		keys: ReadonlySet<string>;
-	}>({ allOpen, keys: NOTHING_OPEN });
+	const [flipped, setFlipped] = useState<Flipped>(
+		() => memory?.get(lane)?.flipped ?? { allOpen, keys: NOTHING_OPEN },
+	);
+	useEffect(() => {
+		memory?.set(lane, { ...memory.get(lane), flipped });
+	}, [memory, lane, flipped]);
+	useKeptPlace(scrollRef, memory, lane);
 	const keys = flipped.allOpen === allOpen ? flipped.keys : NOTHING_OPEN;
 	const lastKey = rowKey(rows[rows.length - 1]);
 	const toggle = (key: string, header: Renderable | null): void => {
@@ -885,6 +1143,9 @@ const EventRow = ({
 			) : (
 				<text fg={textFg} style={{ flexGrow: 1, flexShrink: 1 }}>
 					{event.summary}
+					{event.type === "phase" && event.detail?.input
+						? `\n${event.detail.input}`
+						: ""}
 				</text>
 			)}
 		</box>

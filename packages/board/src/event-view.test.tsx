@@ -10,6 +10,7 @@ import type {
 	ActivityCard,
 	ActivityEvent,
 	ActivitySource,
+	ActivityStep,
 } from "@kabane/extension";
 import {
 	type CapturedSpan,
@@ -17,8 +18,8 @@ import {
 	type ScrollBoxRenderable,
 	TextAttributes,
 } from "@opentui/core";
-import { act, createRef, useEffect, useState } from "react";
-import { EventView, promptLines } from "./event-view";
+import { act, createRef, type ReactNode, useEffect, useState } from "react";
+import { EventView, laneEvents, promptLines } from "./event-view";
 import type { BoardNav } from "./nav";
 import type { PlanEntry } from "./ports";
 import { noActivity } from "./ports";
@@ -27,6 +28,34 @@ import { pumpUntil, renderTest } from "./testing";
 import { Theme } from "./theme";
 
 const T0 = "2026-09-12T10:00:00.000Z";
+
+it("shows a lane's setup until its start includes it, and keeps its own run events", () => {
+	const setup = { at: T0, type: "progress", summary: "launch" };
+	const firstPage = [
+		{ ...setup, seq: 1, lane: "arch" },
+		{ ...setup, seq: 2, lane: "docs" },
+	] as const;
+	const started = {
+		at: T0,
+		seq: 3,
+		type: "phase",
+		lane: "arch",
+		summary: "started",
+		includes: [1],
+	};
+	const passed = {
+		at: T0,
+		seq: 4,
+		type: "done",
+		lane: "arch",
+		summary: "passed",
+		run: true as const,
+	};
+	const events = [...firstPage, started, passed];
+	expect(laneEvents(firstPage, "arch")).toEqual([firstPage[0]]);
+	expect(laneEvents(events, "arch")).toEqual([started, passed]);
+	expect(laneEvents(events, "docs")).toEqual([firstPage[1]]);
+});
 
 const PLAN: readonly PlanEntry[] = [
 	{ content: "read the issue", status: "completed" },
@@ -1006,6 +1035,201 @@ describe("an edit's diff", () => {
 			const row =
 				opened.split("\n").find((r) => r.includes("const line2 = 2;")) ?? "";
 			expect(row).toContain("const line2 = 22;");
+		} finally {
+			destroy();
+		}
+	});
+});
+
+// A finished run with more steps and findings than a short pane holds, its last step opened after
+// the tab is on screen, as `l` does: the map's rows change once it is laid out.
+const FINISHED: ActivityCard = {
+	id: "loop:r1",
+	kind: "loops",
+	label: "loop",
+	status: "completed",
+	startedAt: "2026-11-20T09:00:00.000Z",
+	finishedAt: "2026-11-20T09:30:00.000Z",
+	detail: [],
+	tab: true,
+	steps: [
+		...["implement", "gates", "triage", "review", "fixer", "land"].map(
+			(name): ActivityStep => ({ name, state: "done", result: "ok" }),
+		),
+		{
+			name: "recheck",
+			state: "done",
+			sessions: ["functional", "quality", "docs", "design"].map((name) => ({
+				name,
+				state: "done" as const,
+				lane: name,
+			})),
+		},
+	],
+	left: ["PROJ-1", "PROJ-2", "PROJ-3"].map((id) => ({
+		taskShortId: id,
+		how: "reopened",
+	})),
+};
+const TRACE: ActivityEvent[] = [
+	{
+		seq: 1,
+		at: "2026-11-20T09:30:00.000Z",
+		type: "progress",
+		summary: "completed: plan-done",
+		run: true,
+	},
+];
+
+const Opening = (): ReactNode => {
+	const [open, setOpen] = useState(false);
+	useEffect(() => {
+		const timer = setTimeout(() => setOpen(true), 50);
+		return () => clearTimeout(timer);
+	}, []);
+	return (
+		<EventView
+			cardId={FINISHED.id}
+			initialCard={FINISHED}
+			source={{
+				load: async () => ok([FINISHED]),
+				card: async () => ok(FINISHED),
+				events: async (_id, after) =>
+					ok(TRACE.filter((event) => event.seq > after)),
+			}}
+			resolveShortId={() => undefined}
+			scrollRef={createRef()}
+			tabbed
+			map={{
+				view: {
+					folds: new Map([["recheck", open]]),
+					cursor: "step:recheck",
+					follow: false,
+				},
+				asking: new Set(),
+			}}
+			keys={{ context: "cardTab", situation: { map: true } }}
+		/>
+	);
+};
+
+// The trace's event rows under its title, read from its own column: each a step's line
+// (`✓ implement · ok`, `✓ recheck`) or the run's ending. The split's sessions table under it does not count.
+const traceEvents = (frame: string, from: number): number => {
+	const rows = frame.split("\n").map((row) => row.slice(from));
+	const title = rows.findIndex((row) =>
+		row.trimStart().startsWith("run trace"),
+	);
+	if (title === -1) return 0;
+	let count = 0;
+	for (const row of rows.slice(title + 1)) {
+		// A row may end on the trace's scrollbar.
+		if (!/✓ \w+( · ok)?\s*[█▄▀]?\s*$|completed: plan-done/.test(row)) break;
+		count++;
+	}
+	return count;
+};
+
+describe("a card tab's footer keeps the bottom row", () => {
+	for (const [width, height] of [
+		[100, 22],
+		[100, 16],
+		[160, 16],
+	] as const)
+		it(`with a step opened after mount, at ${width}×${height}`, async () => {
+			const { renderOnce, captureCharFrame, destroy } = await renderTest(
+				<Opening />,
+				{ width, height },
+			);
+			// Split, the map is the left 66 columns and the trace the right ones.
+			const split = width >= 160;
+			try {
+				// The step is open once its session shows in the map's own column.
+				const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+					f
+						.split("\n")
+						.some((row) =>
+							(split ? row.slice(0, 66) : row).includes("✓ functional"),
+						),
+				);
+				const rows = frame.split("\n");
+				expect(rows[height - 1]).toContain("? help");
+				// "Now" keeps its title and five of the trace's own events.
+				expect(traceEvents(frame, split ? 66 : 0)).toBeGreaterThanOrEqual(5);
+			} finally {
+				destroy();
+			}
+		});
+});
+
+// A finished run's session log with a run of tool calls, pinned (`enter`), as the split shows it.
+const LOGGED: ActivityCard = {
+	...FINISHED,
+	steps: [
+		{
+			name: "recheck",
+			state: "done",
+			sessions: [{ name: "docs", state: "done", lane: "docs" }],
+		},
+	],
+	left: [],
+};
+const LOG: ActivityEvent[] = [
+	["phase", "codex rechecks the docs", undefined],
+	["tool_call", "Read guide", "a"],
+	["tool_completed", "Read guide", "a"],
+	["tool_call", "Read readme", "b"],
+	["tool_completed", "Read readme", "b"],
+	["text", "Both still name the old flag.", undefined],
+].map(([type = "", summary = "", callId], at) => ({
+	seq: at + 1,
+	at: "2026-11-20T09:10:00.000Z",
+	type,
+	summary,
+	lane: "docs",
+	...(callId ? { callId } : {}),
+}));
+
+describe("a session log across the split", () => {
+	it("keeps a tool group it opened when the pane narrows past 160", async () => {
+		const { renderOnce, captureCharFrame, mockMouse, resize, destroy } =
+			await renderTest(
+				<EventView
+					cardId={LOGGED.id}
+					initialCard={LOGGED}
+					source={{
+						load: async () => ok([LOGGED]),
+						card: async () => ok(LOGGED),
+						events: async (_id, after) =>
+							ok(LOG.filter((event) => event.seq > after)),
+					}}
+					resolveShortId={() => undefined}
+					scrollRef={createRef()}
+					tabbed
+					lane="docs"
+					map={{ view: {}, asking: new Set() }}
+					keys={{ context: "cardTab", situation: { map: true, log: true } }}
+				/>,
+				{ width: 160, height: 24 },
+			);
+		try {
+			const split = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("▸ explored · 2 reads"),
+			);
+			const rows = split.split("\n");
+			const y = rows.findIndex((row) => row.includes("▸ explored · 2 reads"));
+			await mockMouse.click(rows[y]?.indexOf("explored · 2 reads") ?? 0, y);
+			await pumpUntil(renderOnce, captureCharFrame, (f) =>
+				f.includes("▾ explored · 2 reads"),
+			);
+			resize(159, 24);
+			const stacked = await pumpUntil(
+				renderOnce,
+				captureCharFrame,
+				(f) => !f.includes(" map ") && f.includes("explored · 2 reads"),
+			);
+			expect(stacked).toContain("▾ explored · 2 reads");
+			expect(stacked).toContain("Read readme");
 		} finally {
 			destroy();
 		}

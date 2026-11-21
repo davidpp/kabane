@@ -113,7 +113,7 @@ export namespace CardTab {
 	const isMap = (tabs: BoardTabs.Tabs, id: string): boolean =>
 		(tabs.cards.get(id)?.steps?.length ?? 0) > 0;
 
-	/** The lanes the card's questions wait on, which the map's cursor goes to first. */
+	/** The lanes the card's questions wait on: every one of their rows on the map shows `?`. */
 	export const asking = (
 		tabs: BoardTabs.Tabs,
 		id: string,
@@ -124,8 +124,15 @@ export namespace CardTab {
 			),
 		);
 
+	/**
+	 * The lane of the question the card's tab shows (the one `!` landed on, else its oldest): the map
+	 * follows it, so the log and an action aimed at a lane go where the banner asks from.
+	 */
+	export const asked = (tabs: BoardTabs.Tabs, id: string): string | undefined =>
+		tabs.active === id ? BoardTabs.cardQuestion(tabs)?.lane : undefined;
+
 	const mapRow = (tabs: BoardTabs.Tabs, id: string): RunMap.Row | undefined =>
-		RunMap.at(tabs.cards.get(id) ?? {}, view(tabs, id), asking(tabs, id));
+		RunMap.at(tabs.cards.get(id) ?? {}, view(tabs, id), asked(tabs, id));
 
 	/**
 	 * The lanes an action aimed at a lane can go to from the tab: the one on screen, else on a map the
@@ -224,27 +231,53 @@ export namespace CardTab {
 		};
 	};
 
-	// `enter`: the session under the cursor's log over the stream, a step opened or folded, an issue
-	// left for the human opened on the tracker.
+	const isIssue = (item: { taskId?: string; taskShortId?: string }): boolean =>
+		item.taskId !== undefined || item.taskShortId !== undefined;
+
+	// `enter`: the session under the cursor's log over the stream, a step with sessions opened or
+	// folded, an issue left for the human opened on the tracker. Null on any other row: a session
+	// whose log is already open or that has none, a step with no sessions, a line with no issue.
 	const enter = (state: State, id: string): Step | null => {
 		const row = mapRow(state.tabs, id);
 		switch (row?.type) {
 			case "session":
-				return row.session.lane
+				return row.session.lane &&
+					row.session.lane !== view(state.tabs, id).lane
 					? {
 							state: withView(state, id, { lane: row.session.lane }),
 							effect: NOTHING,
 						}
 					: null;
 			case "step":
-				return fold(state, id, !row.open);
-			case "left":
-				return row.item.taskId !== undefined ||
-					row.item.taskShortId !== undefined
-					? BoardTabs.openIssue(state, row.item)
+				return (row.step.sessions?.length ?? 0) > 0
+					? fold(state, id, !row.open)
 					: null;
+			case "left":
+				return isIssue(row.item) ? BoardTabs.openIssue(state, row.item) : null;
 			default:
 				return null;
+		}
+	};
+
+	// What `enter` does on the map's row, in the footer's words, under the conditions `enter` acts on:
+	// in the split a session's log already follows the cursor, so `enter` pins it.
+	const enterLabel = (
+		state: State,
+		id: string,
+		split: boolean,
+	): string | undefined => {
+		if (BoardTabs.takesEnter(state) || enter(state, id) === null)
+			return undefined;
+		const row = mapRow(state.tabs, id);
+		switch (row?.type) {
+			case "session":
+				return split ? "pin log" : "log";
+			case "step":
+				return row.open ? "fold" : "open";
+			case "left":
+				return "open issue";
+			default:
+				return undefined;
 		}
 	};
 
@@ -257,7 +290,7 @@ export namespace CardTab {
 		const card = state.tabs.cards.get(id) ?? {};
 		const current = view(state.tabs, id);
 		const moveBy = (delta: 1 | -1): Step | null => {
-			const cursor = RunMap.move(card, current, delta, asking(state.tabs, id));
+			const cursor = RunMap.move(card, current, delta, asked(state.tabs, id));
 			return cursor === undefined
 				? null
 				: {
@@ -314,7 +347,7 @@ export namespace CardTab {
 			return { state, effect: NOTHING };
 		const card = state.tabs.cards.get(id) ?? {};
 		if (
-			RunMap.cursor(card, view(state.tabs, id), asking(state.tabs, id)) === key
+			RunMap.cursor(card, view(state.tabs, id), asked(state.tabs, id)) === key
 		)
 			return enter(state, id) ?? { state, effect: NOTHING };
 		return {
@@ -382,17 +415,29 @@ export namespace CardTab {
 			.map((action) => ({ key: action.key, label: action.label }));
 	};
 
-	/** Facts the footer's `when`s read, about the card on screen. */
+	/**
+	 * Facts the footer's `when`s read, about the card on screen; `split` says the tab is arranged in
+	 * two columns (Cockpit.split).
+	 */
 	export const situation = (
 		state: State,
-	): { lanes: boolean; stoppable: boolean; map: boolean; log: boolean } => {
+		split = false,
+	): {
+		lanes: boolean;
+		stoppable: boolean;
+		map: boolean;
+		log: boolean;
+		enter?: string;
+	} => {
 		const id = state.tabs.active;
 		if (id === null || state.view.type !== "events")
 			return { lanes: false, stoppable: false, map: false, log: false };
 		const map = isMap(state.tabs, id);
+		const enters = map ? enterLabel(state, id, split) : undefined;
 		return {
 			map,
 			log: map && view(state.tabs, id).lane !== null,
+			...(enters ? { enter: enters } : {}),
 			lanes: !map && lanesOf(state.tabs, id).length > 0,
 			stoppable:
 				!state.tabs.cards.get(id)?.finished &&

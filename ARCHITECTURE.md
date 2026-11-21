@@ -195,7 +195,9 @@ produces them and are imported directly by their readers:
   (`SettingValue`, `SettingKind`, `SettingField`), and `CopilotShortcut`, which an extension
   contributes (below). A constant an extension compares against, such as `STOP_ACTION`
   (`"stop"`), is the string literal type `StopAction` in the contract; the board and loop
-  each keep their own typed constant.
+  each keep their own typed constant. An `ActivityEvent` keeps its owning `lane` and may set
+  `run: true` to appear in the card's run-wide activity as well. Its optional `includes` lists
+  earlier sequence numbers the event incorporates in its transcript row.
 - **In `@kabane/acp`**, because they are the shape of an ACP elicitation: the form field types
   (`CopilotFormField`, `CopilotFormOption`, `CopilotFormValue`, `CopilotElicitationAnswer`, which
   `AcpClient.ElicitationField` aliases) and `FormField`, which judges a typed answer against one.
