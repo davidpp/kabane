@@ -50,6 +50,12 @@ describe("UpgradeOffer.answer", () => {
 		expect(UpgradeOffer.answer("\x03", BREW)).toBe("quit");
 	});
 
+	test("a fast key then Enter, sent as one chunk, answers with its first key", () => {
+		expect(UpgradeOffer.answer("n\r", BREW)).toBe("no");
+		expect(UpgradeOffer.answer("s\r", "binary")).toBe("skip");
+		expect(UpgradeOffer.answer("y\r", BREW)).toBe("yes");
+	});
+
 	test("any other key answers nothing, and asks again", () => {
 		for (const key of ["x", "\x1b", "\x1b[A", " "])
 			expect(UpgradeOffer.answer(key, BREW)).toBeUndefined();
