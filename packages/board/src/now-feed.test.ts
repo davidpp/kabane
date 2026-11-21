@@ -1,6 +1,6 @@
 import { expect, it } from "bun:test";
 import type { ActivityEvent } from "@kabane/extension";
-import { nowLines } from "./now-feed";
+import { nowLines, orderedLiveLanes, trace } from "./now-feed";
 import { Theme } from "./theme";
 
 const event = (
@@ -18,15 +18,18 @@ const event = (
 });
 
 it("filters by the live lanes, falling back to the run between sessions", () => {
+	const gate: ActivityEvent = { ...event(1, "past", "done"), run: true };
+	const next: ActivityEvent = { ...event(2, undefined, "progress"), run: true };
 	const events = [
-		event(1, "past", "text"),
-		event(2, undefined, "progress"),
-		event(3, "A", "text"),
-		event(4, "B", "thought"),
+		gate,
+		next,
+		event(3, undefined, "text"),
+		event(4, "A", "text"),
+		event(5, "B", "thought"),
 	];
-	expect(nowLines(events, ["B", "A"])).toEqual(events.slice(2));
-	expect(nowLines(events, ["A"])).toEqual(events.slice(2, 3));
-	expect(nowLines(events, [])).toEqual(events.slice(1, 2));
+	expect(nowLines(events, ["B", "A"])).toEqual(events.slice(3));
+	expect(nowLines(events, ["A"])).toEqual(events.slice(3, 4));
+	expect(nowLines(events, [])).toEqual([gate, next]);
 });
 
 it("updates each fold at its first call across other lanes, until its own lane speaks", () => {
@@ -58,4 +61,48 @@ it("only live sessions consume the six distinct series hues", () => {
 		...Theme.DARK.series,
 	]);
 	expect(Theme.liveHue(Theme.DARK, lanes, "a")).toBe(Theme.DARK.secondary);
+});
+
+it("assigns hues in claim order as newer sessions join", () => {
+	const lanes = ["ended", "first", "second", "third"];
+	for (const liveLanes of [
+		["first"],
+		["second", "first"],
+		["third", "second", "first"],
+	]) {
+		const ordered = orderedLiveLanes({ lanes, liveLanes });
+		expect(Theme.liveHue(Theme.DARK, ordered, "first")).toBe(
+			Theme.seriesOf(Theme.DARK, 0),
+		);
+		expect(ordered).toEqual(liveLanes.toReversed());
+	}
+});
+
+it("traces timed steps from the card and run events from completion onwards", () => {
+	const finished = event(2, undefined, "done");
+	const after: ActivityEvent = { ...event(3, "A", "done"), run: true };
+	const lines = trace(
+		{
+			id: "card",
+			kind: "activity",
+			label: "Work",
+			detail: [],
+			status: "completed",
+			startedAt: event(0, undefined, "phase").at,
+			finishedAt: finished.at,
+			steps: [
+				{ name: "inspect", state: "done", durationMs: 1200 },
+				{ name: "optional", state: "pending" },
+			],
+		},
+		[
+			{ ...event(1, "A", "done"), summary: "unrelated wording", run: true },
+			finished,
+			after,
+		],
+	);
+	expect(lines).toEqual([
+		{ type: "done", durationMs: 1200, summary: "inspect" },
+		after,
+	]);
 });

@@ -199,14 +199,20 @@ export type EventViewProps = {
 
 const TRANSCRIPT_KEYS: Keymap.Live = { context: "transcript", situation: {} };
 
-/** The events a lane shows: its own, plus the ones the host left on no lane. Null shows them all. */
-const laneEvents = (
+/** Show each lane's events and shared rows, folding earlier events into the row that includes them. */
+export const laneEvents = (
 	events: readonly ActivityEvent[],
 	lane: string | null,
-): readonly ActivityEvent[] =>
-	lane === null
-		? events
-		: events.filter((e) => e.lane === undefined || e.lane === lane);
+): readonly ActivityEvent[] => {
+	const selected =
+		lane === null
+			? events
+			: events.filter((e) => e.lane === undefined || e.lane === lane);
+	const included = new Set(selected.flatMap((event) => event.includes ?? []));
+	return included.size
+		? selected.filter((event) => !included.has(event.seq))
+		: selected;
+};
 
 // The tag column on the all-lanes stream: as wide as the widest lane, but never more than a quarter
 // of the row, so a forty-column pane keeps room for what was said.
@@ -375,7 +381,8 @@ export const EventView = ({
 			) : (
 				<Stream
 					card={card}
-					events={laneEvents(events, streamLanes.length > 0 ? lane : null)}
+					events={events}
+					lane={streamLanes.length > 0 ? lane : null}
 					// Tags only where lines from several lanes interleave: the all-lanes stream.
 					lanes={lane === null ? streamLanes : []}
 					width={width}
@@ -400,9 +407,8 @@ export const EventView = ({
 	);
 };
 
-// The share of the tab's rows the map takes at most, never fewer than MIN_MAP_ROWS, its cursor kept
-// in sight within them: half while the run goes; once it is over, what it left is the point of the
-// tab and the stream under it is history, so more.
+// The map requests more room for the results once a run is over. Its window shrinks
+// further when the feed and footer need those rows.
 export const mapShare = (card: ActivityCard): number =>
 	isInFlight(card) ? 0.5 : 0.7;
 const MIN_MAP_ROWS = 8;
@@ -517,9 +523,10 @@ const PermissionDock = ({
 // the human scrolls up, and pinned again once back down. On the all-lanes stream each line carries
 // its lane's tag in the lane's series color, the same one its chip has. Tool calls are one row each,
 // closed until clicked, and a run of calls with nothing said between them one row (ToolRows).
-const Stream = ({
+export const Stream = ({
 	card,
 	events,
+	lane,
 	lanes,
 	width,
 	scrollRef,
@@ -529,6 +536,7 @@ const Stream = ({
 }: {
 	card: ActivityCard;
 	events: readonly ActivityEvent[];
+	lane: string | null;
 	lanes: readonly string[];
 	width: number;
 	toolDetails: boolean | undefined;
@@ -538,7 +546,10 @@ const Stream = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const live = isInFlight(card);
-	const rows = useMemo(() => ToolRows.rows(events, live), [events, live]);
+	const rows = useMemo(
+		() => ToolRows.rows(laneEvents(events, lane), live),
+		[events, lane, live],
+	);
 	const { isOpen, toggle } = useOpenRows(rows, scrollRef, toolDetails === true);
 	const cols = lanes.length > 0 ? tagCols(lanes, width) : 0;
 	const tagRoom = cols > 0 ? cols + 1 : 0;

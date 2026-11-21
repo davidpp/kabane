@@ -284,21 +284,29 @@ export namespace LoopActivity {
 		"merge_conflict",
 	]);
 
-	type Setup = { claim?: string; detail: string[] };
-	const boardEvent = (e: RunStore.Event, start?: Setup): ActivityEvent => {
+	const boardEvent = (
+		e: RunStore.Event,
+		setup: readonly RunStore.Event[] = [],
+	): ActivityEvent => {
 		const severity =
 			e.type === "notice" ? noticeSeverity(e.data?.severity) : undefined;
+		const claim = setup.find((entry) => entry.type === "claim");
+		const detail = setup
+			.filter((entry) => entry !== claim)
+			.map((entry) => entry.summary);
 		return {
 			seq: e.seq,
 			at: e.at,
 			type:
 				BOARD_TYPE[e.type] ?? (TRANSCRIPT.has(e.type) ? e.type : "progress"),
-			summary: start?.claim ?? summaryOf(e),
+			summary: claim?.summary ?? summaryOf(e),
+			...(setup.length ? { includes: setup.map((entry) => entry.seq) } : {}),
 			...(severity ? { severity } : {}),
-			...(e.lane && !RUN_EVENTS.has(e.type) ? { lane: e.lane } : {}),
+			...(e.lane !== undefined ? { lane: e.lane } : {}),
+			...(e.lane === undefined || RUN_EVENTS.has(e.type) ? { run: true } : {}),
 			...(e.callId ? { callId: e.callId } : {}),
-			...(start?.detail.length
-				? { detail: { input: start.detail.join("\n") } }
+			...(detail.length
+				? { detail: { input: detail.join("\n") } }
 				: e.detail
 					? { detail: e.detail }
 					: {}),
@@ -312,21 +320,21 @@ export namespace LoopActivity {
 		afterSeq: number,
 	): ActivityEvent[] => {
 		if ((log.at(-1)?.seq ?? 0) <= afterSeq) return [];
-		const setup = new Map<string, Setup>();
+		const setup = new Map<string, RunStore.Event[]>();
 		const out: ActivityEvent[] = [];
 		for (const e of log) {
 			const key = e.session ?? e.lane;
-			if (key && e.type === "claim")
-				setup.set(key, { claim: e.summary, detail: [] });
+			if (key && e.type === "claim") setup.set(key, [e]);
 			if (key && ["launch", "model", "mode"].includes(e.type)) {
-				const entry = setup.get(key) ?? { detail: [] };
-				entry.detail.push(e.summary);
-				setup.set(key, entry);
+				const entries = setup.get(key) ?? [];
+				entries.push(e);
+				setup.set(key, entries);
 			}
-			if (e.seq <= afterSeq) continue;
 			const start =
 				key && e.type === "session_start" ? setup.get(key) : undefined;
-			out.push(boardEvent(e, start));
+			if (key && (e.type === "session_start" || e.type === "session_end"))
+				setup.delete(key);
+			if (e.seq > afterSeq) out.push(boardEvent(e, start));
 		}
 		return out;
 	};

@@ -11,6 +11,7 @@ import { ToolRows } from "./tool-rows";
 
 type Line = Pick<ActivityEvent, "lane" | "type" | "summary" | "severity"> & {
 	at?: string;
+	durationMs?: number;
 };
 type Fold = { calls: ToolRows.Call[] };
 const VISIBLE = new Set([
@@ -51,7 +52,7 @@ export const nowLines = (
 	events: readonly ActivityEvent[],
 	lanes: readonly string[],
 ): Line[] => {
-	if (!lanes.length) return events.filter((e) => e.lane === undefined);
+	if (!lanes.length) return events.filter((e) => e.run);
 	const selected = events.filter(
 		(e) => e.lane !== undefined && lanes.includes(e.lane),
 	);
@@ -89,29 +90,22 @@ export const nowLines = (
 	return rows.map((row) => (isFold(row) ? folded(row) : row));
 };
 
-const trace = (
+export const trace = (
 	card: ActivityCard,
 	events: readonly ActivityEvent[],
 ): Line[] => {
 	const lines: Line[] = [];
 	for (const step of card.steps ?? []) {
 		if (step.state === "pending") continue;
-		const end = events.findLast(
-			(e) =>
-				(e.type === "done" || e.type === "error") &&
-				(e.lane
-					? step.sessions?.some((s) => s.lane === e.lane)
-					: e.summary.startsWith(step.name + " · ")),
-		);
 		lines.push({
-			at: end?.at,
+			durationMs: step.durationMs,
 			type: step.state === "failed" ? "error" : step.state,
 			summary: [step.name, step.result].filter(Boolean).join(" · "),
 		});
 	}
 	const finishedAt = card.finishedAt;
 	if (finishedAt)
-		lines.push(...events.filter((e) => !e.lane && e.at >= finishedAt));
+		lines.push(...events.filter((e) => e.run && e.at >= finishedAt));
 	return lines;
 };
 
@@ -137,6 +131,12 @@ const shortTags = (
 };
 
 const EMPTY: readonly string[] = [];
+export const orderedLiveLanes = (
+	card: Pick<ActivityCard, "lanes" | "liveLanes">,
+): readonly string[] => {
+	const live = card.liveLanes ?? EMPTY;
+	return card.lanes?.filter((lane) => live.includes(lane)) ?? live;
+};
 export const NowFeed = ({
 	card,
 	events,
@@ -152,7 +152,7 @@ export const NowFeed = ({
 }): ReactNode => {
 	const theme = useTheme();
 	const live = isInFlight(card);
-	const lanes = card.liveLanes ?? EMPTY;
+	const lanes = useMemo(() => orderedLiveLanes(card), [card]);
 	const lines = useMemo(
 		() => (live ? nowLines(events, lanes) : trace(card, events)),
 		[live, events, lanes, card],
@@ -164,7 +164,8 @@ export const NowFeed = ({
 			style={{
 				flexDirection: "column",
 				flexGrow: 1,
-				minHeight: 5,
+				flexBasis: 6,
+				minHeight: 6,
 				marginTop: 1,
 			}}
 		>
@@ -183,9 +184,13 @@ export const NowFeed = ({
 					const parts = [];
 					if (width >= 60 || !live)
 						parts.push({
-							text: line.at
-								? new Date(line.at).toTimeString().slice(0, 5) + " "
-								: "      ",
+							text:
+								(line.durationMs !== undefined
+									? took(line.durationMs)
+									: line.at
+										? new Date(line.at).toTimeString().slice(0, 5)
+										: ""
+								).padStart(live ? 5 : 6) + " ",
 							fg: theme.muted,
 						});
 					if (tag && line.lane)

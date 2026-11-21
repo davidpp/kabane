@@ -65,3 +65,10 @@ with its `ActivitySession`s), once over what it `left` for the human (`ActivityL
 `facts` it runs with (`ActivityFact`); a client draws them as a map on the card's tab and lists the
 facts on its `?` sheet, and the `@kabane/board` README says how. `StopAction` is the literal type `"stop"`; consumers use
 their own constant. The contract has no dependency on the board.
+
+An `ActivityEvent` can carry both `lane` and `run: true`. The lane identifies the session
+whose log includes the event. The flag also includes it in the card's activity between
+sessions and in the run trace after completion.
+
+When a row incorporates earlier events in its summary or detail, `includes` lists their
+sequence numbers. A transcript folds those rows into this one, even across event pages.

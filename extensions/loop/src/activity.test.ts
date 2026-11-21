@@ -552,7 +552,7 @@ it("maps loop events across a poll boundary and joins setup only to its own sess
 		event(5, "mode", "default", "docs"),
 		event(6, "session_start", "started", "docs"),
 		event(7, "session_end", "done", "docs"),
-		event(8, "gate_passed", "tests pass"),
+		event(8, "gate_passed", "tests pass", "docs"),
 		event(9, "checkpoint", "saved"),
 		event(10, "permission_asked", "Allow?", "arch"),
 	];
@@ -565,5 +565,31 @@ it("maps loop events across a poll boundary and joins setup only to its own sess
 		["permission", "Allow?"],
 	]);
 	expect(rows[0]?.detail?.input).toBe("run codex\nastra\ndefault");
-	expect(LoopActivity.boardEvents(log, 0)[0]?.lane).toBeUndefined();
+	expect(rows[0]?.includes).toEqual([1, 2, 3, 5]);
+	expect(rows[0]?.lane).toBe("docs");
+	expect(rows[2]).toMatchObject({ lane: "docs", run: true });
+	const early = LoopActivity.boardEvents(log.slice(0, 5), 0);
+	expect(early[0]).toMatchObject({ lane: "docs", run: true });
+	expect(early[3]).toMatchObject({ lane: "arch", summary: "another model" });
+	expect(early[3]?.run).toBeUndefined();
+});
+
+it("keeps a launch visible when its session fails to open", () => {
+	const base = { lane: "arch", session: "s1", at: "2026-11-20T09:15:00Z" };
+	const rows = LoopActivity.boardEvents(
+		[
+			{ ...base, seq: 1, type: "launch", summary: "run codex" },
+			{
+				...base,
+				seq: 2,
+				type: "session_end",
+				summary: "error: handshake failed",
+			},
+		],
+		0,
+	);
+	expect(rows.map((row) => [row.type, row.summary, row.includes])).toEqual([
+		["progress", "run codex", undefined],
+		["done", "error: handshake failed", undefined],
+	]);
 });
