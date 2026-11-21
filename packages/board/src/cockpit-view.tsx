@@ -3,8 +3,12 @@
 // the run runs with, and on a finished run every session it had. The arrangement is the event
 // view's; these only lay out their rows.
 import type { ActivityFact, ActivityStep } from "@kabane/extension";
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
-import type { ReactNode, RefObject } from "react";
+import {
+	type BoxRenderable,
+	type ScrollBoxRenderable,
+	TextAttributes,
+} from "@opentui/core";
+import { type ReactNode, type RefObject, useState } from "react";
 import { Cockpit } from "./cockpit";
 import { glyphOf, timeOf } from "./run-map-view";
 import { Segments } from "./segments";
@@ -52,22 +56,39 @@ export const RunFacts = ({
 	surface: string;
 }): ReactNode => {
 	const theme = useTheme();
+	const [rows, setRows] = useState(0);
 	if (facts.length === 0) return null;
+	const packed = Cockpit.factRows(facts, width - 2);
+	// The rows the map and the question leave, and no more: grown from nothing, so it never takes a
+	// row from them (a heavier shrink would be the plain way, and the layout engine gets it wrong). It
+	// shows whole or not at all; the `?` sheet lists the facts too.
+	const whole = rows >= 1 + packed.length;
 	return (
 		<box
 			style={{
 				flexDirection: "column",
 				marginTop: 1,
-				// The first region to give way when the column runs short: the `?` sheet lists it too.
-				flexShrink: 100,
+				flexGrow: 1,
+				flexBasis: 0,
+				flexShrink: 1,
 				minHeight: 0,
 				overflow: "hidden",
 			}}
+			onSizeChange={function (this: BoxRenderable) {
+				setRows(this.height);
+			}}
 		>
-			<text bg={surface} fg={theme.text} attributes={TextAttributes.BOLD}>
-				{" run"}
-			</text>
-			{Cockpit.factRows(facts, width - 2).map((row) => (
+			{whole ? (
+				<text
+					bg={surface}
+					fg={theme.text}
+					attributes={TextAttributes.BOLD}
+					style={{ height: 1, flexShrink: 0 }}
+				>
+					{" run"}
+				</text>
+			) : null}
+			{(whole ? packed : []).map((row) => (
 				<text
 					key={row.map((fact) => fact.label).join(" ")}
 					bg={surface}
