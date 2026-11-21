@@ -162,24 +162,45 @@ export namespace UpdateBinary {
 		});
 	};
 
+	/** A package manager that owns an install, and the command that takes a release there. */
+	export type Manager = { name: "mise" | "brew"; upgrade: string };
+
+	/** `short = "github:davidpp/kabane"` in the `.mise.backend.toml` mise keeps beside a tool's versions. */
+	const MISE_SHORT = /^short\s*=\s*"([^"]+)"\s*$/m;
+	/** Homebrew's keg for kabane: `<prefix>/Cellar/kabane/<version>/`. */
+	const CELLAR = /\/Cellar\/kabane\/[^/]+\//;
+
 	/**
-	 * Whether mise installed the executable at real path `executable`: it sits under a mise
-	 * installs directory, which `mise up kabane` owns and this updater must not replace.
+	 * Who owns the executable at real path `executable`, when it is not this updater: mise, when it
+	 * sits under a mise installs directory, named as mise names the tool (`kabane` from its registry,
+	 * `github:davidpp/kabane` from its github backend); Homebrew, when it sits in kabane's keg.
 	 */
-	export const miseOwned = (
+	export const manager = (
 		executable: string,
 		env: NodeJS.ProcessEnv,
-	): boolean => {
+	): Manager | undefined => {
+		if (CELLAR.test(executable))
+			return { name: "brew", upgrade: "brew upgrade kabane" };
 		const home = env.HOME ?? homedir();
 		const roots = [
 			env.MISE_DATA_DIR,
 			env.XDG_DATA_HOME && join(env.XDG_DATA_HOME, "mise"),
 			join(home, ".local/share/mise"),
 		].flatMap((root) => (root ? [join(root, "installs")] : []));
-		return roots.some((root) => {
+		for (const root of roots) {
 			const real = trySync(() => realpathSync(root));
-			return executable.startsWith(`${real.ok ? real.value : root}${sep}`);
-		});
+			const prefix = `${real.ok ? real.value : root}${sep}`;
+			if (!executable.startsWith(prefix)) continue;
+			const tool = executable.slice(prefix.length).split(sep)[0] ?? "";
+			const backend = trySync(() =>
+				readFileSync(join(prefix, tool, ".mise.backend.toml"), "utf8"),
+			);
+			const short = backend.ok
+				? MISE_SHORT.exec(backend.value)?.[1]
+				: undefined;
+			return { name: "mise", upgrade: `mise up ${short ?? tool}` };
+		}
+		return undefined;
 	};
 
 	/** Why a replacement stopped; `partial` when the install may no longer be the one it found. */

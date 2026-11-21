@@ -5,7 +5,8 @@
  * version policy take, from update-version.ts. Over `fetch`, so an install without Bun can read it
  * too, which also means Bun's registry and proxy settings do not apply. Every failure says
  * nothing: a notice is never worth an error on screen. The hint is the install's own:
- * `kabane update`, `mise up kabane`, or a manual update where `kabane update` would refuse.
+ * `kabane update`, `brew upgrade kabane`, mise's `mise up <tool>`, or a manual update where
+ * `kabane update` would refuse.
  *
  * A main build hears of main instead (update-main.ts): how many commits main has past its stamp,
  * cached for an hour in `KABANE_HOME/update-check-main.json`, since main moves more often than
@@ -124,7 +125,7 @@ export namespace UpdateNotice {
 	};
 
 	/** How this install takes a release, as `kabane update` would judge it. */
-	type Install = "binary" | "mise" | "bun" | "manual";
+	type Install = "binary" | "bun" | "manual" | UpdateBinary.Manager;
 
 	/** What the process says about itself; tests pass their own. */
 	type Host = {
@@ -143,15 +144,15 @@ export namespace UpdateNotice {
 	};
 
 	/**
-	 * A binary replaces itself unless mise owns it; a Bun install updates when `kabane update`
+	 * A binary replaces itself unless mise or Homebrew owns it; a Bun install updates when `kabane update`
 	 * verifies its layout, which spawns `bun pm bin -g`, so it is asked only once a release is out.
 	 */
 	export const install = async (host: Host = HOST): Promise<Install> => {
 		if (host.compiled) {
 			const real = trySync(() => realpathSync(host.executable));
-			return real.ok && UpdateBinary.miseOwned(real.value, host.env)
-				? "mise"
-				: "binary";
+			return (
+				(real.ok && UpdateBinary.manager(real.value, host.env)) || "binary"
+			);
 		}
 		const registry = await inspectRegistryInstall({
 			bin: host.executable,
@@ -161,15 +162,14 @@ export namespace UpdateNotice {
 		return registry.ok ? "bun" : "manual";
 	};
 
-	const HINTS: Record<Install, string> = {
+	const HINTS = {
 		binary: "run kabane update",
 		bun: "run kabane update",
-		mise: "run mise up kabane",
 		manual: "update it the way you installed it",
 	};
 
 	export const line = (release: string, from: Install): string =>
-		`kabane ${release} is out · ${HINTS[from]}`;
+		`kabane ${release} is out · ${typeof from === "string" ? HINTS[from] : `run ${from.upgrade}`}`;
 
 	const MAIN_FILE = "update-check-main.json";
 	const MAIN_MAX_AGE_MS = 60 * 60 * 1000;

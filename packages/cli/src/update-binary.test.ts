@@ -314,6 +314,49 @@ test("a binary mise installed is reported with mise up kabane and never download
 	expect(updateSnapshot(installed.base)).toEqual(before);
 }, 30_000);
 
+test("mise's github backend is named as mise names it, from the backend file beside the versions", async () => {
+	serve(repacked);
+	const installed = install("mise/installs/github-davidpp-kabane/1.0.0/kabane");
+	writeFileSync(
+		join(
+			installed.base,
+			"mise/installs/github-davidpp-kabane/.mise.backend.toml",
+		),
+		'short = "github:davidpp/kabane"\nfull = "github:davidpp/kabane"\n',
+	);
+	const refused = await update([], installed.link, {
+		HOME: installed.home,
+		MISE_DATA_DIR: join(installed.base, "mise"),
+	});
+	expect(refused).toMatchObject({
+		exitCode: 1,
+		json: { status: "manual_only", install: "mise" },
+	});
+	expect(refused.text).toContain("run mise up github:davidpp/kabane.");
+}, 30_000);
+
+test("a binary in Homebrew's keg is reported with brew upgrade kabane and never downloaded", async () => {
+	serve(repacked);
+	const installed = install("homebrew/Cellar/kabane/1.0.0/libexec");
+	const before = updateSnapshot(installed.base);
+	const env = { HOME: installed.home };
+	const checked = await update(["--check"], installed.link, env);
+	expect(checked).toMatchObject({
+		exitCode: 0,
+		json: { status: "candidate", install: "brew", candidateVersion: NEXT },
+	});
+	const refused = await update([], installed.link, env);
+	expect(refused).toMatchObject({
+		exitCode: 1,
+		json: { status: "manual_only", install: "brew", candidateVersion: NEXT },
+	});
+	expect(refused.text).toContain(
+		"Homebrew owns this install, so kabane update does not replace it: run brew upgrade kabane.",
+	);
+	expect(requests.every((path) => API.includes(path))).toBe(true);
+	expect(updateSnapshot(installed.base)).toEqual(before);
+}, 30_000);
+
 test("an executable without templates/ beside it is not an extracted release and is left alone", async () => {
 	serve(repacked);
 	const installed = install("opt/kabane");
