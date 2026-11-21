@@ -45,11 +45,12 @@ export namespace BoardCopilot {
 		connect?: Connector;
 	};
 
-	// The two callbacks the human answers through. Passing `onElicitation` is what advertises forms,
-	// so a connector hands both to the client as they are.
+	// The two callbacks the human answers through, and the signal `close` aborts while the harness
+	// is still in its handshake. Passing `onElicitation` is what advertises forms, so a connector
+	// hands them all to the client as they are.
 	export type Handlers = Pick<
 		AcpClient.ConnectOptions,
-		"onPermission" | "onElicitation" | "onElicitationRefused"
+		"onPermission" | "onElicitation" | "onElicitationRefused" | "signal"
 	>;
 
 	export type Connector = (
@@ -57,8 +58,9 @@ export namespace BoardCopilot {
 	) => Promise<Result<AcpClient.Connection>>;
 
 	// The port, plus the teardown a port of three methods has no business carrying: the board's
-	// shutdown kills the harness process through this.
-	export type Handle = Copilot & { close: () => void };
+	// shutdown kills the harness process through this. It settles once a harness still in its
+	// handshake is stopped, which the host awaits before it exits.
+	export type Handle = Copilot & { close: () => Promise<void> };
 
 	// Tools that change tracker state. A completed call to one of these is what makes the board
 	// reload; everything else the agent runs is its own business.
@@ -340,9 +342,8 @@ export namespace BoardCopilot {
 
 		return {
 			outbox,
-			onPermission,
-			onElicitation,
-			onElicitationRefused,
+			// What the session is connected with, so the harness's requests land here.
+			handlers: { onPermission, onElicitation, onElicitationRefused },
 			answerPermission,
 			answerElicitation,
 			unblockAll,
@@ -393,40 +394,101 @@ export namespace BoardCopilot {
 		}
 	};
 
-	// The harness reached and its session opened on the scope's directory, with `kabane mcp` as its
-	// only tool server. A session that fails to open takes its connection down with it.
+	const connector = (options: Options): Connector =>
+		options.connect ??
+		((given) =>
+			AcpClient.spawn(options.harness, options.scopeDir, {
+				...given,
+				...(options.overrides ? { overrides: options.overrides } : {}),
+			}));
+
+	type Opened = {
+		connection: AcpClient.Connection;
+		session: AcpClient.Session;
+	};
+
+	// What a session is opened with: the kabane its tool server runs and the instruction block.
+	type Launch = { bin: string; actor: string; instructions: string };
+
+	// The session opened on the scope's directory, once `connecting` reaches the harness, with
+	// `kabane mcp` as its only tool server. A session that fails to open takes its connection down
+	// with it, and so does a stop that lands after the handshake answered but before the session
+	// is handed back, since nobody else holds that connection yet.
 	const openSession = async (
 		options: Options,
-		bin: string,
-		actor: string,
-		instructions: string,
-		handlers: Handlers,
-	): Promise<
-		Result<{ connection: AcpClient.Connection; session: AcpClient.Session }>
-	> => {
-		const connect: Connector =
-			options.connect ??
-			((given) =>
-				AcpClient.spawn(options.harness, options.scopeDir, {
-					...given,
-					...(options.overrides ? { overrides: options.overrides } : {}),
-				}));
-		const opened = await connect(handlers);
+		connecting: Promise<Result<AcpClient.Connection>>,
+		signal: AbortSignal,
+		launch: Launch,
+	): Promise<Result<Opened>> => {
+		const opened = await connecting;
 		if (!opened.ok) return opened;
-		const started = await AcpClient.newSession(opened.value, {
+		const connection = opened.value;
+		const drop = () => AcpClient.close(connection);
+		const stopped = () =>
+			err(new Error(`${options.harness}: closed before its session opened`));
+		if (signal.aborted) {
+			drop();
+			return stopped();
+		}
+		signal.addEventListener("abort", drop, { once: true });
+		const started = await AcpClient.newSession(connection, {
 			cwd: options.scopeDir,
-			mcpServers: [mcpServer(options, bin, actor)],
+			mcpServers: [mcpServer(options, launch.bin, launch.actor)],
 			// Honoured by the Claude adapter only. Every harness gets the same text as the first
 			// prompt of the session, because an adapter that ignores `_meta` would otherwise run
 			// with no instructions at all.
-			systemPromptAppend: instructions,
+			systemPromptAppend: launch.instructions,
 			...(options.mode ? { mode: options.mode } : {}),
 		});
+		signal.removeEventListener("abort", drop);
+		if (signal.aborted) return stopped();
 		if (!started.ok) {
-			AcpClient.close(opened.value);
+			drop();
 			return started;
 		}
-		return ok({ connection: opened.value, session: started.value });
+		return ok({ connection, session: started.value });
+	};
+
+	// Session starts, and the stop for the one in flight. Until the harness answers ACP
+	// `initialize`, nobody holds its process but the client, so `stop` aborts that start and
+	// waits for the connect to settle, which is when the client has killed it. It does not wait
+	// for `session/new`: the abort closes that connection, and the host is free to exit.
+	const createStarts = (options: Options) => {
+		let starting: {
+			stop: AbortController;
+			connecting: Promise<Result<AcpClient.Connection>>;
+		} | null = null;
+
+		const open = async (
+			launch: Launch,
+			handlers: Omit<Handlers, "signal">,
+		): Promise<Result<Opened>> => {
+			const stop = new AbortController();
+			const connecting = connector(options)({
+				...handlers,
+				signal: stop.signal,
+			});
+			const current = { stop, connecting };
+			starting = current;
+			const opened = await openSession(
+				options,
+				connecting,
+				stop.signal,
+				launch,
+			);
+			if (starting === current) starting = null;
+			return opened;
+		};
+
+		const stop = async (): Promise<void> => {
+			const pending = starting;
+			starting = null;
+			if (!pending) return;
+			pending.stop.abort();
+			await pending.connecting;
+		};
+
+		return { open, stop };
 	};
 
 	export const create = (options: Options): Handle => {
@@ -440,6 +502,8 @@ export namespace BoardCopilot {
 		let commands: readonly AcpClient.Command[] = [];
 		const questions = createQuestions(options.harness);
 
+		const starts = createStarts(options);
+
 		// Built as a session opens, from the setup and the kabane that session runs.
 		let built = "";
 
@@ -452,11 +516,10 @@ export namespace BoardCopilot {
 			const bin = options.kabaneBin();
 			if (bin === null) return null;
 			built = CopilotInstructions.systemPrompt(options.setup, bin);
-			const opened = await openSession(options, bin, actor, built, {
-				onPermission: questions.onPermission,
-				onElicitation: questions.onElicitation,
-				onElicitationRefused: questions.onElicitationRefused,
-			});
+			const opened = await starts.open(
+				{ bin, actor, instructions: built },
+				questions.handlers,
+			);
 			if (!opened.ok) return opened;
 			connection = opened.value.connection;
 			session = opened.value.session;
@@ -575,8 +638,9 @@ export namespace BoardCopilot {
 			answerElicitation: questions.answerElicitation,
 			shortcuts: (): CopilotShortcut[] =>
 				CopilotInstructions.shortcuts(options.setup),
-			close: () => {
+			close: async () => {
 				questions.unblockAll();
+				await starts.stop();
 				if (connection) AcpClient.close(connection);
 				connection = null;
 				session = null;

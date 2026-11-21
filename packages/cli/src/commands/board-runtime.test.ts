@@ -22,7 +22,7 @@ test("the board gets the release notice unless updates.check is false", async ()
 	const ctx = await openContext(HOME, HOME, args);
 	if (!ctx.ok) throw ctx.error;
 	const wired = await boardDeps(args, ctx.value, "claude");
-	wired.copilot.close();
+	await wired.copilot.close();
 	expect(wired.announcer).toBeDefined();
 	const quiet = await boardDeps(
 		args,
@@ -32,7 +32,7 @@ test("the board gets the release notice unless updates.check is false", async ()
 		},
 		"claude",
 	);
-	quiet.copilot.close();
+	await quiet.copilot.close();
 	expect(quiet.announcer).toBeUndefined();
 });
 
@@ -168,7 +168,7 @@ test("a real directory board factory rejection reaches the announcer with load r
 			"kabane doctor: refused 2 extensions",
 		);
 	} finally {
-		wired.copilot.close();
+		await wired.copilot.close();
 	}
 });
 

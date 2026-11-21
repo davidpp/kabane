@@ -78,7 +78,7 @@ describe("kabane board", () => {
 			expect(deps.dispatcher).toBeDefined();
 			expect(deps.headers?.loops).toBeFunction();
 		} finally {
-			deps.copilot.close();
+			await deps.copilot.close();
 		}
 	});
 
@@ -216,7 +216,7 @@ describe("kabane board", () => {
 			expect(frame).not.toContain("a dispatch");
 		} finally {
 			setup.renderer.destroy();
-			deps.copilot.close();
+			await deps.copilot.close();
 		}
 	});
 
@@ -310,7 +310,7 @@ describe("kabane board", () => {
 			const deps = await boardDeps(parseArgs([]), ctx, "claude", {
 				issue: elsewhere,
 			});
-			deps.copilot.close();
+			await deps.copilot.close();
 			expect(deps.open).toEqual({ taskId: elsewhere.id });
 			expect(await deps.resolveScope?.(cwd)).toEqual({
 				scopeUri: "kabane://scope/elsewhere",
@@ -320,7 +320,7 @@ describe("kabane board", () => {
 			const here = await boardDeps(parseArgs([]), ctx, "claude", {
 				issue: local,
 			});
-			here.copilot.close();
+			await here.copilot.close();
 			expect(await here.resolveScope?.(cwd)).toEqual({
 				scopeUri: "kabane://scope/demo",
 				label: "demo",
@@ -329,7 +329,7 @@ describe("kabane board", () => {
 			const all = await boardDeps(parseArgs([]), ctx, "claude", {
 				issue: unscoped,
 			});
-			all.copilot.close();
+			await all.copilot.close();
 			expect(await all.resolveScope?.(cwd)).toBeNull();
 
 			const pinned = await boardDeps(
@@ -338,7 +338,7 @@ describe("kabane board", () => {
 				"claude",
 				{ issue: elsewhere },
 			);
-			pinned.copilot.close();
+			await pinned.copilot.close();
 			expect(await pinned.resolveScope?.(cwd)).toEqual({
 				scopeUri: "kabane://scope/other",
 				label: "other",
@@ -373,7 +373,7 @@ describe("kabane board", () => {
 				const deps = await boardDeps(parseArgs([]), ctx, "claude", {
 					issue: target,
 				});
-				deps.copilot.close();
+				await deps.copilot.close();
 				const header = `${target.shortId} · ${target.title}`;
 				expect(await frameWith(deps, header)).toContain(header);
 			}
