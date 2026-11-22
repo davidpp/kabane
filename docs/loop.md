@@ -302,7 +302,8 @@ Codex cannot select named agents yet. A `tier:` or `agent:` tag it cannot honour
 run: it falls back for the choice it cannot honour and leaves a warning on the trace.
 `kabane loop status <runId>` shows the harness, agent and model each subtask ran as,
 with where the model choice came from. If the harness did not report a model, status
-shows it as unknown.
+shows it as unknown. A claim that ended in error shows the first line of why, such as
+`error: ACP connection closed` when its harness exited before the session started.
 
 ## Read the advice before starting
 

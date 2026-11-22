@@ -241,7 +241,7 @@ describe("kabane loop status, after a landing", () => {
 });
 
 describe("kabane loop status, its claims", () => {
-	it("says what ran each claim: harness, agent, and model with where it came from", async () => {
+	it("says what ran each claim, with where its model came from, and why an errored one ended", async () => {
 		const config = LoopConfig.Schema.safeParse({});
 		if (!config.success) throw config.error;
 		const at = new Date().toISOString();
@@ -283,6 +283,13 @@ describe("kabane loop status, its claims", () => {
 					modelSource: "default",
 				}),
 				claim("K-5", { model: "sonnet", modelSource: "run" }),
+				claim("K-6", {
+					endedAt: at,
+					outcome: "error",
+					detail: "ACP connection closed\nstderr: spawn failed",
+				}),
+				claim("K-7", { endedAt: at, outcome: "error" }),
+				claim("K-8", { endedAt: at, outcome: "done", detail: "K-8 is done" }),
 			],
 			usage: {},
 			continuationsUsed: 0,
@@ -300,6 +307,9 @@ describe("kabane loop status, its claims", () => {
 				"  K-3  claude  agent board-ui  model opus (board-ui's pin)  running",
 				"  K-4  codex  model gpt-6-astra (the harness's default)  running",
 				"  K-5  claude  model sonnet (the run's model)  running",
+				"  K-6  claude  error: ACP connection closed",
+				"  K-7  claude  error",
+				"  K-8  claude  done",
 			].join("\n"),
 		);
 	});
