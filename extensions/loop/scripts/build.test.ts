@@ -62,7 +62,12 @@ it("builds a relocatable loop with its client, skills and working shipped lenses
 		const manifest = JSON.parse(
 			readFileSync(join(installed, "package.json"), "utf8"),
 		);
-		expect(manifest.kabane).toEqual({ extension: "./index.js", api: 1 });
+		// The first step setup shows once the extension is on travels into the built manifest.
+		expect(manifest.kabane).toEqual({
+			extension: "./index.js",
+			api: 1,
+			firstStep: "press a on an issue to run it",
+		});
 		expect(manifest.dependencies).toBeUndefined();
 		for (const file of [
 			"skills/loop-run/SKILL.md",

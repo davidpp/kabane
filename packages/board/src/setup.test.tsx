@@ -439,10 +439,15 @@ describe("SetupScreen form", () => {
 			const ticked = await until((f) => f.includes("[x] dispatch"));
 			expect(ticked).toContain("turns on dispatch");
 			mockInput.pressEnter();
-			await until(() => seen.completed === 1);
+			// With no agent the done card still comes up, for the extension it turned on.
+			const done = await until((f) => f.includes("dispatch turned on"));
+			expect(done).not.toContain("✓ dispatch");
 			expect(seen.saved[0]?.extensions).toEqual(["dispatch"]);
 			expect(seen.enabled).toEqual([["dispatch"]]);
 			expect(seen.installed).toEqual([]);
+			expect(seen.completed).toBe(0);
+			mockInput.pressEnter();
+			await until(() => seen.completed === 1);
 		} finally {
 			destroy();
 		}
@@ -478,6 +483,63 @@ describe("SetupScreen form", () => {
 			}
 		});
 
+	for (const width of [40, 80])
+		it(`${width} columns, 24 rows: three agents, one failing, and three extensions: the done card gives each its first step, and keeps every next line and the footer`, async () => {
+			const steps: Record<string, string> = {
+				dispatch: "tab, then /setup-dispatch",
+				jobs: 'tab, then "schedule a job"',
+				loop: "press a on an issue to run it",
+			};
+			const { mockInput, toForm, until, destroy } = await mount(
+				{
+					...DEFAULTS,
+					harnesses: [
+						...DEFAULTS.harnesses,
+						{ id: "gemini", label: "Gemini CLI" },
+					],
+					extensions: Object.entries(steps).map(([name, firstStep]) => ({
+						name,
+						firstStep,
+					})),
+				},
+				{ width },
+			);
+			try {
+				await toForm();
+				mockInput.pressEnter();
+				for (const name of Object.keys(steps)) {
+					await until((f) => f.includes(`[ ] ${name}`));
+					mockInput.pressKey(" ");
+					await until((f) => f.includes(`[x] ${name}`));
+					mockInput.pressArrow("down");
+				}
+				mockInput.pressEnter();
+				const frame = await until((f) => f.includes("✓ filed"));
+				// Each step is on its extension's row, in one column whatever the name's length.
+				const starts = Object.entries(steps).map(([name, step]) => {
+					const row = rows(frame).find((r) => r.includes(`${name} `)) ?? "";
+					expect(row).toContain(step);
+					return row.indexOf(step);
+				});
+				expect(new Set(starts).size).toBe(1);
+				// A step of 29 cells or fewer sits beside the name at 40 columns.
+				expectWhole(frame, Object.values(steps));
+				expect(frame).toContain("codex: not logged in");
+				expectWhole(frame, nextLines("claude", FIRST_ISSUE.shortId));
+				expect(frame).toContain("enter open the board");
+				// The row between the panels gives way at 40 columns, where the card is out of rows;
+				// at 80 nothing wraps, and the panels keep their bay gap: three blank rows above
+				// the first issue, the panels' padding and the gap between them.
+				const filed = rows(frame).findIndex((r) => r.includes("✓ filed"));
+				const blank = rows(frame)
+					.slice(filed - 3, filed)
+					.filter((r) => r.trim() === "").length;
+				expect(blank).toBe(width === 80 ? 3 : 2);
+			} finally {
+				destroy();
+			}
+		});
+
 	it("the done card says which extensions were turned on, or why not even with no agent", async () => {
 		const offered = { ...DEFAULTS, extensions: [{ name: "dispatch" }] };
 		const on = await mount(offered);
@@ -488,7 +550,7 @@ describe("SetupScreen form", () => {
 			on.mockInput.pressKey(" ");
 			on.mockInput.pressEnter();
 			const frame = await on.until((f) => f.includes("✓ filed"));
-			expect(frame).toContain("✓ dispatch turned on");
+			expect(frame).toContain("dispatch turned on");
 		} finally {
 			on.destroy();
 		}

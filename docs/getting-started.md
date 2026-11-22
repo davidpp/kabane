@@ -115,8 +115,9 @@ To change your name later, edit `actor` in `~/.kabane/config.json`; to add an ag
 run `kabane mcp install`; to turn on an extension later, see
 [extensions.md](extensions.md#turn-on-the-ones-that-came-with-kabane).
 
-Enter saves the config, adds kabane to each checked harness, and files your first issue.
-What happened and the first issue each get a panel, with the phrase to say highlighted:
+Enter saves the config, adds kabane to each checked harness, turns on the checked extensions
+and files your first issue. What happened and the first issue each get a panel, with the
+phrase to say highlighted. Each extension turned on has a row with its first step:
 
 ```
 ✓ saved ~/.kabane/config.json
@@ -124,6 +125,10 @@ What happened and the first issue each get a panel, with the phrase to say highl
 Claude Code    ✓ installed
 Codex          ✓ installed
 Gemini CLI     ✓ installed
+
+dispatch tab, then /setup-dispatch
+jobs     tab, then "schedule a job"
+loop     press a on an issue to run it
 
 ✓ filed WIDG-1 for claude
   Add kabane to CLAUDE.md
@@ -140,7 +145,8 @@ landed, as a `next` issue assigned to it. Its brief is the tracker block from
 (`CLAUDE.md`, `AGENTS.md` or `GEMINI.md`) at the project root. The agent works it the way
 the block says, so you watch its first pass through the tracker on the board. It has to be
 a new session, because a harness loads its MCP servers when a session starts. Enter again
-opens the board. With no agent checked, enter opens the board straight away. Esc on the
+opens the board. With no agent and no extension checked, enter opens the board straight
+away. Esc on the
 setup screen, before confirming, leaves without writing anything. After this, `kabane`
 always opens the board directly.
 

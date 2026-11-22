@@ -143,15 +143,20 @@ const fileFirstIssue = async (
 	});
 };
 
-/** The extensions this install ships, each with what its manifest says it adds. */
+/** The extensions this install ships, each with what its manifest says it adds and to do first. */
 export const offers = (root = Extensions.shippedRoot()): SetupPlan.Offer[] =>
-	Extensions.shipped(root).map((name) => {
-		const description =
-			root === undefined
-				? undefined
-				: Extensions.descriptionAt(join(root, name));
-		return description === undefined ? { name } : { name, description };
-	});
+	root === undefined
+		? []
+		: Extensions.shipped(root).map((name) => {
+				const path = join(root, name);
+				const description = Extensions.descriptionAt(path);
+				const firstStep = Extensions.firstStepAt(path);
+				return {
+					name,
+					...(description === undefined ? {} : { description }),
+					...(firstStep === undefined ? {} : { firstStep }),
+				};
+			});
 
 /**
  * Turns on the ticked extensions through the global layer, as `kabane config set extensions

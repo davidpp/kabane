@@ -119,11 +119,15 @@ New to kabane? Follow [`docs/getting-started.md`](docs/getting-started.md): inst
 kabane
 ```
 
-The first run shows one card on what kabane is, then a setup screen: your name and the
-coding harnesses found on this machine that get a `kabane` MCP entry. Enter writes the
-config (one machine, local SQLite), files a first issue that has your agent add kabane to
-the project's `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`, and opens the board; every later
-`kabane` opens the board directly. Scripts and agents that run `kabane` without a terminal
+The first run shows one card on what kabane is, then a setup screen: your name, the
+coding harnesses found on this machine that get a `kabane` MCP entry, and, on a release
+install, the extensions to turn on. Enter writes the config (one machine, local SQLite),
+adds kabane to the checked harnesses and turns on the checked extensions. Inside a project,
+once a harness's registration succeeded, it also files a first issue that has your agent add
+kabane to the project's `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`. A done card then shows
+what happened, that issue and the first step of each extension it turned on, and Enter there
+opens the board. With no harness or extension checked, Enter opens the board at once. Every
+later `kabane` opens the board directly. Scripts and agents that run `kabane` without a terminal
 still get the help text, and `kabane init --actor … --device …` remains the flag form.
 
 Multi-device sync and the hub (a Cloudflare Worker behind Cloudflare Access, on a domain

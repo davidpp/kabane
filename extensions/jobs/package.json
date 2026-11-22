@@ -26,6 +26,7 @@
 	"kabane": {
 		"extension": "./index.ts",
 		"modules": "./modules.ts",
-		"api": 1
+		"api": 1,
+		"firstStep": "tab, then \"schedule a job\""
 	}
 }
