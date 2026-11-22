@@ -477,20 +477,24 @@ const Panel = ({
 }): ReactNode => {
 	const theme = useTheme();
 	return (
-		<box
-			style={{
-				flexDirection: "column",
-				flexShrink: 0,
-				marginTop: first ? 0 : 1,
-				backgroundColor: theme.surface.raised,
-				paddingLeft: gutter ? 0 : PANEL_PAD,
-				paddingRight: gutter ? 0 : PANEL_PAD,
-				paddingTop: 1,
-				paddingBottom: 1,
-			}}
-		>
-			{children}
-		</box>
+		<>
+			{/* The row between two panels is a box that can shrink, not a margin: on a screen out of
+			    rows it goes first, before the panels, which never shrink, lose a line of text. */}
+			{first ? null : <box style={{ height: 1, flexShrink: 1 }} />}
+			<box
+				style={{
+					flexDirection: "column",
+					flexShrink: 0,
+					backgroundColor: theme.surface.raised,
+					paddingLeft: gutter ? 0 : PANEL_PAD,
+					paddingRight: gutter ? 0 : PANEL_PAD,
+					paddingTop: 1,
+					paddingBottom: 1,
+				}}
+			>
+				{children}
+			</box>
+		</>
 	);
 };
 

@@ -484,7 +484,7 @@ describe("SetupScreen form", () => {
 		});
 
 	for (const width of [40, 80])
-		it(`${width} columns, 24 rows: the done card gives each extension turned on its first step, and keeps the footer`, async () => {
+		it(`${width} columns, 24 rows: three agents, one failing, and three extensions: the done card gives each its first step, and keeps every next line and the footer`, async () => {
 			const steps: Record<string, string> = {
 				dispatch: "tab, then /setup-dispatch",
 				jobs: 'tab, then "schedule a job"',
@@ -493,6 +493,10 @@ describe("SetupScreen form", () => {
 			const { mockInput, toForm, until, destroy } = await mount(
 				{
 					...DEFAULTS,
+					harnesses: [
+						...DEFAULTS.harnesses,
+						{ id: "gemini", label: "Gemini CLI" },
+					],
 					extensions: Object.entries(steps).map(([name, firstStep]) => ({
 						name,
 						firstStep,
@@ -518,10 +522,19 @@ describe("SetupScreen form", () => {
 					return row.indexOf(step);
 				});
 				expect(new Set(starts).size).toBe(1);
-				// A step of 29 cells or fewer sits beside the name at 40 columns, so the card fits 24 rows.
+				// A step of 29 cells or fewer sits beside the name at 40 columns.
 				expectWhole(frame, Object.values(steps));
+				expect(frame).toContain("codex: not logged in");
 				expectWhole(frame, nextLines("claude", FIRST_ISSUE.shortId));
 				expect(frame).toContain("enter open the board");
+				// The row between the panels gives way at 40 columns, where the card is out of rows;
+				// at 80 nothing wraps, and the panels keep their bay gap: three blank rows above
+				// the first issue, the panels' padding and the gap between them.
+				const filed = rows(frame).findIndex((r) => r.includes("✓ filed"));
+				const blank = rows(frame)
+					.slice(filed - 3, filed)
+					.filter((r) => r.trim() === "").length;
+				expect(blank).toBe(width === 80 ? 3 : 2);
 			} finally {
 				destroy();
 			}
