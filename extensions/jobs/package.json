@@ -27,6 +27,6 @@
 		"extension": "./index.ts",
 		"modules": "./modules.ts",
 		"api": 1,
-		"firstStep": "ask the copilot for a job"
+		"firstStep": "tab, then \"schedule a job\""
 	}
 }

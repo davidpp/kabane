@@ -288,7 +288,7 @@ export default (host: Host): Extension => ({ name: "...", commands: [...] });
 `firstStep` is one line, the first thing to do once the extension is on. First-run setup reads it,
 with `description`, from the manifests of the extensions a release ships, and shows it beside the
 extension's name once it has turned it on, so base kabane's screen names no extension. It is read as
-JSON, never imported, and nothing else reads it. 27 characters or fewer sit beside the longest
+JSON, never imported, and nothing else reads it. 29 characters or fewer sit beside the longest
 first-party name at 40 columns; a longer one wraps under itself and costs the done card a row.
 
 The types ship inside the published `kabane` package under the import path `kabane/extension`.

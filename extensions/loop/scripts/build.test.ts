@@ -66,7 +66,7 @@ it("builds a relocatable loop with its client, skills and working shipped lenses
 		expect(manifest.kabane).toEqual({
 			extension: "./index.js",
 			api: 1,
-			firstStep: "a on an issue starts a run",
+			firstStep: "press a on an issue to run it",
 		});
 		expect(manifest.dependencies).toBeUndefined();
 		for (const file of [

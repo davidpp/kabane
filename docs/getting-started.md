@@ -126,9 +126,9 @@ Claude Code    ✓ installed
 Codex          ✓ installed
 Gemini CLI     ✓ installed
 
-✓ dispatch copilot: /setup-dispatch
-✓ jobs     ask the copilot for a job
-✓ loop     a on an issue starts a run
+dispatch tab, then /setup-dispatch
+jobs     tab, then "schedule a job"
+loop     press a on an issue to run it
 
 ✓ filed WIDG-1 for claude
   Add kabane to CLAUDE.md

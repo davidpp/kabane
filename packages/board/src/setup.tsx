@@ -964,12 +964,9 @@ const ExtensionRow = ({
 	);
 };
 
-/** What an extension's row on the done card says after its name: its first step, else that it is on. */
-const firstStepOf = (offer: SetupPlan.Offer | undefined): string =>
-	offer?.firstStep ?? "turned on";
-
 // What turning on the ticked extensions did: one row each with the first step its manifest names,
-// or one line on why it failed. The steps share a column, and one that wraps keeps to it.
+// or one line on why it failed. A row carries no ✓: beside "✓ installed" it read as a status, and
+// the step is the thing to do. The steps share a column, and one that wraps keeps to it.
 const EnabledLines = ({
 	enabled,
 	offers,
@@ -995,19 +992,21 @@ const EnabledLines = ({
 	return (
 		<box style={{ flexDirection: "column", marginTop: 1 }}>
 			{enabled.names.map((name) => {
-				const offer = offers.find((o) => o.name === name);
+				const step = offers.find((o) => o.name === name)?.firstStep;
 				return (
 					<box key={name} style={{ flexDirection: "row" }}>
-						<text fg={theme.text} style={{ flexShrink: 0 }}>
-							<span fg={theme.done}>✓</span>
-							{` ${name.padEnd(width)} `}
-						</text>
-						{/* The step is the thing to do, so it reads at full tone; "turned on" is a status. */}
 						<text
-							fg={offer?.firstStep ? theme.text : theme.muted}
+							fg={theme.text}
+							attributes={TextAttributes.BOLD}
+							style={{ flexShrink: 0 }}
+						>
+							{`${name.padEnd(width)} `}
+						</text>
+						<text
+							fg={step ? theme.text : theme.muted}
 							style={{ flexShrink: 1 }}
 						>
-							{firstStepOf(offer)}
+							{step ?? "turned on"}
 						</text>
 					</box>
 				);

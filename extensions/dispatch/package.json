@@ -26,6 +26,6 @@
 	"kabane": {
 		"extension": "./index.ts",
 		"api": 1,
-		"firstStep": "copilot: /setup-dispatch"
+		"firstStep": "tab, then /setup-dispatch"
 	}
 }

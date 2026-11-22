@@ -49,7 +49,7 @@ it("builds a relocatable extension that kabane loads from a home, with its templ
 		expect(manifest.kabane).toEqual({
 			extension: "./index.js",
 			api: 1,
-			firstStep: "copilot: /setup-dispatch",
+			firstStep: "tab, then /setup-dispatch",
 		});
 		expect(manifest.dependencies).toBeUndefined();
 		for (const directory of ["copilot", "templates"]) {

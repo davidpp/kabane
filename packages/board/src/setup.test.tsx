@@ -440,8 +440,8 @@ describe("SetupScreen form", () => {
 			expect(ticked).toContain("turns on dispatch");
 			mockInput.pressEnter();
 			// With no agent the done card still comes up, for the extension it turned on.
-			const done = await until((f) => f.includes("✓ dispatch"));
-			expect(done).toContain("✓ dispatch turned on");
+			const done = await until((f) => f.includes("dispatch turned on"));
+			expect(done).not.toContain("✓ dispatch");
 			expect(seen.saved[0]?.extensions).toEqual(["dispatch"]);
 			expect(seen.enabled).toEqual([["dispatch"]]);
 			expect(seen.installed).toEqual([]);
@@ -486,9 +486,9 @@ describe("SetupScreen form", () => {
 	for (const width of [40, 80])
 		it(`${width} columns, 24 rows: the done card gives each extension turned on its first step, and keeps the footer`, async () => {
 			const steps: Record<string, string> = {
-				dispatch: "copilot: /setup-dispatch",
-				jobs: "ask the copilot for a job",
-				loop: "a on an issue starts a run",
+				dispatch: "tab, then /setup-dispatch",
+				jobs: 'tab, then "schedule a job"',
+				loop: "press a on an issue to run it",
 			};
 			const { mockInput, toForm, until, destroy } = await mount(
 				{
@@ -513,12 +513,12 @@ describe("SetupScreen form", () => {
 				const frame = await until((f) => f.includes("✓ filed"));
 				// Each step is on its extension's row, in one column whatever the name's length.
 				const starts = Object.entries(steps).map(([name, step]) => {
-					const row = rows(frame).find((r) => r.includes(`✓ ${name} `)) ?? "";
+					const row = rows(frame).find((r) => r.includes(`${name} `)) ?? "";
 					expect(row).toContain(step);
 					return row.indexOf(step);
 				});
 				expect(new Set(starts).size).toBe(1);
-				// A step of 27 cells or fewer sits beside the name at 40 columns, so the card fits 24 rows.
+				// A step of 29 cells or fewer sits beside the name at 40 columns, so the card fits 24 rows.
 				expectWhole(frame, Object.values(steps));
 				expectWhole(frame, nextLines("claude", FIRST_ISSUE.shortId));
 				expect(frame).toContain("enter open the board");
@@ -537,7 +537,7 @@ describe("SetupScreen form", () => {
 			on.mockInput.pressKey(" ");
 			on.mockInput.pressEnter();
 			const frame = await on.until((f) => f.includes("✓ filed"));
-			expect(frame).toContain("✓ dispatch turned on");
+			expect(frame).toContain("dispatch turned on");
 		} finally {
 			on.destroy();
 		}
