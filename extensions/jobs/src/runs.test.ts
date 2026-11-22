@@ -34,14 +34,14 @@ let host: Parameters<typeof Runs.list>[0];
 
 beforeEach(async () => {
 	configureTestRuntime({ modules: [Runs.module()] });
-	home = mkdtempSync(join(tmpdir(), "recipes-runs-"));
+	home = mkdtempSync(join(tmpdir(), "jobs-runs-"));
 	value(await Planner.init(home));
 	value(value(await withDb(home, (db) => Oplog.initDevice(db, "runs"))));
 	host = {
 		store: createHostStore(
 			() => home,
-			() => ["recipes_runs"],
-			"recipes test",
+			() => ["jobs_runs"],
+			"jobs test",
 		),
 		z,
 	};
@@ -71,7 +71,7 @@ const oplog = () =>
 	withDb(home, (db) =>
 		db
 			.query<{ tbl: string; op: string; row_id: string }, []>(
-				"SELECT tbl, op, row_id FROM sync_oplog WHERE tbl = 'recipes_runs' ORDER BY seq",
+				"SELECT tbl, op, row_id FROM sync_oplog WHERE tbl = 'jobs_runs' ORDER BY seq",
 			)
 			.all(),
 	);
@@ -167,16 +167,16 @@ it("refuses a row it cannot read, as one from another device's ops might be", as
 	value(await Runs.insert(host, run("01M7JT0TFJB7MF38VYDWCG0001"), "t"));
 	value(
 		await withDb(home, (db) =>
-			db.run("UPDATE recipes_runs SET state = 'succeeded'"),
+			db.run("UPDATE jobs_runs SET state = 'succeeded'"),
 		),
 	);
 	const listed = await Runs.list(host, SCOPE);
 	expect(listed.ok).toBe(false);
-	if (!listed.ok) expect(listed.error.message).toContain("recipes_runs");
+	if (!listed.ok) expect(listed.error.message).toContain("jobs_runs");
 
 	value(
 		await withDb(home, (db) =>
-			db.run("UPDATE recipes_runs SET state = 'running', inputs = '[1]'"),
+			db.run("UPDATE jobs_runs SET state = 'running', inputs = '[1]'"),
 		),
 	);
 	const inputs = await Runs.find(host, SCOPE, "0001");
@@ -185,7 +185,7 @@ it("refuses a row it cannot read, as one from another device's ops might be", as
 
 	value(
 		await withDb(home, (db) =>
-			db.run("UPDATE recipes_runs SET inputs = '{}', target_id = 'TASK1'"),
+			db.run("UPDATE jobs_runs SET inputs = '{}', target_id = 'TASK1'"),
 		),
 	);
 	const half = await Runs.find(host, SCOPE, "0001");

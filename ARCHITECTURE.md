@@ -583,8 +583,8 @@ That an entry imports only what its module objects need is a convention: nothing
 import graph of a modules entry (syntax only, with the parser `scripts/layers.ts` uses) and fails
 when it reaches the extension's main entry, a `.tsx`, a `commands`/`board*` file, or a board or
 harness-client package. It runs on the fixture extension (`packages/cli/src/extension-fixture.ts`)
-and on every `extensions/*` manifest that names `modules`: today `extensions/recipes`, whose
-`modules.ts` registers its run table. Neither the loop nor dispatch names one. The extensions' builds carry a
+and on every `extensions/*` manifest that names `modules`: today `extensions/jobs`, whose
+`modules.ts` registers its run and job tables. Neither the loop nor dispatch names one. The extensions' builds carry a
 `modules` entry into the built manifest at its built path (`scripts/build.ts` in each).
 
 **What it costs.** With the fixture extension enabled, whose modules entry imports one small
@@ -766,8 +766,12 @@ This follows the 2026-11-04 research note except in three places:
 
 ## The code breaks these rules in named places
 
-None today. A break that lands gets a row here: the rule, where the code breaks it, and the
-issue that removes it.
+A break that lands gets a row here: the rule, where the code breaks it, and the issue that
+removes it.
+
+| Rule | Where the code breaks it | Removed by |
+|---|---|---|
+| An extension writes only its own tables | `extensions/jobs/src/from-recipes.ts`: the migration that moved a device from the `recipes` names renames its version tables and rewrites `sync_oplog`, `sync_parked`, `sync_parked_deletes`, `sync_quarantine` and `module_declarations` with raw SQL, because core cannot rename a module | JCAB-648 |
 
 Each rule in this file and what holds it. "Review" means nothing fails a build; a reviewer has to
 notice. The architecture lens is `.agents/skills/dispatch/references/lenses/architecture.md`.

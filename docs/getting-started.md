@@ -99,7 +99,7 @@ space toggle · enter confirm · esc quit
   set and nothing it names on your PATH, the row reads `install off` instead (that is what
   `bun run sandbox` shows).
 - **extensions** lists the [extensions](extensions.md) that come with a release install (the
-  standalone binary from Homebrew, mise or the installer): `dispatch`, `loop` and `recipes`,
+  standalone binary from Homebrew, mise or the installer): `dispatch`, `jobs` and `loop`,
   each with what it adds, cut to one line until its row has focus. None is checked; space
   checks the ones you want on, and enter adds them to `extensions` and links each into
   `~/.kabane/extensions/`. Run from a source checkout, kabane ships none, and the section is
@@ -678,7 +678,7 @@ start them again, harness sessions included, so each `kabane mcp` starts with it
   ([extensions.md](extensions.md), "Update an extension"): an older loop starts its sessions as
   `cabane://actor/agent/<harness>`, which this version refuses, and an older recipes leaves its
   tables under the old prefix. On a main build, `kabane update` rebuilds them for you.
-- **The recipes extension.** Its runs and jobs move when it is enabled. A device with it
+- **The jobs extension.** Its runs and jobs move when it is enabled. A device with it
   disabled keeps the old prefix in those tables until it is enabled again.
 - **Sync: every device before the next sync.** A device still on the old version stops pulling
   at an updated device's first change. What it pushes meanwhile carries the old prefix, and an
@@ -689,6 +689,35 @@ start them again, harness sessions included, so each `kabane mcp` starts with it
 - **No going back.** The old version refuses a database this one has opened: `newer than this
   kabane knows`. Going back takes all three backups: the database, `config.json` and the
   harness configs.
+
+### Upgrading: the recipes extension is now jobs
+
+The extension behind `kabane run`, `kabane runs` and `kabane job` was called `recipes`; it is
+`jobs`. The commands, recipe files in `.kabane/recipes/` and the word "recipe" are unchanged. A
+device that had it enabled still names `recipes` in `config.json`, so the extension does not
+load; while `~/.kabane/extensions/recipes` still resolves to a directory with no
+`package.json`, every command that opens the database stops with a pointer to:
+
+```bash
+kabane doctor --fix
+```
+
+It links `~/.kabane/extensions/jobs` to this kabane's own copy of the extension, moves the
+`recipes.*` settings (`harness`, `onAttention`) to `jobs.*` in `~/.kabane/projects/` and in the
+`.kabane/recipes.json` of the project you run it in, removes the old `recipes` link, and only then
+renames the `recipes` entry in `extensions` and its settings in `config.json`. A
+`~/.kabane/extensions/recipes` you copied rather than linked stays, and doctor says so: remove it
+once you no longer need it. When a destination is already taken (a `jobs.json` beside a
+`recipes.json`, a `jobs` key beside `recipes`), or this kabane has no `jobs` copy to link, it
+changes nothing, says why and exits 1. The next command that opens the database
+moves the extension's tables, with every run and job, to their new names. Run doctor once more
+and apply what it reports, such as a `job` skill in `~/.agents/skills/job` that now differs
+from the one the extension ships. Restart the board and harness sessions afterwards: a process
+started before the rename still uses the old names.
+
+- **Sync.** An op a device on the old version pushes is tagged with the old names, and an
+  updated device parks it for good. Update every device before the next sync.
+- **No going back.** The old version finds none of its tables in a database the new one opened.
 
 ### Upgrading from 1.0.0-beta.0: the loop and dispatch are extensions you install
 

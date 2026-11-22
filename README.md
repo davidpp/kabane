@@ -242,8 +242,8 @@ the install step runs for real, but a harness may not be logged in there: try th
 without it.
 
 The sandbox links the checkout's `extensions/loop`, `extensions/dispatch` and
-`extensions/recipes` into its home, installed but not enabled.
-`bun run sandbox config set extensions loop,dispatch,recipes --layer global` turns them on.
+`extensions/jobs` into its home, installed but not enabled.
+`bun run sandbox config set extensions loop,dispatch,jobs --layer global` turns them on.
 
 `--scripted` points the sandbox's copilot at `packages/acp/scripts/scripted-agent.ts`, an
 ACP agent that needs no login and answers on cue. Open the copilot with `tab` and send

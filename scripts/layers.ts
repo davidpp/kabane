@@ -121,7 +121,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 		dependencies: [],
 		devDependencies: ["@kabane/core", "@kabane/extension"],
 	},
-	"@kabane/recipes": {
+	"@kabane/jobs": {
 		layer: "extension",
 		// Recipe files, its run table and the hc CLI: no harness client to bundle.
 		dependencies: [],

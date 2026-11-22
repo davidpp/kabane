@@ -455,7 +455,7 @@ describe("SetupScreen form", () => {
 			const { mockInput, toForm, until, destroy } = await mount(
 				{
 					...DEFAULTS,
-					extensions: ["dispatch", "loop", "recipes"].map((name) => ({
+					extensions: ["dispatch", "jobs", "loop"].map((name) => ({
 						name,
 						description: about(name),
 					})),

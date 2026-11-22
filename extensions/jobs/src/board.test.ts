@@ -78,8 +78,8 @@ const hostFor = (basePath: string): Host => ({
 	}),
 	store: createHostStore(
 		() => basePath,
-		() => ["recipes_runs", "recipes_jobs", "recipes_roots"],
-		"recipes test",
+		() => ["jobs_runs", "jobs_jobs", "jobs_roots"],
+		"jobs test",
 	),
 	scope: { detect: async () => ok(project), idOf: ScopeUri.getScopeId },
 	harnessMode: "auto",
@@ -133,7 +133,7 @@ let issue: { id: string; shortId: string; title: string };
 
 beforeEach(async () => {
 	configureTestRuntime({ modules: [Runs.module(), Jobs.module()] });
-	folder = realpathSync(mkdtempSync(join(tmpdir(), "recipes-board-")));
+	folder = realpathSync(mkdtempSync(join(tmpdir(), "jobs-board-")));
 	home = join(folder, "home");
 	const root = join(folder, "project");
 	mkdirSync(home);
@@ -369,7 +369,7 @@ inputs:
 ---
 `;
 
-// `harness` is `recipes.harness` as a global setting; unset, the setting is absent.
+// `harness` is `jobs.harness` as a global setting; unset, the setting is absent.
 const dispatcherWith = (runtime: Runtime, harness?: string[]) =>
 	RecipeDispatcher.make({
 		host,
@@ -546,7 +546,7 @@ describe("RecipeDispatcher", () => {
 		);
 		expect(plain?.inputs["@harness"]).toMatchObject({
 			default: "sh -c 'echo setting'",
-			hint: "from recipes.harness; the prompt is added as its last word",
+			hint: "from jobs.harness; the prompt is added as its last word",
 		});
 	});
 });

@@ -80,7 +80,7 @@ it("offers the tick only while there are jobs and nothing ticks them", () => {
 		severity: "suggest",
 		path: join(user, "Library/LaunchAgents/com.kabane.job-tick.plist"),
 		summary:
-			"Nothing runs kabane job tick on this machine, so its 2 jobs never fire. --fix recipes/job-tick-missing installs a launchd agent that runs `kabane job tick` every minute.",
+			"Nothing runs kabane job tick on this machine, so its 2 jobs never fire. --fix jobs/job-tick-missing installs a launchd agent that runs `kabane job tick` every minute.",
 	});
 	expect(finding?.fix).toBeDefined();
 	JobTick.write({ ...TARGET, kabane: process.execPath }, user);
@@ -97,7 +97,7 @@ it("counts a tick whose program is gone as missing, and offers to install it aga
 		const [finding] = JobTick.check(1, TARGET, darwin);
 		expect(finding).toMatchObject({
 			id: "job-tick-missing",
-			summary: `The tick at ${JobTick.agentPath(user)} runs ${join(user, "gone/kabane")}, which is gone, so this machine's job never fires. --fix recipes/job-tick-missing installs a launchd agent that runs \`kabane job tick\` every minute.`,
+			summary: `The tick at ${JobTick.agentPath(user)} runs ${join(user, "gone/kabane")}, which is gone, so this machine's job never fires. --fix jobs/job-tick-missing installs a launchd agent that runs \`kabane job tick\` every minute.`,
 		});
 		JobTick.write({ ...TARGET, kabane: process.execPath }, user);
 		expect(JobTick.check(1, TARGET, darwin)).toEqual([]);

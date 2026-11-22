@@ -1,6 +1,6 @@
 // The harness a run starts: a command as a list of words, the prompt appended as its last. Where it
 // comes from, most specific first: what the human set at launch (`kabane run --harness`, the board's
-// form), a job's own, the recipe's frontmatter, the `recipes.harness` setting, then `claude`.
+// form), a job's own, the recipe's frontmatter, the `jobs.harness` setting, then `claude`.
 // Kabane adds no flags of its own to any of them.
 //
 // What a human reads and edits is the command line, quoted as a POSIX shell would take it, so a
@@ -33,7 +33,7 @@ export namespace Harness {
 		launch: "set at launch",
 		job: "from the job",
 		recipe: "from the recipe",
-		setting: "from recipes.harness",
+		setting: "from jobs.harness",
 		default: "kabane's default",
 	};
 

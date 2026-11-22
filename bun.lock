@@ -28,6 +28,16 @@
         "tsgo": "npm:typescript@7.0.2",
       },
     },
+    "extensions/jobs": {
+      "name": "@kabane/jobs",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@kabane/core": "workspace:*",
+        "@kabane/extension": "workspace:*",
+        "@types/bun": "1.4.4",
+        "tsgo": "npm:typescript@7.0.2",
+      },
+    },
     "extensions/loop": {
       "name": "@kabane/loop",
       "version": "0.1.0",
@@ -37,16 +47,6 @@
       },
       "devDependencies": {
         "@kabane/checklist": "workspace:*",
-        "@kabane/core": "workspace:*",
-        "@kabane/extension": "workspace:*",
-        "@types/bun": "1.4.4",
-        "tsgo": "npm:typescript@7.0.2",
-      },
-    },
-    "extensions/recipes": {
-      "name": "@kabane/recipes",
-      "version": "0.1.0",
-      "devDependencies": {
         "@kabane/core": "workspace:*",
         "@kabane/extension": "workspace:*",
         "@types/bun": "1.4.4",
@@ -387,13 +387,13 @@
 
     "@kabane/handoff": ["@kabane/handoff@workspace:packages/handoff"],
 
+    "@kabane/jobs": ["@kabane/jobs@workspace:extensions/jobs"],
+
     "@kabane/loop": ["@kabane/loop@workspace:extensions/loop"],
 
     "@kabane/outcome": ["@kabane/outcome@workspace:packages/outcome"],
 
     "@kabane/questions": ["@kabane/questions@workspace:packages/questions"],
-
-    "@kabane/recipes": ["@kabane/recipes@workspace:extensions/recipes"],
 
     "@kabane/sqlite": ["@kabane/sqlite@workspace:packages/sqlite"],
 

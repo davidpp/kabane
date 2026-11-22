@@ -7,7 +7,7 @@ once;
 `kabane runs` shows what each run is doing and lets you read it, send to it, take it over or
 stop it. `kabane job` runs a recipe on a schedule.
 
-Recipes are the `recipes` extension. Without it, kabane has no `run`, `runs` or `job` command,
+Recipes, runs and jobs are the `jobs` extension. Without it, kabane has no `run`, `runs` or `job` command,
 and the board shows no run and offers no recipe.
 
 ## Install
@@ -16,15 +16,15 @@ Build it from a kabane checkout and install it as [Extensions](extensions.md) sh
 loop and dispatch:
 
 ```bash
-bun run --cwd extensions/recipes build
-mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/recipes"
-cp -R extensions/recipes/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/recipes/"
-kabane config set extensions loop,dispatch,recipes --layer global   # the ones you use
+bun run --cwd extensions/jobs build
+mkdir -p "${KABANE_HOME:-$HOME/.kabane}/extensions/jobs"
+cp -R extensions/jobs/dist/. "${KABANE_HOME:-$HOME/.kabane}/extensions/jobs/"
+kabane config set extensions loop,dispatch,jobs --layer global   # the ones you use
 ```
 
 Runs start in terminals of `hc` (herdr core), which must be on your `PATH`. Without it,
 `kabane run` stops with one line naming it and `kabane doctor` reports
-`recipes/hc-missing`.
+`jobs/hc-missing`.
 
 ## Write a recipe
 
@@ -77,7 +77,7 @@ inputs:
 | `skill` | the project skill the run uses; without it, the skill with the recipe's own name, unless the file has a body, which is then the prompt. Several recipes can name one skill |
 | `target` | `issue`: the run works on an issue given with `--target`; `job`: it runs for a scheduled job (see [Jobs](#jobs)); `none` (the default): it takes none |
 | `inputs` | by name: `type` (`string`, the default, `number` or `boolean`), `required`, `default`, `options` (strings only), `label`, `hint` |
-| `harness` | the command this recipe starts, as a list (`[codex, exec]`), or one word (`codex`); the prompt is added as its last argument. Without it, `recipes.harness` (see [Which harness a run starts](#which-harness-a-run-starts)) |
+| `harness` | the command this recipe starts, as a list (`[codex, exec]`), or one word (`codex`); the prompt is added as its last argument. Without it, `jobs.harness` (see [Which harness a run starts](#which-harness-a-run-starts)) |
 
 Kabane looks for the skill in `.agents/skills/<skill>/SKILL.md`, then in
 `.claude/skills/<skill>/SKILL.md`, under the project's root. A skill in neither, or a field or
@@ -155,11 +155,11 @@ The most specific of these, first found wins:
    board's form;
 2. a job's own `--harness`, for a job's runs;
 3. the recipe's `harness`;
-4. the `recipes.harness` setting;
+4. the `jobs.harness` setting;
 5. `claude`.
 
 `kabane run` with no recipe, `kabane job list` and `kabane job show` print the command each
-recipe or job would start and where it comes from (`from the recipe`, `from recipes.harness`);
+recipe or job would start and where it comes from (`from the recipe`, `from jobs.harness`);
 `kabane run` prints the one it started. `--harness` splits on commas, as `config set` does.
 
 ## Follow your runs
@@ -191,7 +191,7 @@ Program Status Protocol; kabane never guesses a state from the screen:
 | `idle` | the agent's turn ended and the program is still open |
 | `ended` | the program exited, or the terminal is gone |
 
-Any program can report its own state, a script set as `recipes.harness` included: it runs
+Any program can report its own state, a script set as `jobs.harness` included: it runs
 `printf '\033]7501;state=working:app=my-agent\033\\'`, with `state` one of `working`, `blocked`,
 `idle`, `done` or `error`. `blocked` shows `waiting`; `idle`, `done` and `error` show `idle`.
 
@@ -200,7 +200,7 @@ terminal answers its startup probe within 2 seconds. When its startup keeps it b
 that (MCP servers connecting, a prompt given on the command line), it reports nothing for the
 whole session; about one prompted run in three did so on a laptop with a few MCP servers. Such
 a run reads `live` until it exits, so its job never fires again while it is there and
-`recipes.onAttention` never hears about it. Upstream:
+`jobs.onAttention` never hears about it. Upstream:
 [anthropics/claude-code#105534](https://github.com/anthropics/claude-code/issues/105534) and
 [#103022](https://github.com/anthropics/claude-code/issues/103022).
 
@@ -279,7 +279,7 @@ and `kabane runs stop <id>` stops it. `X` on the issue's detail stops it too (th
 `a` on an issue offers every recipe of the project whose frontmatter says `target: issue`,
 with its description. `enter` on one opens its form, which names the skill the run uses and its
 file, or says the recipe has its own prompt and names the recipe's file, and lists every value the run will get before anything starts: the harness first, as the command line it will start, with where
-it comes from under it (`from the recipe`, `from recipes.harness`), then each input with its
+it comes from under it (`from the recipe`, `from jobs.harness`), then each input with its
 default and hint. Every row can be changed. `h/l` move a choice, a number or a boolean; any
 other row is typed: type to add, `backspace` to delete, and `↑↓` leave it, since `j/k` are
 letters it takes. The harness row is a shell command line: quote a word with a space in it
@@ -318,7 +318,7 @@ come from `--input name=value` and `--inputs '{…}'` as with `kabane run`, are 
 are never asked for: a required input that is missing is an error. `--schedule` is a cron
 expression (`minute hour day month weekday`, or `@daily` and the other nicknames), read in this
 machine's time zone. `--harness claude,--model,opus` gives this job its own command instead of
-the recipe's `harness` and `recipes.harness`. `--session keep` makes the job keep one session between fires (below); the
+the recipe's `harness` and `jobs.harness`. `--session keep` makes the job keep one session between fires (below); the
 default, `--session fresh`, starts a new one on each fire. `--check "<shell>"` makes each due
 fire start the run only when that command exits 0 ([Fire only when there is something to
 do](#fire-only-when-there-is-something-to-do)).
@@ -328,7 +328,7 @@ changed and when the job fires next: `--title` and `--request` (the item's title
 description, as `kabane edit` would change them), `--schedule`, `--harness`, `--session`, `--check`, and the
 inputs, checked against the recipe as `job add` checks them: `--inputs '{…}'` replaces them,
 each `--input name=value` sets one. `--harness none` drops the job's own command, so the
-recipe's `harness` or `recipes.harness` applies again, and `--check none` drops the job's check. A new schedule counts from the job's last
+recipe's `harness` or `jobs.harness` applies again, and `--check none` drops the job's check. A new schedule counts from the job's last
 fire, or from when it was added, as a tick does. A job's project does not change: to move one,
 close it and add it again.
 
@@ -370,7 +370,7 @@ The run's preamble tells the agent it is a scheduled background run of the job, 
 with `kabane_context` for the request and what earlier runs reported, to write its result as one
 comment on the job. It also says you are not watching but are notified when the run waits for
 you: a decision for you is asked in the run's own session, with the choices and a recommendation,
-and the agent waits there for your answer. `recipes.onAttention` tells you ([Hear when a run needs you](#hear-when-a-run-needs-you)), and you answer with
+and the agent waits there for your answer. `jobs.onAttention` tells you ([Hear when a run needs you](#hear-when-a-run-needs-you)), and you answer with
 `kabane runs attach` or `kabane runs send`. Kabane does not store that question. A decision about
 a specific issue that can wait goes on that issue with `kabane_ask` instead. `tick` prints one
 line for each job it fired or skipped and exits 0 unless kabane itself failed.
@@ -407,7 +407,7 @@ kabane job edit JCAB-600 --check none     # every due fire starts its run again
 
 ### Ask any harness to make a job
 
-The recipes extension ships a `job` skill that teaches a harness the commands above, so you can
+The jobs extension ships a `job` skill that teaches a harness the commands above, so you can
 say "make a job in ~/Projects/notes that tidies the inbox every Monday at 9" or "pause that job"
 from any harness, in any folder. It turns the prompt into one `kabane job add` or `kabane job
 edit` (the folder checked with `kabane scope`, the schedule as cron, a recipe and its inputs when
@@ -418,22 +418,22 @@ leaves open, such as the time of day.
 While the extension is enabled, `kabane mcp` serves the skill to every session that has kabane's
 tools (`kabane_skillList` names it, `kabane_skillGet` returns it), the board's copilot included,
 with nothing to install. A harness also reads it on its own, without asking kabane, once it is
-installed for your user: `kabane doctor` reports `recipes/job-skill-missing` while
+installed for your user: `kabane doctor` reports `jobs/job-skill-missing` while
 `~/.agents/skills/job/SKILL.md` is absent, and
 
 ```bash
-kabane doctor --fix recipes/job-skill-missing
+kabane doctor --fix jobs/job-skill-missing
 ```
 
 writes it there, where Codex, Gemini and other harnesses read it, and links
 `~/.claude/skills/job` to it for Claude Code. An existing `~/.claude/skills/job` that is not a link
 is left as it is, and the fix says so. When a later kabane ships a different skill, `doctor` reports
-`recipes/job-skill-behind`, and `--fix recipes/job-skill-behind` copies the new one over yours,
+`jobs/job-skill-behind`, and `--fix jobs/job-skill-behind` copies the new one over yours,
 replacing any edits.
 
 ### Hear when a run needs you
 
-`recipes.onAttention` is a shell command that `job tick` runs when a job's run needs you: once
+`jobs.onAttention` is a shell command that `job tick` runs when a job's run needs you: once
 when it starts waiting on you (a permission, a question, a trust dialog), and once when it
 finishes (`idle` or `ended`). A run still waiting at the next tick does not run it again; one
 that waits again after it went back to work does. Only the newest run of each job on this
@@ -452,7 +452,7 @@ The command runs with `sh -c` in the run's folder, with these environment variab
 | `KABANE_ATTACH` | the command that opens its session: `kabane runs attach <run id>` |
 
 ```bash
-kabane config set recipes.onAttention \
+kabane config set jobs.onAttention \
   'terminal-notifier -title "$KABANE_JOB $KABANE_ATTENTION" -message "$KABANE_JOB_TITLE: $KABANE_ATTACH"' \
   --layer global
 ```
@@ -463,7 +463,7 @@ changes nothing else: it is not retried. The tick runs it with the `PATH` it was
 
 ### Jobs on the board
 
-With the recipes extension enabled, the board has a Jobs tab after the tracker (tab 2; `2`, `{`
+With the jobs extension enabled, the board has a Jobs tab after the tracker (tab 2; `2`, `{`
 and `}` reach it, or click it), from before the first job. Until there is one, the tab says what a
 job is and that you make one by asking your agent, or by pressing `A` and asking the copilot. It
 lists the jobs of every project on this device, not only the board's, one section per project
@@ -481,7 +481,7 @@ needs you.
 | `esc` | back to the tracker |
 
 Each run in the detail shows its state, when it started and `kabane runs attach <id>`, which
-opens its session in hc; the board does not show the session. A board without the recipes
+opens its session in hc; the board does not show the session. A board without the jobs
 extension shows the tab only while this device has a job, and lists the jobs with only their id,
 title, project and whether they are paused.
 
@@ -491,15 +491,15 @@ A job fires only when something runs `kabane job tick`. When nothing does on thi
 `kabane job add` at a terminal asks whether to install it: on macOS a launchd agent,
 `~/Library/LaunchAgents/com.kabane.job-tick.plist`, and on Linux a crontab line, each running the
 tick every minute. Run elsewhere, as an agent runs it, `job add` prints the command that installs it
-instead, and `kabane doctor` reports `recipes/job-tick-missing` while this machine has a job and
+instead, and `kabane doctor` reports `jobs/job-tick-missing` while this machine has a job and
 nothing ticks it:
 
 ```bash
-kabane doctor --fix recipes/job-tick-missing
+kabane doctor --fix jobs/job-tick-missing
 ```
 
 The tick runs the kabane that installed it, with that shell's `PATH`, so it finds `hc`, the
-harnesses and the `recipes.onAttention` command as your shell does, and with its `KABANE_HOME`.
+harnesses and the `jobs.onAttention` command as your shell does, and with its `KABANE_HOME`.
 When the kabane a tick runs is gone, such as an old install removed after a move to Homebrew,
 `job add` and `kabane doctor` report it as they report a missing one, and the fix replaces it with
 one for the kabane you run. After you change your `PATH`, remove the tick and install it again. To remove it on
@@ -509,15 +509,15 @@ the line with `crontab -e`. Its output goes to `job-tick.log` and `job-tick.erro
 
 ## Settings
 
-`recipes.harness` is the command a run starts when the recipe names none, as a list; the prompt
+`jobs.harness` is the command a run starts when the recipe names none, as a list; the prompt
 is added as its last argument. Unset, it is `claude`. A recipe's own `harness`, a job's
 `--harness` and `kabane run --harness` come before it ([Which harness a run
-starts](#which-harness-a-run-starts)). `recipes.onAttention` is the command a tick runs when a
+starts](#which-harness-a-run-starts)). `jobs.onAttention` is the command a tick runs when a
 job's run needs you ("Hear when a run needs you", above); unset by default.
 
 ```bash
-kabane config set recipes.harness codex --layer global
-kabane config set recipes.harness claude,--model,opus            # for this project only
+kabane config set jobs.harness codex --layer global
+kabane config set jobs.harness claude,--model,opus            # for this project only
 ```
 
 `config set` splits a list on commas. For an argument that contains one, write the list in

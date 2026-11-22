@@ -5,7 +5,7 @@
 			"entry": ["scripts/*.ts"]
 		},
 		"packages/questions": {},
-		"extensions/recipes": {
+		"extensions/jobs": {
 			"entry": ["modules.ts"]
 		},
 		"packages/acp": {

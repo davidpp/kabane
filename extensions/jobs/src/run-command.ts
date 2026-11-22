@@ -18,7 +18,7 @@ import { err, ok } from "./result";
 import { Runs } from "./runs";
 import type { Runtime } from "./runtime";
 
-/** The `recipes` settings namespace. */
+/** The `jobs` settings namespace. */
 export const settingsSchema = (z: Host["z"]) =>
 	z
 		.object({
@@ -54,7 +54,7 @@ export const harnessOf = async (
 		recipe?: Pick<Recipe.Recipe, "harness">;
 	},
 ): Promise<Result<Harness.Chosen>> => {
-	const configured = await ctx.settings("recipes", settings, {
+	const configured = await ctx.settings("jobs", settings, {
 		projectDir: root,
 	});
 	if (!configured.ok) return configured;

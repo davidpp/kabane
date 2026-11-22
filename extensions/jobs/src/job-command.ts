@@ -427,7 +427,7 @@ const offerTick = (ctx: Extension.Ctx, host: Host): string[] => {
 	const reason = JobTick.why(tick);
 	if (reason === undefined) return [];
 	const nothing = `${reason}${tick.state === "none" ? " yet" : ""}, so no job fires`;
-	const how = `${nothing}: \`kabane doctor --fix recipes/job-tick-missing\` installs ${JobTick.what(platform)}.`;
+	const how = `${nothing}: \`kabane doctor --fix jobs/job-tick-missing\` installs ${JobTick.what(platform)}.`;
 	const answer = terminalAsk()?.(
 		`${nothing}. Install ${JobTick.what(platform)}? [y/N]`,
 	);
@@ -701,7 +701,7 @@ const editFlagsOf = (
 	const check = a.flagString(args, "check");
 	const change: EditFlags["change"] = {
 		...(schedule === undefined ? {} : { schedule }),
-		// `none` hands the choice back to the recipe and recipes.harness.
+		// `none` hands the choice back to the recipe and jobs.harness.
 		...(harness === undefined
 			? {}
 			: { harness: harness.join(",") === "none" ? null : harness }),
@@ -775,7 +775,7 @@ const editedOf = (
 			? []
 			: [
 					change.harness === null
-						? "harness from recipes.harness"
+						? "harness from jobs.harness"
 						: `harness ${change.harness.join(" ")}`,
 				]),
 		...(change.session === undefined ? [] : [`${change.session} session`]),
@@ -884,7 +884,7 @@ const runHook = async (
 };
 
 /**
- * Tells the human, through `recipes.onAttention`, when the newest run of a job on this machine has
+ * Tells the human, through `jobs.onAttention`, when the newest run of a job on this machine has
  * just entered `waiting` or finished. What this machine last saw is recorded whether or not the
  * hook is set, so setting it later does not replay every past finish.
  */
@@ -906,7 +906,7 @@ const notify = async (
 	const saved = await Jobs.setSeen(d.host, run.id, run.state);
 	if (!saved.ok) return saved;
 	if (attention === undefined) return ok(undefined);
-	const configured = await ctx.settings("recipes", d.settings, {
+	const configured = await ctx.settings("jobs", d.settings, {
 		projectDir: root ?? ctx.cwd,
 	});
 	if (!configured.ok) return configured;
@@ -916,8 +916,8 @@ const notify = async (
 	const short = shortOf(one.task);
 	return ok(
 		failed === undefined
-			? `${short}: run ${run.id} is ${run.state}; recipes.onAttention ran`
-			: `${short}: run ${run.id} is ${run.state}; recipes.onAttention ${failed}`,
+			? `${short}: run ${run.id} is ${run.state}; jobs.onAttention ran`
+			: `${short}: run ${run.id} is ${run.state}; jobs.onAttention ${failed}`,
 	);
 };
 

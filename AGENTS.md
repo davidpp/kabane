@@ -20,7 +20,7 @@ packages/
 extensions/
 ├── loop/      # @kabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
 ├── dispatch/  # @kabane/dispatch — the dispatch and grill skill templates, the setup-dispatch skill, `kabane dispatch stamp`, their doctor checks
-└── recipes/   # @kabane/recipes — prompt recipes from .kabane/recipes/, `kabane run` and `kabane runs` over hc terminals, its run table
+└── jobs/      # @kabane/jobs   — prompt recipes from .kabane/recipes/, `kabane run`, `kabane runs` and `kabane job` over hc terminals, its run and job tables
 ```
 
 Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.

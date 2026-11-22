@@ -54,7 +54,9 @@ const setup = () => {
 	// A project kabane set up with this version, so its project checks find nothing.
 	writeFileSync(join(cwd, "AGENTS.md"), `${TRACKER_BLOCK}\n`);
 	const env = { KABANE_HOME: home, KABANE_HARNESSES: "" };
-	const invoke = async (...args: string[]) => {
+	// A doctor run whose selected repair fails exits 1; every other call here exits 0.
+	const invoke = async (...args: string[]) => invokeExiting(0, ...args);
+	const invokeExiting = async (code: 0 | 1, ...args: string[]) => {
 		const errors = spyOn(console, "error").mockImplementation(() => {});
 		try {
 			const outcome = await runCommand(
@@ -62,7 +64,7 @@ const setup = () => {
 				env,
 				cwd,
 			);
-			expect(outcome.exitCode).toBe(0);
+			expect(outcome.exitCode).toBe(code);
 			return {
 				...outcome,
 				stdout: args.includes("--json")
@@ -94,6 +96,9 @@ const setup = () => {
 		home,
 		env,
 		cli: (...args: string[]) => run("doctor", ...args),
+		/** `kabane doctor` with a repair that fails: the report, and exit 1. */
+		failing: async (...args: string[]) =>
+			(await invokeExiting(1, "doctor", ...args)).stdout,
 		run,
 		invoke,
 		config,
@@ -282,7 +287,7 @@ test("migrates only this project's legacy blocks and preserves other config", as
 });
 
 test("selected repair refuses conflicting local settings without deleting legacy data", async () => {
-	const { cwd, home, cli, config } = setup();
+	const { cwd, home, cli, failing, config } = setup();
 	config({ scopes: { pinned: { loop: { concurrency: 2 } } } });
 	const destination = ConfigLayers.localFile(home, cwd, "loop");
 	expect(ConfigLayers.writeJson(destination, { concurrency: 3 }).ok).toBe(true);
@@ -292,7 +297,7 @@ test("selected repair refuses conflicting local settings without deleting legacy
 	);
 	expect(finding.severity).toBe("mention");
 	const repaired = JSON.parse(
-		await cli("--fix", `kabane/${finding.id}`, "--json"),
+		await failing("--fix", `kabane/${finding.id}`, "--json"),
 	);
 	expect(
 		JSON.parse(await cli("--json")).findings.find(
@@ -515,16 +520,17 @@ test("the actor repair keeps what the settings repair moved out of config.json b
 	expect(stored).not.toHaveProperty("scopes");
 });
 
-test("a named missing fix is visible even with no findings", async () => {
-	const { cli } = setup();
-	expect(await cli("--fix", "nope")).toBe(
+test("a named missing fix is visible even with no findings, and fails the run", async () => {
+	const { failing } = setup();
+	expect(await failing("--fix", "nope")).toBe(
 		"nope: No finding matches nope. Run kabane doctor to see current source/id handles.",
 	);
-	expect(await cli("--fix", "kabane/nope")).toContain(
+	expect(await failing("--fix", "kabane/nope")).toContain(
 		"No finding matches kabane/nope",
 	);
 	expect(
-		JSON.parse(await cli("--fix", "kabane/nope", "--json")).fixes[0].result.ok,
+		JSON.parse(await failing("--fix", "kabane/nope", "--json")).fixes[0].result
+			.ok,
 	).toBe(false);
 });
 

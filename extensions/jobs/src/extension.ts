@@ -1,4 +1,4 @@
-// The recipes extension: `kabane run`, `kabane runs` and `kabane job`, its settings, its doctor
+// The jobs extension: `kabane run`, `kabane runs` and `kabane job`, its settings, its doctor
 // checks (hc, the user-level `job` skill, and what ticks the jobs), and on
 // the board a card per run that names an issue, `a` offering the recipes that work on one (and
 // running a job now), and the facts of every job for the Jobs tab.
@@ -15,12 +15,12 @@ import { runCommand, settingsSchema } from "./run-command";
 import { runsCommand } from "./runs-command";
 import { HcRuntime } from "./runtime-hc";
 
-export const recipes = (host: Host): Extension => {
+export const jobs = (host: Host): Extension => {
 	Kabane.bind(host);
 	const settings = settingsSchema(host.z);
 	const runtime = HcRuntime.runtime(host.z);
 	return {
-		name: "recipes",
+		name: "jobs",
 		settings,
 		commands: [
 			runCommand(host, settings, runtime),
@@ -55,7 +55,7 @@ export const recipes = (host: Host): Extension => {
 		doctor: async (ctx) => {
 			const missing = runtime.missing();
 			// Without the store (doctor could not open it) the jobs are unknown: no tick finding.
-			const jobs = await entries(host);
+			const listed = await entries(host);
 			return ok([
 				...(missing === undefined
 					? []
@@ -67,11 +67,15 @@ export const recipes = (host: Host): Extension => {
 							},
 						]),
 				...JobSkill.check(),
-				...(jobs.ok
-					? JobTick.check(jobs.value.length, JobTick.targetOf(host, ctx.home), {
-							platform: JobTick.platformOf(process.platform),
-							home: homedir(),
-						})
+				...(listed.ok
+					? JobTick.check(
+							listed.value.length,
+							JobTick.targetOf(host, ctx.home),
+							{
+								platform: JobTick.platformOf(process.platform),
+								home: homedir(),
+							},
+						)
 					: []),
 			]);
 		},
