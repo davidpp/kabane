@@ -196,6 +196,14 @@ const modelSource = (
 	}
 };
 
+// How a claim ended. An error carries its detail's first line: a claim that failed before its
+// session started has no transcript to say why.
+const ending = (claim: RunStore.Claim): string => {
+	if (claim.outcome === "error" && claim.detail)
+		return `error: ${claim.detail.split("\n")[0]}`;
+	return claim.outcome ?? (claim.endedAt ? "ended" : "running");
+};
+
 // Each claim of the run: what it ran on (harness, agent, model and why) and how it ended.
 const claimLine = (claim: RunStore.Claim): string =>
 	[
@@ -207,7 +215,7 @@ const claimLine = (claim: RunStore.Claim): string =>
 			: claim.modelSource
 				? [`model unknown (${modelSource(claim)})`]
 				: []),
-		claim.outcome ?? (claim.endedAt ? "ended" : "running"),
+		ending(claim),
 	].join("  ");
 
 // A run whose runner died waits on a human to bring it back.
