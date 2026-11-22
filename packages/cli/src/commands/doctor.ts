@@ -155,6 +155,10 @@ export const doctor: Command = {
 			ctx,
 			"fix" in args.flags ? { fix: selected.length > 0 ? selected : true } : {},
 		);
-		return success(Doctor.toJson(report), text(report));
+		const done = success(Doctor.toJson(report), text(report));
+		// A refused or failed repair is a failed run, with the same report: a script sees it.
+		return report.fixes.some(({ result }) => !result.ok)
+			? { ...done, exitCode: 1 }
+			: done;
 	},
 };
