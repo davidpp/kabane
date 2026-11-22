@@ -10,8 +10,15 @@ export namespace SetupPlan {
 	/** A harness the host found on this machine, by the id its installer takes. */
 	export type Harness = { id: string; label: string };
 
-	/** An extension this install ships, offered unticked, with its manifest's description. */
-	export type Offer = { name: string; description?: string };
+	/**
+	 * An extension this install ships, offered unticked, with its manifest's description and the
+	 * first step it names for someone who just turned it on.
+	 */
+	export type Offer = {
+		name: string;
+		description?: string;
+		firstStep?: string;
+	};
 
 	export type Defaults = {
 		/** Prefilled name: the OS username. */

@@ -265,24 +265,32 @@ export namespace Extensions {
 			? entries.value.filter((name) => installed(home, name))
 			: [];
 	};
-	/**
-	 * What the extension in `path` says it adds: the `description` of its `package.json`, read as
-	 * JSON and never imported.
-	 */
-	export const descriptionAt = (path: string): string | undefined => {
+	// The extension's `package.json` read as JSON and never imported, validated against `shape`.
+	const manifestAt = <T>(path: string, shape: z.ZodType<T>): T | undefined => {
 		const text = trySync(() =>
 			readFileSync(join(path, "package.json"), "utf8"),
 		);
 		const manifest = text.ok
 			? trySync((): unknown => JSON.parse(text.value))
 			: text;
-		const parsed = z
-			.object({ description: z.string().trim().min(1) })
-			.safeParse(manifest.ok ? manifest.value : undefined);
-		return parsed.success
-			? parsed.data.description.replace(/\s+/g, " ")
-			: undefined;
+		const parsed = shape.safeParse(manifest.ok ? manifest.value : undefined);
+		return parsed.success ? parsed.data : undefined;
 	};
+	const OneLine = z
+		.string()
+		.trim()
+		.min(1)
+		.transform((text) => text.replace(/\s+/g, " "));
+	/** What the extension in `path` says it adds: the `description` of its `package.json`. */
+	export const descriptionAt = (path: string): string | undefined =>
+		manifestAt(path, z.object({ description: OneLine }))?.description;
+	/**
+	 * What the extension in `path` says to do first once it is on: its manifest's
+	 * `kabane.firstStep`, which setup shows beside its name.
+	 */
+	export const firstStepAt = (path: string): string | undefined =>
+		manifestAt(path, z.object({ kabane: z.object({ firstStep: OneLine }) }))
+			?.kabane.firstStep;
 	/** `descriptionAt` for an installed extension. */
 	export const description = async (
 		home: string,

@@ -217,16 +217,35 @@ describe("outcomeOf", () => {
 });
 
 describe("extensions", () => {
-	test("offers what the install ships, with each manifest's description", () => {
+	test("offers what the install ships, with each manifest's description and first step", () => {
 		const root = join(ROOT, "shipped");
-		mkdirSync(join(root, "dispatch"), { recursive: true });
-		mkdirSync(join(root, "loop"), { recursive: true });
+		for (const name of ["dispatch", "jobs", "loop"])
+			mkdirSync(join(root, name), { recursive: true });
 		writeFileSync(
 			join(root, "dispatch/package.json"),
-			JSON.stringify({ description: "Serves the dispatch skills." }),
+			JSON.stringify({
+				description: "Serves the dispatch skills.",
+				kabane: {
+					extension: "./index.js",
+					api: 1,
+					firstStep: "/setup-dispatch\n  in the copilot",
+				},
+			}),
+		);
+		// A blank first step is none: the row says the extension is on.
+		writeFileSync(
+			join(root, "jobs/package.json"),
+			JSON.stringify({
+				kabane: { extension: "./index.js", api: 1, firstStep: " " },
+			}),
 		);
 		expect(offers(root)).toEqual([
-			{ name: "dispatch", description: "Serves the dispatch skills." },
+			{
+				name: "dispatch",
+				description: "Serves the dispatch skills.",
+				firstStep: "/setup-dispatch in the copilot",
+			},
+			{ name: "jobs" },
 			{ name: "loop" },
 		]);
 		// A source checkout ships nothing beside its executable.

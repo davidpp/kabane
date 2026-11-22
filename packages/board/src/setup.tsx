@@ -294,13 +294,15 @@ export const SetupScreen = ({
 		if (names.length > 0) working(`turning on ${extensionList(names)}`);
 		const enabled: Enabled | undefined =
 			names.length > 0 ? { names, result: await enable(names) } : undefined;
-		// Nothing to show but the path: straight on to the board.
-		if (planned.value.install.length === 0 && enabled?.result.ok !== false) {
+		// Nothing to show but the path: straight on to the board. An extension turned on has its
+		// first step to show, so the done card stays up for it.
+		if (planned.value.install.length === 0 && enabled === undefined) {
 			onComplete();
 			return;
 		}
-		working(`adding kabane to ${agentCount(planned.value.install.length)}`);
-		const outcomes = await install(planned.value.install);
+		const ids = planned.value.install;
+		if (ids.length > 0) working(`adding kabane to ${agentCount(ids.length)}`);
+		const outcomes = ids.length > 0 ? await install(ids) : [];
 		const firstIssue = await fileFor(outcomes);
 		setPhase({
 			kind: "done",
@@ -406,7 +408,9 @@ const DoneCard = ({
 						/>
 					))}
 				</box>
-				{done.enabled ? <EnabledLine enabled={done.enabled} /> : null}
+				{done.enabled ? (
+					<EnabledLines enabled={done.enabled} offers={defaults.extensions} />
+				) : null}
 			</Panel>
 			{done.firstIssue ? <FirstIssuePanel filed={done.firstIssue} /> : null}
 		</>
@@ -960,20 +964,54 @@ const ExtensionRow = ({
 	);
 };
 
-// What turning on the ticked extensions did: their names, or why it failed.
-const EnabledLine = ({ enabled }: { enabled: Enabled }): ReactNode => {
+/** What an extension's row on the done card says after its name: its first step, else that it is on. */
+const firstStepOf = (offer: SetupPlan.Offer | undefined): string =>
+	offer?.firstStep ?? "turned on";
+
+// What turning on the ticked extensions did: one row each with the first step its manifest names,
+// or one line on why it failed. The steps share a column, and one that wraps keeps to it.
+const EnabledLines = ({
+	enabled,
+	offers,
+}: {
+	enabled: Enabled;
+	offers: readonly SetupPlan.Offer[];
+}): ReactNode => {
 	const theme = useTheme();
-	const head = `${enabled.result.ok ? "✓" : "✗"} ${extensionList(enabled.names)}`;
+	if (!enabled.result.ok) {
+		const head = `✗ ${extensionList(enabled.names)}`;
+		return (
+			<box style={{ marginTop: 1 }}>
+				<NotedLine
+					head={<span fg={theme.failed}>{head}</span>}
+					headLength={head.length}
+					note={enabled.result.error.message}
+					noteFg={theme.failed}
+				/>
+			</box>
+		);
+	}
+	const width = Math.max(...enabled.names.map((name) => name.length));
 	return (
-		<box style={{ marginTop: 1 }}>
-			<NotedLine
-				head={
-					<span fg={enabled.result.ok ? theme.done : theme.failed}>{head}</span>
-				}
-				headLength={head.length}
-				note={enabled.result.ok ? "turned on" : enabled.result.error.message}
-				noteFg={enabled.result.ok ? theme.muted : theme.failed}
-			/>
+		<box style={{ flexDirection: "column", marginTop: 1 }}>
+			{enabled.names.map((name) => {
+				const offer = offers.find((o) => o.name === name);
+				return (
+					<box key={name} style={{ flexDirection: "row" }}>
+						<text fg={theme.text} style={{ flexShrink: 0 }}>
+							<span fg={theme.done}>✓</span>
+							{` ${name.padEnd(width)} `}
+						</text>
+						{/* The step is the thing to do, so it reads at full tone; "turned on" is a status. */}
+						<text
+							fg={offer?.firstStep ? theme.text : theme.muted}
+							style={{ flexShrink: 1 }}
+						>
+							{firstStepOf(offer)}
+						</text>
+					</box>
+				);
+			})}
 		</box>
 	);
 };
