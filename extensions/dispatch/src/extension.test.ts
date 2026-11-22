@@ -183,10 +183,15 @@ test("a skill link to a copy elsewhere is told and has no fix", () => {
 	expect(ids()).toEqual(["dispatch-skill-unlinked:mention"]);
 	const elsewhere = findings().find(({ source }) => source === "dispatch");
 	expect(elsewhere?.summary).toContain("Replace it");
-	const fixed = JSON.parse(
-		kabane("doctor", "--fix", "dispatch/dispatch-skill-unlinked", "--json")
-			.stdout,
+	// A refused repair fails the run, and the report goes to stderr with the error.
+	const refused = kabane(
+		"doctor",
+		"--fix",
+		"dispatch/dispatch-skill-unlinked",
+		"--json",
 	);
+	expect(refused.code).toBe(1);
+	const fixed = JSON.parse(refused.stderr);
 	expect(fixed.fixes[0].result.ok).toBe(false);
 	expect(readlinkSync(link)).toBe("../../other");
 });
