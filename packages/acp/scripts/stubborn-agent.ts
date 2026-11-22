@@ -11,6 +11,8 @@
  *               written when `session/new` arrives
  *   deaf        answers `initialize` and `session/new`, then reads nothing more from stdin, so a
  *               large write to it stays pending; written when `session/new` arrives
+ *   turn        answers `initialize` and `session/new`, never a prompt, and ignores
+ *               `session/cancel`; written when the first prompt arrives
  *
  * A third argument, `eof`, makes it exit once stdin closes, leaving behind its child, which
  * still ignores SIGTERM: a wrapper that dies on EOF and orphans what it launched.
@@ -26,11 +28,11 @@ import {
 const [pidfile, stage, onEof] = process.argv.slice(2);
 if (
 	!pidfile ||
-	!["handshake", "session", "open", "deaf"].includes(stage ?? "") ||
+	!["handshake", "session", "open", "deaf", "turn"].includes(stage ?? "") ||
 	![undefined, "eof"].includes(onEof)
 )
 	throw new Error(
-		"usage: stubborn-agent.ts <pidfile> handshake|session|open|deaf [eof]",
+		"usage: stubborn-agent.ts <pidfile> handshake|session|open|deaf|turn [eof]",
 	);
 
 process.on("SIGTERM", () => {});
@@ -77,9 +79,11 @@ const app = agent({ name: "kabane-stubborn" })
 		if (stage === "deaf") deaf = true;
 		return stage === "session" ? never() : { sessionId: "stubborn" };
 	})
-	.onRequest(methods.agent.session.prompt, () => ({
-		stopReason: "end_turn" as const,
-	}));
+	.onRequest(methods.agent.session.prompt, async () => {
+		if (stage !== "turn") return { stopReason: "end_turn" as const };
+		await reached();
+		return never();
+	});
 
 const stdout = new WritableStream<Uint8Array>({
 	write: (chunk) => {

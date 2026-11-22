@@ -222,10 +222,11 @@ describe("Runner stop during a session's handshake", () => {
 	});
 });
 
-// A harness with an open session that ignores stdin EOF and SIGTERM, and a child that ignores
-// SIGTERM too (`packages/acp/scripts/stubborn-agent.ts`): only the fallback kill of its process
-// group stops them, and the detached runner exits as soon as the run returns.
-describe("Runner stop with a session open on a harness that will not stop", () => {
+// A harness in the middle of a turn it never ends, that ignores `session/cancel`, stdin EOF and
+// SIGTERM, with a child that ignores SIGTERM too (`packages/acp/scripts/stubborn-agent.ts`): only
+// the fallback kill of its process group, after the runner's cancel grace, stops them, and the
+// detached runner exits as soon as the run returns.
+describe("Runner stop during a turn on a harness that will not stop", () => {
 	// Gone, or a zombie its new parent has yet to reap: either way it runs nothing.
 	const running = (pid: number): boolean => {
 		const stat = Bun.spawnSync(["ps", "-o", "stat=", "-p", String(pid)])
@@ -242,6 +243,7 @@ describe("Runner stop with a session open on a harness that will not stop", () =
 			} catch {}
 	});
 
+	// The runner's 10 s cancel grace, the 2 s stdin EOF grace, the sweep, and room to spare.
 	it("returns only once the harness and the child it started have exited", async () => {
 		await orphaned("run-1", { steering: Steering.INITIAL });
 		const pidfile = join(home, "harness.pids");
@@ -257,31 +259,24 @@ describe("Runner stop with a session open on a harness that will not stop", () =
 							"../../../packages/acp/scripts/stubborn-agent.ts",
 						),
 						pidfile,
-						"open",
+						"turn",
 					],
 				},
 			}),
 		});
-		// Every harness the run started: a session that ended by itself before the stop may have
-		// been followed by another, which rewrote the file.
-		const pids = (): number[] => {
-			if (!existsSync(pidfile)) return [];
-			const read = readFileSync(pidfile, "utf8").split(" ").map(Number);
-			left.push(...read);
-			return read;
-		};
-		for (let i = 0; i < 1000 && pids().length === 0; i++) await Bun.sleep(5);
-		const first = pids();
-		expect(first).toHaveLength(2);
+		// Written once the first prompt has arrived, which the harness never answers.
+		for (let i = 0; i < 1000 && !existsSync(pidfile); i++) await Bun.sleep(5);
+		const pids = readFileSync(pidfile, "utf8").split(" ").map(Number);
+		left.push(...pids);
+		expect(pids.map(running)).toEqual([true, true]);
 
 		controller.abort();
 		const ended = await ran;
 		if (!ended.ok) throw ended.error;
 
-		for (const pid of new Set([...first, ...pids()]))
-			expect(running(pid)).toBe(false);
+		expect(pids.map(running)).toEqual([false, false]);
 		expect(ended.value.exit?.reason).toBe("stop-requested");
-	}, 10_000);
+	}, 30_000);
 });
 
 describe("Runner resume on a single issue", () => {

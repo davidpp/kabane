@@ -197,7 +197,8 @@ export namespace Dispatch {
 		cancel: () => Promise<void>;
 		/**
 		 * Kill the harness process outright, for one that ignores `cancel`. Settles once the harness
-		 * and its process group have exited.
+		 * and its process group have exited. A harness still in its ACP handshake has no connection
+		 * yet: this aborts the start and settles at once, and `done` settles once that kill has.
 		 */
 		close: () => Promise<void>;
 		/**
