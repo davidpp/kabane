@@ -58,6 +58,7 @@ export const build = async (
 				kabane: {
 					extension: "./index.js",
 					api: 1,
+					firstStep: source.kabane?.firstStep,
 					...(entry === undefined
 						? {}
 						: {

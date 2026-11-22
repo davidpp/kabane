@@ -37,7 +37,12 @@ export const build = async (into = DIST): Promise<Bun.BuildOutput> => {
 		description: source.description,
 		license: source.license,
 		type: "module",
-		kabane: { extension: "./index.js", modules: "./modules.js", api: 1 },
+		kabane: {
+			extension: "./index.js",
+			modules: "./modules.js",
+			api: 1,
+			firstStep: source.kabane.firstStep,
+		},
 	};
 	writeFileSync(
 		join(into, "package.json"),

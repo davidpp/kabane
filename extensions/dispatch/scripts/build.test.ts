@@ -45,7 +45,12 @@ it("builds a relocatable extension that kabane loads from a home, with its templ
 		const manifest = JSON.parse(
 			readFileSync(join(installed, "package.json"), "utf8"),
 		);
-		expect(manifest.kabane).toEqual({ extension: "./index.js", api: 1 });
+		// The first step setup shows once the extension is on travels into the built manifest.
+		expect(manifest.kabane).toEqual({
+			extension: "./index.js",
+			api: 1,
+			firstStep: "copilot: /setup-dispatch",
+		});
 		expect(manifest.dependencies).toBeUndefined();
 		for (const directory of ["copilot", "templates"]) {
 			const shipped = files(join(EXTENSION, directory));

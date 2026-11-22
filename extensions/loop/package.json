@@ -30,6 +30,7 @@
 	},
 	"kabane": {
 		"extension": "./index.ts",
-		"api": 1
+		"api": 1,
+		"firstStep": "a on an issue starts a run"
 	}
 }
