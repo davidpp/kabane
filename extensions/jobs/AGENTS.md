@@ -99,8 +99,10 @@ the commands and recipe files kept their names. Moving a device is two steps, be
 an extension runs until `extensions` names it:
 
 - Base kabane's `kabane/extension-renamed-recipes` doctor finding (`packages/cli/src/doctor/renamed.ts`,
-  from `Extensions.RENAMED`) renames the `extensions` entry, the `recipes` namespace in
-  `config.json` and the settings files, and the `$KABANE_HOME/extensions/recipes` link.
+  from `Extensions.RENAMED`) checks every destination first and changes nothing on a refusal. It
+  then links `$KABANE_HOME/extensions/jobs` to the running kabane's own copy, moves the `recipes`
+  settings files, removes an old `recipes` link (a copied directory stays, named in its output),
+  and renames the `extensions` entry and the `recipes` namespace in `config.json` last.
 - `FromRecipes` (`src/from-recipes.ts`), registered before the run and job modules, renames the
   tables, the two version tables (`schema_migrations_recipes` to `schema_migrations_jobs_runs`,
   `schema_migrations_recipes_jobs` to `schema_migrations_jobs`), the table and module names in
