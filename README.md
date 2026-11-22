@@ -119,10 +119,12 @@ New to kabane? Follow [`docs/getting-started.md`](docs/getting-started.md): inst
 kabane
 ```
 
-The first run shows one card on what kabane is, then a setup screen: your name and the
-coding harnesses found on this machine that get a `kabane` MCP entry. Enter writes the
-config (one machine, local SQLite), files a first issue that has your agent add kabane to
-the project's `CLAUDE.md`, `AGENTS.md` or `GEMINI.md`, and opens the board; every later
+The first run shows one card on what kabane is, then a setup screen: your name, the
+coding harnesses found on this machine that get a `kabane` MCP entry, and, on a release
+install, the extensions to turn on. Enter writes the config (one machine, local SQLite),
+files a first issue that has your agent add kabane to the project's `CLAUDE.md`,
+`AGENTS.md` or `GEMINI.md`, shows the first step of each extension it turned on, and opens
+the board; every later
 `kabane` opens the board directly. Scripts and agents that run `kabane` without a terminal
 still get the help text, and `kabane init --actor … --device …` remains the flag form.
 
