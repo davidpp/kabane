@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 // One claim's handle on a real tracker. The harness command points nowhere, so the session ends
 // before any harness runs, and nothing reaches a paid one.
 import "@kabane/core/testing";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { err, Planner } from "@kabane/core";
@@ -227,4 +227,91 @@ it("starts no session when no kabane is left to run its MCP server, and says why
 		detail: Dispatch.MOVED,
 	});
 	expect(events.map((e) => e.type)).not.toContain("launch");
+});
+
+// A harness that ignores stdin EOF and SIGTERM, with a child that ignores SIGTERM too, and never
+// answers `session/new`: the claim has a connection and no session, so only `close` stops it.
+describe("Dispatch.Handle.close", () => {
+	// Gone, or a zombie its new parent has yet to reap: either way it runs nothing.
+	const running = (pid: number): boolean => {
+		const stat = Bun.spawnSync(["ps", "-o", "stat=", "-p", String(pid)])
+			.stdout.toString()
+			.trim();
+		return stat !== "" && !stat.startsWith("Z");
+	};
+
+	const left: number[] = [];
+	afterEach(() => {
+		for (const pid of left.splice(0))
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {}
+	});
+
+	it("settles once the harness and the child it started have exited", async () => {
+		const created = await Planner.addTask(home, {
+			title: "stubborn",
+			kind: "issue",
+			state: "next",
+		});
+		if (!created.ok) throw created.error;
+		const task = created.value;
+		const pidfile = join(home, "harness.pids");
+		const handle = Dispatch.begin(
+			{
+				parent: task,
+				task,
+				harness: "claude",
+				sessionId: "s1",
+				lane: "claude:K-1",
+				work: { kind: "implement", gates: [], concurrent: false },
+			},
+			{
+				basePath: home,
+				host: testHost(home),
+				home,
+				kabaneBin: () => "/nonexistent/kabane",
+				cwd: home,
+				tree: {
+					worktree: false,
+					isolation: "shared",
+					land: "none",
+					dir: home,
+					branch: "",
+					runBranch: "",
+				},
+				runId: "run-1",
+				overrides: TestHarnesses.overrides({
+					claude: {
+						command: process.execPath,
+						args: [
+							join(
+								import.meta.dir,
+								"../../../packages/acp/scripts/stubborn-agent.ts",
+							),
+							pidfile,
+							"session",
+						],
+					},
+				}).claude,
+			},
+			{
+				event: () => {},
+				opened: () => {},
+				usage: () => {},
+				continueTurn: () => false,
+				permission: async () => err(new Error("no permission is asked")),
+				elicitation: async () => err(new Error("no form is asked")),
+			},
+		);
+		for (let i = 0; i < 1000 && !existsSync(pidfile); i++) await Bun.sleep(5);
+		const pids = readFileSync(pidfile, "utf8").split(" ").map(Number);
+		left.push(...pids);
+		expect(pids.map(running)).toEqual([true, true]);
+
+		await handle.close();
+
+		expect(pids.map(running)).toEqual([false, false]);
+		expect((await handle.done).outcome).toBe("cancelled");
+	}, 10_000);
 });

@@ -195,8 +195,12 @@ export namespace Dispatch {
 		done: Promise<Outcome>;
 		/** Ask the harness to stop the current turn; the claim then ends as cancelled. */
 		cancel: () => Promise<void>;
-		/** Kill the harness process outright, for one that ignores `cancel`. */
-		close: () => void;
+		/**
+		 * Kill the harness process outright, for one that ignores `cancel`. Settles once the harness
+		 * and its process group have exited. A harness still in its ACP handshake has no connection
+		 * yet: this aborts the start and settles at once, and `done` settles once that kill has.
+		 */
+		close: () => Promise<void>;
 		/**
 		 * Say something to the session: into the turn it is running, through ACP steering when the
 		 * harness supports it, else as its next prompt once the turn ends. Never fails; where the
@@ -1074,16 +1078,19 @@ export namespace Dispatch {
 			.then((result) =>
 				result.ok ? result.value : ended("error", result.error.message),
 			)
-			.finally(() => {
+			// Settled only once the harness has exited: the runner exits right after its last
+			// session, and a harness that ignores stdin EOF would outlive it otherwise.
+			.then(async (outcome) => {
 				finished = true;
 				waiting.abort();
-				if (connection) void AcpClient.close(connection);
 				const lost = steering.pending();
 				if (lost > 0)
 					sink.emit(
 						"warning",
 						`${lost} injected prompt(s) not delivered: the session ended first`,
 					);
+				if (connection) await AcpClient.close(connection);
+				return outcome;
 			});
 
 		return {
@@ -1095,9 +1102,9 @@ export namespace Dispatch {
 				waiting.abort();
 				if (session) await AcpClient.cancel(session);
 			},
-			close: () => {
+			close: async () => {
 				waiting.abort();
-				if (connection) void AcpClient.close(connection);
+				if (connection) await AcpClient.close(connection);
 			},
 			inject: async (text) => {
 				if (finished)

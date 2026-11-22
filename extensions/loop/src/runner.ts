@@ -89,7 +89,8 @@ export namespace Runner {
 		);
 		const all = Promise.allSettled(pending.map((l) => l.settled));
 		await Promise.race([cancelling, sleep(CANCEL_GRACE_MS)]);
-		for (const { handle } of pending) handle.close();
+		// Awaited whole: the runner exits soon after, and a harness left in its grace would outlive it.
+		await Promise.allSettled(pending.map(({ handle }) => handle.close()));
 		await Promise.race([all, sleep(CANCEL_GRACE_MS)]);
 		await Claims.settleAll(ctx);
 		for (const [sessionId, { taskId }] of ctx.live)
