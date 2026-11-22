@@ -702,10 +702,14 @@ load; while `~/.kabane/extensions/recipes` still resolves to a directory with no
 kabane doctor --fix
 ```
 
-It renames the `recipes` entry in `extensions`, moves the `recipes.*` settings (`harness`,
-`onAttention`) to `jobs.*` in `config.json`, in `~/.kabane/projects/` and in the
-`.kabane/recipes.json` of the project you run it in, and re-points the link in
-`~/.kabane/extensions/` to the new name. The next command that opens the database
+It links `~/.kabane/extensions/jobs` to this kabane's own copy of the extension, moves the
+`recipes.*` settings (`harness`, `onAttention`) to `jobs.*` in `~/.kabane/projects/` and in the
+`.kabane/recipes.json` of the project you run it in, removes the old `recipes` link, and only then
+renames the `recipes` entry in `extensions` and its settings in `config.json`. A
+`~/.kabane/extensions/recipes` you copied rather than linked stays, and doctor says so: remove it
+once you no longer need it. When a destination is already taken (a `jobs.json` beside a
+`recipes.json`, a `jobs` key beside `recipes`), or this kabane has no `jobs` copy to link, it
+changes nothing, says why and exits 1. The next command that opens the database
 moves the extension's tables, with every run and job, to their new names. Run doctor once more
 and apply what it reports, such as a `job` skill in `~/.agents/skills/job` that now differs
 from the one the extension ships. Restart the board and harness sessions afterwards: a process

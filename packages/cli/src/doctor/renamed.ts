@@ -1,12 +1,13 @@
 // An extension kabane ships under a new name (`Extensions.RENAMED`). A device that enabled it under
 // the old one still names it in `extensions`, keeps its settings under the old namespace and its
-// link in $KABANE_HOME/extensions, so nothing loads it. `--fix` moves all three; the extension's
-// own data module renames its tables when it next registers.
+// link in $KABANE_HOME/extensions, so nothing loads it. `--fix` checks every destination before it
+// writes anything, links this kabane's copy of the new name, moves the settings files, and switches
+// the config last, so a refusal leaves a working device. The extension's own data module renames its
+// tables when it next registers.
 import {
 	existsSync,
 	lstatSync,
 	readdirSync,
-	readlinkSync,
 	renameSync,
 	rmSync,
 	symlinkSync,
@@ -73,7 +74,12 @@ const moveKey = (
 	return ok(undefined);
 };
 
-const renameConfig = (home: string, rename: Rename): Result<void> => {
+/** `config.json` as it reads with `rename` applied, unsaved; undefined when nothing in it names `from`. */
+const renamedConfig = (
+	home: string,
+	rename: Rename,
+): Result<Record<string, unknown> | undefined> => {
+	if (!existsSync(configPath(home))) return ok(undefined);
 	const document = loadConfigDocument(home);
 	if (!document.ok) return document;
 	const stored = document.value.stored;
@@ -95,41 +101,109 @@ const renameConfig = (home: string, rename: Rename): Result<void> => {
 				const moved = moveKey(block, rename, `scopes.${scope} in ${path}`);
 				if (!moved.ok) return moved;
 			}
-	const saved = saveConfig(home, stored);
-	return saved.ok ? ok(undefined) : saved;
-};
-
-const renameFile = (path: string, { to }: Rename): Result<void> => {
-	const destination = join(dirname(path), `${to}.json`);
-	if (existsSync(destination))
-		return err(
-			new Error(
-				`Refused: ${destination} already exists beside ${path}; merge them by hand`,
-			),
-		);
-	return trySync(() => renameSync(path, destination));
+	return ok(stored);
 };
 
 /**
- * The old link re-pointed under the new name, at the new name beside what it linked to (a source
- * checkout's `extensions/`, or an install's), else at this install's copy, then removed. A
- * directory there is the user's own install and stays.
+ * This kabane's own copy of `name`: beside a release binary, or in the checkout it runs from
+ * (this file is `<checkout>/packages/cli/src/doctor/renamed.ts`).
  */
-const relink = (home: string, { from, to }: Rename): Result<void> =>
-	trySync(() => {
-		const old = Extensions.directory(home, from);
-		if (!isLink(old)) return;
-		const sibling = join(dirname(resolve(dirname(old), readlinkSync(old))), to);
-		const target = Extensions.directory(home, to);
-		if (lstatSync(target, { throwIfNoEntry: false }) === undefined) {
-			if (existsSync(sibling)) symlinkSync(sibling, target);
-			else {
-				const linked = Extensions.link(home, [to]);
-				if (!linked.ok) throw linked.error;
-			}
-		}
-		rmSync(old);
+const ownCopy = (name: string): string | undefined => {
+	const root =
+		Extensions.shippedRoot() ??
+		resolve(import.meta.dir, "../../../../extensions");
+	const path = join(root, name);
+	return existsSync(join(path, "package.json")) ? path : undefined;
+};
+
+/** Every write the fix makes, decided before the first one. */
+type Plan = {
+	/** The copy `$KABANE_HOME/extensions/<to>` is linked to; undefined when `<to>` is installed. */
+	link?: string;
+	/** Settings files, each with the path it moves to. */
+	files: (readonly [string, string])[];
+	/** The old link, removed; a directory there is the user's own copy and stays. */
+	oldLink?: string;
+	keptDirectory?: string;
+	/** `config.json` to save, last. */
+	config?: Record<string, unknown>;
+};
+
+/** What `--fix` would do, or the first reason it refuses, before anything is written. */
+const plan = async (
+	ctx: Extension.Ctx,
+	rename: Rename,
+): Promise<Result<Plan>> => {
+	const { from, to } = rename;
+	const config = renamedConfig(ctx.home, rename);
+	if (!config.ok) return config;
+	const files = await settingsFiles(ctx, rename);
+	if (!files.ok) return files;
+	const moves = files.value.map(
+		(path) => [path, join(dirname(path), `${to}.json`)] as const,
+	);
+	const taken = moves.find(([, destination]) => existsSync(destination));
+	if (taken)
+		return err(
+			new Error(
+				`Refused: ${taken[1]} already exists beside ${taken[0]}; merge them by hand. Nothing was changed`,
+			),
+		);
+	const target = Extensions.directory(ctx.home, to);
+	let link: string | undefined;
+	if (!Extensions.installed(ctx.home, to)) {
+		if (lstatSync(target, { throwIfNoEntry: false }) !== undefined)
+			return err(
+				new Error(
+					`Refused: ${target} is there but holds no extension; remove it, then run kabane doctor --fix again. Nothing was changed`,
+				),
+			);
+		link = ownCopy(to);
+		if (link === undefined)
+			return err(
+				new Error(
+					`Refused: this kabane has no copy of the ${to} extension to link at ${target}; install ${to} there and run kabane doctor --fix again. Nothing was changed`,
+				),
+			);
+	}
+	const old = Extensions.directory(ctx.home, from);
+	const there = lstatSync(old, { throwIfNoEntry: false });
+	return ok({
+		...(link === undefined ? {} : { link }),
+		files: moves,
+		...(there?.isSymbolicLink() ? { oldLink: old } : {}),
+		...(there?.isDirectory() ? { keptDirectory: old } : {}),
+		...(config.value === undefined ? {} : { config: config.value }),
 	});
+};
+
+/** The plan's writes: the new extension installed first, the config that enables it last. */
+const apply = (
+	home: string,
+	{ from, to }: Rename,
+	plan: Plan,
+): Result<string> => {
+	const done = trySync(() => {
+		if (plan.link !== undefined)
+			symlinkSync(plan.link, Extensions.directory(home, to));
+		for (const [path, destination] of plan.files) renameSync(path, destination);
+		if (plan.oldLink !== undefined) rmSync(plan.oldLink);
+	});
+	if (!done.ok) return done;
+	if (plan.config !== undefined) {
+		const saved = saveConfig(home, plan.config);
+		if (!saved.ok) return saved;
+	}
+	const linked =
+		plan.link === undefined
+			? ""
+			: `; linked ${Extensions.directory(home, to)} to ${plan.link}`;
+	const kept =
+		plan.keptDirectory === undefined
+			? ""
+			: `; left ${plan.keptDirectory}, a copied directory, in place: remove it once nothing needs it`;
+	return ok(`${from} is now ${to}${linked}${kept}`);
+};
 
 export const renamed = async (
 	ctx: Extension.Ctx,
@@ -157,20 +231,10 @@ export const renamed = async (
 			id: `extension-renamed-${from}`,
 			severity: "auto",
 			summary: `The ${from} extension is now ${to}, and ${named.join(", ")} still name it ${from}, so it does not load. --fix renames its extensions entry, its ${from}.* settings and its link to ${to}; ${to} renames its tables the next time it opens the database.`,
-			// Read again: another repair of this run may have changed them since.
+			// Planned again: another repair of this run may have changed them since.
 			fix: async () => {
-				const config = existsSync(configPath(ctx.home))
-					? renameConfig(ctx.home, rename)
-					: ok(undefined);
-				if (!config.ok) return config;
-				const now = await settingsFiles(ctx, rename);
-				if (!now.ok) return now;
-				for (const path of now.value) {
-					const moved = renameFile(path, rename);
-					if (!moved.ok) return moved;
-				}
-				const linked = relink(ctx.home, rename);
-				return linked.ok ? ok(`${from} is now ${to}`) : linked;
+				const planned = await plan(ctx, rename);
+				return planned.ok ? apply(ctx.home, rename, planned.value) : planned;
 			},
 		});
 	}
