@@ -222,6 +222,68 @@ describe("Runner stop during a session's handshake", () => {
 	});
 });
 
+// A harness with an open session that ignores stdin EOF and SIGTERM, and a child that ignores
+// SIGTERM too (`packages/acp/scripts/stubborn-agent.ts`): only the fallback kill of its process
+// group stops them, and the detached runner exits as soon as the run returns.
+describe("Runner stop with a session open on a harness that will not stop", () => {
+	// Gone, or a zombie its new parent has yet to reap: either way it runs nothing.
+	const running = (pid: number): boolean => {
+		const stat = Bun.spawnSync(["ps", "-o", "stat=", "-p", String(pid)])
+			.stdout.toString()
+			.trim();
+		return stat !== "" && !stat.startsWith("Z");
+	};
+
+	const left: number[] = [];
+	afterEach(() => {
+		for (const pid of left.splice(0))
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {}
+	});
+
+	it("returns only once the harness and the child it started have exited", async () => {
+		await orphaned("run-1", { steering: Steering.INITIAL });
+		const pidfile = join(home, "harness.pids");
+		const controller = new AbortController();
+		const ran = Runner.run("run-1", {
+			...deps(controller.signal),
+			overrides: TestHarnesses.overrides({
+				claude: {
+					command: process.execPath,
+					args: [
+						join(
+							import.meta.dir,
+							"../../../packages/acp/scripts/stubborn-agent.ts",
+						),
+						pidfile,
+						"open",
+					],
+				},
+			}),
+		});
+		// Every harness the run started: a session that ended by itself before the stop may have
+		// been followed by another, which rewrote the file.
+		const pids = (): number[] => {
+			if (!existsSync(pidfile)) return [];
+			const read = readFileSync(pidfile, "utf8").split(" ").map(Number);
+			left.push(...read);
+			return read;
+		};
+		for (let i = 0; i < 1000 && pids().length === 0; i++) await Bun.sleep(5);
+		const first = pids();
+		expect(first).toHaveLength(2);
+
+		controller.abort();
+		const ended = await ran;
+		if (!ended.ok) throw ended.error;
+
+		for (const pid of new Set([...first, ...pids()]))
+			expect(running(pid)).toBe(false);
+		expect(ended.value.exit?.reason).toBe("stop-requested");
+	}, 10_000);
+});
+
 describe("Runner resume on a single issue", () => {
 	it("releases the issue its dead runner's claim held, and does not take it as a parent", async () => {
 		const issue = await add("lone");
