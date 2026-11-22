@@ -301,17 +301,19 @@ describe("kabane loop status, its claims", () => {
 
 		const shown = await kabaneLoop("status", "run-1");
 
-		expect(shown.text).toContain(
-			[
-				"  K-2  claude  model haiku (tier fast)  done",
-				"  K-3  claude  agent board-ui  model opus (board-ui's pin)  running",
-				"  K-4  codex  model gpt-6-astra (the harness's default)  running",
-				"  K-5  claude  model sonnet (the run's model)  running",
-				"  K-6  claude  error: ACP connection closed",
-				"  K-7  claude  error",
-				"  K-8  claude  done",
-			].join("\n"),
-		);
+		// Whole lines: a substring would let an unwanted suffix such as `done: K-8 is done` through.
+		const claimLines = (shown.text ?? "")
+			.split("\n")
+			.filter((l) => l.startsWith("  K-"));
+		expect(claimLines).toEqual([
+			"  K-2  claude  model haiku (tier fast)  done",
+			"  K-3  claude  agent board-ui  model opus (board-ui's pin)  running",
+			"  K-4  codex  model gpt-6-astra (the harness's default)  running",
+			"  K-5  claude  model sonnet (the run's model)  running",
+			"  K-6  claude  error: ACP connection closed",
+			"  K-7  claude  error",
+			"  K-8  claude  done",
+		]);
 	});
 });
 
