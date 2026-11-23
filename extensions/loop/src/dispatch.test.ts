@@ -229,9 +229,9 @@ it("starts no session when no kabane is left to run its MCP server, and says why
 	expect(events.map((e) => e.type)).not.toContain("launch");
 });
 
-// A harness that ignores stdin EOF and SIGTERM, with a child that ignores SIGTERM too, and never
-// answers `session/new`: the claim has a connection and no session, so only `close` stops it.
-describe("Dispatch.Handle.close", () => {
+// A harness that ignores stdin EOF and SIGTERM, with a child that ignores SIGTERM too
+// (`packages/acp/scripts/stubborn-agent.ts`, stopped at the stage each test names).
+describe("Dispatch.begin on a harness that will not stop", () => {
 	// Gone, or a zombie its new parent has yet to reap: either way it runs nothing.
 	const running = (pid: number): boolean => {
 		const stat = Bun.spawnSync(["ps", "-o", "stat=", "-p", String(pid)])
@@ -248,7 +248,10 @@ describe("Dispatch.Handle.close", () => {
 			} catch {}
 	});
 
-	it("settles once the harness and the child it started have exited", async () => {
+	// The claim's handle, and the harness's and its child's pids once the stage is reached.
+	const stubborn = async (
+		stage: "session" | "turn",
+	): Promise<{ handle: Dispatch.Handle; pids: number[] }> => {
 		const created = await Planner.addTask(home, {
 			title: "stubborn",
 			kind: "issue",
@@ -290,7 +293,7 @@ describe("Dispatch.Handle.close", () => {
 								"../../../packages/acp/scripts/stubborn-agent.ts",
 							),
 							pidfile,
-							"session",
+							stage,
 						],
 					},
 				}).claude,
@@ -308,10 +311,27 @@ describe("Dispatch.Handle.close", () => {
 		const pids = readFileSync(pidfile, "utf8").split(" ").map(Number);
 		left.push(...pids);
 		expect(pids.map(running)).toEqual([true, true]);
+		return { handle, pids };
+	};
+
+	// It never answers `session/new`: the claim has a connection and no session, so only `close`
+	// stops it.
+	it("settles close once the harness and the child it started have exited", async () => {
+		const { handle, pids } = await stubborn("session");
 
 		await handle.close();
 
 		expect(pids.map(running)).toEqual([false, false]);
 		expect((await handle.done).outcome).toBe("cancelled");
+	}, 10_000);
+
+	// The same lost connection after a stop is the runner's fallback kill, and ends `cancelled`
+	// (runner.test.ts, "Runner stop during a turn on a harness that will not stop").
+	it("ends a turn whose harness dies with nobody stopping it as an error", async () => {
+		const { handle, pids } = await stubborn("turn");
+
+		process.kill(pids[0] ?? 0, "SIGKILL");
+
+		expect((await handle.done).outcome).toBe("error");
 	}, 10_000);
 });

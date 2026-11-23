@@ -276,6 +276,7 @@ describe("Runner stop during a turn on a harness that will not stop", () => {
 
 		expect(pids.map(running)).toEqual([false, false]);
 		expect(ended.value.exit?.reason).toBe("stop-requested");
+		expect(ended.value.claims.map((c) => c.outcome)).toEqual(["cancelled"]);
 	}, 30_000);
 });
 
