@@ -1058,9 +1058,14 @@ export namespace Dispatch {
 			for (;;) {
 				if (cancelled) return ended("cancelled");
 				const result = await steering.turn(current, text);
-				if (result.kind === "error") return ended("error", result.message);
-				if (cancelled || result.reason === "cancelled")
+				// A stop whose harness ignored the cancel kills it after the grace, and the turn it
+				// interrupted rejects as a lost connection: that is still the stop, not a failure.
+				if (
+					cancelled ||
+					(result.kind === "stop" && result.reason === "cancelled")
+				)
 					return ended("cancelled");
+				if (result.kind === "error") return ended("error", result.message);
 				// What the human said comes before anything the run would say next, and spends no
 				// continuation: it is their turn, not a nudge.
 				const injected = steering.take();
