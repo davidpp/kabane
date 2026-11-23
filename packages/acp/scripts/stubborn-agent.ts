@@ -75,7 +75,8 @@ const app = agent({ name: "kabane-stubborn" })
 		return never();
 	})
 	.onRequest(methods.agent.session.new, async () => {
-		await reached();
+		// `turn` writes it only once a prompt is pending, so a test that waits for it is in a turn.
+		if (stage !== "turn") await reached();
 		if (stage === "deaf") deaf = true;
 		return stage === "session" ? never() : { sessionId: "stubborn" };
 	})
