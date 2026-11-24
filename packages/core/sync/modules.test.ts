@@ -577,6 +577,32 @@ describe("capturing a module table", () => {
 	});
 });
 
+describe("a module row on a thread another device deleted", () => {
+	it("is stored on both devices, so they hold the same rows, and reads as gone", async () => {
+		const alpha = await createDevice("alpha", [notes()]);
+		const beta = await createDevice("beta", [notes()]);
+		const task = await addTask(alpha, "doomed");
+		await push(alpha);
+		await pull(beta);
+
+		register(alpha.modules);
+		const deleted = await Planner.deleteTask(alpha.base, task);
+		if (!deleted.ok) throw deleted.error;
+		await push(alpha);
+		// Beta, not yet aware, writes a note on it.
+		await writeNote(beta, { taskId: task, body: "late" });
+		await push(beta);
+		const pulledA = await pull(alpha);
+		await pull(beta);
+
+		expect(pulledA.skipped["orphan-parent"]).toBe(0);
+		expect(await notesOn(alpha)).toEqual(await notesOn(beta));
+		expect(await notesOn(alpha)).toHaveLength(1);
+		expect(await titles(alpha)).toEqual([]);
+		expect(await titles(beta)).toEqual([]);
+	});
+});
+
 describe("a device that no longer registers the module", () => {
 	it("deletes a task whose module rows it no longer reads: one tombstone, and the other device hides the thread", async () => {
 		const alpha = await createDevice("alpha", [notes()]);
@@ -787,7 +813,7 @@ describe("a device without the module", () => {
 		expect((await pull(upgraded)).replayed).toBe(0);
 	});
 
-	it("drops a parked note whose task was deleted meanwhile, as the cascade would have", async () => {
+	it("replays a parked note whose task was deleted meanwhile, stored and read as gone", async () => {
 		const alpha = await createDevice("alpha", [notes()]);
 		const beta = await createDevice("beta", []);
 
@@ -804,8 +830,11 @@ describe("a device without the module", () => {
 		await boot(upgraded);
 		const replay = await pull(upgraded);
 		expect(replay.replayed).toBe(1);
-		expect(replay.skipped["orphan-parent"]).toBe(1);
-		expect(await notesOn(upgraded)).toEqual([]);
+		// No cascade since migration 14: the note is stored as alpha holds it,
+		// and the deleted task hides it.
+		expect(replay.skipped["orphan-parent"]).toBe(0);
+		expect(await notesOn(upgraded)).toHaveLength(1);
+		expect(await titles(upgraded)).toEqual([]);
 		expect((await status(upgraded)).parkedOps).toEqual({});
 	});
 });

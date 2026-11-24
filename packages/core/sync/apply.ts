@@ -179,16 +179,14 @@ const tableMeta = (db: Db, table: string): TableMeta => ({
 	hasShortId: isSyncTable(table) && SHORT_ID_TABLES.includes(table),
 });
 
-/** The FK parents to check before resolving: core's list, or a module table's task. */
-const parentsOf = (
-	table: string,
-	rule: { childOfTasks: boolean },
-): readonly ParentRef[] => {
-	if (isSyncTable(table)) return PARENTS[table];
-	return rule.childOfTasks
-		? [{ column: "task_id", table: "tasks", onDelete: "cascade" }]
-		: [];
-};
+/**
+ * The FK parents to check before resolving: core's list. A module table's
+ * `task_id` names a thread with no foreign key since migration 14: the row is
+ * stored whatever has arrived, and the `tasks` view decides what shows, the
+ * same way on every device.
+ */
+const parentsOf = (table: string): readonly ParentRef[] =>
+	isSyncTable(table) ? PARENTS[table] : [];
 
 /**
  * JSON row snapshots only ever hold scalars, because `json_object` reads column
@@ -489,6 +487,19 @@ const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	return labels;
 };
 
+/**
+ * The labels a batch's threads arrive with. They feed no rename, but each
+ * counter is raised past them, so a thread minted here never takes a label a
+ * pulled thread holds.
+ */
+const threadLabels = (ops: readonly SyncOp[]): string[] =>
+	ops.flatMap((op) => {
+		if (!isRecordOp(op) || op.tbl !== "threads") return [];
+		const label =
+			op.payload === undefined ? undefined : asString(op.payload.short_id);
+		return label?.includes("-") ? [label] : [];
+	});
+
 /** Tombstone-free storage: an absent row is otherwise a never-seen row. */
 const deleteKey = (tbl: string, rowId: string): string => `${tbl} ${rowId}`;
 
@@ -703,11 +714,7 @@ const applyOne = (pass: Pass, op: RelayOp) => {
 	const meta = pass.metas.get(op.tbl) ?? tableMeta(db, op.tbl);
 	pass.metas.set(op.tbl, meta);
 
-	const prepared = prepareParents(
-		db,
-		parentsOf(op.tbl, rule),
-		currentScopes(op),
-	);
+	const prepared = prepareParents(db, parentsOf(op.tbl), currentScopes(op));
 	counts.clearedRefs += prepared.cleared;
 
 	// Before the resolver, and for every table: a dangling FK is the one
@@ -772,7 +779,7 @@ const applyOps = (
 		},
 	};
 	for (const op of ops) applyOne(pass, op);
-	reserveBatchLabels(db, pass.batchLabels, now);
+	reserveBatchLabels(db, [...pass.batchLabels, ...threadLabels(ops)], now);
 	return pass.counts;
 };
 

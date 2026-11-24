@@ -354,6 +354,20 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		);
 	});
 
+	it("raises a device's counter past the labels its pulled threads hold", async () => {
+		const a = await createDevice("device-a");
+		const b = await createDevice("device-b");
+		for (const title of ["one", "two", "three"])
+			await addTask(a, title, { scopeUri: SHARED });
+		await converge(a, b);
+
+		// B has minted nothing in this scope; its next label follows A's.
+		const minted = await addTask(b, "four", { scopeUri: SHARED });
+		const held = (await rowsOf(b.base, TABLES.threads)).map((t) => t.short_id);
+		expect(held.filter((label) => label === minted.shortId)).toHaveLength(1);
+		expect(minted.shortId).toBe("JCOL-4");
+	});
+
 	it("replicates a delete as one tombstone that hides the thread and what it holds", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");
