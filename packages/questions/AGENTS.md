@@ -1,7 +1,8 @@
 # @kabane/questions
 
 A data module: the decisions an agent asks a human for, filed on an issue and answered from any
-surface. It owns the `task_questions` table and its migrations, the tools `kabane_ask`,
+surface. It owns three entry kinds on the record (`kinds.ts`), the migrations that moved its old
+`task_questions` table onto them, the tools `kabane_ask`,
 `kabane_questions` and `kabane_answer`, the brief's `questions.decisions` section, one MCP
 instructions paragraph, and an `onTaskStateChange` hook that withdraws open questions when their
 issue closes. `README.md` describes the tools and their rules; read it before changing one.
@@ -18,8 +19,9 @@ decision body parser (`body.ts`) and `validateAnswer` (`answer.ts`).
 The module seam's rules (migrations, capture, task state changes) are in
 `packages/core/AGENTS.md`, "Data modules"; `storage.ts` follows each of them.
 
-Read before writing: `module.ts`, `storage.ts`, `sync.test.ts` (two devices through the
-in-process relay, with and without the module registered).
+Read before writing: `module.ts`, `kinds.ts`, `storage.ts`, `sync.test.ts` (two devices through
+the in-process relay, with and without the module registered). It writes entries through
+`Planner.addEntryIn` only, never raw SQL on `entries`, so each write is stamped and captured.
 
 ## Verify
 

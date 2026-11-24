@@ -359,6 +359,7 @@ once per second. By default it waits until the condition holds or the process is
 kabane wait answered JMYA-1:1 --timeout 30s
 kabane wait state JMYA-1 done cancelled --timeout 10m
 kabane wait ready JMYA-2 --timeout 2h
+kabane wait addressed kabane://actor/human/ana --timeout 1h
 ```
 
 Exit 0 prints one JSON line with `condition` and the task ULID in `taskId`.
@@ -366,8 +367,44 @@ Exit 0 prints one JSON line with `condition` and the task ULID in `taskId`.
 It accepts the same question handle or `id:<ULID>` as `kabane answer`.
 `state` returns the matching `state`. A thread is `ready` when every incoming
 `blocks` and outgoing `blocked_by` or `follows` dependency is done or cancelled.
-A thread with no blockers is ready immediately. Exit 1 means the timeout expired.
-Other errors exit 2 with a message on stderr.
+A thread with no blockers is ready immediately. `addressed` is true while an entry
+addressed to that actor waits on them: a question `kabane_ask` filed for them that nobody
+has answered or withdrawn. It returns `actor` and `entries`, each with its `id`, `taskId`
+and `kind`. Exit 1 means the timeout expired. Other errors exit 2 with a message on stderr.
+
+### Claims
+
+Setting a task `in_progress` with an assignee claims it for whoever made the edit, and the
+result says who holds the claim (`claimedBy`). When two agents claim the same task, on one
+device or on two that were offline, the earlier claim holds on every device once both have
+synced, and the later one reads someone else in `claimedBy`: that agent leaves the task. A
+claim lasts while the task is `in_progress` or `waiting`; putting it back in any other state
+releases it. A claim never expires on its own.
+
+### File a plan in one step
+
+A plan is a JSON file of threads, each with a key you choose, and the links between them:
+
+```json
+{
+  "threads": [
+    { "key": "decide", "title": "Pick the store", "state": "next", "assignee": "claude" },
+    { "key": "build", "title": "Build it", "parent": "decide" }
+  ],
+  "links": [{ "from": "decide", "to": "build", "type": "blocks" }]
+}
+```
+
+```sh
+kabane apply plan.json --key store-v2
+```
+
+Each thread's id is `<plan key>/<thread key>` (`store-v2/decide`), and it gets a label as any
+task does. A thread is an `issue` unless it says otherwise. A link's ends and a `parent` are a
+key in the file or an existing task's label or ULID. The plan lands in one transaction, and
+applying the same file again creates nothing and says what was already there, so a retry after
+a crash is safe. The MCP tool `kabane_apply` takes the same document, and
+`kabane add --key store-v2/review` adds one more thread to it.
 
 For agent reads, select concise explicitly: concise output is opt-in, and without it a command
 prints its human text, or its full records with `--json`
