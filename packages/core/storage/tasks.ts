@@ -470,6 +470,8 @@ export namespace Planner {
 		});
 		for (const [key, value] of draftAttributes(draft, now, completedAt))
 			if (value !== null) RecordWrite.setAttribute(db, id, key, value, now);
+		// Filed in progress with an assignee is claimed, as an edit to it would be.
+		if (draft.state === "in_progress") writeClaim(db, id, "in_progress");
 
 		return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
 	};

@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { Runtime, withDb } from "../runtime";
 import type { Plan } from "../schemas";
 import { configureTestRuntime } from "../testing";
 import { Planner } from "./index";
@@ -108,4 +108,24 @@ it("a keyed add retried returns the first task, marked existed", async () => {
 	expect((await Planner.addTask(base, draft, { key: "JCAB-12" })).ok).toBe(
 		false,
 	);
+});
+
+it("a thread filed in progress with an assignee is claimed by its writer", async () => {
+	must(
+		await apply({
+			threads: [
+				{
+					key: "live",
+					title: "Live",
+					state: "in_progress",
+					assignee: "claude",
+				},
+				{ key: "open", title: "Open", state: "in_progress" },
+			],
+		}),
+	);
+	expect(must(await Planner.claimHolder(base, "tracer/live"))).toBe(
+		Runtime.actor(),
+	);
+	expect(must(await Planner.claimHolder(base, "tracer/open"))).toBeNull();
 });
