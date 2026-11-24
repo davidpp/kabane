@@ -11,9 +11,7 @@
  */
 
 import { z } from "zod";
-import type { Result } from "../result";
-import { map } from "../result";
-import { fingerprintText } from "../storage/read-fingerprint";
+import { sha256Hex } from "./sha256";
 
 /** The record's tables, in the order a reader lists them. */
 export const RECORD_TABLES = [
@@ -143,17 +141,12 @@ export const RECORD_ROW_SCHEMAS = {
  * apart whatever characters a URI holds, and the tag keeps two tables apart.
  * The output is never 26 characters and never matches the short id pattern,
  * so thread lookup cannot mistake it for a ULID or a label. Stable across
- * versions: changing it would split every derived row in two.
+ * versions: changing it would split every derived row in two. Synchronous, so
+ * a write or an apply derives it inside its transaction.
  */
 export namespace RecordId {
-	const derive = async (
-		tag: string,
-		key: readonly string[],
-	): Promise<Result<string>> =>
-		map(
-			await fingerprintText(JSON.stringify([tag, ...key])),
-			(hex) => `${tag}_${hex.slice(0, 32)}`,
-		);
+	const derive = (tag: string, key: readonly string[]): string =>
+		`${tag}_${sha256Hex(JSON.stringify([tag, ...key])).slice(0, 32)}`;
 
 	export const link = (sourceId: string, targetId: string, type: string) =>
 		derive("link", [sourceId, targetId, type]);

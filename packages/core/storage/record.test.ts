@@ -113,15 +113,13 @@ describe("RecordRead", () => {
 	});
 
 	it("shows a thread whose parent has not arrived at the root, and hides everything under a deleted one", async () => {
-		const linkId = await RecordId.link("orphan", "grandchild", "blocks");
-		if (!linkId.ok) throw linkId.error;
 		const visible = await read((db) => {
 			thread(db, "orphan", "not-arrived");
 			thread(db, "grandparent", null, at(1));
 			thread(db, "parent", "grandparent");
 			thread(db, "grandchild", "parent");
 			insert(db, "links", {
-				id: linkId.value,
+				id: RecordId.link("orphan", "grandchild", "blocks"),
 				source_id: "orphan",
 				target_id: "grandchild",
 				type: "blocks",
@@ -139,8 +137,8 @@ describe("RecordRead", () => {
 });
 
 describe("RecordId", () => {
-	it("derives one id per key, apart per table, never mistaken for a ULID or a label", async () => {
-		const ids = await Promise.all([
+	it("derives one id per key, apart per table, never mistaken for a ULID or a label", () => {
+		const values = [
 			RecordId.link("a", "b", "blocks"),
 			RecordId.link("a", "b", "blocks"),
 			RecordId.link("b", "a", "blocks"),
@@ -148,11 +146,7 @@ describe("RecordId", () => {
 			RecordId.ref("a", "b"),
 			RecordId.ref("a", "upstream"),
 			RecordId.upstreamRef("a", "github", "7"),
-		]);
-		const values = ids.map((id) => {
-			if (!id.ok) throw id.error;
-			return id.value;
-		});
+		];
 		expect(values[0]).toBe(values[1] ?? "");
 		expect(new Set(values).size).toBe(values.length - 1);
 		for (const id of values) {

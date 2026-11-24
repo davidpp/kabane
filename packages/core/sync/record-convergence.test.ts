@@ -264,7 +264,7 @@ const attribute = async (
 	keyed(
 		d,
 		"attributes",
-		unwrap(await RecordId.attribute(threadId, key)),
+		RecordId.attribute(threadId, key),
 		clock,
 		{ thread_id: threadId, key, value },
 		removed,
@@ -281,7 +281,7 @@ const link = async (
 	keyed(
 		d,
 		"links",
-		unwrap(await RecordId.link(source, target, type)),
+		RecordId.link(source, target, type),
 		clock,
 		{ source_id: source, target_id: target, type },
 		removed,
@@ -297,7 +297,7 @@ const ref = async (
 	keyed(
 		d,
 		"refs",
-		unwrap(await RecordId.ref(threadId, uri)),
+		RecordId.ref(threadId, uri),
 		clock,
 		{
 			thread_id: threadId,
@@ -320,7 +320,7 @@ const upstream = async (
 	keyed(
 		d,
 		"refs",
-		unwrap(await RecordId.upstreamRef(threadId, "github", externalId)),
+		RecordId.upstreamRef(threadId, "github", externalId),
 		clock,
 		{
 			thread_id: threadId,
