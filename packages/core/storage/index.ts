@@ -48,6 +48,7 @@ export const Planner = {
 	searchTaskPage: TaskPages.searchTaskPage,
 	getTodayPages: TaskPages.getTodayPages,
 	// Task Links
+	taskCondition: TaskLinks.taskCondition,
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
 	deleteLink: TaskLinks.deleteLink,

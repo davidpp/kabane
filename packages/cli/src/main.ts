@@ -39,6 +39,7 @@ import { show } from "./commands/show";
 import { sync } from "./commands/sync";
 import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
+import { wait } from "./commands/wait";
 import { configPath, resolveHome } from "./config";
 import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
@@ -61,6 +62,7 @@ export const COMMANDS: Command[] = [
 	comment,
 	questions,
 	answer,
+	wait,
 	checklist,
 	handoff,
 	log,
@@ -195,13 +197,18 @@ export const run = async (
 	if (command.standalone) return command.run(args, bareCtx(home, cwd));
 
 	const ctx = await openContext(home, cwd, args);
-	if (!ctx.ok) return failure(ctx.error);
+	if (!ctx.ok)
+		return { ...failure(ctx.error), exitCode: command === wait ? 2 : 1 };
 	return command.run(args, ctx.value);
 };
 
 export const main = async (argv: string[]): Promise<number> => {
 	const json = argv.includes("--json");
-	const outcome = await run(argv.filter((a) => a !== "--json"));
-	print(outcome, json);
+	const args = argv.filter((a) => a !== "--json");
+	const outcome = await run(args);
+	// A successful wait is one newline-terminated JSON record in either output mode.
+	const waitRecord =
+		args[0] === wait.name && outcome.exitCode === 0 && !argv.includes("--help");
+	print(outcome, json && !waitRecord);
 	return outcome.exitCode;
 };

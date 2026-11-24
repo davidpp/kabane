@@ -352,6 +352,23 @@ kabane list --all                            # include done and cancelled
 kabane search license --format concise
 ```
 
+A script can wait for a change on this device. The command checks immediately and then
+once per second. By default it waits until the condition holds or the process is stopped.
+
+```sh
+kabane wait answered JMYA-1:1 --timeout 30s
+kabane wait state JMYA-1 done cancelled --timeout 10m
+kabane wait ready JMYA-2 --timeout 2h
+```
+
+Exit 0 prints one JSON line with `condition` and the task ULID in `taskId`.
+`answered` also returns `questionId` and a `status` of `answered` or `withdrawn`.
+It accepts the same question handle or `id:<ULID>` as `kabane answer`.
+`state` returns the matching `state`. A thread is `ready` when every incoming
+`blocks` and outgoing `blocked_by` or `follows` dependency is done or cancelled.
+A thread with no blockers is ready immediately. Exit 1 means the timeout expired.
+Other errors exit 2 with a message on stderr.
+
 For agent reads, select concise explicitly: concise output is opt-in, and without it a command
 prints its human text, or its full records with `--json`
 ([what changed in them since 1.0.0-beta.0](#upgrading-from-100-beta0-comment-kinds-and-handoffs)).

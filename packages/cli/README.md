@@ -285,7 +285,8 @@ the stored scope URI helpers and the shared `ProjectScope` type.
 ## Output and exit codes
 
 Human text by default, `--json` on any command for the structured value. Exit
-codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
+codes are normally `0` for success, `1` for an error and `2` for usage. Errors go to stderr.
+For `wait`, exit `0` prints one JSON line, `1` means timeout and `2` means an error.
 
 ## Commands
 
@@ -305,6 +306,7 @@ codes: `0` ok, `1` error, `2` usage. Errors go to stderr.
 | `open <id>` | launch the task's linked issue: the desktop app when its scheme is registered, else the browser, else the URL lands on the clipboard |
 | `comment <id> "<text>"` | `--kind <kind>` `--as <actor>` — `--kind review` (lowercase `name` or `name.key`) gives the comment that kind: the brief keeps a comment of any kind but `comment` whoever wrote it and labels it with its kind, where a plain AI comment can drop out. A kind a module lifts into its own section shows only its newest comment there, under that kind's title, and counts the older ones |
 | `questions [<id>]` | `--all` (include answered and withdrawn) `--scope <uri>` `--limit <n>` `--cursor <cursor>` — open questions for the directory's scope or one issue, a bounded page as `kabane_questions` prints it; `--json` is the same page as `{ items, hasMore, nextCursor }`. Pass `nextCursor` back as `--cursor` with the same filters, in either output |
+| `wait <condition> <id> [states…]` | `answered`, `state`, or `ready`, with an optional duration such as `--timeout 30s`. [Conditions and exit codes](../../docs/getting-started.md#the-cli-for-scripts-and-agents) |
 | `answer <handle> <answer…>` | `--reason <text>` (why you chose it); or `--withdraw --reason <text>` — answer `JCAB-12:1` or `id:<ULID>` (a choice by its full text or its label, `B` for "B. One tree", ignoring case; a comma list for multi-select); the full text is recorded, and an unknown choice exits 1 listing the valid ones. The last answer moves a waiting issue to next |
 | `log <id>` | `--ref <type:value>` (repeatable) `--commit <sha>` `--branch <name>` `--pr <owner/repo#n>` `--url` `--session` `--file` `--note` |
 | `checklist <id>` | the issue's checklist, as the brief's `checklist.items` section prints it; `--json` gives `{ items }`. `checklist add <id> <item…>` `--at <n>` (one item per argument, so quote a text of several words; 1-based; default the end), `checklist tick <item…>` `--undo`, `checklist edit <item> [<text…>]` `--at <n>` `--remove` — an item is its handle `JCAB-12.3` or its ULID |

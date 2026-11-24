@@ -184,6 +184,17 @@ export namespace Questions {
 			: err(new Error(`No question found: ${input}`));
 	};
 
+	export const status = (basePath: string, questionId: string) =>
+		withDb(basePath, (db) => {
+			const row = db
+				.query<{ taskId: string; status: QuestionStatus }>(
+					`SELECT task_id AS taskId, status FROM ${QUESTIONS_TABLE} WHERE id = ?`,
+				)
+				.get(questionId);
+			if (!row) throw new Error(`No question found: ${questionId}`);
+			return row;
+		});
+
 	export const ask = async (
 		basePath: string,
 		input: AskInput,
