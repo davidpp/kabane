@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { KabaneModule } from "../module";
 import type { Result } from "../result";
-import { atomic } from "../runtime";
+import { atomic, withDb } from "../runtime";
 import { configureTestRuntime } from "../testing";
 import { Planner } from "./index";
 
@@ -141,4 +141,19 @@ it("an addressed entry waits until a reply of a closing kind", async () => {
 	expect(await open()).toEqual([ask]);
 	must(await reply("asks.answer"));
 	expect(await open()).toEqual([]);
+});
+
+it("a reclaim holds after a release stamped ahead of this device's clock", async () => {
+	const id = await thread();
+	must(await claim(A, id, "claude"));
+	// The claim came from a device whose clock runs three seconds ahead.
+	const ahead = new Date(Date.now() + 3000).toISOString();
+	must(
+		await withDb(base, (db) =>
+			db.run("UPDATE entries SET created_at = ? WHERE kind = 'claim'", [ahead]),
+		),
+	);
+	must(await as(A, () => Planner.updateTask(base, id, { state: "next" })));
+	must(await claim(A, id, "claude"));
+	expect(await holder(id)).toBe(A);
 });

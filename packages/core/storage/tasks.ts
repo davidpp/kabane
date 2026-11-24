@@ -145,6 +145,11 @@ const writeClaim = (db: Db, id: string, state: string): void => {
 	const standing = RecordRead.openClaims(db, id);
 	if (!standing.ok) throw standing.error;
 	const now = new Date().toISOString();
+	/** Now, or just past `after` when that clock is ahead of ours: entries order by time. */
+	const past = (after: string | null | undefined) =>
+		after == null || after < now
+			? now
+			: new Date(Date.parse(after) + 1).toISOString();
 	const entry = (kind: string, author: string, at: string, re?: string) =>
 		RecordWrite.addEntry(db, {
 			id: generateId(),
@@ -163,8 +168,16 @@ const writeClaim = (db: Db, id: string, state: string): void => {
 				`SELECT assignee FROM ${TABLES.threads} WHERE id = ?`,
 			)
 			.get(id)?.assignee;
-		if (assignee && !standing.value.some((claim) => claim.author === actor))
-			entry(CLAIM_KIND, actor, now);
+		if (!assignee || standing.value.some((claim) => claim.author === actor))
+			return;
+		// A claim counts only after the claimant's own last release.
+		const released = db
+			.query<{ at: string | null }, [string, string]>(
+				`SELECT MAX(created_at) AS at FROM ${TABLES.entries}
+				  WHERE thread_id = ? AND kind = '${RELEASE_KIND}' AND author = ?`,
+			)
+			.get(id, actor)?.at;
+		entry(CLAIM_KIND, actor, past(released));
 		return;
 	}
 	if (HELD.includes(state)) return;
@@ -173,9 +186,7 @@ const writeClaim = (db: Db, id: string, state: string): void => {
 			RELEASE_KIND,
 			claim.author,
 			// A release counts only after its claim, whose clock may be ahead of ours.
-			claim.created_at < now
-				? now
-				: new Date(Date.parse(claim.created_at) + 1).toISOString(),
+			past(claim.created_at),
 			claim.id,
 		);
 };
