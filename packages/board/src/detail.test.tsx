@@ -1087,7 +1087,16 @@ test("Detail marks a fresh block seen only while nothing is drawn over it", asyn
 	const under = await view(true);
 	const open = await view(false);
 	try {
-		await sleep(DetailModel.SEEN_MS + 500);
+		// The dwell runs on real timers, so wait for the report rather than a fixed span: on a loaded
+		// machine the renders and checks lag past any margin. The deadline sits inside the test's own
+		// timeout so a miss still reaches `finally` and stops both views' checks.
+		const deadline = performance.now() + 9_000;
+		while (open.seen.length === 0) {
+			if (performance.now() > deadline)
+				throw new Error("the uncovered view never reported its block seen");
+			await sleep(50);
+		}
+		// At once: the block stays fresh here, so the open view reports it again one dwell later.
 		expect(open.seen).toEqual(["checklist"]);
 		expect(under.seen).toEqual([]);
 	} finally {
