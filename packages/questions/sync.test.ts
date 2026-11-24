@@ -118,8 +118,9 @@ it("converges concurrent re-answers on two real SQLite devices", async () => {
 	expect(unwrap(await Questions.list(alpha, { id: task.id }))).toEqual(
 		betaRows,
 	);
-	// Every answer is an entry of its own, so all three survive; the newest decides.
-	expect(betaRows[0]?.version).toBe(4);
+	// Every answer is an entry of its own and all three survive; the newest
+	// decides, and each counted one past the version its writer saw.
+	expect(betaRows[0]?.version).toBe(3);
 	expect(["Alpha", "Beta"]).toContain(betaRows[0]?.answer ?? "");
 });
 

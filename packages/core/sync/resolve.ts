@@ -601,13 +601,26 @@ const decideRecordRow = (
 	});
 	if (local === undefined) return apply(incoming);
 
-	let merged = local;
+	const merged = mergeRecordRow(table, local, incoming);
+	return merged === local ? skip("not-newer") : apply(merged);
+};
+
+/**
+ * Two values of one record row merged register by register, as sync apply
+ * merges them: `held` itself when it wins every register.
+ */
+export const mergeRecordRow = (
+	table: RecordTable,
+	held: Row,
+	incoming: Row,
+): Row => {
+	let merged = held;
 	for (const register of REGISTERS[table]) {
-		if (compareRegister(incoming, local, register) <= 0) continue;
+		if (compareRegister(incoming, held, register) <= 0) continue;
 		for (const column of register.columns)
 			merged = { ...merged, [column]: incoming[column] ?? null };
 	}
-	return merged === local ? skip("not-newer") : apply(merged);
+	return merged;
 };
 
 // ============================================================

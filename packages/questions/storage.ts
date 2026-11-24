@@ -35,8 +35,15 @@ import {
  */
 const REPLIES = REPLY_KINDS.map((kind) => `'${kind}'`).join(", ");
 
-const dataOf = (data: string | null): Record<string, string | undefined> =>
-	data === null ? {} : (JSON.parse(data) as Record<string, string>);
+/** An entry's fields: `why` on an ask, `reasoning` on a reply, and the question's `version` and `updatedAt` on the entry that last decided it. */
+type EntryData = {
+	why?: string;
+	reasoning?: string;
+	version?: number;
+	updatedAt?: string;
+};
+const dataOf = (data: string | null): EntryData =>
+	data === null ? {} : (JSON.parse(data) as EntryData);
 
 const statusOf = (kind: string | null): QuestionStatus =>
 	kind === ANSWER_KIND
@@ -117,6 +124,9 @@ const selectQuestions = (
 			const ask = dataOf(row.data);
 			const reply = dataOf(row.reply_data);
 			const status = statusOf(row.reply_kind);
+			// The entry that last decided the question carries its version and
+			// update time; an older entry has neither, and they are counted.
+			const latest = row.reply_kind === null ? ask : reply;
 			return {
 				id: row.id,
 				taskId: row.thread_id,
@@ -125,9 +135,9 @@ const selectQuestions = (
 				answeredBy: row.reply_author ?? undefined,
 				answeredAt: row.reply_at ?? undefined,
 				createdAt: row.created_at,
-				updatedAt: row.reply_at ?? row.created_at,
+				updatedAt: latest.updatedAt ?? row.reply_at ?? row.created_at,
 				updatedBy: row.reply_by ?? row.updated_by ?? row.author,
-				version: 1 + row.replies,
+				version: latest.version ?? 1 + row.replies,
 				visibility: row.visibility,
 				body: row.body,
 				why: ask.why,
@@ -151,7 +161,7 @@ const openOn = (db: Db, taskId: string): QuestionView[] =>
 /** Answer or withdraw one question: a reply to its entry. */
 const close = (
 	db: Db,
-	question: { id: string; taskId: string; visibility: string },
+	question: { id: string; taskId: string; visibility: string; version: number },
 	closing: {
 		status: "answered" | "withdrawn";
 		answer: string | null;
@@ -165,8 +175,10 @@ const close = (
 		author: closing.by,
 		body: closing.answer,
 		re: question.id,
-		data:
-			closing.reasoning === null ? undefined : { reasoning: closing.reasoning },
+		data: {
+			...(closing.reasoning === null ? {} : { reasoning: closing.reasoning }),
+			version: question.version + 1,
+		},
 		// A private question's reply is private too, whatever its issue is.
 		private: question.visibility === "private",
 	});

@@ -120,7 +120,7 @@ export {
 	type HttpTransportConfig,
 } from "./sync/http-transport";
 export { LocalRelay, type Relay } from "./sync/local-relay";
-export type { SyncFamily } from "./sync/resolve";
+export { mergeRecordRow, type SyncFamily } from "./sync/resolve";
 export {
 	type PullResult,
 	type PushResult,
