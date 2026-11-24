@@ -47,7 +47,7 @@ import { detectScope, mainCheckoutRoot } from "./scope/detect";
 export type Ctx = Extension.Ctx & { config: Config };
 
 /** A built-in command; an extension's command, which asks for less, fits it too. */
-export type Command = Extension.Command<Ctx>;
+export type Command = Extension.Command<Ctx> & { contextErrorExitCode?: 1 | 2 };
 
 /**
  * `actor` is stamped into `updated_by` on every local write, so it has to be
