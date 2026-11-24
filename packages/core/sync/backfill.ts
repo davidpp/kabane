@@ -19,13 +19,16 @@
  * device skips it as an orphan when that thread has not arrived. The record
  * itself has no FK, so its order is free.
  *
- * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from table, row and version
- * rather than minted randomly, so a second run collides on `UNIQUE(op_id)` and
- * is ignored, while a row edited since the last run gets a fresh op. That
+ * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from table, row key and the
+ * row's content rather than minted randomly, so a second run collides on
+ * `UNIQUE(op_id)` and is ignored, while a row edited since the last run gets a
+ * fresh op, and two devices holding different values of one row send two ops
+ * the resolver decides between. That
  * matters because the honest response to a half-finished backfill is to run it
  * again.
  */
 
+import { createHash } from "node:crypto";
 import type { Db } from "../db/port";
 import { Replicated } from "../replicated";
 import { err, ok, type Result } from "../result";
@@ -70,15 +73,21 @@ const backfillOrder = (db: Db): string[] => {
 };
 
 /**
- * A row's write count, for its op id: a re-run is a no-op and a row written
- * since is re-emitted. A thread counts its claim and its delete too.
+ * A row's content, keys sorted: what its op id is made from, so two devices
+ * holding different values of one row emit different ops and identical rows
+ * emit one.
  */
-const versionOf = (row: Record<string, unknown>): string => {
-	const count = (value: unknown) => (typeof value === "number" ? value : 1);
-	return row.state_version === undefined
-		? String(count(row.version))
-		: `${count(row.version)}.${count(row.state_version)}${row.deleted_at ? ".d" : ""}`;
-};
+const contentOf = (row: Record<string, unknown>): string =>
+	createHash("sha256")
+		.update(
+			JSON.stringify(
+				Object.keys(row)
+					.sort()
+					.map((key) => [key, row[key]]),
+			),
+		)
+		.digest("hex")
+		.slice(0, 32);
 
 // ============================================================
 // Types
@@ -111,8 +120,8 @@ const emptyReport = (): BackfillReport => ({
  * the log and can never collide with live capture's random hex; versioned so a
  * row edited between two runs is re-emitted rather than treated as seen.
  */
-const backfillOpId = (tbl: string, rowId: string, version: string): string =>
-	`bf:${tbl}:${rowId}:v${version}`;
+const backfillOpId = (tbl: string, rowId: string, content: string): string =>
+	`bf:${tbl}:${rowId}:${content}`;
 
 const backfillTable = (
 	db: Db,
@@ -135,7 +144,6 @@ const backfillTable = (
 			continue;
 		}
 
-		const version = versionOf(row);
 		const done = Oplog.record(
 			db,
 			Oplog.snapshotOp({
@@ -144,7 +152,7 @@ const backfillTable = (
 				op: "insert",
 				row,
 				capturedAt,
-				opId: backfillOpId(tbl, rowId, version),
+				opId: backfillOpId(tbl, rowId, contentOf(row)),
 			}),
 		);
 		if (!done.ok) return done;

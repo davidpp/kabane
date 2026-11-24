@@ -566,8 +566,8 @@ describe("capturing a module table", () => {
 				.map((row) => row.op_id),
 		);
 		// The record's tables first, so a pulled note finds its thread.
-		expect(ids).toContain(`bf:threads:${task}:v1.1`);
-		expect(ids.at(-1)).toBe(`bf:${NOTES}:${note}:v1`);
+		expect(ids.some((id) => id.startsWith(`bf:threads:${task}:`))).toBe(true);
+		expect(ids.at(-1)?.startsWith(`bf:${NOTES}:${note}:`)).toBe(true);
 
 		// Tagged as it was backfilled, so a push without the module keeps it.
 		await push({ ...alpha, modules: [] });

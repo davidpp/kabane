@@ -237,4 +237,25 @@ describe("2.0 record — what apply refuses", () => {
 			),
 		).toEqual({ n: 0 });
 	});
+
+	it("raises no counter for a thread op it refused, nor for a label it does not mint", async () => {
+		const base = await device();
+		const report = await apply(base, [
+			op("threads", { id: "01KZREFUSED000000000000000", short_id: "JTES-99" }),
+			op(
+				"threads",
+				thread("01KZODDLABEL00000000000000", { short_id: "ODD-7" }),
+			),
+		]);
+		expect(report.skipped["malformed-payload"]).toBe(1);
+		expect(
+			await withDb(base, (db) =>
+				db.query<{ prefix: string }, []>("SELECT prefix FROM sequences").all(),
+			),
+		).toEqual([]);
+		const added = unwrap(
+			await Planner.addTask(base, { title: "next", scopeUri: "tes" }),
+		);
+		expect(added.shortId).toBe("JTES-1");
+	});
 });

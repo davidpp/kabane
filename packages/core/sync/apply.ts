@@ -487,18 +487,8 @@ const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	return labels;
 };
 
-/**
- * The labels a batch's threads arrive with. They feed no rename, but each
- * counter is raised past them, so a thread minted here never takes a label a
- * pulled thread holds.
- */
-const threadLabels = (ops: readonly SyncOp[]): string[] =>
-	ops.flatMap((op) => {
-		if (!isRecordOp(op) || op.tbl !== "threads") return [];
-		const label =
-			op.payload === undefined ? undefined : asString(op.payload.short_id);
-		return label?.includes("-") ? [label] : [];
-	});
+/** A label as `generateShortId` mints one: `J`, three letters or digits, a number. */
+const MINTED_LABEL = /^J[A-Z0-9]{3}-\d+$/;
 
 /** Tombstone-free storage: an absent row is otherwise a never-seen row. */
 const deleteKey = (tbl: string, rowId: string): string => `${tbl} ${rowId}`;
@@ -580,6 +570,8 @@ type Pass = {
 	localDeviceId: string;
 	now: string;
 	batchLabels: readonly string[];
+	/** Labels of the thread rows this pass applied. */
+	threadLabels: string[];
 	deletedAt: Map<string, string>;
 	metas: Map<string, TableMeta>;
 	counts: Counts;
@@ -697,6 +689,11 @@ const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
 	}
 	writeRecordRow(db, meta, key, decision.row);
 	counts.applied++;
+	// A thread's label feeds no rename, but its counter is raised past it so
+	// this device never mints a label a pulled thread holds.
+	const label = table === "threads" ? decision.row.short_id : undefined;
+	if (typeof label === "string" && MINTED_LABEL.test(label))
+		pass.threadLabels.push(label);
 };
 
 const applyOne = (pass: Pass, op: RelayOp) => {
@@ -768,6 +765,7 @@ const applyOps = (
 		localDeviceId,
 		now,
 		batchLabels: collectLabels(ops),
+		threadLabels: [],
 		deletedAt,
 		metas: new Map(),
 		counts: {
@@ -779,7 +777,7 @@ const applyOps = (
 		},
 	};
 	for (const op of ops) applyOne(pass, op);
-	reserveBatchLabels(db, [...pass.batchLabels, ...threadLabels(ops)], now);
+	reserveBatchLabels(db, [...pass.batchLabels, ...pass.threadLabels], now);
 	return pass.counts;
 };
 

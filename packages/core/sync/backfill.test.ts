@@ -18,6 +18,8 @@ import { TABLES } from "../storage/helpers";
 import { Planner } from "../storage/index";
 import { Oplog } from "../storage/oplog";
 import { Backfill } from "./backfill";
+import { LocalRelay } from "./local-relay";
+import { Sync } from "./namespace";
 
 const DEVICE = "device-seed";
 const NOW = "2026-08-03T12:00:00.000Z";
@@ -194,7 +196,7 @@ describe("Backfill.run", () => {
 		expect(clockOf("entries")).toBeNull();
 	});
 
-	it("skips private rows and keys each op on the row's version", async () => {
+	it("skips private rows and keys each op on the row's content", async () => {
 		await seedRows();
 		await withDb((db) => {
 			db.run(
@@ -219,10 +221,10 @@ describe("Backfill.run", () => {
 				)
 				.all(),
 		);
-		// A thread's op id counts its text and claim registers.
-		expect(ids).toEqual([
-			{ op_id: "bf:threads:01TASKZ:v4.1", row_id: "01TASKZ" },
-		]);
+		// A row's op id is its table, key and content.
+		expect(ids).toHaveLength(1);
+		expect(ids[0]?.row_id).toBe("01TASKZ");
+		expect(ids[0]?.op_id).toMatch(/^bf:threads:01TASKZ:[0-9a-f]{32}$/);
 
 		// An edit between runs is a new op, not an "already present" one: to
 		// either register.
@@ -249,5 +251,64 @@ describe("Backfill.run", () => {
 		// Writing ops directly must not trip the capture triggers, which would
 		// double every row and grow without bound on each run.
 		expect((await oplog()).length).toBe(done.value.written);
+	});
+
+	it("gives two devices' different values of one row different op ids, so both reach the resolver", async () => {
+		await seedRows();
+		const other = join(tmpdir(), `planner-backfill-${crypto.randomUUID()}`);
+		mkdirSync(other, { recursive: true });
+		try {
+			// Two copies of one database, each edited apart before sync, as two
+			// devices upgraded from one release copy are.
+			await withDb((db) => db.run("VACUUM INTO ?", [join(other, "kabane.db")]));
+			const set = (at: string, value: string, device: string) =>
+				runWithDb(at, (db) => {
+					db.run(
+						`UPDATE ${TABLES.attributes} SET value = ? WHERE thread_id = '01TASKZ' AND key = 'project_id'`,
+						[value],
+					);
+					const armed = Oplog.initDevice(db, device);
+					if (!armed.ok) throw armed.error;
+				});
+			await set(base, "on-a", "device-a");
+			await set(other, "on-b", "device-b");
+			const relay = LocalRelay.create();
+			for (const [at, device] of [
+				[base, "device-a"],
+				[other, "device-b"],
+			] as const) {
+				const seeded = await Backfill.run(at);
+				if (!seeded.ok) throw seeded.error;
+				const pushed = await Sync.push(
+					at,
+					LocalRelay.transportFor(relay, device),
+				);
+				if (!pushed.ok) throw pushed.error;
+			}
+			for (const [at, device] of [
+				[base, "device-a"],
+				[other, "device-b"],
+			] as const) {
+				const pulled = await Sync.pull(
+					at,
+					LocalRelay.transportFor(relay, device),
+				);
+				if (!pulled.ok) throw pulled.error;
+			}
+			const valueOn = async (at: string) => {
+				const read = await runWithDb(at, (db) =>
+					db
+						.query<{ value: string }, []>(
+							`SELECT value FROM ${TABLES.attributes} WHERE thread_id = '01TASKZ' AND key = 'project_id'`,
+						)
+						.get(),
+				);
+				if (!read.ok) throw read.error;
+				return read.value?.value;
+			};
+			expect(await valueOn(other)).toBe(await valueOn(base));
+		} finally {
+			rmSync(other, { recursive: true, force: true });
+		}
 	});
 });
