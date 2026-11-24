@@ -900,8 +900,10 @@ Resolve it before retrying.
 - **When it refuses.** Migration 14 rolls back and names the rows when a child's `parent`
   or `child` links name two parents, when such a link's visibility differs from its child's, or
   when a stored time cannot be read as an instant. Restore the pre-upgrade backup before using the old version to fix those rows.
-  On a device with parked legacy question ops, sync that backup with the questions module enabled
-  before retrying. Rename any legacy comments flagged for using a question entry kind.
+- **When it refuses before changing anything.** Parked legacy question ops, and comments whose
+  kind is a question entry kind, stop the upgrade before any migration runs, so the database
+  stays at its old version. Sync with the previous release and the questions module enabled, or
+  change those comments' kind with it, then open this version again.
 - **Sync: back up, update every device and the hub, then re-seed.** The ops this device had not
   pushed yet are dropped: they named the old tables. Enable every extension whose rows you
   want on the other devices first (backfill seeds only the tables of enabled ones, and a run
