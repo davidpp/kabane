@@ -1,9 +1,17 @@
 # @kabane/questions
 
 The decisions an agent needs from a human, filed on an issue and answered whenever the human
-gets to them. It is a data module: its own table (`task_questions`), migrations, MCP tools and a
-section of the brief, registered with `Runtime.configure({ modules: [questionsModule] })`. The
-CLI and the hub register it; a host that does not has no decisions, which is not an error.
+gets to them. It is a data module: three entry kinds on the record, the migration that moved its
+old table (`task_questions`) onto them, MCP tools and a section of the brief, registered with
+`Runtime.configure({ modules: [questionsModule] })`. The CLI and the hub register it; a host that
+does not has no decisions, which is not an error.
+
+A question is an entry of kind `questions.ask` on its issue, addressed (`to`) to the human the
+asking connection relays for. An answer is a `questions.answer` entry that replies to it (`re`),
+a withdrawal a `questions.withdraw` one. The newest reply decides the question's status, answer
+and reasoning, so a second answer overwrites the first. The ask kind declares those two as the
+replies that close it, which is what `kabane wait addressed` reads. The three kinds are projected
+`none`: the brief shows them in `questions.decisions` only, never in the Discussion.
 
 ## MCP tools
 
@@ -62,9 +70,20 @@ question too large for a page is read there, with `responseFormat: "concise"` an
 
 ## Sync
 
-Questions replicate like tasks, last writer wins on `updated_at`, and go with their issue. A
-device that has not registered the module, or runs an older one, parks their ops and keeps
-pulling ([`docs/deploy.md`](../../docs/deploy.md)).
+Questions replicate as the record's entries, which are append-only: two devices that answer the
+same question offline both keep both answers, and the newer one reads as the answer on each. A
+device without the module stores them and shows them in the Discussion as kinds it does not know.
+
+Migration 4 moved every `task_questions` row onto the record, every value taken from the row: the
+question keeps its id, and a closed one gets one reply, `reply:<question id>`, so two devices
+migrating the same rows write the same entries. A device that already received those entries
+from another merges them as sync would. The entry that decides each question keeps the row's
+version, writer and update time, and each later answer counts one past it. The table kept only a
+question's last closing, so a question answered twice migrates with that one answer. A migrated
+question has no `to`: the row did not say whom it asked. While a `task_questions` op is parked,
+the migration refuses and changes nothing: run the previous release with the questions module
+enabled and sync once first. An armed device runs `kabane sync backfill` after upgrading, as for
+core's migration 14.
 
 ## Exports
 

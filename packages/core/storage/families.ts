@@ -17,6 +17,21 @@ export type RefFamily = "link" | "context" | "upstream";
 /** The entry kind a work log is stored under, and no other entry. */
 export const WORK_LOG_KIND = "log";
 
+/**
+ * The entries a claim is made of (ADR 0006): a `claim` when a thread is set
+ * in progress, a `release` when it is put back. Who holds the claim is read
+ * from them (`RecordRead.claimHolder`); they are not the timeline's.
+ */
+export const CLAIM_KIND = "claim";
+export const RELEASE_KIND = "release";
+
+/** Kinds only core writes: the work log's and the claim's. */
+export const CORE_ENTRY_KINDS: readonly string[] = [
+	WORK_LOG_KIND,
+	CLAIM_KIND,
+	RELEASE_KIND,
+];
+
 /** The kind of an upstream link's ref. */
 export const UPSTREAM_KIND = "upstream";
 

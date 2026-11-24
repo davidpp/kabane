@@ -15,6 +15,7 @@ import { Planner as ContextPages } from "./context-pages";
 import { Planner as ContextRefs } from "./context-refs";
 // Import domain namespaces
 import { Planner as Init } from "./init";
+import { Planner as Plans } from "./plans";
 import { Planner as Projects } from "./projects";
 import { Planner as Stats } from "./stats";
 import { Planner as TaskLinks } from "./task-links";
@@ -32,6 +33,7 @@ export const Planner = {
 	// Tasks & ID Resolution
 	resolveTaskId: Tasks.resolveTaskId,
 	addTask: Tasks.addTask,
+	applyPlan: Plans.applyPlan,
 	getTask: Tasks.getTask,
 	findBySourceId: Tasks.findBySourceId,
 	findByExternalRef: Tasks.findByExternalRef,
@@ -51,6 +53,8 @@ export const Planner = {
 	// Task Links
 	matchingState: Conditions.matchingState,
 	isReady: Conditions.isReady,
+	claimHolder: Conditions.claimHolder,
+	addressed: Conditions.addressed,
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
 	deleteLink: TaskLinks.deleteLink,
@@ -63,6 +67,7 @@ export const Planner = {
 	queryProjects: Projects.queryProjects,
 	// Timeline entries (a comment is an entry of kind `comment`)
 	addEntry: Comments.addEntry,
+	addEntryIn: Comments.addEntryIn,
 	getEntries: Comments.getEntries,
 	latestEntry: Comments.latestEntry,
 	addComment: Comments.addComment,

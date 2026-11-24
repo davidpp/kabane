@@ -58,6 +58,15 @@ export {
 	TaskLinkDraftSchema,
 	TaskLinkSchema,
 } from "./link";
+export {
+	KEY_PATTERN,
+	KEYED_ID_PATTERN,
+	type Plan,
+	PlanKeySchema,
+	PlanLinkSchema,
+	PlanSchema,
+	PlanThreadSchema,
+} from "./plan";
 // Project schemas
 export {
 	type Project,

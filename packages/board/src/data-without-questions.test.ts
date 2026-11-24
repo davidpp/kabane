@@ -1,6 +1,7 @@
-// A host that registers none of the data modules (the CLI registers them all) has no `task_questions`
-// or `task_checklist_items` table and declares no entry kind: the board reads no decisions or items
-// there, lifts no entry under the description, and no read fails for it.
+// A host that registers none of the data modules (the CLI registers them all) has no
+// `task_checklist_items` table and declares no entry kind: the board reads no decisions or items
+// there, lifts no entry under the description, and no read fails for it. Questions are record
+// entries, so reading them works and finds none.
 import { afterAll, beforeAll, expect, it } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,8 +36,11 @@ it("counts no decisions or items and loads a task's detail without them", async 
 		kind: "issue",
 	});
 	if (!task.ok) throw task.error;
-	// The premise: reading the module's table here fails.
-	expect((await Questions.list(BASE, { status: "open" })).ok).toBe(false);
+	// The premise: no question is filed, and reading the checklist module's table fails.
+	expect(await Questions.list(BASE, { status: "open" })).toEqual({
+		ok: true,
+		value: [],
+	});
 	expect((await Checklist.progress(BASE)).ok).toBe(false);
 	const counts = await BoardData.openQuestionCounts(BASE);
 	expect(counts).toEqual({ ok: true, value: new Map() });

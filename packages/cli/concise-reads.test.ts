@@ -49,6 +49,9 @@ const receiptSchema = z
 		version: z.number(),
 		truncatedFields: z.array(z.string()).optional(),
 		fullRead: z.string(),
+		// Setting in_progress claims the task, and the receipt names who holds the claim.
+		claimedBy: z.string().nullable().optional(),
+		claimHeld: z.boolean().optional(),
 	})
 	.strict();
 const toolResultSchema = z.object({

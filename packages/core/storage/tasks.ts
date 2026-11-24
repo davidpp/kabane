@@ -5,10 +5,11 @@
 import type { Db } from "../db/port";
 import { Events, PLANNER_EVENTS } from "../events";
 import { Modules } from "../module";
-import { err, ok, NotFoundError, type Result } from "../result";
+import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
 	type ItemKind,
+	KEYED_ID_PATTERN,
 	type Task,
 	type TaskDraft,
 	TaskDraftSchema,
@@ -16,6 +17,7 @@ import {
 	type TaskUpdate,
 	TaskUpdateSchema,
 } from "../schemas";
+import { CLAIM_KIND, RELEASE_KIND } from "./families";
 import {
 	derivePrefix,
 	generateId,
@@ -128,6 +130,67 @@ const draftAttributes = (
 
 const CLOSED = ["done", "cancelled"];
 
+/** The states a claim lasts through: the work, and a wait on someone. */
+const HELD = ["in_progress", "waiting"];
+
+/**
+ * The claim entries a state change writes (ADR 0006). Setting a thread in
+ * progress with an assignee claims it for the writer, unless the writer's
+ * claim already stands. Moving it to any state but in progress or waiting
+ * releases every standing claim, each in its claimant's name, since only the
+ * claimant's own release clears a claim (`RecordRead.openClaims`); `re` names
+ * the claim. Who holds it is then the read's to say.
+ */
+const writeClaim = (db: Db, id: string, state: string): void => {
+	const standing = RecordRead.openClaims(db, id);
+	if (!standing.ok) throw standing.error;
+	const now = new Date().toISOString();
+	/** Now, or just past `after` when that clock is ahead of ours: entries order by time. */
+	const past = (after: string | null | undefined) =>
+		after == null || after < now
+			? now
+			: new Date(Date.parse(after) + 1).toISOString();
+	const entry = (kind: string, author: string, at: string, re?: string) =>
+		RecordWrite.addEntry(db, {
+			id: generateId(),
+			threadId: id,
+			kind,
+			author,
+			body: null,
+			data: null,
+			createdAt: at,
+			re,
+		});
+	if (state === "in_progress") {
+		const actor = Runtime.actor();
+		const assignee = db
+			.query<{ assignee: string | null }, [string]>(
+				`SELECT assignee FROM ${TABLES.threads} WHERE id = ?`,
+			)
+			.get(id)?.assignee;
+		if (!assignee || standing.value.some((claim) => claim.author === actor))
+			return;
+		// A claim counts only after the claimant's own last release.
+		const released = db
+			.query<{ at: string | null }, [string, string]>(
+				`SELECT MAX(created_at) AS at FROM ${TABLES.entries}
+				  WHERE thread_id = ? AND kind = '${RELEASE_KIND}' AND author = ?`,
+			)
+			.get(id, actor)?.at;
+		entry(CLAIM_KIND, actor, past(released));
+		return;
+	}
+	if (HELD.includes(state)) return;
+	for (const claim of standing.value)
+		entry(
+			RELEASE_KIND,
+			claim.author,
+			// A release counts only after its claim, whose clock may be ahead of ours.
+			past(claim.created_at),
+			claim.id,
+		);
+};
+
 /**
  * `completed_at` after a state change: kept when a closed task closes again,
  * set when it closes, removed when it opens.
@@ -200,6 +263,30 @@ const taskFromDraft = (
 	};
 };
 
+/**
+ * Whether keyed id `id` is taken: true when its thread shows. A deleted one
+ * keeps its id for good, so a key that named it is refused.
+ */
+export const existingKeyed = (db: Db, id: string): boolean => {
+	const row = db
+		.query<{ id: string }, [string]>(
+			`SELECT id FROM ${TABLES.threads} WHERE id = ?`,
+		)
+		.get(id);
+	if (row === null) return false;
+	if (!RecordRead.isVisible(db, id))
+		throw new Error(
+			`${id} names a deleted task; a key names one task for good, so pick another.`,
+		);
+	return true;
+};
+
+export const taskOf = (db: Db, id: string): Task => {
+	const row = TaskRows.byIdOrShortId(db, id);
+	if (!row) throw new NotFoundError(`No task found with ID: ${id}`);
+	return rowToTask(row);
+};
+
 export namespace Planner {
 	// ----------------------------------------------------------
 	// ID Resolution
@@ -218,6 +305,24 @@ export namespace Planner {
 		basePath: string,
 		input: string,
 	): Promise<Result<string>> => {
+		// An id taken from a key (`<plan>/<thread>`): the thread it names, as is,
+		// whatever its length, so a 26-character key is never taken for a ULID.
+		if (input.includes("/")) {
+			if (!KEYED_ID_PATTERN.test(input))
+				return err(new NotFoundError(notAnIdMessage("task", input)));
+			const found = await withDb(
+				basePath,
+				(db) =>
+					TaskRows.where(db, `SELECT id FROM ${TABLES.threads} WHERE id = ?`, [
+						input,
+					]).length > 0,
+			);
+			if (!found.ok) return found;
+			return found.value
+				? ok(input)
+				: err(new NotFoundError(`No task found with ID: ${input}`));
+		}
+
 		// Full ULID - return as-is
 		if (input.length === ULID_LENGTH) {
 			return ok(input);
@@ -288,14 +393,26 @@ export namespace Planner {
 	// Tasks
 	// ----------------------------------------------------------
 
+	/**
+	 * Create a task. With `key` (`<plan key>/<thread key>`) the key is its id,
+	 * so a second add with that key writes nothing and returns the task the
+	 * first one made, marked `existed`.
+	 */
 	export const addTask = async (
 		basePath: string,
 		draft: TaskDraft,
-	): Promise<Result<Task>> => {
+		{ key }: { key?: string } = {},
+	): Promise<Result<Task & { existed?: true }>> => {
 		const parseResult = TaskDraftSchema.safeParse(draft);
 		if (!parseResult.success) {
 			return err(new Error(`Invalid draft: ${parseResult.error.message}`));
 		}
+		if (key !== undefined && !KEYED_ID_PATTERN.test(key))
+			return err(
+				new Error(
+					`Key ${quoted(key)} is not a key: use "<plan>/<name>", lowercase letters, digits, dots, dashes and underscores.`,
+				),
+			);
 
 		// Normalized here, not at the caller: every surface (MCP, CLI, the board)
 		// writes through this function, so a bare "myapp" can
@@ -308,38 +425,56 @@ export namespace Planner {
 		if (!prefixResult.ok) return prefixResult;
 
 		// One transaction: the thread and its attributes land together.
-		const result = await atomic(basePath, (db) => {
-			const now = new Date().toISOString();
-			const completedAt =
-				draft.state === "done" || draft.state === "cancelled" ? now : null;
-			const id = generateId();
-			const shortId = generateShortId(db, prefixResult.value, scopeUri);
-
-			RecordWrite.createThread(db, {
-				id,
-				shortId,
-				kind: draft.kind ?? "task",
-				title: draft.title,
-				body: draft.description ?? null,
-				scope: scopeUri ?? null,
-				parentId: draft.parentTaskId ?? null,
-				createdBy: draft.provenance?.discoveredBy ?? null,
-				state: draft.state ?? "inbox",
-				assignee: draft.assignee ?? null,
-				now,
-			});
-			for (const [key, value] of draftAttributes(draft, now, completedAt))
-				if (value !== null) RecordWrite.setAttribute(db, id, key, value, now);
-
-			return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
-		});
+		const result = await atomic(basePath, (db) =>
+			key !== undefined && existingKeyed(db, key)
+				? { ...taskOf(db, key), existed: true as const }
+				: createTaskIn(db, draft, scopeUri, prefixResult.value, key),
+		);
 
 		// Emit event for SSE subscribers
-		if (result.ok) {
+		if (result.ok && !("existed" in result.value)) {
 			await Events.emit(PLANNER_EVENTS.TASK_CREATED, result.value);
 		}
 
 		return result;
+	};
+
+	/**
+	 * Create a task in the caller's transaction, under `id` when given (a
+	 * keyed id the caller checked is free). The scope is normalized and its
+	 * prefix derived by the caller.
+	 */
+	export const createTaskIn = (
+		db: Db,
+		draft: TaskDraft,
+		scopeUri: string | undefined,
+		prefix: string,
+		id: string = generateId(),
+	): Task => {
+		const now = new Date().toISOString();
+		const completedAt =
+			draft.state === "done" || draft.state === "cancelled" ? now : null;
+		const shortId = generateShortId(db, prefix, scopeUri);
+
+		RecordWrite.createThread(db, {
+			id,
+			shortId,
+			kind: draft.kind ?? "task",
+			title: draft.title,
+			body: draft.description ?? null,
+			scope: scopeUri ?? null,
+			parentId: draft.parentTaskId ?? null,
+			createdBy: draft.provenance?.discoveredBy ?? null,
+			state: draft.state ?? "inbox",
+			assignee: draft.assignee ?? null,
+			now,
+		});
+		for (const [key, value] of draftAttributes(draft, now, completedAt))
+			if (value !== null) RecordWrite.setAttribute(db, id, key, value, now);
+		// Filed in progress with an assignee is claimed, as an edit to it would be.
+		if (draft.state === "in_progress") writeClaim(db, id, "in_progress");
+
+		return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
 	};
 
 	export const getTask = async (
@@ -504,6 +639,7 @@ export namespace Planner {
 		}
 		RecordWrite.updateText(db, id, text);
 		RecordWrite.updateClaim(db, id, claimUpdates(updates));
+		if (updates.state !== undefined) writeClaim(db, id, updates.state);
 
 		for (const [key, value] of attributeUpdates(updates))
 			if (value !== undefined) RecordWrite.setAttribute(db, id, key, value);

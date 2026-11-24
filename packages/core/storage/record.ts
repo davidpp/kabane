@@ -247,16 +247,12 @@ export namespace RecordRead {
 	};
 
 	/**
-	 * Who holds the thread's claim: the earliest `claim` entry, by time and
-	 * then id, that no later `release` entry by the same author has released.
-	 * Derived on every read and stored nowhere, so two devices that claimed
-	 * offline agree on the holder once both entries have arrived.
+	 * The thread's claims that stand: each `claim` entry that no later
+	 * `release` entry by the same author has released, earliest first by time
+	 * and then id.
 	 */
-	export const claimHolder = (
-		db: Db,
-		threadId: string,
-	): Result<EntryRow | undefined> => {
-		const held = rowsOf(EntryRowSchema, () =>
+	export const openClaims = (db: Db, threadId: string): Result<EntryRow[]> =>
+		rowsOf(EntryRowSchema, () =>
 			db
 				.query<unknown, [string, string]>(
 					`${visibleAmong("SELECT ?")}
@@ -269,11 +265,21 @@ export namespace RecordRead {
 					         AND r.author = c.author
 					         AND (r.created_at > c.created_at
 					              OR (r.created_at = c.created_at AND r.id > c.id)))
-					  ORDER BY c.created_at, c.id
-					  LIMIT 1`,
+					  ORDER BY c.created_at, c.id`,
 				)
 				.all(threadId, threadId),
 		);
+
+	/**
+	 * Who holds the thread's claim: the earliest claim that stands
+	 * (`openClaims`). Derived on every read and stored nowhere, so two devices
+	 * that claimed offline agree on the holder once both entries have arrived.
+	 */
+	export const claimHolder = (
+		db: Db,
+		threadId: string,
+	): Result<EntryRow | undefined> => {
+		const held = openClaims(db, threadId);
 		return held.ok ? ok(held.value[0]) : held;
 	};
 }

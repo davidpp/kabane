@@ -371,21 +371,29 @@ export namespace RecordWrite {
 			body: string | null;
 			data: Record<string, unknown> | null;
 			createdAt: string;
+			/** The actors it is addressed to; none, for whoever reads the thread. */
+			to?: readonly string[];
+			/** The entry it replies to. */
+			re?: string;
+			/** Private whatever its thread is: a reply to a private entry. */
+			private?: boolean;
 		},
 	): void => {
 		db.run(
 			`INSERT INTO ${TABLES.entries}
-			   (id, thread_id, kind, author, body, data, visibility, created_at,
-			    updated_by, created_device, version)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+			   (id, thread_id, kind, author, body, addressed_to, re, data, visibility,
+			    created_at, updated_by, created_device, version)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
 			[
 				entry.id,
 				entry.threadId,
 				entry.kind,
 				entry.author,
 				entry.body,
+				entry.to?.length ? JSON.stringify(entry.to) : null,
+				entry.re ?? null,
 				entry.data === null ? null : JSON.stringify(entry.data),
-				visibilityOf(db, entry.threadId),
+				entry.private ? "private" : visibilityOf(db, entry.threadId),
 				entry.createdAt,
 				Runtime.actor(),
 				deviceOf(db),

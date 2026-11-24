@@ -107,24 +107,6 @@ export const AnswerSchema = z
 	});
 export type AnswerInput = z.input<typeof AnswerSchema>;
 
-/** A `task_questions` row as stored: the module's own reads, never its public shape. */
-export type Question = {
-	id: string;
-	task_id: string;
-	status: QuestionStatus;
-	asked_by: string;
-	answered_by: string | null;
-	answered_at: string | null;
-	created_at: string;
-	updated_at: string;
-	updated_by: string;
-	version: number;
-	visibility: string;
-	body: string;
-	why: string | null;
-	answer: string | null;
-	reasoning: string | null;
-};
 export type QuestionStatus = "open" | "answered" | "withdrawn";
 /** A question as every surface sees it, CLI JSON included: camelCase, with its issue's handle and heading. */
 export type QuestionView = {

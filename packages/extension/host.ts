@@ -115,8 +115,15 @@ export namespace Host {
 		get(input: { id: string }): Promise<Result<Task | null>>;
 		/** kabane_list */
 		list(input: ListInput): Promise<Result<Task[]>>;
-		/** kabane_edit */
-		edit(input: EditInput): Promise<Result<Task>>;
+		/**
+		 * kabane_edit. Setting `in_progress` claims the task: `claimedBy` names the
+		 * holder, and `claimHeld` is false when another actor holds it.
+		 */
+		edit(
+			input: EditInput,
+		): Promise<
+			Result<Task & { claimedBy?: string | null; claimHeld?: boolean }>
+		>;
 		/** kabane_done */
 		done(input: { id: string }): Promise<Result<Task>>;
 		/** kabane_comment */

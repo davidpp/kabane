@@ -6,7 +6,7 @@ import "@kabane/core/testing";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AcpClient } from "@kabane/acp";
-import { Planner, type Task } from "@kabane/core";
+import { Planner, type Task, withDb } from "@kabane/core";
 import { Claims } from "./claims";
 import { LoopConfig } from "./config";
 import type { Gates } from "./gates";
@@ -595,6 +595,60 @@ describe("Claims.claim", () => {
 				.filter((e) => e.type === "launch")
 				.map((e) => e.summary.split(" · ")[0]),
 		).toEqual(["/usr/bin/false deps"]);
+	});
+});
+
+describe("Claims.claim, when another agent holds the claim", () => {
+	it("launches nothing after its edit names another holder", async () => {
+		const parent = await add("parent");
+		const child = await add("child", {
+			parentTaskId: parent.id,
+			assignee: "claude",
+		});
+		// Another device's claim, made offline first, arrived before this run's edit.
+		const placed = await withDb(home, (db) =>
+			db.run(
+				`INSERT INTO entries (id, thread_id, kind, author, created_at, created_device, version, visibility)
+				 VALUES ('01KCLAIMOTHER0000000000000', ?, 'claim', 'kabane://actor/agent/codex', '2026-01-01T00:00:00.000Z', 'elsewhere', 1, 'shared')`,
+				[child.id],
+			),
+		);
+		if (!placed.ok) throw placed.error;
+		const config = LoopConfig.Schema.safeParse({});
+		if (!config.success) throw config.error;
+		const run: RunStore.Run = {
+			version: 1,
+			id: "run-1",
+			parentId: parent.id,
+			parentShortId: parent.shortId ?? parent.id,
+			projectDir: home,
+			config: config.data,
+			status: "running",
+			createdAt: new Date().toISOString(),
+			claims: [],
+			usage: {},
+			continuationsUsed: 0,
+			inboxRead: 0,
+			steering: Steering.INITIAL,
+			gateRuns: [],
+		};
+		const created = RunStore.create(home, run);
+		if (!created.ok) throw created.error;
+		const ctx = ctxFor(run);
+		const fails = { command: "/usr/bin/false", args: [] };
+		ctx.deps = {
+			...ctx.deps,
+			overrides: TestHarnesses.overrides({ claude: fails, codex: fails }),
+		};
+		const plan = await LoopPlan.load(testHost(home).record, parent.id);
+		if (!plan.ok) throw plan.error;
+		const node = plan.value.nodes.find((n) => n.task.id === child.id);
+		if (!node) throw new Error("child is not in the plan");
+
+		await Claims.claim(ctx, node, plan.value);
+
+		expect(ctx.run.claims).toEqual([]);
+		expect(ctx.live.size).toBe(0);
 	});
 });
 

@@ -27,6 +27,7 @@ import {
 	DEFAULT_ENTRY_KIND,
 	ItemKindSchema,
 	LinkTypeSchema,
+	PlanSchema,
 	type TaskDraft,
 	TaskPrioritySchema,
 	TaskStateSchema,
@@ -144,6 +145,7 @@ Parameters:
 - parentTaskId: Optional parent (short id or ULID) to file this under
 - tags: Optional labels
 - dueDate: Optional. YYYY-MM-DD is a calendar date, due by the end of that day in the owner's timezone; an ISO datetime with Z or an offset is that exact instant; one without is a local time in the owner's timezone
+- key: Optional "<plan>/<name>" (lowercase), used as the task's id: adding again with the same key creates nothing and returns the task, marked existed, so a retry is safe. The same id kabane_apply gives thread <name> of plan <plan>
 - responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
 	input: {
 		title: z.string().min(1).max(500),
@@ -156,6 +158,7 @@ Parameters:
 		parentTaskId: z.string().optional(),
 		tags: z.array(z.string()).optional(),
 		dueDate: z.string().optional(),
+		key: z.string().optional(),
 		responseFormat: ResponseFormatSchema.optional(),
 	},
 	handler: async (args, ctx) => {
@@ -186,11 +189,41 @@ Parameters:
 				discoveredBy: ctx.actor,
 			},
 		};
-		const created = await Planner.addTask(ctx.basePath, draft);
+		const created = await Planner.addTask(ctx.basePath, draft, {
+			key: args.key,
+		});
 		if (!created.ok) return created;
-		return args.responseFormat === "concise"
-			? taskReceipt(created.value)
-			: created;
+		if (args.responseFormat !== "concise") return created;
+		const receipt = taskReceipt(created.value);
+		return receipt.ok && created.value.existed
+			? ok({ ...receipt.value, existed: true })
+			: receipt;
+	},
+});
+
+const apply = define({
+	name: CORE_TOOL_NAMES.apply,
+	kind: "write",
+	description: `File a whole plan in one call: threads with keys you choose, and the links between them. Each thread's id is "<key>/<thread key>", so applying the same plan again creates nothing and says so: a retry after a crash is safe.
+
+Parameters:
+- key: The plan's key, lowercase letters, digits, dots, dashes and underscores
+- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to issue. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
+- scopeUri: ${SCOPE_HINT} For every thread that names none`,
+	input: {
+		key: z.string().min(1),
+		plan: PlanSchema,
+		scopeUri: z.string().optional(),
+	},
+	handler: async (args, ctx) => {
+		const scope = resolveScope(args.scopeUri, ctx);
+		if (!scope.ok) return scope;
+		return Planner.applyPlan(ctx.basePath, args.plan, {
+			key: args.key,
+			scopeUri: scope.value,
+			author: ctx.actor,
+			source: authorTypeOf(ctx.actor),
+		});
 	},
 });
 
@@ -429,7 +462,7 @@ const editInput = {
 const edit = define({
 	name: CORE_TOOL_NAMES.edit,
 	kind: "write",
-	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue.
+	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue: the result's claimedBy names who holds the claim, and claimHeld is false when it is not you: another agent claimed it first, so leave it. Putting it back (any state but in_progress or waiting) releases the claim.
 
 Parameters:
 - id: ${ID_HINT}
@@ -465,13 +498,24 @@ Parameters:
 		if (Object.keys(update).length === 0) {
 			return err(new Error("Nothing to change: pass at least one field."));
 		}
-		if (args.responseFormat === "concise")
-			return Planner.updateTaskReceipt(ctx.basePath, id.value, update);
-		const updated = await Planner.updateTask(ctx.basePath, id.value, update);
-		if (!updated.ok) return updated;
-		return updated.value
-			? ok(updated.value)
-			: err(new Error(`No task found: ${args.id}`));
+		const result: Result<object> =
+			args.responseFormat === "concise"
+				? await Planner.updateTaskReceipt(ctx.basePath, id.value, update)
+				: await Planner.updateTask(ctx.basePath, id.value, update).then(
+						(updated) =>
+							!updated.ok || updated.value
+								? (updated as Result<object>)
+								: err(new Error(`No task found: ${args.id}`)),
+					);
+		if (!result.ok || args.state !== "in_progress") return result;
+		const holder = await Planner.claimHolder(ctx.basePath, id.value);
+		return holder.ok
+			? ok({
+					...result.value,
+					claimedBy: holder.value,
+					claimHeld: holder.value === Runtime.actor(),
+				})
+			: holder;
 	},
 });
 
@@ -889,6 +933,7 @@ export type CoreToolInputShapes = {
 export const KABANE_TOOLS: readonly ToolDef[] = [
 	scopeList,
 	add,
+	apply,
 	get,
 	list,
 	search,
