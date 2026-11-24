@@ -2,7 +2,7 @@
  * Planner Storage — Task Links
  */
 
-import type { Result } from "../result";
+import { type Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 
 import type { TaskLink, TaskLinkDraft } from "../schemas";
