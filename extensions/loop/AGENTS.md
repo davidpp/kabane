@@ -4,54 +4,6 @@ The first extension: `kabane loop` drives an issue, or a parent's subtasks, thro
 harnesses from a detached runner, runs the project's gates and verifier lenses, and lands the
 branch. `docs/loop.md` is what a user reads; read the part your change touches.
 
-| Where | What it holds |
-|---|---|
-| `src/extension.ts` | the `(host) => Extension` factory: the one `loop` command, its settings and the board ports |
-| `src/commands.ts` | `Loop`, every entry point (`start`, `run`, `status`, `stop`, `advise`, `land`, ...) |
-| `src/runner.ts`, `src/scheduler.ts`, `src/claims.ts`, `src/dispatch.ts` | the detached runner, what it claims, one ACP session per claim |
-| `src/store.ts` | run state as files under `$KABANE_HOME/loops/<runId>/`, never in the tracker |
-| `src/gates.ts`, `src/lenses.ts`, `src/review.ts`, `src/fixer.ts` | the closing checks, review and the fixer |
-| `src/land.ts`, `src/worktree.ts`, `src/trees.ts` | branches, worktrees and landing |
-| `src/doctor.ts` | the loop's `kabane doctor` checks: legacy and shadowed lenses, `loop.model` and `loop.tiers` |
-| `src/activity.ts`, `src/dispatcher.ts`, `src/header.ts` | what the board shows of a run; the header returns toned lines, with no React or OpenTUI |
-
-## It takes types from kabane, and values only from the harness client it bundles
-
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/loop"`) allows one
-runtime dependency, `@kabane/acp`. Record calls, scope detection, the executable, settings
-schemas and tool definitions arrive through `host`; the factory binds its stateless result
-helpers through `src/result.ts` before constructing anything else. Thread the host or its
-record through dependencies, never create a home or a global host. The loop parses checklist
-results from `host.record.call("kabane_checklist", ...)` with `host.z`.
-Production imports from `@kabane/core` are type-only; `src/test-host.ts` binds real host
-values for tests. Core and contract are development dependencies: the layer check allows
-only type imports from them in production files.
-Command entry points resolve case-insensitive short ids and unique ULID prefixes through
-`host.record.get`; an ambiguous prefix is an error, while an absent task is `null`.
-Activity, dispatch and header types come from `@kabane/extension`; forms and `FormField`
-come from `@kabane/acp/form-field`. Runtime imports use ACP capability subpaths, never
-its root barrel: the bundle includes the harness client and core's `result.ts` helpers,
-but no other core source, ACP instructions or templates. The build test checks emitted
-metafile inputs. The loop has no dependency on the board.
-
-The activity port reads the run store's `questions.jsonl`, assigning each question its run card
-id and claim lane. `Loop.answer` submits the human's answer and actor through `inbox.jsonl`;
-the runner records the answer in the question journal before returning it to the harness.
-Question-body parsing belongs to the loop. Claims in `run.json` hold session lifecycle, and
-`events.jsonl` holds the session stream. The runner writes summaries and non-permission
-decisions through `host.record.comment` as `outcome.summary` and `outcome.decision`; session
-URIs reach the issue through `host.record.log`. Old run stores with no question journal still
-load.
-
-The loop builds on its own with `bun run --cwd extensions/loop build`. Its `dist/` is a
-directory extension with its harness client, skills and lenses included. Plan lint
-lives in `src/lint/`; `src/advice.ts` and `src/commands.ts` use it. Setting up and starting a
-run is the `loop-run` skill in `skills/loop-run/SKILL.md`, which `kabane mcp` serves to any
-session through `kabane_skillGet` when the loop loads from a directory (wiki/adr/0004).
-
-Read before writing: `src/extension.ts`, `src/store.ts`, and the entry point you are changing
-in `src/commands.ts` with its test.
-
 ## Verify
 
 ```bash
@@ -88,9 +40,6 @@ bun run sandbox --scripted loop start JGIT-1 --lens functional --lens quality --
 bun run sandbox --scripted loop status <runId>    # until completed; events.jsonl's launch events name the command
 bun run sandbox show JGIT-1                       # the run's comment and its loop: work-log ref
 ```
-
-The sandbox commits its seed files when it creates the repo, so `loop start` has a HEAD to cut
-the run's worktree from. A sandbox made before that has no commit: start it over with `--fresh`.
 
 ## Mistakes that are easy to make here
 
