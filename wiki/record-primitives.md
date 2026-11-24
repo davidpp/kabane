@@ -475,7 +475,7 @@ Codex's three questions for David are added below.
 ## Not verified
 
 - Whether sync converges without the hub's total order (`serverSeq`). JCAB-573 answered it on
-  2026-11-24 (`wiki/storage-and-sync-shapes.md`): it does not, and deletes and three-device
+  2026-11-23 (`wiki/storage-and-sync-shapes.md`): it does not, and deletes and three-device
   short-id renames diverge under the hub's order too. Three apply changes fix everything but
   renames in the tests run there; renames and delete semantics wait on David.
 
