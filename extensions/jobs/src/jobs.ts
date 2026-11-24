@@ -97,6 +97,42 @@ export namespace Jobs {
 				up: (db) => db.run(`ALTER TABLE ${TABLE} ADD COLUMN "check" TEXT`),
 			},
 			actorScheme(TABLE),
+			{
+				// kabane's core migration 14 moved tasks into the record and made `tasks` a
+				// view (JCAB-660). A job's item is a thread now, which no foreign key can
+				// name: the table is rebuilt without one, every row kept.
+				name: "detach-from-tasks",
+				up: (db) => {
+					db.run(
+						`CREATE TABLE ${TABLE}_new (
+						   id TEXT PRIMARY KEY,
+						   task_id TEXT NOT NULL,
+						   schedule TEXT NOT NULL,
+						   recipe TEXT NOT NULL,
+						   inputs TEXT NOT NULL,
+						   harness TEXT,
+						   last_fired_at TEXT,
+						   created_at TEXT NOT NULL,
+						   updated_at TEXT NOT NULL,
+						   updated_by TEXT,
+						   version INTEGER NOT NULL DEFAULT 1,
+						   visibility TEXT NOT NULL DEFAULT 'shared',
+						   session TEXT NOT NULL DEFAULT 'fresh',
+						   "check" TEXT
+						 )`,
+					);
+					db.run(
+						`INSERT INTO ${TABLE}_new
+						   (id, task_id, schedule, recipe, inputs, harness, last_fired_at, created_at,
+						    updated_at, updated_by, version, visibility, session, "check")
+						 SELECT id, task_id, schedule, recipe, inputs, harness, last_fired_at, created_at,
+						        updated_at, updated_by, version, visibility, session, "check"
+						   FROM ${TABLE}`,
+					);
+					db.run(`DROP TABLE ${TABLE}`);
+					db.run(`ALTER TABLE ${TABLE}_new RENAME TO ${TABLE}`);
+				},
+			},
 		],
 		syncTables: [
 			{

@@ -111,7 +111,7 @@ an extension runs until `extensions` names it:
   and run nothing. It writes core's bookkeeping with raw SQL because core cannot rename a module.
   Op ids are kept: they are the log's identities, not table names.
 
-The run and job modules' migration lists keep their length and order (3 and 5); a shorter list
+The run and job modules' migration lists keep their length and order (3 and 6); a shorter list
 would refuse a migrated database as newer.
 
 ## State is read from hc
