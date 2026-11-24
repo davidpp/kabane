@@ -38,6 +38,7 @@ import { TABLES } from "../db/tables";
 import { Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import {
+	isRecordTable,
 	type QuarantinedOp,
 	SYNC_TABLES,
 	type SyncOp,
@@ -57,9 +58,9 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/** A core replicated table. */
+/** A core replicated table: today's, or one of the 2.0 record's. */
 const isCoreTable = (tbl: string): boolean =>
-	(SYNC_TABLES as readonly string[]).includes(tbl);
+	(SYNC_TABLES as readonly string[]).includes(tbl) || isRecordTable(tbl);
 
 // ============================================================
 // Types

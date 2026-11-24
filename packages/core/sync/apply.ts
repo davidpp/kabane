@@ -63,6 +63,8 @@ import { ok, type Result, trySync } from "../result";
 import { atomic } from "../runtime";
 
 import {
+	isRecordTable,
+	type RecordTable,
 	SYNC_TABLES,
 	type SyncOp,
 	SyncOpSchema,
@@ -636,8 +638,29 @@ const execute = (
 	}
 };
 
+/**
+ * An op on the 2.0 record: the merged row is written as the resolver built it,
+ * every column taken from the register that won it. Nothing here reads the
+ * pass, a parent, or this device, and `withVersion` stays out: `version` is
+ * the text register's own counter, never raised past the content it counts.
+ */
+const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
+	const { db, counts } = pass;
+	const meta = pass.metas.get(table) ?? tableMeta(db, table);
+	pass.metas.set(table, meta);
+	const local = selectRow(db, table, "id = ?", [op.rowId]);
+	const decision = Resolve.decideRecord(table, op, local);
+	if (decision.kind === "skip") {
+		counts.skipped[decision.reason]++;
+		return;
+	}
+	writeRow(db, meta, decision.rowId, decision.row);
+	counts.applied++;
+};
+
 const applyOne = (pass: Pass, op: RelayOp) => {
 	const { db, counts } = pass;
+	if (isRecordTable(op.tbl)) return applyRecord(pass, op.tbl, op);
 	const tag = parkingTag(db, op);
 	if (tag !== undefined) return park(pass, op, tag);
 
