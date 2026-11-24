@@ -129,3 +129,15 @@ it("a thread filed in progress with an assignee is claimed by its writer", async
 	);
 	expect(must(await Planner.claimHolder(base, "tracer/open"))).toBeNull();
 });
+
+it("refuses a parent that names no task, a 26-character key included", async () => {
+	const missing = "release/check-dependencies";
+	expect(missing).toHaveLength(26);
+	expect((await Planner.resolveTaskId(base, missing)).ok).toBe(false);
+	const before = await counts();
+	const failed = await apply({
+		threads: [{ key: "child", title: "Child", parent: missing }],
+	});
+	expect(failed.ok).toBe(false);
+	expect(await counts()).toEqual(before);
+});

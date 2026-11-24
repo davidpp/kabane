@@ -305,12 +305,8 @@ export namespace Planner {
 		basePath: string,
 		input: string,
 	): Promise<Result<string>> => {
-		// Full ULID - return as-is
-		if (input.length === ULID_LENGTH) {
-			return ok(input);
-		}
-
-		// An id taken from a key (`<plan>/<thread>`): the thread it names, as is.
+		// An id taken from a key (`<plan>/<thread>`): the thread it names, as is,
+		// whatever its length, so a 26-character key is never taken for a ULID.
 		if (input.includes("/")) {
 			if (!KEYED_ID_PATTERN.test(input))
 				return err(new NotFoundError(notAnIdMessage("task", input)));
@@ -325,6 +321,11 @@ export namespace Planner {
 			return found.value
 				? ok(input)
 				: err(new NotFoundError(`No task found with ID: ${input}`));
+		}
+
+		// Full ULID - return as-is
+		if (input.length === ULID_LENGTH) {
+			return ok(input);
 		}
 
 		// Short ID format (e.g., JDES-123) + legacy formats

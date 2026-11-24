@@ -9,7 +9,7 @@
  */
 
 import { Events, PLANNER_EVENTS } from "../events";
-import { err, ok, quoted, type Result } from "../result";
+import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic } from "../runtime";
 import {
 	KEY_PATTERN,
@@ -20,6 +20,7 @@ import {
 	type TaskSource,
 } from "../schemas";
 import { derivePrefix, normalizeOptionalScopeUri } from "./helpers";
+import { RecordRead } from "./record";
 import { Planner as Links } from "./task-links";
 import { existingKeyed, Planner as Tasks, taskOf } from "./tasks";
 
@@ -107,6 +108,13 @@ export namespace Planner {
 					});
 					continue;
 				}
+				// An end outside the plan was resolved before the write; it must still show.
+				if (
+					thread.parent !== undefined &&
+					!idOf.has(thread.parent) &&
+					!RecordRead.isVisible(db, endOf(thread.parent))
+				)
+					throw new NotFoundError(`No task found with ID: ${thread.parent}`);
 				const draft: TaskDraft = {
 					title: thread.title,
 					description: thread.description,
