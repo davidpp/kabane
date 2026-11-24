@@ -238,8 +238,8 @@ Migration 14 (`packages/core/storage/record-migration.ts`) moves every row and d
 value. A task is a thread; each column that left the row is an attribute under its column name
 (tags stay one JSON array, so their order holds); a comment is an entry, a work-log row an entry
 of kind `log`; links, context refs and linked issues are refs, and a `parent` or `child` link
-becomes the child's parent. Ids of links, context refs and linked issues are not carried: a ref's
-identity is its key. Every value comes from the source row, so two copies migrated apart write
+becomes the child's parent. A ref's identity is its key, so the old ULID of a link, context ref or
+linked issue stays in its `data` as `id`. Every value comes from the source row, so two copies migrated apart write
 the same rows. The old `tasks` table is renamed `retired_tasks` rather than dropped, because a
 module table still referencing it would lose its rows to the cascade; `tasks` is then a view that
 assembles the old row over the visibility read, which is how every client keeps the `Task`

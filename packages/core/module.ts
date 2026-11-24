@@ -20,9 +20,8 @@
  * WHAT CAPTURE NEEDS IS ALSO DATA. `Planner.init` records each registered
  * module's declaration in the device-local `module_declarations`
  * (`Modules.record`). A process that does not register the module (its
- * extension disabled or failing to load) still finds its `childOfTasks`
- * tables there, so a task delete captures the deletes of those rows
- * (`Modules.unregistered`, read by `Oplog.cascadeOf` and capture).
+ * extension disabled or failing to load) still finds its tables there
+ * (`Modules.unregistered`, read by capture and `Replicated.tables`).
  */
 
 import type { Migrate } from "./db/migrate";
@@ -74,9 +73,9 @@ export type ModuleSyncTable = {
 	 */
 	clock?: string;
 	/**
-	 * The row's `task_id` references `tasks(id) ON DELETE CASCADE`. An op whose
-	 * task is gone is skipped as an orphan, and deleting a task captures these
-	 * rows' deletes first (`Oplog.cascadeOf`).
+	 * The row's `task_id` names a thread, with no foreign key since core's
+	 * migration 14. A row whose thread is deleted or has not arrived is stored
+	 * all the same, and reads that join `tasks` hide it.
 	 */
 	childOfTasks: boolean;
 };
