@@ -15,9 +15,12 @@
 
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
+import { NotFoundError } from "../result";
 import { Runtime } from "../runtime";
 import { RecordKey } from "../schemas";
+import type { RefFamily } from "./families";
 import { Oplog } from "./oplog";
+import { RecordRead } from "./record";
 
 type Value = string | number | null;
 
@@ -33,12 +36,38 @@ const clockAfter = (
 	at = new Date().toISOString(),
 ): string => (stored != null && stored > at ? stored : at);
 
-const visibilityOf = (db: Db, threadId: string): string =>
-	db
+/**
+ * The visibility of a thread a local write may add to: one that shows. Sync
+ * apply never comes through here, so a row may still arrive before its thread.
+ */
+const visibilityOf = (db: Db, threadId: string): string => {
+	const row = db
 		.query<{ visibility: string }, [string]>(
 			`SELECT visibility FROM ${TABLES.threads} WHERE id = ?`,
 		)
-		.get(threadId)?.visibility ?? "shared";
+		.get(threadId);
+	if (row === null || !RecordRead.isVisible(db, threadId))
+		throw new NotFoundError(`No task found with ID: ${threadId}`);
+	return row.visibility;
+};
+
+/** The keys a ref's earlier writes left in its `data` that a rewrite keeps. */
+const KEPT_REF_DATA = ["id", "merged"] as const;
+
+const keptData = (
+	stored: string | null | undefined,
+): Record<string, unknown> => {
+	if (stored == null) return {};
+	const parsed: unknown = JSON.parse(stored);
+	if (typeof parsed !== "object" || parsed === null) return {};
+	const held = parsed as Record<string, unknown>;
+	return Object.fromEntries(
+		KEPT_REF_DATA.filter((key) => held[key] !== undefined).map((key) => [
+			key,
+			held[key],
+		]),
+	);
+};
 
 type ThreadDraft = {
 	id: string;
@@ -172,15 +201,16 @@ export namespace RecordWrite {
 
 	/**
 	 * Set attribute `key` on a thread, or remove it with `null`. Setting the
-	 * value it already holds writes nothing. `at` is the write's clock when the
-	 * caller has one, as a new thread's attributes share its creation time.
+	 * value it already holds writes nothing. `created` is the clock of a thread
+	 * written in the same step: the attribute takes it, and its counter starts
+	 * at 0, so it is no write of its own.
 	 */
 	export const setAttribute = (
 		db: Db,
 		threadId: string,
 		key: string,
 		value: Value,
-		at?: string,
+		created?: string,
 	): void => {
 		const text = value === null ? null : String(value);
 		const stored = db
@@ -194,11 +224,12 @@ export namespace RecordWrite {
 			.get(threadId, key);
 		const live = stored != null && stored.removed_at === null;
 		if (text === null ? !live : live && stored.value === text) return;
-		const clock = clockAfter(stored?.updated_at, at);
+		const visibility = visibilityOf(db, threadId);
+		const clock = clockAfter(stored?.updated_at, created);
 		db.run(
 			`INSERT INTO ${TABLES.attributes}
 			   (thread_id, key, value, removed_at, visibility, updated_at, updated_by, updated_device, version)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(thread_id, key) DO UPDATE SET
 			   value = excluded.value, removed_at = excluded.removed_at,
 			   updated_at = excluded.updated_at, updated_by = excluded.updated_by,
@@ -208,10 +239,11 @@ export namespace RecordWrite {
 				key,
 				text ?? stored?.value ?? null,
 				text === null ? clock : null,
-				visibilityOf(db, threadId),
+				visibility,
 				clock,
 				Runtime.actor(),
 				deviceOf(db),
+				created === undefined ? 1 : 0,
 			],
 		);
 		Oplog.afterWrite(
@@ -222,7 +254,10 @@ export namespace RecordWrite {
 		);
 	};
 
-	/** Make or remake a ref; its `title` and `data` are the latest write's. */
+	/**
+	 * Make or remake a ref; its `title` and `data` are the latest write's, but
+	 * for the old id and merged rows a migrated ref keeps in `data`.
+	 */
 	export const putRef = (
 		db: Db,
 		ref: {
@@ -233,11 +268,17 @@ export namespace RecordWrite {
 			data: Record<string, unknown> | null;
 		},
 	): void => {
+		const visibility = visibilityOf(db, ref.threadId);
 		const stored = db
-			.query<{ updated_at: string }, [string, string, string]>(
-				`SELECT updated_at FROM ${TABLES.refs} WHERE thread_id = ? AND uri = ? AND kind = ?`,
+			.query<
+				{ updated_at: string; data: string | null },
+				[string, string, string]
+			>(
+				`SELECT updated_at, data FROM ${TABLES.refs} WHERE thread_id = ? AND uri = ? AND kind = ?`,
 			)
 			.get(ref.threadId, ref.uri, ref.kind);
+		const data =
+			ref.data === null ? null : { ...ref.data, ...keptData(stored?.data) };
 		db.run(
 			`INSERT INTO ${TABLES.refs}
 			   (thread_id, uri, kind, title, data, removed_at, visibility,
@@ -252,8 +293,8 @@ export namespace RecordWrite {
 				ref.uri,
 				ref.kind,
 				ref.title,
-				ref.data === null ? null : JSON.stringify(ref.data),
-				visibilityOf(db, ref.threadId),
+				data === null ? null : JSON.stringify(data),
+				visibility,
 				clockAfter(stored?.updated_at),
 				Runtime.actor(),
 				deviceOf(db),
@@ -267,26 +308,34 @@ export namespace RecordWrite {
 		);
 	};
 
-	/** Remove the ref a row id names (`RecordKey`); false when none is live. */
-	export const removeRef = (db: Db, rowId: string): boolean => {
-		const parts = RecordKey.partsOf("refs", rowId);
-		if (parts === undefined) return false;
+	/**
+	 * Remove the live ref of `family` that `id` names: its row id
+	 * (`RecordKey`), or the old id a migrated ref keeps in `data.id`. False when
+	 * no such ref is live.
+	 */
+	export const removeRef = (db: Db, id: string, family: RefFamily): boolean => {
+		const parts = RecordKey.partsOf("refs", id);
 		const stored = db
-			.query<{ updated_at: string }, string[]>(
-				`SELECT updated_at FROM ${TABLES.refs}
-				  WHERE thread_id = ? AND uri = ? AND kind = ? AND removed_at IS NULL`,
+			.query<
+				{ thread_id: string; uri: string; kind: string; updated_at: string },
+				string[]
+			>(
+				`SELECT thread_id, uri, kind, updated_at FROM ${TABLES.refs}
+				  WHERE removed_at IS NULL AND json_extract(data, '$.family') = ?
+				    AND ${parts === undefined ? "json_extract(data, '$.id') = ?" : "thread_id = ? AND uri = ? AND kind = ?"}`,
 			)
-			.get(...parts);
+			.get(family, ...(parts ?? [id]));
 		if (!stored) return false;
 		const clock = clockAfter(stored.updated_at);
+		const key = [stored.thread_id, stored.uri, stored.kind];
 		db.run(
 			`UPDATE ${TABLES.refs}
 			    SET removed_at = ?, updated_at = ?, updated_by = ?, updated_device = ?,
 			        version = version + 1
 			  WHERE thread_id = ? AND uri = ? AND kind = ?`,
-			[clock, clock, Runtime.actor(), deviceOf(db), ...parts],
+			[clock, clock, Runtime.actor(), deviceOf(db), ...key],
 		);
-		Oplog.afterWrite(db, TABLES.refs, "update", rowId);
+		Oplog.afterWrite(db, TABLES.refs, "update", JSON.stringify(key));
 		return true;
 	};
 

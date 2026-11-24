@@ -12,8 +12,8 @@
  */
 
 import type { Db } from "../db/port";
-import { err, ok, type Result } from "../result";
-import { withDb } from "../runtime";
+import { err, NotFoundError, ok, type Result } from "../result";
+import { atomic, withDb } from "../runtime";
 import {
 	type RefRow,
 	RefRowSchema,
@@ -23,6 +23,7 @@ import {
 	type UpstreamSummary,
 } from "../schemas";
 import { UPSTREAM_KIND } from "./context-refs";
+import { refFamily } from "./families";
 import { rowToUpstreamLink, TABLES } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
@@ -46,7 +47,8 @@ const upstreamRefs = (db: Db, where: string, params: string[]): RefRow[] => {
 		db
 			.query<unknown, string[]>(
 				`SELECT r.* FROM ${TABLES.refs} r JOIN ${TABLES.tasks} t ON t.id = r.thread_id
-				  WHERE r.kind = '${UPSTREAM_KIND}' AND r.removed_at IS NULL AND ${where}`,
+				  WHERE r.kind = '${UPSTREAM_KIND}' AND r.removed_at IS NULL
+				    AND json_extract(r.data, '$.family') = 'upstream' AND ${where}`,
 			)
 			.all(...params),
 	);
@@ -70,7 +72,7 @@ export namespace Planner {
 		const link = inputResult.data;
 		const uri = uriOf(link.provider, link.externalId);
 		const mine = "r.thread_id = ? AND r.uri = ?";
-		const rowResult = await withDb(basePath, (db) => {
+		const rowResult = await atomic(basePath, (db) => {
 			const [held] = upstreamRefs(db, mine, [link.taskId, uri]);
 			const before = held === undefined ? undefined : rowToUpstreamLink(held);
 			RecordWrite.putRef(db, {
@@ -79,6 +81,7 @@ export namespace Planner {
 				kind: UPSTREAM_KIND,
 				title: link.title,
 				data: {
+					family: "upstream",
 					provider: link.provider,
 					external_id: link.externalId,
 					identifier: link.identifier ?? null,
@@ -105,7 +108,9 @@ export namespace Planner {
 		const rows = await withDb(basePath, (db) => {
 			const read = RecordRead.refs(db, taskId);
 			if (!read.ok) throw read.error;
-			return read.value.filter((row) => row.kind === UPSTREAM_KIND);
+			return read.value.filter(
+				(row) => row.kind === UPSTREAM_KIND && refFamily(row) === "upstream",
+			);
 		});
 		return rows.ok ? convertRows(rows.value) : rows;
 	};
@@ -151,8 +156,9 @@ export namespace Planner {
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			RecordWrite.removeRef(db, id);
+		return atomic(basePath, (db) => {
+			if (!RecordWrite.removeRef(db, id, "upstream"))
+				throw new NotFoundError(`No upstream link ${id}`);
 		});
 	};
 }

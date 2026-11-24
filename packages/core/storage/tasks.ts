@@ -28,7 +28,9 @@ import {
 	ULID_LENGTH,
 	ULID_PREFIX_PATTERN,
 } from "./helpers";
+import { RecordRead } from "./record";
 import { RecordWrite, type ThreadClaim, type ThreadText } from "./record-write";
+import { TaskRows } from "./task-rows";
 import {
 	selectTaskQuery,
 	selectTaskSearch,
@@ -139,10 +141,11 @@ const completedAtAfter = (
 	if (!CLOSED.includes(to)) return null;
 	if (from !== null && CLOSED.includes(from)) {
 		const held = db
-			.query<{ completed_at: string | null }, [string]>(
-				`SELECT completed_at FROM ${TABLES.tasks} WHERE id = ?`,
+			.query<{ value: string | null }, [string]>(
+				`SELECT value FROM ${TABLES.attributes}
+				  WHERE thread_id = ? AND key = 'completed_at' AND removed_at IS NULL`,
 			)
-			.get(id)?.completed_at;
+			.get(id)?.value;
 		if (held) return undefined;
 	}
 	return new Date().toISOString();
@@ -223,12 +226,12 @@ export namespace Planner {
 		// Short ID format (e.g., JDES-123) + legacy formats
 		if (SHORT_ID_PATTERN.test(input)) {
 			const result = await withDb(basePath, (db) => {
-				const row = db
-					.query(
-						`SELECT id FROM ${TABLES.tasks} WHERE short_id = ? COLLATE NOCASE`,
-					)
-					.get(input.toUpperCase()) as { id: string } | null;
-				return row;
+				const [row] = TaskRows.where(
+					db,
+					`SELECT id FROM ${TABLES.threads} WHERE short_id = ? COLLATE NOCASE`,
+					[input.toUpperCase()],
+				);
+				return row ? { id: row.id as string } : null;
 			});
 
 			if (!result.ok) return result;
@@ -245,11 +248,11 @@ export namespace Planner {
 
 		// ULID prefix match (fallback for legacy/debugging)
 		const result = await withDb(basePath, (db) => {
-			const rows = db
-				.query(
-					`SELECT id, short_id, title FROM ${TABLES.tasks} WHERE id LIKE ?`,
-				)
-				.all(`${input}%`) as {
+			const rows = TaskRows.where(
+				db,
+				`SELECT id FROM ${TABLES.threads} WHERE id LIKE ?`,
+				[`${input}%`],
+			) as {
 				id: string;
 				short_id: string | null;
 				title: string;
@@ -346,10 +349,7 @@ export namespace Planner {
 		return withDb(basePath, (db) => {
 			// Try by ULID first, then by shortId for flexibility
 			// This allows both "01ABC..." and "JDES-40" to work
-			const row = db
-				.query(`SELECT * FROM ${TABLES.tasks} WHERE id = ? OR short_id = ?`)
-				.get(id, id) as Record<string, unknown> | null;
-
+			const row = TaskRows.byIdOrShortId(db, id);
 			return row ? rowToTask(row) : null;
 		});
 	};
@@ -442,10 +442,7 @@ export namespace Planner {
 		if (ids.length === 0) return ok([]);
 
 		return withDb(basePath, (db) => {
-			const placeholders = ids.map(() => "?").join(", ");
-			const rows = db
-				.query(`SELECT * FROM ${TABLES.tasks} WHERE id IN (${placeholders})`)
-				.all(...ids) as Record<string, unknown>[];
+			const rows = TaskRows.byIds(db, ids);
 
 			// Convert rows and maintain order based on input ids
 			const taskMap = new Map<string, Task>();
@@ -491,10 +488,10 @@ export namespace Planner {
 
 		const current = db
 			.query<{ state: Task["state"]; scope: string | null }>(
-				`SELECT state, scope FROM ${TABLES.threads} WHERE id = ? AND deleted_at IS NULL`,
+				`SELECT state, scope FROM ${TABLES.threads} WHERE id = ?`,
 			)
 			.get(id);
-		if (!current) return ok(null);
+		if (!current || !RecordRead.isVisible(db, id)) return ok(null);
 
 		const text = textUpdates(updates);
 		if (
@@ -521,11 +518,7 @@ export namespace Planner {
 				RecordWrite.setAttribute(db, id, "completed_at", completedAt);
 		}
 
-		const row = db
-			.query<Record<string, unknown>>(
-				`SELECT * FROM ${TABLES.tasks} WHERE id = ?`,
-			)
-			.get(id);
+		const row = TaskRows.byIdOrShortId(db, id);
 		if (!row) return ok(null);
 		const task = rowToTask(row);
 		if (current.state !== task.state) {
@@ -561,7 +554,7 @@ export namespace Planner {
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
-		const result = await withDb(basePath, (db) => {
+		const result = await atomic(basePath, (db) => {
 			RecordWrite.deleteThread(db, id);
 		});
 

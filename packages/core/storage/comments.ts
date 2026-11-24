@@ -3,14 +3,14 @@
  *
  * Entries live in the record's `entries` table (migration 14). A comment is an
  * entry of kind `comment`, and the comment functions read and write that kind
- * only; a work log is an entry of kind `log` (`work-logs.ts`), which the
- * timeline leaves out. Entries are append-only: nothing here edits or deletes
+ * only; a work log is an entry of the work-log family (`work-logs.ts`), which
+ * the timeline leaves out whatever its kind. Entries are append-only: nothing here edits or deletes
  * one. A deleted task's entries read as gone with it (`RecordRead`).
  */
 
 import { monotonicFactory } from "ulid";
 import { err, ok, quoted, type Result } from "../result";
-import { withDb } from "../runtime";
+import { atomic, withDb } from "../runtime";
 
 import {
 	DEFAULT_ENTRY_KIND,
@@ -20,10 +20,10 @@ import {
 	type TaskEntry,
 	type TaskEntryDraft,
 } from "../schemas";
+import { isWorkLog } from "./families";
 import { rowToEntry } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
-import { WORK_LOG_KIND } from "./work-logs";
 
 /**
  * Entry ids rise strictly within this process, even inside one millisecond,
@@ -49,7 +49,7 @@ export namespace Planner {
 					`Entry kind ${quoted(draft.kind)} is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`,
 				),
 			);
-		return withDb(basePath, (db) => {
+		return atomic(basePath, (db) => {
 			const now = new Date().toISOString();
 			const id = entryId();
 
@@ -78,7 +78,7 @@ export namespace Planner {
 
 	/**
 	 * A task's entries in time order, only those of `kind` when it is given.
-	 * Without a kind, the work log's entries are left out.
+	 * The work log's entries are never among them.
 	 */
 	export const getEntries = async (
 		basePath: string,
@@ -89,8 +89,8 @@ export namespace Planner {
 			const rows = RecordRead.entries(db, taskId);
 			if (!rows.ok) throw rows.error;
 			return rows.value
-				.filter((row) =>
-					kind === undefined ? row.kind !== WORK_LOG_KIND : row.kind === kind,
+				.filter(
+					(row) => !isWorkLog(row) && (kind === undefined || row.kind === kind),
 				)
 				.map(rowToEntry);
 		});

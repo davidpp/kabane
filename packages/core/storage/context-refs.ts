@@ -7,8 +7,8 @@
  */
 
 import type { Db } from "../db/port";
-import type { Result } from "../result";
-import { withDb } from "../runtime";
+import { NotFoundError, type Result } from "../result";
+import { atomic, withDb } from "../runtime";
 
 import {
 	type AddContextRefInput,
@@ -16,6 +16,7 @@ import {
 	type RefRow,
 	type TaskContextRef,
 } from "../schemas";
+import { refFamily } from "./families";
 import { rowToContextRef } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
@@ -25,12 +26,15 @@ import { Planner as PlannerWorkLogs } from "./work-logs";
 export const UPSTREAM_KIND = "upstream";
 
 /**
- * A context ref is any ref that is no link to a thread and no upstream ref:
- * the three share the record's `refs` table (migration 14).
+ * Links, context refs and upstream links share the record's `refs` table
+ * (migration 14); a context ref is one of the context family, whatever kind a
+ * caller gave it.
  */
-const isContextRef = (row: RefRow): boolean =>
-	row.kind !== UPSTREAM_KIND &&
-	!row.uri.startsWith(RecordKey.THREAD_URI_PREFIX);
+const isContextRef = (row: RefRow): boolean => refFamily(row) === "context";
+
+/** The old id a migrated ref keeps in `data.id`, when it has one. */
+const oldIdOf = (row: RefRow): unknown =>
+	row.data === null ? undefined : (JSON.parse(row.data) as { id?: unknown }).id;
 
 const contextRefsOf = (db: Db, taskId: string): RefRow[] => {
 	const rows = RecordRead.refs(db, taskId);
@@ -43,37 +47,50 @@ export namespace Planner {
 	 * Register a context ref. A task holds one per URI: re-adding the URI under
 	 * another kind removes the ref it had.
 	 */
+	export const addContextRefIn = (
+		db: Db,
+		input: AddContextRefInput,
+	): TaskContextRef => {
+		const now = new Date().toISOString();
+		let oldId: unknown;
+		for (const held of contextRefsOf(db, input.taskId))
+			if (held.uri === input.uri && held.kind !== input.kind) {
+				oldId ??= oldIdOf(held);
+				RecordWrite.removeRef(
+					db,
+					RecordKey.rowIdOf("refs", held) ?? "",
+					"context",
+				);
+			}
+		RecordWrite.putRef(db, {
+			threadId: input.taskId,
+			uri: input.uri,
+			kind: input.kind,
+			title: input.label ?? null,
+			data: {
+				family: "context",
+				...(oldId === undefined ? {} : { id: oldId }),
+				note: input.note ?? null,
+				added_by: input.addedBy ?? null,
+				added_by_type: input.addedByType ?? null,
+				added_at: now,
+			},
+		});
+		const row = contextRefsOf(db, input.taskId).find(
+			(ref) => ref.uri === input.uri && ref.kind === input.kind,
+		);
+		if (row === undefined)
+			throw new Error(
+				`context ref ${input.uri} on ${input.taskId} does not show`,
+			);
+		return rowToContextRef(row);
+	};
+
 	export const addContextRef = async (
 		basePath: string,
 		input: AddContextRefInput,
-	): Promise<Result<TaskContextRef>> => {
-		return withDb(basePath, (db) => {
-			const now = new Date().toISOString();
-			for (const held of contextRefsOf(db, input.taskId))
-				if (held.uri === input.uri && held.kind !== input.kind)
-					RecordWrite.removeRef(db, RecordKey.rowIdOf("refs", held) ?? "");
-			RecordWrite.putRef(db, {
-				threadId: input.taskId,
-				uri: input.uri,
-				kind: input.kind,
-				title: input.label ?? null,
-				data: {
-					note: input.note ?? null,
-					added_by: input.addedBy ?? null,
-					added_by_type: input.addedByType ?? null,
-					added_at: now,
-				},
-			});
-			const row = contextRefsOf(db, input.taskId).find(
-				(ref) => ref.uri === input.uri && ref.kind === input.kind,
-			);
-			if (row === undefined)
-				throw new Error(
-					`context ref ${input.uri} on ${input.taskId} does not show`,
-				);
-			return rowToContextRef(row);
-		});
-	};
+	): Promise<Result<TaskContextRef>> =>
+		atomic(basePath, (db) => addContextRefIn(db, input));
 
 	export const getContextRefs = async (
 		basePath: string,
@@ -86,13 +103,17 @@ export namespace Planner {
 		);
 	};
 
-	/** Remove the context ref `id` (its row id, `RecordKey`) names. */
+	/**
+	 * Remove the context ref `id` names: its row id (`RecordKey`) or the old id
+	 * a migrated one keeps. An error when no context ref by that id is live.
+	 */
 	export const deleteContextRef = async (
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			RecordWrite.removeRef(db, id);
+		return atomic(basePath, (db) => {
+			if (!RecordWrite.removeRef(db, id, "context"))
+				throw new NotFoundError(`No context ref ${id}`);
 		});
 	};
 
@@ -108,23 +129,24 @@ export namespace Planner {
 			addedByType?: "human" | "ai";
 		},
 	): Promise<Result<TaskContextRef>> => {
-		const logResult = await PlannerWorkLogs.addWorkLog(basePath, {
-			taskId: input.taskId,
-			refs: [{ uri: input.uri, label: input.label }],
-			note: input.note,
-			addedBy: input.addedBy,
-			addedByType: input.addedByType,
-		});
-		if (!logResult.ok) return logResult;
-
-		return addContextRef(basePath, {
-			taskId: input.taskId,
-			uri: input.uri,
-			kind: input.kind,
-			label: input.label,
-			note: input.note,
-			addedBy: input.addedBy,
-			addedByType: input.addedByType,
+		// The work-log entry and the registry row land together, or neither.
+		return atomic(basePath, (db) => {
+			PlannerWorkLogs.addWorkLogIn(db, {
+				taskId: input.taskId,
+				refs: [{ uri: input.uri, label: input.label }],
+				note: input.note,
+				addedBy: input.addedBy,
+				addedByType: input.addedByType,
+			});
+			return addContextRefIn(db, {
+				taskId: input.taskId,
+				uri: input.uri,
+				kind: input.kind,
+				label: input.label,
+				note: input.note,
+				addedBy: input.addedBy,
+				addedByType: input.addedByType,
+			});
 		});
 	};
 }

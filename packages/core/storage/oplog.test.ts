@@ -371,6 +371,7 @@ describe("Oplog — storage-layer capture", () => {
 		]);
 		expect(ops[0]?.payload?.key).toBe("project_id");
 		expect(ops[0]?.payload?.removed_at).toBeString();
-		expect(ops[0]?.version).toBe(2);
+		// Written with its task at counter 0, so the clear is its first write.
+		expect(ops[0]?.version).toBe(1);
 	});
 });
