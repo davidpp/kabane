@@ -799,7 +799,7 @@ notice. The architecture lens is `.agents/skills/dispatch/references/lenses/arch
 | An extension imports types only, apart from the harness client it bundles | `scripts/layers.ts`, which permits production type-only imports from an extension's development dependencies and refuses value imports |
 | A modules entry imports only what its module objects need | `scripts/modules-entry.test.ts` on the fixture extension and every in-repo manifest naming `modules`; an extension outside the repo, review |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly the kit (`host-store.ts`): capture refuses an undeclared table, and any `err` from a `tx` call rolls the write back; raw SQL on `tx.db` is review |
-| A failed module stops database access; a disabled one's rows stay and replicate once it is enabled | `registerModules` and `Extensions.modules` (`extension-modules.test.ts`); `module_declarations` read by `Replicated.tables` and capture (`packages/core/sync/modules.test.ts`) |
+| A failed module stops database access; a disabled one's rows stay, and re-enabling it makes them eligible for the next `kabane sync backfill` (it queues nothing by itself) | `registerModules` and `Extensions.modules` (`extension-modules.test.ts`); `module_declarations` read by `Replicated.tables` and capture (`packages/core/sync/modules.test.ts`) |
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts` and its tests |
 | `host` and its typed record wrappers | `host-record.test.ts`, the CLI host and directory-extension tests, and the isolated declaration typecheck |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` |
