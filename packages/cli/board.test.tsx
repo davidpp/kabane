@@ -257,6 +257,16 @@ describe("kabane board", () => {
 			}
 		};
 
+		it("opens a keyed thread by its plan id", async () => {
+			const task = await Planner.addTask(
+				home,
+				{ title: "Review" },
+				{ key: "plan/review" },
+			);
+			expect(task.ok).toBe(true);
+			expect(await resolved("plan/review")).toBe("plan/review");
+		});
+
 		it("resolves a short id or a ULID, and fails in one line on an unknown one", async () => {
 			const added = await add({
 				title: "Filed in another scope",
