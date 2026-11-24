@@ -1,12 +1,31 @@
 import { err, type Result } from "../result";
-import { type TaskUpdate, TaskUpdateSchema } from "../schemas";
+import { Runtime } from "../runtime";
+import { type Task, type TaskUpdate, TaskUpdateSchema } from "../schemas";
 import { taskReceipt } from "../task-output";
+import { Planner as Conditions } from "./conditions";
 import {
 	derivePrefix,
 	normalizeOptionalScopeUri,
 	prospectiveShortId,
 } from "./helpers";
 import { Planner as Tasks, taskScopeChanged } from "./tasks";
+
+/** A new claim can supply the holder at preflight; after the write, read the standing claim. */
+const receiptWithClaim = async (
+	basePath: string,
+	task: Task,
+	claiming: boolean,
+	claimIfUnheld: string | null = null,
+) => {
+	if (!claiming) return taskReceipt(task);
+	const held = await Conditions.claimHolder(basePath, task.id);
+	if (!held.ok) return held;
+	const claimedBy = held.value ?? claimIfUnheld;
+	return taskReceipt(task, {
+		claimedBy,
+		claimHeld: claimedBy === Runtime.actor(),
+	});
+};
 
 export namespace Planner {
 	/** Preflight required identity and prospective state/version before any write.
@@ -58,13 +77,19 @@ export namespace Planner {
 				);
 			shortId = prospective.value;
 		}
-		const preflight = taskReceipt({
-			...current.value,
-			shortId,
-			title: updates.title ?? current.value.title,
-			state: updates.state ?? current.value.state,
-			version: (current.value.version ?? 1) + 1,
-		});
+		const claiming = updates.state === "in_progress";
+		const preflight = await receiptWithClaim(
+			basePath,
+			{
+				...current.value,
+				shortId,
+				title: updates.title ?? current.value.title,
+				state: updates.state ?? current.value.state,
+				version: (current.value.version ?? 1) + 1,
+			},
+			claiming,
+			(updates.assignee ?? current.value.assignee) ? Runtime.actor() : null,
+		);
 		if (!preflight.ok) return preflight;
 		const updated = await Tasks.updateTask(basePath, current.value.id, updates);
 		if (!updated.ok) return updated;
@@ -72,7 +97,7 @@ export namespace Planner {
 			return err(
 				new Error("Task disappeared during update; restart the read."),
 			);
-		const receipt = taskReceipt(updated.value);
+		const receipt = await receiptWithClaim(basePath, updated.value, claiming);
 		if (!receipt.ok)
 			return err(
 				new Error(

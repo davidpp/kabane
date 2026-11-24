@@ -53,8 +53,8 @@ with a SQLite cache, shipped resurrection and data-loss bugs in that layer, and 
   for the record's four tables and is tested there:
   `packages/core/sync/record-convergence.test.ts` reads each device's ops in every interleaving,
   as one pass and one op per pass, delivers them twice, and runs a seeded three-device workload.
-  It stays false for today's tables, which keep their rules until a later slice migrates them
-  into the record. Nothing syncs through the hub meanwhile.
+  Version 2.0.0-beta.0 migrated tasks into the record and shipped whole-device export and
+  rebuild. Projects and module tables retain their own sync rules. Folder transport is pending.
 - Both rules are decided. A delete is final (JCAB-573:4), so an edit made on one device after
   another device deleted the thread never shows. The `short_id` gap is accepted (JCAB-573:2): the
   record's threads keep the label with no UNIQUE index and no rename, so two threads created

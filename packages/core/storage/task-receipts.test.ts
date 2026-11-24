@@ -16,6 +16,30 @@ afterEach(() => {
 	if (base) rmSync(base, { recursive: true, force: true });
 	configureTestRuntime();
 });
+it("refuses an oversized concise claim before changing the thread", async () => {
+	base = mkdtempSync(join(tmpdir(), "kabane-claim-receipt-"));
+	configureTestRuntime({ actor: () => "a".repeat(2048) });
+	const init = await Planner.init(base);
+	if (!init.ok) throw init.error;
+	const added = await Planner.addTask(base, {
+		title: "claim",
+		assignee: "codex",
+		state: "next",
+	});
+	if (!added.ok) throw added.error;
+	const receipt = await Planner.updateTaskReceipt(base, added.value.id, {
+		state: "in_progress",
+	});
+	expect(receipt.ok).toBe(false);
+	expect(await Planner.claimHolder(base, added.value.id)).toEqual({
+		ok: true,
+		value: null,
+	});
+	const task = await Planner.getTask(base, added.value.id);
+	if (!task.ok) throw task.error;
+	expect(task.value?.state).toBe("next");
+});
+
 describe("prospective scope labels", () => {
 	it("previews new/existing counters without writes and agrees with allocation", async () => {
 		base = mkdtempSync(join(tmpdir(), "kabane-receipt-label-"));

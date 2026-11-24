@@ -398,7 +398,7 @@ namespace Host {
 	export type Record = {
 		get(input: { id: string }): Promise<Result<Task | null>>; // kabane_get
 		list(input: ListInput): Promise<Result<Task[]>>; // kabane_list
-		edit(input: EditInput): Promise<Result<Task>>; // kabane_edit
+		edit(input: EditInput): Promise<Result<Task & { claimedBy?: string | null; claimHeld?: boolean }>>; // Check claimHeld before starting claimed work.
 		done(input: { id: string }): Promise<Result<Task>>; // kabane_done
 		comment(input: { id: string; body: string; kind?: string }): Promise<Result<TaskEntry>>; // kabane_comment
 		log(input: { id: string; refs?: { uri: string; label?: string }[]; commit?: string; note?: string }): Promise<Result<TaskWorkLog>>; // kabane_log
@@ -651,8 +651,7 @@ consistent only while the module is registered. The rule has two parts:
   refusal.
 
 **Disabling an extension** (removing it from `extensions`) is the human choosing that state. Its
-tables stay, with their rows. Task deletes still capture their cascaded rows through the recorded
-declaration. Its `onTaskStateChange` no longer runs, its tools leave `kabane mcp`, and the ops
+tables stay, with their rows. A task delete hides its thread. Module reads join the visible tasks to hide its retained rows. Its `onTaskStateChange` no longer runs, its tools leave `kabane mcp`, and the ops
 other devices push for its tables park on this device, as for any device that lacks a module
 (the header of `packages/core/module.ts`). Enabling it again registers the module, and the next pull
 replays what parked. Removing its tables is a separate, explicit step, designed below and not

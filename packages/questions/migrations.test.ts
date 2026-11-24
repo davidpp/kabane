@@ -276,7 +276,7 @@ it("refuses, changing nothing, while a legacy question op is parked", async () =
 	);
 	const refused = await upgrade(base);
 	expect(refused.ok).toBe(false);
-	if (!refused.ok) expect(refused.error.message).toContain("parked");
+	if (!refused.ok) expect(refused.error.message).toMatch(/restore.*backup/i);
 	const left = unwrap(
 		await withDb(base, (db) => ({
 			parked: db

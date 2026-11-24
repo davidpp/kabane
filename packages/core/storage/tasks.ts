@@ -17,6 +17,7 @@ import {
 	type TaskUpdate,
 	TaskUpdateSchema,
 } from "../schemas";
+import { taskReceipt } from "../task-output";
 import { CLAIM_KIND, RELEASE_KIND } from "./families";
 import {
 	derivePrefix,
@@ -401,7 +402,7 @@ export namespace Planner {
 	export const addTask = async (
 		basePath: string,
 		draft: TaskDraft,
-		{ key }: { key?: string } = {},
+		{ key, concise }: { key?: string; concise?: boolean } = {},
 	): Promise<Result<Task & { existed?: true }>> => {
 		const parseResult = TaskDraftSchema.safeParse(draft);
 		if (!parseResult.success) {
@@ -425,11 +426,17 @@ export namespace Planner {
 		if (!prefixResult.ok) return prefixResult;
 
 		// One transaction: the thread and its attributes land together.
-		const result = await atomic(basePath, (db) =>
-			key !== undefined && existingKeyed(db, key)
-				? { ...taskOf(db, key), existed: true as const }
-				: createTaskIn(db, draft, scopeUri, prefixResult.value, key),
-		);
+		const result = await atomic(basePath, (db) => {
+			const task =
+				key !== undefined && existingKeyed(db, key)
+					? { ...taskOf(db, key), existed: true as const }
+					: createTaskIn(db, draft, scopeUri, prefixResult.value, key);
+			if (concise) {
+				const receipt = taskReceipt(task);
+				if (!receipt.ok) throw receipt.error;
+			}
+			return task;
+		});
 
 		// Emit event for SSE subscribers
 		if (result.ok && !("existed" in result.value)) {

@@ -65,15 +65,14 @@ export const add: Command = {
 
 		const created = await Planner.addTask(ctx.store, draft, {
 			key: flagString(args, "key"),
+			concise: format.value === "concise",
 		});
 		if (!created.ok) return failure(created.error);
 		const existed = created.value.existed === true;
 		if (format.value === "concise") {
 			const receipt = taskReceipt(created.value);
 			return receipt.ok
-				? conciseSuccess(
-						existed ? { ...receipt.value, existed } : receipt.value,
-					)
+				? conciseSuccess(receipt.value)
 				: failure(receipt.error);
 		}
 		return success(

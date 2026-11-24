@@ -66,6 +66,19 @@ describe("concise projections", () => {
 		expect(receipt.value.truncatedFields).toContain("title");
 		expect(serializedBytes(receipt.value)).toBeLessThanOrEqual(RECEIPT_BYTES);
 	});
+	it("includes retry metadata inside the receipt budget", () => {
+		const task = example();
+		if (!task.success) throw task.error;
+		const repeat = {
+			...task.data,
+			id: "x".repeat(1810),
+			existed: true as const,
+		};
+		const receipt = taskReceipt(repeat);
+		if (!receipt.ok) throw receipt.error;
+		expect(receipt.value).toHaveProperty("existed", true);
+		expect(serializedBytes(receipt.value)).toBeLessThanOrEqual(RECEIPT_BYTES);
+	});
 	it("never truncates irreducible IDs or short labels, and never echoes them in errors", () => {
 		const task = example();
 		expect(task.success).toBe(true);

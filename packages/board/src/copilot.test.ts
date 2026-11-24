@@ -544,6 +544,8 @@ describe("BoardCopilot", () => {
 					{ kind: "update", id: "t1", status: "completed" },
 					{ kind: "call", id: "t2", title: "kabane_edit", status: "pending" },
 					{ kind: "update", id: "t2", status: "completed" },
+					{ kind: "call", id: "t3", title: "kabane_apply", status: "pending" },
+					{ kind: "update", id: "t3", status: "completed" },
 				],
 			}),
 		);
@@ -555,6 +557,8 @@ describe("BoardCopilot", () => {
 			["tool_result", "kabane_context", false],
 			["tool_call", "kabane_edit", false],
 			["tool_result", "kabane_edit", true],
+			["tool_call", "kabane_apply", false],
+			["tool_result", "kabane_apply", true],
 			["done", "end_turn", false],
 		]);
 		await copilot.close();

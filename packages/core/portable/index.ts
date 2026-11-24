@@ -3,7 +3,7 @@ import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { Replicated } from "../replicated";
 import { err, ok, type Result, trySync } from "../result";
-import { SHORT_ID_PATTERN } from "../storage/helpers";
+import { mintedLabel, SHORT_ID_PATTERN } from "../storage/helpers";
 import { binding, document, header, idOf, quote, versions } from "./format";
 import * as snapshots from "./snapshot";
 
@@ -46,12 +46,15 @@ type Counter = z.infer<typeof header>["counters"][number];
 const reserveLabel = (
 	counters: Map<string, Counter>,
 	label: unknown,
+	thread: boolean,
 ): Result<void> => {
 	if (typeof label !== "string" || !SHORT_ID_PATTERN.test(label))
 		return ok(undefined);
+	const minted = mintedLabel(label);
+	if (thread && !minted) return ok(undefined);
 	const dash = label.indexOf("-");
-	const prefix = label.slice(0, dash).toUpperCase();
-	const number = Number(label.slice(dash + 1));
+	const prefix = minted?.prefix ?? label.slice(0, dash).toUpperCase();
+	const number = minted?.number ?? Number(label.slice(dash + 1));
 	if (!Number.isSafeInteger(number))
 		return err(new Error("Restored short ID exceeds the counter range"));
 	const counter = counters.get(prefix);
@@ -113,7 +116,11 @@ export namespace Portable {
 						...insert.names.map((key) => binding(row[key] ?? null)),
 					);
 					if (table === Replicated.threadTable || table === TABLES.projects) {
-						const reserved = reserveLabel(counters, row.short_id);
+						const reserved = reserveLabel(
+							counters,
+							row.short_id,
+							table === Replicated.threadTable,
+						);
 						if (!reserved.ok) throw reserved.error;
 					}
 				}

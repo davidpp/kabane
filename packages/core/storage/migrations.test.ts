@@ -1164,6 +1164,44 @@ describe("Migration 14: the tracker moves into the record", () => {
 					?.n,
 		);
 
+	it("keeps schema 12 when a legacy question op is parked", async () => {
+		base = freshBase("parked-question");
+		await initTo(12);
+		await withDb((db) =>
+			db.run(
+				"INSERT INTO sync_parked (op_id, server_seq, module, module_schema, tbl, row_id, op, parked_at) VALUES ('op',1,'questions',1,'task_questions','q','{}',?)",
+				[NOW],
+			),
+		);
+		const result = await Planner.init(base);
+		expect(result.ok).toBe(false);
+		if (!result.ok) expect(result.error.message).toContain("parked");
+		expect(await withDb((db) => Migrate.current(db))).toBe(12);
+	});
+
+	it("names legacy comments that would become question entries", async () => {
+		await stamped();
+		const task = must(await Legacy.addTask(base, { title: "legacy" }));
+		const ids = [];
+		for (const kind of ["questions.ask", "questions.answer"])
+			ids.push(
+				must(
+					await Legacy.addComment(base, {
+						taskId: task.id,
+						author: "writer",
+						authorType: "human",
+						content: "history",
+						kind,
+					}),
+				).id,
+			);
+		const result = await Planner.init(base);
+		expect(result.ok).toBe(false);
+		if (!result.ok)
+			for (const id of ids) expect(result.error.message).toContain(id);
+		expect(await withDb((db) => Migrate.current(db))).toBe(13);
+	});
+
 	it("moves every row, keeps a module row that referenced its task, and reads it back", async () => {
 		await stamped();
 		const parent = must(await Legacy.addTask(base, { title: "parent" }));

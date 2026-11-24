@@ -59,7 +59,7 @@ export const formatTaskList = (
 export const formatTaskDetail = (task: Task): string => {
 	const lines: string[] = [];
 	if (task.shortId) {
-		lines.push(`ID: ${task.shortId}`, `ULID: ${task.id}`);
+		lines.push(`ID: ${task.shortId}`, `Thread ID: ${task.id}`);
 	} else {
 		lines.push(`ID: ${task.id}`);
 	}

@@ -100,7 +100,7 @@ export namespace Migrate {
 		table: string,
 		version: number,
 		migration: Migration,
-		after: AfterEach | undefined,
+		hooks: { before?: BeforeEach; after?: AfterEach },
 	): boolean =>
 		db.transaction(() => {
 			const claimed = db.run(
@@ -108,8 +108,9 @@ export namespace Migrate {
 				[version, migration.name, new Date().toISOString()],
 			);
 			if (claimed.changes === 0) return false;
+			hooks.before?.(db, version - 1);
 			migration.up(db);
-			after?.(db, version);
+			hooks.after?.(db, version);
 			return true;
 		})();
 
@@ -119,6 +120,7 @@ export namespace Migrate {
 	 * throw rolls both back.
 	 */
 	export type AfterEach = (db: Db, version: number) => void;
+	type BeforeEach = (db: Db, previousVersion: number) => void;
 
 	/**
 	 * Bring `db` up to `migrations.length`. A second call is a read of the
@@ -132,6 +134,7 @@ export namespace Migrate {
 		migrations: readonly Migration[],
 		table: string = TABLES.schema_migrations,
 		after?: AfterEach,
+		before?: BeforeEach,
 	): Result<Report> => {
 		const prepared = trySync(() => {
 			ensureVersionTable(db, table);
@@ -153,7 +156,7 @@ export namespace Migrate {
 			const version = index + 1;
 			if (version <= from) continue;
 			const outcome = trySync(() =>
-				applyOne(db, table, version, migration, after),
+				applyOne(db, table, version, migration, { after, before }),
 			);
 			if (!outcome.ok) {
 				return err(

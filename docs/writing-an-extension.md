@@ -71,7 +71,7 @@ export default (host: Host): KabaneModule[] => [
 					db.run(
 						`CREATE TABLE IF NOT EXISTS ${NOTES} (
 						   id TEXT PRIMARY KEY,
-						   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+						   task_id TEXT NOT NULL,
 						   body TEXT NOT NULL,
 						   updated_at TEXT NOT NULL,
 						   updated_by TEXT,
@@ -97,7 +97,7 @@ export const NOTES = "extension_notes";
 A replicated table needs an `id` primary key and the columns `updated_by`, `version` and
 `visibility`; a `private` row never leaves the device. `row-lww` keeps the row with the latest
 `clock` value when two devices write the same one. `childOfTasks` says `task_id` points at a task,
-so deleting the task deletes its notes on every device.
+so join notes to the visible `tasks` view when reading them. Deleting a task hides its notes and retains their rows.
 
 Every command that opens the database imports the modules entry of every enabled extension,
 `kabane list` included. Keep it to what the modules need. When it fails to load, those commands

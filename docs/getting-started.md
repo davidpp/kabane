@@ -362,15 +362,16 @@ kabane wait ready JMYA-2 --timeout 2h
 kabane wait addressed kabane://actor/human/ana --timeout 1h
 ```
 
-Exit 0 prints one JSON line with `condition` and the task ULID in `taskId`.
-`answered` also returns `questionId` and a `status` of `answered` or `withdrawn`.
-It accepts the same question handle or `id:<ULID>` as `kabane answer`.
-`state` returns the matching `state` and who holds the task's claim, `claimedBy` (null when nobody does). A thread is `ready` when every incoming
-`blocks` and outgoing `blocked_by` or `follows` dependency is done or cancelled.
-A thread with no blockers is ready immediately. `addressed` is true while an entry
-addressed to that actor waits on them: a question `kabane_ask` filed for them that nobody
-has answered or withdrawn. It returns `actor` and `entries`, each with its `id`, `taskId`
-and `kind`. Exit 1 means the timeout expired. Other errors exit 2 with a message on stderr.
+Exit 0 prints one JSON line. Wherever it appears, `taskId` is a thread ID (a ULID or a plan key).
+
+| Condition | Result fields | When it returns |
+|---|---|---|
+| `answered` | `condition`, `questionId`, `taskId`, `status` | The question was answered or withdrawn. Accepts the same handle or `id:<ULID>` as `kabane answer`. |
+| `state` | `condition`, `taskId`, `state`, `claimedBy` | The thread reaches a requested state. The claim holder is null when nobody holds it. |
+| `ready` | `condition`, `taskId` | Every incoming `blocks` and outgoing `blocked_by` or `follows` dependency is done or cancelled. A thread with no blockers is ready immediately. |
+| `addressed` | `condition`, `actor`, `entries` | The actor has open addressed entries. Each entry carries its `id`, `taskId` and `kind`. |
+
+Exit 1 means the timeout expired. Other errors exit 2 with a message on stderr.
 
 ### Claims
 
@@ -883,37 +884,26 @@ every extension:
 kabane config set extensions "" --layer global
 ```
 
-### Upgrading: empty tables for the next record
+### Upgrading to 2.0.0-beta.0 (schema 14)
 
-This version adds four empty tables (`threads`, `entries`, `attributes`, `refs`) that a later
-release moves the tracker into. Nothing reads or writes them yet, and nothing you have
-changes. The database moves to schema 13 the first time this version opens it.
-
-- **Sync: update every device, and the hub, before syncing again.** Every op an updated device
-  pushes says schema 13, and a device still on schema 12 stops pulling at the first one, until
-  it updates. Update the hub with the devices
-  ([deploy.md](deploy.md)): a hub on schema 12 stops pulling from updated devices the same way.
-- **When it refuses.** A database where an extension already keeps a table under one of those
-  four names is not migrated: kabane names the table and the extension that declared it, and
-  changes nothing. Rename or drop that table, or update the extension, then open kabane again.
-- **No going back.** The old version refuses a database this one has opened. Going back takes a
-  backup made before the first open.
-
-### Upgrading: the tracker moves into the record
-
-This version moves every task, comment, work-log row, link, context ref and linked issue into the
-four record tables, keeps every stored value, and reads them back as before. The database moves to
-schema 14 the first time this version opens it.
+Back up the database before the first open. The beta runs migrations through schema 14.
+Migration 13 creates `threads`, `entries`, `attributes` and `refs`, then migration 14 moves
+tasks, comments, work logs, links, context refs and linked issues into those tables.
+If an extension already uses one of the four table names, migration 13 names the conflict.
+Resolve it before retrying.
 
 - **What you see.** `list`, `show`, `context`, `questions` and the board read as they did. A
   `parent` or `child` link becomes the child's parent, so the child shows as a subtask. The id of
   a link, a context ref or a linked issue changes: it is now made from what the row points at,
   so take ids from a fresh read (`kabane_linkList`, `kabane_contextList`, `kabane_upstreamList`);
   a context ref's old id still removes it.
-- **When it refuses.** The migration changes nothing and names the rows when a child's `parent`
+- **When it refuses.** Migration 14 rolls back and names the rows when a child's `parent`
   or `child` links name two parents, when such a link's visibility differs from its child's, or
-  when a stored time cannot be read as an instant. Fix those rows with the old version (or in
-  SQLite), then open this one again.
+  when a stored time cannot be read as an instant. Restore the pre-upgrade backup before using the old version to fix those rows.
+- **When it refuses before changing anything.** Parked legacy question ops, and comments whose
+  kind is a question entry kind, stop the upgrade before any migration runs, so the database
+  stays at its old version. Sync with the previous release and the questions module enabled, or
+  change those comments' kind with it, then open this version again.
 - **Sync: back up, update every device and the hub, then re-seed.** The ops this device had not
   pushed yet are dropped: they named the old tables. Enable every extension whose rows you
   want on the other devices first (backfill seeds only the tables of enabled ones, and a run
@@ -995,7 +985,8 @@ Known rough edges:
 
 ## Export and rebuild the record
 
-Run `kabane export <dir> --check` to write a backup and test its rebuild.
+Run `kabane export <dir> --check` to back up the whole device’s replicated rows across all scopes
+and test the rebuild. The argument names the output directory. Scoped export is proposed.
 Choose a directory without an existing `record.jsonl` or `manifest.json`.
 The JSON Lines file starts with the format and schema versions, followed by
 one document per replicated row, including private rows. Protect the directory

@@ -94,7 +94,7 @@ const copilotOverrides = (ctx: Ctx): Harnesses.Overrides | undefined => {
 };
 
 /**
- * The issue an id names in this device's tracker: a short id, a ULID or a ULID prefix, in any case.
+ * The issue an id names in this device's tracker: a case-sensitive plan key, or a short id, ULID or ULID prefix in any case.
  * `--issue` and the ids `--to` sends both go through it, so they accept the same ids and fail alike.
  */
 const findIssue = async (
@@ -102,7 +102,10 @@ const findIssue = async (
 	input: string,
 ): Promise<Result<Task>> => {
 	// ULIDs are upper case, and resolveTaskId returns a full one as typed.
-	const id = await Planner.resolveTaskId(store, input.toUpperCase());
+	const id = await Planner.resolveTaskId(
+		store,
+		input.includes("/") ? input : input.toUpperCase(),
+	);
 	const task = id.ok ? await Planner.getTask(store, id.value) : id;
 	if (!task.ok) return task;
 	return task.value

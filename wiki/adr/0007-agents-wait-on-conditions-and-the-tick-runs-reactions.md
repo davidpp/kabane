@@ -1,7 +1,8 @@
 # 0007: An agent waits on a condition over the record, and the tick runs a command when one becomes true
 
-- Status: proposed (draft for David's review; nothing is built). If accepted it supersedes
-  ADR 0002.
+- Status: proposed (draft for David's review). If accepted it supersedes ADR 0002.
+- Implementation: 2.0.0-beta.0 shipped `kabane wait` for answered, state, ready and addressed.
+  General tick reactions remain proposed.
 - Companion: ADR 0006 (proposed) defines the record this reads. Its Board comparison in
   `wiki/record-primitives.md` says which gaps each of the two covers.
 - Date: 2026-11-23

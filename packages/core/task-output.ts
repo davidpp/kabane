@@ -87,9 +87,16 @@ const receiptProjection = (task: Task, cap: number) => {
 	return receipt;
 };
 
-export const taskReceipt = (task: Task) => {
+export const taskReceipt = (
+	task: Task & { existed?: true },
+	claim?: { claimedBy: string | null; claimHeld: boolean },
+) => {
 	for (const cap of [128, 64, 32, 16, 0]) {
-		const projected = receiptProjection(task, cap);
+		const projected = {
+			...receiptProjection(task, cap),
+			...(task.existed && { existed: true }),
+			...claim,
+		};
 		if (serializedBytes(projected) <= RECEIPT_BYTES) return ok(projected);
 	}
 	return err(new Error(IDENTITY_ERROR));
