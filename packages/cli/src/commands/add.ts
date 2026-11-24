@@ -24,7 +24,7 @@ export const add: Command = {
 	name: "add",
 	summary: "Create a task (inbox by default)",
 	usage:
-		'kabane add "<title>" [--kind task|issue|job] [--state <state>] [--priority <p>] [--scope <uri>] [--assignee <who>] [--parent <id>] [--description <text>] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]',
+		'kabane add "<title>" [--kind task|issue|job] [--state <state>] [--priority <p>] [--scope <uri>] [--assignee <who>] [--parent <id>] [--description <text>] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--key <plan>/<name>] [--format concise|full]',
 	run: async (args, ctx) => {
 		const format = responseFormat(args);
 		if (!format.ok) return usage(format.error.message, add.usage);
@@ -63,14 +63,22 @@ export const add: Command = {
 			},
 		};
 
-		const created = await Planner.addTask(ctx.store, draft);
+		const created = await Planner.addTask(ctx.store, draft, {
+			key: flagString(args, "key"),
+		});
 		if (!created.ok) return failure(created.error);
+		const existed = created.value.existed === true;
 		if (format.value === "concise") {
 			const receipt = taskReceipt(created.value);
 			return receipt.ok
-				? conciseSuccess(receipt.value)
+				? conciseSuccess(
+						existed ? { ...receipt.value, existed } : receipt.value,
+					)
 				: failure(receipt.error);
 		}
-		return success(created.value, `✓ Created ${formatTaskLine(created.value)}`);
+		return success(
+			created.value,
+			`${existed ? "= Already there" : "✓ Created"} ${formatTaskLine(created.value)}`,
+		);
 	},
 };

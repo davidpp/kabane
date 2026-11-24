@@ -9,6 +9,7 @@
  * that parent.
  */
 
+import type { Db } from "../db/port";
 import { NotFoundError, type Result } from "../result";
 import { atomic, withDb } from "../runtime";
 
@@ -19,6 +20,13 @@ import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
 
 const FOLDED = ["parent", "child"];
+
+const parentOf = (db: Db, child: string): string | null | undefined =>
+	db
+		.query<{ parent_id: string | null }, [string]>(
+			`SELECT parent_id FROM ${TABLES.threads} WHERE id = ?`,
+		)
+		.get(child)?.parent_id;
 
 const EDGE = "parent:";
 
@@ -46,44 +54,70 @@ export namespace Planner {
 	export const addLink = async (
 		basePath: string,
 		draft: TaskLinkDraft,
-	): Promise<Result<TaskLink>> => {
-		return atomic(basePath, (db) => {
-			const now = new Date().toISOString();
-			const uri = RecordKey.threadUri(draft.targetId);
-			for (const id of [draft.sourceId, draft.targetId])
-				if (!RecordRead.isVisible(db, id))
-					throw new NotFoundError(`No task found with ID: ${id}`);
-			let id = JSON.stringify([draft.sourceId, uri, draft.type]);
-			if (FOLDED.includes(draft.type)) {
-				const { child, parent } = fold(
-					draft.sourceId,
-					draft.targetId,
-					draft.type,
-				);
-				RecordWrite.updateText(db, child, { parent_id: parent });
-				id = edgeId(child, parent);
-			} else {
-				RecordWrite.putRef(db, {
-					threadId: draft.sourceId,
-					uri,
-					kind: draft.type,
-					title: null,
-					data: {
-						...(draft.note === undefined ? {} : { note: draft.note }),
-						created_at: now,
-					},
-				});
-			}
+	): Promise<Result<TaskLink>> =>
+		atomic(basePath, (db) => addLinkIn(db, draft));
 
-			return {
-				id,
-				sourceId: draft.sourceId,
-				targetId: draft.targetId,
-				type: draft.type,
-				note: draft.note,
-				createdAt: now,
-			};
-		});
+	/** Whether the link `draft` describes already stands: a live ref, or the parent it would set. */
+	export const linkHeld = (db: Db, draft: TaskLinkDraft): boolean => {
+		if (FOLDED.includes(draft.type)) {
+			const { child, parent } = fold(
+				draft.sourceId,
+				draft.targetId,
+				draft.type,
+			);
+			return parentOf(db, child) === parent;
+		}
+		return (
+			db
+				.query<{ live: number }, [string, string, string]>(
+					`SELECT 1 AS live FROM ${TABLES.refs}
+					  WHERE thread_id = ? AND uri = ? AND kind = ? AND removed_at IS NULL`,
+				)
+				.get(
+					draft.sourceId,
+					RecordKey.threadUri(draft.targetId),
+					draft.type,
+				) !== null
+		);
+	};
+
+	/** Make a link in the caller's transaction. */
+	export const addLinkIn = (db: Db, draft: TaskLinkDraft): TaskLink => {
+		const now = new Date().toISOString();
+		const uri = RecordKey.threadUri(draft.targetId);
+		for (const id of [draft.sourceId, draft.targetId])
+			if (!RecordRead.isVisible(db, id))
+				throw new NotFoundError(`No task found with ID: ${id}`);
+		let id = JSON.stringify([draft.sourceId, uri, draft.type]);
+		if (FOLDED.includes(draft.type)) {
+			const { child, parent } = fold(
+				draft.sourceId,
+				draft.targetId,
+				draft.type,
+			);
+			RecordWrite.updateText(db, child, { parent_id: parent });
+			id = edgeId(child, parent);
+		} else {
+			RecordWrite.putRef(db, {
+				threadId: draft.sourceId,
+				uri,
+				kind: draft.type,
+				title: null,
+				data: {
+					...(draft.note === undefined ? {} : { note: draft.note }),
+					created_at: now,
+				},
+			});
+		}
+
+		return {
+			id,
+			sourceId: draft.sourceId,
+			targetId: draft.targetId,
+			type: draft.type,
+			note: draft.note,
+			createdAt: now,
+		};
 	};
 
 	/** The task's links either way: what it points at and what points at it. */
@@ -108,12 +142,7 @@ export namespace Planner {
 		return atomic(basePath, (db) => {
 			const edge = edgeOf(id);
 			if (edge !== undefined) {
-				const held = db
-					.query<{ parent_id: string | null }, [string]>(
-						`SELECT parent_id FROM ${TABLES.threads} WHERE id = ?`,
-					)
-					.get(edge.child);
-				if (held?.parent_id !== edge.parent)
+				if (parentOf(db, edge.child) !== edge.parent)
 					throw new NotFoundError(`No parent link ${id}`);
 				RecordWrite.updateText(db, edge.child, { parent_id: null });
 				return;

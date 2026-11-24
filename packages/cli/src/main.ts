@@ -17,6 +17,7 @@ import {
 } from "@kabane/extension";
 import { add } from "./commands/add";
 import { answer } from "./commands/answer";
+import { apply } from "./commands/apply";
 import { board } from "./commands/board";
 import { checklist } from "./commands/checklist";
 import { comment } from "./commands/comment";
@@ -53,6 +54,7 @@ export const COMMANDS: Command[] = [
 	config,
 	doctor,
 	add,
+	apply,
 	list,
 	show,
 	edit,

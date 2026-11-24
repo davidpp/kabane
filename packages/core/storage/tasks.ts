@@ -5,10 +5,11 @@
 import type { Db } from "../db/port";
 import { Events, PLANNER_EVENTS } from "../events";
 import { Modules } from "../module";
-import { err, ok, NotFoundError, type Result } from "../result";
+import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
 	type ItemKind,
+	KEYED_ID_PATTERN,
 	type Task,
 	type TaskDraft,
 	TaskDraftSchema,
@@ -200,6 +201,30 @@ const taskFromDraft = (
 	};
 };
 
+/**
+ * Whether keyed id `id` is taken: true when its thread shows. A deleted one
+ * keeps its id for good, so a key that named it is refused.
+ */
+export const existingKeyed = (db: Db, id: string): boolean => {
+	const row = db
+		.query<{ id: string }, [string]>(
+			`SELECT id FROM ${TABLES.threads} WHERE id = ?`,
+		)
+		.get(id);
+	if (row === null) return false;
+	if (!RecordRead.isVisible(db, id))
+		throw new Error(
+			`${id} names a deleted task; a key names one task for good, so pick another.`,
+		);
+	return true;
+};
+
+export const taskOf = (db: Db, id: string): Task => {
+	const row = TaskRows.byIdOrShortId(db, id);
+	if (!row) throw new NotFoundError(`No task found with ID: ${id}`);
+	return rowToTask(row);
+};
+
 export namespace Planner {
 	// ----------------------------------------------------------
 	// ID Resolution
@@ -221,6 +246,23 @@ export namespace Planner {
 		// Full ULID - return as-is
 		if (input.length === ULID_LENGTH) {
 			return ok(input);
+		}
+
+		// An id taken from a key (`<plan>/<thread>`): the thread it names, as is.
+		if (input.includes("/")) {
+			if (!KEYED_ID_PATTERN.test(input))
+				return err(new NotFoundError(notAnIdMessage("task", input)));
+			const found = await withDb(
+				basePath,
+				(db) =>
+					TaskRows.where(db, `SELECT id FROM ${TABLES.threads} WHERE id = ?`, [
+						input,
+					]).length > 0,
+			);
+			if (!found.ok) return found;
+			return found.value
+				? ok(input)
+				: err(new NotFoundError(`No task found with ID: ${input}`));
 		}
 
 		// Short ID format (e.g., JDES-123) + legacy formats
@@ -288,14 +330,26 @@ export namespace Planner {
 	// Tasks
 	// ----------------------------------------------------------
 
+	/**
+	 * Create a task. With `key` (`<plan key>/<thread key>`) the key is its id,
+	 * so a second add with that key writes nothing and returns the task the
+	 * first one made, marked `existed`.
+	 */
 	export const addTask = async (
 		basePath: string,
 		draft: TaskDraft,
-	): Promise<Result<Task>> => {
+		{ key }: { key?: string } = {},
+	): Promise<Result<Task & { existed?: true }>> => {
 		const parseResult = TaskDraftSchema.safeParse(draft);
 		if (!parseResult.success) {
 			return err(new Error(`Invalid draft: ${parseResult.error.message}`));
 		}
+		if (key !== undefined && !KEYED_ID_PATTERN.test(key))
+			return err(
+				new Error(
+					`Key ${quoted(key)} is not a key: use "<plan>/<name>", lowercase letters, digits, dots, dashes and underscores.`,
+				),
+			);
 
 		// Normalized here, not at the caller: every surface (MCP, CLI, the board)
 		// writes through this function, so a bare "myapp" can
@@ -308,38 +362,54 @@ export namespace Planner {
 		if (!prefixResult.ok) return prefixResult;
 
 		// One transaction: the thread and its attributes land together.
-		const result = await atomic(basePath, (db) => {
-			const now = new Date().toISOString();
-			const completedAt =
-				draft.state === "done" || draft.state === "cancelled" ? now : null;
-			const id = generateId();
-			const shortId = generateShortId(db, prefixResult.value, scopeUri);
-
-			RecordWrite.createThread(db, {
-				id,
-				shortId,
-				kind: draft.kind ?? "task",
-				title: draft.title,
-				body: draft.description ?? null,
-				scope: scopeUri ?? null,
-				parentId: draft.parentTaskId ?? null,
-				createdBy: draft.provenance?.discoveredBy ?? null,
-				state: draft.state ?? "inbox",
-				assignee: draft.assignee ?? null,
-				now,
-			});
-			for (const [key, value] of draftAttributes(draft, now, completedAt))
-				if (value !== null) RecordWrite.setAttribute(db, id, key, value, now);
-
-			return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
-		});
+		const result = await atomic(basePath, (db) =>
+			key !== undefined && existingKeyed(db, key)
+				? { ...taskOf(db, key), existed: true as const }
+				: createTaskIn(db, draft, scopeUri, prefixResult.value, key),
+		);
 
 		// Emit event for SSE subscribers
-		if (result.ok) {
+		if (result.ok && !("existed" in result.value)) {
 			await Events.emit(PLANNER_EVENTS.TASK_CREATED, result.value);
 		}
 
 		return result;
+	};
+
+	/**
+	 * Create a task in the caller's transaction, under `id` when given (a
+	 * keyed id the caller checked is free). The scope is normalized and its
+	 * prefix derived by the caller.
+	 */
+	export const createTaskIn = (
+		db: Db,
+		draft: TaskDraft,
+		scopeUri: string | undefined,
+		prefix: string,
+		id: string = generateId(),
+	): Task => {
+		const now = new Date().toISOString();
+		const completedAt =
+			draft.state === "done" || draft.state === "cancelled" ? now : null;
+		const shortId = generateShortId(db, prefix, scopeUri);
+
+		RecordWrite.createThread(db, {
+			id,
+			shortId,
+			kind: draft.kind ?? "task",
+			title: draft.title,
+			body: draft.description ?? null,
+			scope: scopeUri ?? null,
+			parentId: draft.parentTaskId ?? null,
+			createdBy: draft.provenance?.discoveredBy ?? null,
+			state: draft.state ?? "inbox",
+			assignee: draft.assignee ?? null,
+			now,
+		});
+		for (const [key, value] of draftAttributes(draft, now, completedAt))
+			if (value !== null) RecordWrite.setAttribute(db, id, key, value, now);
+
+		return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
 	};
 
 	export const getTask = async (

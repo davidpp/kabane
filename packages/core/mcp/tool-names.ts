@@ -2,6 +2,7 @@
 export const CORE_TOOL_NAMES = {
 	scopeList: "kabane_scopeList",
 	add: "kabane_add",
+	apply: "kabane_apply",
 	get: "kabane_get",
 	list: "kabane_list",
 	search: "kabane_search",
