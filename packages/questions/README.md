@@ -75,11 +75,15 @@ same question offline both keep both answers, and the newer one reads as the ans
 device without the module stores them and shows them in the Discussion as kinds it does not know.
 
 Migration 4 moved every `task_questions` row onto the record, every value taken from the row: the
-question keeps its id, and a closed one gets one reply whose id is derived from the row, so two
-devices migrating the same rows write the same entries. The table kept only the last closing of a
-question, so a question answered twice migrates with one answer, and `version` (1 plus its
-replies) reads 2 where the row said 3. A migrated question has no `to`: the row did not say whom
-it asked. An armed device runs `kabane sync backfill` after upgrading, as for core's migration 14.
+question keeps its id, and a closed one gets one reply, `reply:<question id>`, so two devices
+migrating the same rows write the same entries. A device that already received those entries
+from another merges them as sync would. The entry that decides each question keeps the row's
+version, writer and update time, and each later answer counts one past it. The table kept only a
+question's last closing, so a question answered twice migrates with that one answer. A migrated
+question has no `to`: the row did not say whom it asked. While a `task_questions` op is parked,
+the migration refuses and changes nothing: run the previous release with the questions module
+enabled and sync once first. An armed device runs `kabane sync backfill` after upgrading, as for
+core's migration 14.
 
 ## Exports
 

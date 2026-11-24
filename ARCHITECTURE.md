@@ -550,6 +550,19 @@ type Extension = {
   their own that the manifest names (below). Their ops replicate and park like a first-party
   module's (the header of `packages/core/module.ts`), and the hub, which cannot register them,
   parks them.
+- **Entry kinds** a module declares (`KabaneModule.kinds`) govern core's `entries`, not a table
+  of the module's: the rows replicate as core's whether or not a device registers the module.
+  Two fields of a declaration change how core reads them:
+  - `projection: "none"` keeps the kind's entries out of `Planner.getEntries` (the board's and
+    `kabane show`'s timeline) and the brief's Discussion, because the module shows them itself
+    in a section of its own (`@kabane/questions` does, in `questions.decisions`).
+  - `closedBy` lists the reply kinds (`re`) that close an entry of the kind addressed to
+    someone (`to`); a reply of another kind, a clarification, leaves it open. It is what
+    `Planner.addressed` and `kabane wait addressed` read.
+
+  A device that has not registered the kind reads it with the defaults: its entries show in
+  the Discussion and the timeline, labelled with the kind, and any reply closes one that is
+  addressed.
 - **Skills, copilot `/` shortcuts and templates** are files in the extension's directory
   (below). Skills are how-to that `kabane mcp` serves to any session; nothing an extension ships
   is appended to the copilot's instructions.
