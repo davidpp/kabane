@@ -61,10 +61,6 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/** A table `Replicated` declares: core's, a retired one, or a registered module's. */
-const isDeclared = (tbl: string): boolean =>
-	Replicated.lookup(tbl) !== undefined;
-
 // ============================================================
 // Types
 // ============================================================
@@ -289,12 +285,20 @@ export namespace Oplog {
 	 * recorded: sync is not armed, or the row is private.
 	 */
 	export const capture = (db: Db, input: CaptureInput): Result<boolean> => {
-		const recorded = recordedTag(db, input);
-		if (!recorded.ok) return recorded;
-		if (!isDeclared(input.tbl) && recorded.value === undefined)
+		const declared = trySync(() => Replicated.lookup(db, input.tbl));
+		if (!declared.ok) return declared;
+		const table = declared.value;
+		if (table === undefined)
 			return err(
 				new Error(
 					`Cannot capture a write to "${input.tbl}": it is no core replicated table and no registered module declares it in syncTables. Register the module with Runtime.configure({ modules }).`,
+				),
+			);
+		// An unregistered module's rows are written by nothing but a delete.
+		if (table.unregisteredModule !== undefined && input.op !== "delete")
+			return err(
+				new Error(
+					`Cannot capture a write to "${input.tbl}": module "${table.unregisteredModule}" is not registered. Register it with Runtime.configure({ modules }).`,
 				),
 			);
 		const state = getState(db);
@@ -310,24 +314,8 @@ export namespace Oplog {
 				op: input.op,
 				row: input.row,
 				capturedAt: new Date().toISOString(),
-				...(recorded.value === undefined ? {} : { module: recorded.value }),
+				...(table.tag === undefined ? {} : { module: table.tag }),
 			}),
-		);
-	};
-
-	/**
-	 * The recorded tag for a delete on a table no registered module declares,
-	 * which only a task delete's cascade reaches: an unregistered module's rows
-	 * are written by nothing else, so an insert or update there stays refused.
-	 */
-	const recordedTag = (
-		db: Db,
-		input: CaptureInput,
-	): Result<{ name: string; schema: number } | undefined> => {
-		if (input.op !== "delete" || isDeclared(input.tbl)) return ok(undefined);
-		return trySync(
-			() =>
-				Modules.unregistered(db).find((row) => row.table === input.tbl)?.tag,
 		);
 	};
 

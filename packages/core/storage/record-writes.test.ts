@@ -160,25 +160,46 @@ describe("a local write needs its thread", () => {
 	});
 });
 
-describe("a row keeps its family whatever its kind", () => {
-	it("keeps a comment of kind log on the timeline, out of the work log", async () => {
+describe("a row's family follows from its URI and kind", () => {
+	it("refuses a comment of kind log: that kind is the work log's", async () => {
 		const task = must(await Planner.addTask(base, { title: "t" }));
-		must(
-			await Planner.addEntry(base, {
-				taskId: task.id,
-				kind: "log",
-				author: "me",
-				authorType: "human",
-				content: "a comment called log",
-			}),
-		);
-		expect(
-			must(await Planner.getEntries(base, task.id)).map((e) => e.content),
-		).toEqual(["a comment called log"]);
-		expect(must(await Planner.getWorkLogs(base, task.id))).toEqual([]);
+		const added = await Planner.addEntry(base, {
+			taskId: task.id,
+			kind: "log",
+			author: "me",
+			authorType: "human",
+			content: "a comment called log",
+		});
+		expect(added.ok).toBe(false);
+		expect(must(await Planner.getEntries(base, task.id))).toEqual([]);
 	});
 
-	it("keeps a context ref of kind upstream a context ref, in one write", async () => {
+	it("refuses a context ref to a thread or under a link's or upstream's kind", async () => {
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		const other = must(await Planner.addTask(base, { title: "o" }));
+		must(
+			await Planner.addLink(base, {
+				sourceId: task.id,
+				targetId: other.id,
+				type: "blocks",
+			}),
+		);
+		for (const [uri, kind] of [
+			[`kabane://thread/${other.id}`, "blocks"],
+			[`kabane://thread/${other.id}`, "spec"],
+			["file:a.md", "upstream"],
+			["file:a.md", "parent"],
+		] as const)
+			expect(
+				(await Planner.addContextRef(base, { taskId: task.id, uri, kind })).ok,
+			).toBe(false);
+		expect(must(await Planner.getContextRefs(base, task.id))).toEqual([]);
+		expect(
+			must(await Planner.getLinksForTask(base, task.id)).map((l) => l.type),
+		).toEqual(["blocks"]);
+	});
+
+	it("stores no family: it is read from the URI and the kind", async () => {
 		const task = must(await Planner.addTask(base, { title: "t" }));
 		must(
 			await Planner.addContextRef(base, {
@@ -187,20 +208,23 @@ describe("a row keeps its family whatever its kind", () => {
 				kind: "spec",
 			}),
 		);
-		const moved = must(
-			await Planner.addContextRef(base, {
+		must(
+			await Planner.addWorkLog(base, {
 				taskId: task.id,
-				uri: "file:a.md",
-				kind: "upstream",
+				refs: [{ uri: "commit:a" }],
 			}),
 		);
-		expect(moved.kind).toBe("upstream");
 		expect(
-			must(await Planner.getContextRefs(base, task.id)).map((r) => r.kind),
-		).toEqual(["upstream"]);
-		expect(must(await Planner.getUpstreamLinksForTask(base, task.id))).toEqual(
-			[],
-		);
+			await withDb(
+				(db) =>
+					db
+						.query<{ n: number }, []>(
+							`SELECT (SELECT COUNT(*) FROM refs WHERE json_extract(data, '$.family') IS NOT NULL)
+							      + (SELECT COUNT(*) FROM entries WHERE json_extract(data, '$.family') IS NOT NULL) AS n`,
+						)
+						.get()?.n,
+			),
+		).toBe(0);
 	});
 });
 
@@ -257,6 +281,28 @@ describe("removing a ref", () => {
 		).toHaveLength(1);
 	});
 
+	it("gives a parent edge an id no ref key can spell", async () => {
+		const parent = must(await Planner.addTask(base, { title: "parent" }));
+		const child = must(await Planner.addTask(base, { title: "child" }));
+		const link = must(
+			await Planner.addLink(base, {
+				sourceId: parent.id,
+				targetId: child.id,
+				type: "parent",
+			}),
+		);
+		expect(link.id.startsWith("parent:")).toBe(true);
+		const refShaped = JSON.stringify([
+			parent.id,
+			`kabane://thread/${child.id}`,
+			"parent",
+		]);
+		expect((await Planner.deleteLink(base, refShaped)).ok).toBe(false);
+		expect(must(await Planner.getTask(base, child.id))?.parentTaskId).toBe(
+			parent.id,
+		);
+	});
+
 	it("undoes a parent link by the id adding it returned", async () => {
 		const parent = must(await Planner.addTask(base, { title: "parent" }));
 		const child = must(await Planner.addTask(base, { title: "child" }));
@@ -278,6 +324,29 @@ describe("removing a ref", () => {
 });
 
 describe("the Task read credits the latest write", () => {
+	it("credits an edit after a task whose clock is ahead of this device's", async () => {
+		configureTestRuntime({ actor: () => "kabane://actor/human/original" });
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		await withDb((db) => {
+			db.run(
+				"UPDATE threads SET updated_at = '2099-01-01T00:00:00.000Z', state_updated_at = '2099-01-01T00:00:00.000Z' WHERE id = ?",
+				[task.id],
+			);
+			db.run(
+				"UPDATE attributes SET updated_at = '2099-01-01T00:00:00.000Z' WHERE thread_id = ?",
+				[task.id],
+			);
+		});
+		configureTestRuntime({ actor: () => "kabane://actor/human/editor" });
+		const edited = must(
+			await Planner.updateTask(base, task.id, { deadline: "2027-01-01" }),
+		);
+		expect(edited).toMatchObject({
+			version: 2,
+			updatedBy: "kabane://actor/human/editor",
+		});
+	});
+
 	it("counts a first-time attribute and names its writer", async () => {
 		configureTestRuntime({ actor: () => "kabane://actor/human/ada" });
 		const task = must(await Planner.addTask(base, { title: "t" }));
@@ -310,13 +379,54 @@ describe("the work log is append-only", () => {
 });
 
 describe("one declaration of what replicates", () => {
-	it("looks up every table export and backfill enumerate, and a retired one capture still takes", async () => {
+	it("looks up every table export and backfill enumerate, a disabled module's included", async () => {
+		const notes = {
+			name: "notes",
+			migrations: [
+				{
+					name: "create",
+					up: (db: Db) =>
+						db.run(
+							"CREATE TABLE notes_rows (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, updated_by TEXT, version INTEGER NOT NULL DEFAULT 1, visibility TEXT NOT NULL DEFAULT 'shared', updated_at TEXT)",
+						),
+				},
+			],
+			syncTables: [
+				{
+					table: "notes_rows",
+					family: "row-lww" as const,
+					clock: "updated_at",
+					childOfTasks: true,
+				},
+			],
+		};
+		configureTestRuntime({ modules: [notes] });
+		must(await Planner.init(base));
+		configureTestRuntime();
 		const tables = await withDb((db) => Replicated.tables(db));
-		for (const { table } of tables)
-			expect(Replicated.lookup(table)?.table).toBe(table);
-		expect(Replicated.lookup("task_comments")?.retired).toBe(true);
-		expect(tables.map(({ table }) => table)).not.toContain("task_comments");
-		expect(Replicated.lookup("sequences")).toBeUndefined();
+		expect(tables.map(({ table }) => table)).toContain("notes_rows");
+		await withDb((db) => {
+			for (const { table } of tables)
+				expect(Replicated.lookup(db, table)?.table).toBe(table);
+			expect(Replicated.lookup(db, "notes_rows")?.unregisteredModule).toBe(
+				"notes",
+			);
+			expect(Replicated.lookup(db, "sequences")).toBeUndefined();
+		});
+	});
+
+	it("refuses a write to a retired table once migration 14 has run", async () => {
+		const task = must(await Planner.addTask(base, { title: "t" }));
+		const captured = await withDb((db) => {
+			must(Oplog.initDevice(db, "device-a"));
+			const row = db
+				.query<Record<string, unknown>, [string]>(
+					"SELECT * FROM tasks WHERE id = ?",
+				)
+				.get(task.id);
+			return Oplog.capture(db, { tbl: "tasks", op: "insert", row: row ?? {} });
+		});
+		expect(captured.ok).toBe(false);
 	});
 });
 

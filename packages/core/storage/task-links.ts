@@ -4,8 +4,9 @@
  * A link is a ref of the link family from its source thread to
  * `kabane://thread/<target>`, the link type as its kind (migration 14). Its id
  * is the ref's row id (`RecordKey`). `parent` and `child` are no link: they
- * set the child's parent, and deleting by the id adding one returned clears it
- * again while it still names that parent.
+ * set the child's parent. Their id is `parent:["<child>","<parent>"]`, which no
+ * ref key spells, and deleting by it clears the parent while it still names
+ * that parent.
  */
 
 import { NotFoundError, type Result } from "../result";
@@ -18,6 +19,22 @@ import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
 
 const FOLDED = ["parent", "child"];
+
+const EDGE = "parent:";
+
+/** The id of the parent edge a folded link set. */
+const edgeId = (child: string, parent: string): string =>
+	`${EDGE}${JSON.stringify([child, parent])}`;
+
+/** The child and parent an edge id names, or undefined for any other id. */
+const edgeOf = (id: string): { child: string; parent: string } | undefined => {
+	if (!id.startsWith(EDGE)) return undefined;
+	const [child, parent] =
+		RecordKey.partsOf("attributes", id.slice(EDGE.length)) ?? [];
+	return child === undefined || parent === undefined
+		? undefined
+		: { child, parent };
+};
 
 /** The child and parent a `parent` or `child` link names. */
 const fold = (source: string, target: string, type: string) =>
@@ -36,6 +53,7 @@ export namespace Planner {
 			for (const id of [draft.sourceId, draft.targetId])
 				if (!RecordRead.isVisible(db, id))
 					throw new NotFoundError(`No task found with ID: ${id}`);
+			let id = JSON.stringify([draft.sourceId, uri, draft.type]);
 			if (FOLDED.includes(draft.type)) {
 				const { child, parent } = fold(
 					draft.sourceId,
@@ -43,6 +61,7 @@ export namespace Planner {
 					draft.type,
 				);
 				RecordWrite.updateText(db, child, { parent_id: parent });
+				id = edgeId(child, parent);
 			} else {
 				RecordWrite.putRef(db, {
 					threadId: draft.sourceId,
@@ -50,7 +69,6 @@ export namespace Planner {
 					kind: draft.type,
 					title: null,
 					data: {
-						family: "link",
 						...(draft.note === undefined ? {} : { note: draft.note }),
 						created_at: now,
 					},
@@ -58,7 +76,7 @@ export namespace Planner {
 			}
 
 			return {
-				id: JSON.stringify([draft.sourceId, uri, draft.type]),
+				id,
 				sourceId: draft.sourceId,
 				targetId: draft.targetId,
 				type: draft.type,
@@ -88,26 +106,16 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return atomic(basePath, (db) => {
-			const [source, uri, type] = RecordKey.partsOf("refs", id) ?? [];
-			if (
-				source !== undefined &&
-				uri !== undefined &&
-				type !== undefined &&
-				FOLDED.includes(type)
-			) {
-				const { child, parent } = fold(
-					source,
-					uri.slice(RecordKey.THREAD_URI_PREFIX.length),
-					type,
-				);
+			const edge = edgeOf(id);
+			if (edge !== undefined) {
 				const held = db
 					.query<{ parent_id: string | null }, [string]>(
 						`SELECT parent_id FROM ${TABLES.threads} WHERE id = ?`,
 					)
-					.get(child);
-				if (held?.parent_id !== parent)
-					throw new NotFoundError(`No ${type} link ${id}`);
-				RecordWrite.updateText(db, child, { parent_id: null });
+					.get(edge.child);
+				if (held?.parent_id !== edge.parent)
+					throw new NotFoundError(`No parent link ${id}`);
+				RecordWrite.updateText(db, edge.child, { parent_id: null });
 				return;
 			}
 			if (!RecordWrite.removeRef(db, id, "link"))

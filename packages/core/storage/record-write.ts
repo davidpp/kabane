@@ -18,7 +18,7 @@ import { TABLES } from "../db/tables";
 import { NotFoundError } from "../result";
 import { Runtime } from "../runtime";
 import { RecordKey } from "../schemas";
-import type { RefFamily } from "./families";
+import { REF_FAMILY_SQL, type RefFamily } from "./families";
 import { Oplog } from "./oplog";
 import { RecordRead } from "./record";
 
@@ -28,6 +28,25 @@ const deviceOf = (db: Db): string => {
 	const state = Oplog.getState(db);
 	if (!state.ok) throw state.error;
 	return state.value?.deviceId ?? "";
+};
+
+/**
+ * A clock past every register the `Task` read takes its audit from: the
+ * thread's text and claim and each of its attributes. A local edit then reads
+ * as the latest write even when a stored clock is ahead of this device's.
+ */
+const taskClock = (db: Db, threadId: string): string => {
+	const latest = db
+		.query<{ at: string | null }, [string, string]>(
+			`SELECT MAX(t.updated_at, t.state_updated_at,
+			            COALESCE((SELECT MAX(a.updated_at) FROM ${TABLES.attributes} a
+			                       WHERE a.thread_id = ?), '')) AS at
+			   FROM ${TABLES.threads} t WHERE t.id = ?`,
+		)
+		.get(threadId, threadId)?.at;
+	const now = new Date().toISOString();
+	if (latest == null || latest < now) return now;
+	return new Date(Date.parse(latest) + 1).toISOString();
 };
 
 /** Now (or `at`), or the stored clock when it is ahead of that. */
@@ -52,7 +71,7 @@ const visibilityOf = (db: Db, threadId: string): string => {
 };
 
 /** The keys a ref's earlier writes left in its `data` that a rewrite keeps. */
-const KEPT_REF_DATA = ["id", "merged"] as const;
+const KEPT_REF_DATA = ["id"] as const;
 
 const keptData = (
 	stored: string | null | undefined,
@@ -154,7 +173,7 @@ export namespace RecordWrite {
 			  WHERE id = ?`,
 			[
 				...Object.values(values),
-				clockAfter(stored.updated_at),
+				taskClock(db, id),
 				Runtime.actor(),
 				deviceOf(db),
 				id,
@@ -180,7 +199,7 @@ export namespace RecordWrite {
 			  WHERE id = ?`,
 			[
 				...Object.values(values),
-				clockAfter(stored.state_updated_at),
+				taskClock(db, id),
 				Runtime.actor(),
 				deviceOf(db),
 				id,
@@ -225,7 +244,10 @@ export namespace RecordWrite {
 		const live = stored != null && stored.removed_at === null;
 		if (text === null ? !live : live && stored.value === text) return;
 		const visibility = visibilityOf(db, threadId);
-		const clock = clockAfter(stored?.updated_at, created);
+		const clock =
+			created === undefined
+				? taskClock(db, threadId)
+				: clockAfter(stored?.updated_at, created);
 		db.run(
 			`INSERT INTO ${TABLES.attributes}
 			   (thread_id, key, value, removed_at, visibility, updated_at, updated_by, updated_device, version)
@@ -256,7 +278,7 @@ export namespace RecordWrite {
 
 	/**
 	 * Make or remake a ref; its `title` and `data` are the latest write's, but
-	 * for the old id and merged rows a migrated ref keeps in `data`.
+	 * for the old id a migrated ref keeps in `data`.
 	 */
 	export const putRef = (
 		db: Db,
@@ -320,9 +342,9 @@ export namespace RecordWrite {
 				{ thread_id: string; uri: string; kind: string; updated_at: string },
 				string[]
 			>(
-				`SELECT thread_id, uri, kind, updated_at FROM ${TABLES.refs}
-				  WHERE removed_at IS NULL AND json_extract(data, '$.family') = ?
-				    AND ${parts === undefined ? "json_extract(data, '$.id') = ?" : "thread_id = ? AND uri = ? AND kind = ?"}`,
+				`SELECT r.thread_id, r.uri, r.kind, r.updated_at FROM ${TABLES.refs} r
+				  WHERE r.removed_at IS NULL AND ${REF_FAMILY_SQL} = ?
+				    AND ${parts === undefined ? "json_extract(r.data, '$.id') = ?" : "r.thread_id = ? AND r.uri = ? AND r.kind = ?"}`,
 			)
 			.get(family, ...(parts ?? [id]));
 		if (!stored) return false;
