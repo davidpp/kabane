@@ -36,9 +36,11 @@ looks like.
 - The rules are `AGENTS.md` (root, and the changed package's own), `CODING_PRINCIPLE.md`, and
   the review skill `.agents/skills/review-oss-typescript/SKILL.md`. Follow that skill's axes;
   judge the result as a public TypeScript project.
-- Non-negotiable here, so p1 when broken: `CODING_PRINCIPLE.md`'s Non-negotiables, a shipped
-  migration edited, and a lint threshold relaxed, a rule disabled or a suppression added to pass
-  the gate.
+- Non-negotiable here, so p1 when broken: no `as any`, non-null `!`, `@ts-ignore` or
+  `@ts-expect-error`; external data parsed with zod `safeParse`; `Result`, never a throw
+  outside a transaction body; no new class a framework does not demand; the core reads no
+  environment variable; a shipped migration is never edited; a lint threshold relaxed, a rule
+  disabled or a suppression added to pass the gate.
 - Read the North Stars and Design Principles in `PRODUCT.md`. A change that makes kabane own a
   job a harness already does, adds a permission policy over the user's harness, or grows the
   core for one workflow is a p2 that quotes the principle, even when the code is clean.
