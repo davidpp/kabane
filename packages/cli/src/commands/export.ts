@@ -8,38 +8,39 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Planner, Portable, toError, withDb } from "@kabane/core";
+import { Planner, Portable, toError, trySync, withDb } from "@kabane/core";
 import { failure, flagBool, success, usage } from "@kabane/extension";
 import { DB_NAME } from "../config";
 import type { Command } from "../context";
-import { portableRuntime, rebuild } from "./import";
+import {
+	compareManifests,
+	omissionReport,
+	portableRuntime,
+	rebuild,
+} from "./import";
 
-const writeBackup = (
-	dir: string,
-	jsonl: string,
-	manifest: Portable.Manifest,
-) => {
-	mkdirSync(dir, { recursive: true, mode: 0o700 });
-	const stage = mkdtempSync(join(dir, ".export-"));
-	const record = join(dir, "record.jsonl");
-	try {
-		writeFileSync(join(stage, "record.jsonl"), jsonl, { mode: 0o600 });
-		writeFileSync(
-			join(stage, "manifest.json"),
-			JSON.stringify(manifest, null, 2) + "\n",
-			{ mode: 0o600 },
-		);
-		linkSync(join(stage, "record.jsonl"), record);
+const writeBackup = (dir: string, jsonl: string, manifest: Portable.Manifest) =>
+	trySync(() => {
+		mkdirSync(dir, { recursive: true, mode: 0o700 });
+		const stage = mkdtempSync(join(dir, ".export-"));
+		const record = join(dir, "record.jsonl");
+		let rollbackRecord = false;
 		try {
+			writeFileSync(join(stage, "record.jsonl"), jsonl, { mode: 0o600 });
+			writeFileSync(
+				join(stage, "manifest.json"),
+				JSON.stringify(manifest, null, 2) + "\n",
+				{ mode: 0o600 },
+			);
+			linkSync(join(stage, "record.jsonl"), record);
+			rollbackRecord = true;
 			linkSync(join(stage, "manifest.json"), join(dir, "manifest.json"));
-		} catch (error) {
-			rmSync(record);
-			throw error;
+			rollbackRecord = false;
+		} finally {
+			if (rollbackRecord) rmSync(record);
+			rmSync(stage, { recursive: true, force: true });
 		}
-	} finally {
-		rmSync(stage, { recursive: true, force: true });
-	}
-};
+	});
 
 export const exportCommand: Command = {
 	name: "export",
@@ -51,6 +52,12 @@ export const exportCommand: Command = {
 		if (!directory || args.positionals.length !== 1)
 			return usage("Supply an export directory", exportCommand.usage);
 		const dir = resolve(ctx.cwd, directory);
+		if (
+			["record.jsonl", "manifest.json"].some((name) =>
+				existsSync(join(dir, name)),
+			)
+		)
+			return failure(`${dir} already holds an export`);
 		if (!existsSync(join(ctx.store, DB_NAME)))
 			return failure("No source database to export");
 		const registered = await portableRuntime(ctx);
@@ -59,25 +66,29 @@ export const exportCommand: Command = {
 		if (!migrated.ok) return failure(migrated.error);
 		const read = await withDb(ctx.store, Portable.snapshot);
 		if (!read.ok) return failure(read.error);
+		if (!read.value.ok) return failure(read.value.error);
+		const snapshot = read.value.value;
+		if ("omitted" in snapshot) return failure(omissionReport(snapshot.omitted));
 		try {
-			const source = await Portable.manifest(read.value);
-			writeBackup(dir, Portable.encode(read.value), source);
+			const source = await Portable.manifest(snapshot);
+			if (!source.ok) return failure(source.error);
+			const written = writeBackup(dir, Portable.encode(snapshot), source.value);
+			if (!written.ok) {
+				const error = written.error;
+				return failure(
+					"code" in error && error.code === "EEXIST"
+						? `${dir} already holds an export`
+						: error,
+				);
+			}
 			if (!flagBool(args, "check"))
-				return success(source, `Exported to ${dir}`);
+				return success(source.value, `Exported to ${dir}`);
 			const home = mkdtempSync(join(tmpdir(), "kabane-rebuild-"));
 			try {
 				const actual = await rebuild(dir, home);
-				const rows = Portable.compare(source, actual);
-				const match = rows.every((row) => row.match);
-				const lines = rows.map(
-					({ table, source: a, rebuilt: b, match: equal }) =>
-						`${table} ${a?.count} ${a?.digest}${equal ? "" : ` rebuilt ${b?.count} ${b?.digest} differ`}`,
-				);
-				return {
-					exitCode: match ? 0 : 1,
-					json: { rows, match },
-					text: [...lines, match ? "match" : "differ"].join("\n"),
-				};
+				return actual.ok
+					? compareManifests(source.value, actual.value)
+					: failure(actual.error);
 			} finally {
 				rmSync(home, { recursive: true, force: true });
 			}

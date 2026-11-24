@@ -8,7 +8,16 @@ import {
 	rmSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { ok, Planner, Portable, toError, withDb } from "@kabane/core";
+import {
+	err,
+	ok,
+	Planner,
+	Portable,
+	type Result,
+	toError,
+	trySync,
+	withDb,
+} from "@kabane/core";
 import { failure, flagString, success, usage } from "@kabane/extension";
 import { configPath, loadConfig, DB_NAME } from "../config";
 import { registerModules, type Ctx, type Command } from "../context";
@@ -23,16 +32,56 @@ export const portableRuntime = async (ctx: Ctx) => {
 	return registerModules(ctx.home, config.value, config.value.actor);
 };
 
-export const rebuild = async (dir: string, home: string) => {
-	const jsonl = readFileSync(join(dir, "record.jsonl"), "utf8");
+export const rebuild = async (
+	dir: string,
+	home: string,
+): Promise<Result<Portable.Manifest>> => {
+	const jsonl = trySync(() => readFileSync(join(dir, "record.jsonl"), "utf8"));
+	if (!jsonl.ok) return jsonl;
 	const initialized = await Planner.init(home);
-	if (!initialized.ok) throw initialized.error;
+	if (!initialized.ok) return initialized;
 	const restored = await withDb(home, (db) => {
-		Portable.restore(db, jsonl);
-		return Portable.snapshot(db);
+		const inserted = Portable.restore(db, jsonl.value);
+		return inserted.ok ? Portable.snapshot(db) : inserted;
 	});
-	if (!restored.ok) throw restored.error;
-	return Portable.manifest(restored.value);
+	if (!restored.ok) return restored;
+	if (!restored.value.ok) return restored.value;
+	const snapshot = restored.value.value;
+	if ("omitted" in snapshot)
+		return err(new Error(omissionReport(snapshot.omitted)));
+	return Portable.manifest(snapshot);
+};
+
+export const omissionReport = (
+	omitted: { module: string; table: string; count: number }[],
+) =>
+	[
+		...Array.from(
+			new Set(omitted.map((item) => item.module)),
+			(name) =>
+				`Enable the extension providing module ${name} in the home's extensions config and retry.`,
+		),
+		...omitted.map(({ table, count }) => `${table} ${count} not exported`),
+		"differ",
+	].join("\n");
+
+export const compareManifests = (
+	source: Portable.Manifest,
+	rebuilt: Portable.Manifest,
+) => {
+	const rows = Portable.compare(source, rebuilt);
+	const match = rows.every((row) => row.match);
+	const lines = rows.map(({ table, source: a, rebuilt: b, match: equal }) => {
+		const expected = a ? `${a.count} ${a.digest}` : "missing";
+		if (equal) return `${table} ${expected}`;
+		const actual = b ? `${b.count} ${b.digest}` : "missing";
+		return `${table} ${expected} rebuilt ${actual} differ`;
+	});
+	return {
+		exitCode: match ? (0 as const) : (1 as const),
+		json: { rows, match },
+		text: [...lines, match ? "match" : "differ"].join("\n"),
+	};
 };
 
 export const importCommand: Command = {
@@ -55,24 +104,27 @@ export const importCommand: Command = {
 				return failure("Destination already contains a database");
 			const registered = await portableRuntime(ctx);
 			if (!registered.ok) return failure(registered.error);
-			const expected = JSON.parse(
+			const raw: unknown = JSON.parse(
 				readFileSync(join(dir, "manifest.json"), "utf8"),
 			);
+			const expected = Portable.ManifestSchema.safeParse(raw);
+			if (!expected.success) return failure("Invalid portable export manifest");
 			mkdirSync(home, { recursive: true, mode: 0o700 });
 			const stage = mkdtempSync(join(home, ".import-"));
 			try {
 				const actual = await rebuild(dir, stage);
-				if (!Portable.compare(expected, actual).every((row) => row.match))
-					return failure("Rebuilt database differs from the export manifest");
+				if (!actual.ok) return failure(actual.error);
+				const comparison = compareManifests(expected.data, actual.value);
+				if (!comparison.json.match) return comparison;
 				// The provider can keep WAL connections open. Publish a complete single-file snapshot.
 				const file = join(stage, "complete.db");
 				const saved = await withDb(stage, (db) =>
 					db.run("VACUUM INTO ?", [file]),
 				);
-				if (!saved.ok) throw saved.error;
+				if (!saved.ok) return failure(saved.error);
 				chmodSync(file, 0o600);
 				linkSync(file, join(home, DB_NAME));
-				return success(actual, "Imported portable record");
+				return success(actual.value, "Imported portable record");
 			} finally {
 				rmSync(stage, { recursive: true, force: true });
 			}
