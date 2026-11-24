@@ -3,8 +3,8 @@
  *
  * Entries live in the record's `entries` table (migration 14). A comment is an
  * entry of kind `comment`, and the comment functions read and write that kind
- * only; a work log is an entry of the work-log family (`work-logs.ts`), which
- * the timeline leaves out whatever its kind. Entries are append-only: nothing here edits or deletes
+ * only; a work log is an entry of kind `log` (`work-logs.ts`), a kind the
+ * timeline neither takes nor shows. Entries are append-only: nothing here edits or deletes
  * one. A deleted task's entries read as gone with it (`RecordRead`).
  */
 
@@ -20,7 +20,7 @@ import {
 	type TaskEntry,
 	type TaskEntryDraft,
 } from "../schemas";
-import { isWorkLog } from "./families";
+import { isWorkLog, WORK_LOG_KIND } from "./families";
 import { rowToEntry } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
@@ -43,6 +43,12 @@ export namespace Planner {
 		basePath: string,
 		draft: TaskEntryDraft,
 	): Promise<Result<TaskEntry>> => {
+		if (draft.kind === WORK_LOG_KIND)
+			return err(
+				new Error(
+					`Entry kind ${quoted(draft.kind)} is the work log's: record work with kabane_log.`,
+				),
+			);
 		if (!ENTRY_KIND_PATTERN.test(draft.kind))
 			return err(
 				new Error(

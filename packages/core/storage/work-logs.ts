@@ -1,8 +1,9 @@
 /**
  * Planner Storage — Work Logs
  *
- * A work log row is an entry of kind `log` and of the work-log family on the
- * thread, its refs in `data` (migration 14). Append-only, like every entry.
+ * A work log row is an entry of kind `log` on the thread, its refs in `data`
+ * (migration 14); no other entry takes that kind. Append-only, like every
+ * entry.
  */
 
 import { monotonicFactory } from "ulid";
@@ -11,7 +12,7 @@ import { err, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 
 import type { AddWorkLogInput, TaskWorkLog, WorkRef } from "../schemas";
-import { isWorkLog, WORK_LOG_FAMILY, WORK_LOG_KIND } from "./families";
+import { isWorkLog, WORK_LOG_KIND } from "./families";
 import { rowToWorkLog } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
@@ -42,7 +43,7 @@ export namespace Planner {
 			kind: WORK_LOG_KIND,
 			author: Runtime.actor(),
 			body: input.note ?? null,
-			data: { family: WORK_LOG_FAMILY, refs },
+			data: { refs },
 			createdAt: now,
 		});
 

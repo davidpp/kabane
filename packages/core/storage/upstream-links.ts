@@ -22,8 +22,7 @@ import {
 	type UpstreamLink,
 	type UpstreamSummary,
 } from "../schemas";
-import { UPSTREAM_KIND } from "./context-refs";
-import { refFamily } from "./families";
+import { REF_FAMILY_SQL, refFamily, UPSTREAM_KIND } from "./families";
 import { rowToUpstreamLink, TABLES } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
@@ -48,7 +47,7 @@ const upstreamRefs = (db: Db, where: string, params: string[]): RefRow[] => {
 			.query<unknown, string[]>(
 				`SELECT r.* FROM ${TABLES.refs} r JOIN ${TABLES.tasks} t ON t.id = r.thread_id
 				  WHERE r.kind = '${UPSTREAM_KIND}' AND r.removed_at IS NULL
-				    AND json_extract(r.data, '$.family') = 'upstream' AND ${where}`,
+				    AND ${REF_FAMILY_SQL} = 'upstream' AND ${where}`,
 			)
 			.all(...params),
 	);
@@ -81,7 +80,6 @@ export namespace Planner {
 				kind: UPSTREAM_KIND,
 				title: link.title,
 				data: {
-					family: "upstream",
 					provider: link.provider,
 					external_id: link.externalId,
 					identifier: link.identifier ?? null,
@@ -108,9 +106,7 @@ export namespace Planner {
 		const rows = await withDb(basePath, (db) => {
 			const read = RecordRead.refs(db, taskId);
 			if (!read.ok) throw read.error;
-			return read.value.filter(
-				(row) => row.kind === UPSTREAM_KIND && refFamily(row) === "upstream",
-			);
+			return read.value.filter((row) => refFamily(row) === "upstream");
 		});
 		return rows.ok ? convertRows(rows.value) : rows;
 	};

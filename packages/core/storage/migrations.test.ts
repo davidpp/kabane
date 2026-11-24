@@ -1400,37 +1400,71 @@ describe("Migration 14: the tracker moves into the record", () => {
 		await refused(broken.id);
 	});
 
-	it("keeps one ref where two old tables meet on one key, and the other's row in its data", async () => {
+	it("refuses a context ref or comment whose URI or kind belongs to another family, naming it", async () => {
+		for (const spoil of [
+			(a: string, b: string) =>
+				Legacy.addContextRef(base, {
+					taskId: a,
+					uri: `kabane://thread/${b}`,
+					kind: "spec",
+				}),
+			(a: string) =>
+				Legacy.addContextRef(base, {
+					taskId: a,
+					uri: "file:x",
+					kind: "related",
+				}),
+			(a: string) =>
+				Legacy.addContextRef(base, {
+					taskId: a,
+					uri: "file:x",
+					kind: "upstream",
+				}),
+			(a: string) =>
+				Legacy.addComment(base, {
+					taskId: a,
+					author: "me",
+					authorType: "human",
+					content: "c",
+					kind: "log",
+				}),
+		]) {
+			await stamped();
+			const a = must(await Legacy.addTask(base, { title: "a" }));
+			const b = must(await Legacy.addTask(base, { title: "b" }));
+			const row = must(await spoil(a.id, b.id));
+			await refused(row.id);
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses two upstream links that land on one ref key, naming both", async () => {
 		await stamped();
 		const a = must(await Legacy.addTask(base, { title: "a" }));
-		const b = must(await Legacy.addTask(base, { title: "b" }));
-		const link = must(
-			await Legacy.addLink(base, {
-				sourceId: a.id,
-				targetId: b.id,
-				type: "related",
-			}),
+		const ids = await withDb((db) => {
+			for (const [id, provider, external] of [
+				["01UPONE", "gh:x", "1"],
+				["01UPTWO", "gh", "x:1"],
+			] as const)
+				db.run(
+					`INSERT INTO upstream_links (id, task_id, provider, external_id, url, title, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, 'https://example.org/1', 't', '${NOW}', '${NOW}')`,
+					[id, a.id, provider, external],
+				);
+			return ["01UPONE", "01UPTWO"];
+		});
+		const init = await Planner.init(base);
+		expect(init.ok ? "" : init.error.message).toContain(ids[0] ?? "");
+		await refused(ids[1] ?? "");
+	});
+
+	it("refuses a time that names no fixed instant", async () => {
+		await stamped();
+		const task = must(await Legacy.addTask(base, { title: "t" }));
+		await withDb((db) =>
+			db.run("UPDATE tasks SET updated_at = 'now' WHERE id = ?", [task.id]),
 		);
-		const ref = must(
-			await Legacy.addContextRef(base, {
-				taskId: a.id,
-				uri: `kabane://thread/${b.id}`,
-				kind: "related",
-				note: "also",
-			}),
-		);
-		await mustInit(base);
-		const rows = await withDb((db) =>
-			db
-				.query<{ data: string }, []>("SELECT data FROM refs")
-				.all()
-				.map((row) => JSON.parse(row.data)),
-		);
-		expect(rows).toHaveLength(1);
-		expect(rows[0]).toMatchObject({ id: link.id, family: "link" });
-		expect(rows[0].merged).toMatchObject([
-			{ table: "task_context_refs", data: { id: ref.id, note: "also" } },
-		]);
+		await refused(task.id);
 	});
 
 	it("refuses a column it does not place, and a parent link its child disagrees with, changing nothing", async () => {

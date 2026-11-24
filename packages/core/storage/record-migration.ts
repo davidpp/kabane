@@ -8,22 +8,22 @@
  *   link folds into the child's parent, the link's own fields kept in the
  *   child's `parent_links` attribute.
  * - `task_comments` → `entries`, kind kept, `author_type` (and `updated_at`
- *   when set) in `data`; `task_work_log` → `entries` of kind `log` and of the
- *   work-log family, the refs in `data`.
+ *   when set) in `data`; `task_work_log` → `entries` of kind `log`, the refs
+ *   in `data`.
  * - `task_links` → `refs` to `kabane://thread/<target>`, the link type as kind;
  *   `task_context_refs` → `refs` of their own kind, the label as title;
  *   `upstream_links` → `refs` of kind `upstream` whose URI is
- *   `<provider>:<external id>`. Each says its family in `data` and keeps its
- *   old id there; rows of two tables that meet on one key become one, the
- *   later kept whole in `data.merged`.
+ *   `<provider>:<external id>`. Each keeps its old id in `data`; what it is
+ *   follows from its URI and kind (`families.ts`).
  *
  * Every value is taken from the source row, never this device's clock or
  * actor, so two copies migrated apart write the same rows; a clock is written
  * in `toISOString` form and a REAL as text that reads back as the same
  * binary64, which is checked. The migration refuses, changing nothing and
- * naming the rows: a source column it does not place, a time it cannot read,
- * a child whose links name two parents, a fold that would change what
- * replicates, and a value that would not read back.
+ * naming the rows: a source column it does not place, a time that names no
+ * fixed instant, a row whose URI or kind is another family's, two rows that
+ * would land on one ref key, a child whose links name two parents, a fold that
+ * would change what replicates, and a value that would not read back.
  *
  * `tasks` itself is renamed to `retired_tasks`, not dropped. It is no backup:
  * its foreign keys still act (a project delete nulls its `project_id`), and
@@ -43,7 +43,7 @@
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { RecordKey } from "../schemas";
-import { WORK_LOG_FAMILY, WORK_LOG_KIND } from "./families";
+import { RESERVED_REF_KINDS, UPSTREAM_KIND, WORK_LOG_KIND } from "./families";
 import { VISIBLE_THREADS_SQL } from "./record";
 
 /** Each task column that leaves the thread row, as an attribute of that name. */
@@ -191,13 +191,20 @@ const CLOCKS: Record<string, readonly string[]> = {
 	upstream_links: ["updated_at"],
 };
 
-/** Refuse a clock no instant can be read from, naming its row. */
+/**
+ * Refuse a clock that names no fixed instant, naming its row: one SQLite
+ * cannot read, and one it reads relative to now (`now`) or as a day number,
+ * which two copies migrated apart would turn into two different clocks. A
+ * fixed instant is written as a date first.
+ */
 const refuseUnreadableClocks = (db: Db): void => {
 	for (const [table, columns] of Object.entries(CLOCKS))
 		for (const column of columns) {
 			const rows = db
 				.query<{ id: string }, []>(
-					`SELECT id FROM ${table} WHERE ${clock(column)} IS NULL`,
+					`SELECT id FROM ${table}
+					  WHERE ${clock(column)} IS NULL OR typeof(${column}) <> 'text'
+					     OR ${column} NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'`,
 				)
 				.all();
 			if (rows.length > 0)
@@ -205,6 +212,54 @@ const refuseUnreadableClocks = (db: Db): void => {
 					`${table}.${column} holds a time no instant can be read from (${rows.map(({ id }) => id).join(", ")}); nothing was changed`,
 				);
 		}
+};
+
+/**
+ * Refuse a row whose URI or kind is another family's (`families.ts`): a
+ * context ref to a thread or under a link type or `upstream`, and a comment of
+ * kind `log`. Each family then has keys of its own.
+ */
+const refuseCrossFamilyRows = (db: Db): void => {
+	const reserved = RESERVED_REF_KINDS.map((kind) => `'${kind}'`).join(", ");
+	const rows = db
+		.query<{ id: string }, []>(
+			`SELECT id FROM task_context_refs
+			  WHERE substr(uri, 1, ${RecordKey.THREAD_URI_PREFIX.length}) = '${RecordKey.THREAD_URI_PREFIX}'
+			     OR kind IN (${reserved})
+			 UNION SELECT id FROM task_comments WHERE kind = '${WORK_LOG_KIND}'
+			 ORDER BY id`,
+		)
+		.all();
+	if (rows.length > 0)
+		throw new Error(
+			`rows whose URI or kind is another family's: a context ref to a thread or under a link or upstream kind, a comment of kind log (${rows.map(({ id }) => id).join(", ")}); nothing was changed`,
+		);
+};
+
+/**
+ * Refuse two source rows that would land on one ref key, naming both. With
+ * the families apart only two linked issues can, when the provider and the
+ * external id run together (`a:b` + `c`, `a` + `b:c`).
+ */
+const refuseSharedRefKeys = (db: Db): void => {
+	const rows = db
+		.query<{ id: string }, []>(
+			`WITH keyed(id, thread_id, uri, kind) AS (
+			   SELECT id, source_id, '${RecordKey.THREAD_URI_PREFIX}' || target_id, type
+			     FROM task_links WHERE type NOT IN ('parent', 'child')
+			   UNION ALL SELECT id, task_id, uri, kind FROM task_context_refs
+			   UNION ALL SELECT id, task_id, provider || ':' || external_id, '${UPSTREAM_KIND}'
+			     FROM upstream_links)
+			 SELECT k.id FROM keyed k
+			  WHERE (SELECT COUNT(*) FROM keyed o
+			          WHERE o.thread_id = k.thread_id AND o.uri = k.uri AND o.kind = k.kind) > 1
+			  ORDER BY k.id`,
+		)
+		.all();
+	if (rows.length > 0)
+		throw new Error(
+			`rows that would land on one ref key (${rows.map(({ id }) => id).join(", ")}); nothing was changed`,
+		);
 };
 
 /** Each parent or child link with the child and parent it names. */
@@ -342,7 +397,7 @@ const moveEntries = (db: Db): void => {
 		   (id, thread_id, kind, kind_version, author, body, addressed_to, re, data,
 		    visibility, created_at, updated_by, created_device, version)
 		 SELECT id, task_id, '${WORK_LOG_KIND}', NULL, COALESCE(updated_by, ''), note, NULL, NULL,
-		        json_object('family', '${WORK_LOG_FAMILY}', 'refs', json(refs)),
+		        json_object('refs', json(refs)),
 		        visibility, ${clock("created_at")}, updated_by, '', version
 		   FROM task_work_log`,
 	);
@@ -351,48 +406,29 @@ const moveEntries = (db: Db): void => {
 const REF_COLUMNS = `(thread_id, uri, kind, kind_version, title, data, removed_at,
   visibility, updated_at, updated_by, updated_device, version)`;
 
-/**
- * Old tables that each held one row per key can meet on one record key (a
- * context ref to a thread's URI under a link's type, say). The first table's
- * row stays; each later one is kept whole in the survivor's `data.merged`.
- */
-const MERGE = `ON CONFLICT(thread_id, uri, kind) DO UPDATE SET data = json_insert(
-  json_insert(refs.data, '$.merged', json('[]')), '$.merged[#]',
-  json_object('table', json_extract(excluded.data, '$.table'), 'title', excluded.title,
-    'data', json_remove(json(excluded.data), '$.table'), 'visibility', excluded.visibility,
-    'updated_at', excluded.updated_at, 'updated_by', excluded.updated_by,
-    'version', excluded.version))`;
-
 const moveRefs = (db: Db): void => {
 	db.run(
 		`INSERT INTO ${TABLES.refs} ${REF_COLUMNS}
 		 SELECT source_id, '${RecordKey.THREAD_URI_PREFIX}' || target_id, type, NULL, NULL,
-		        json_object('family', 'link', 'id', id, 'note', note, 'created_at', created_at),
+		        json_object('id', id, 'note', note, 'created_at', created_at),
 		        NULL, visibility, ${clock("created_at")}, updated_by, '', version
-		   FROM task_links WHERE type NOT IN ('parent', 'child') ORDER BY id`,
+		   FROM task_links WHERE type NOT IN ('parent', 'child')`,
 	);
 	db.run(
 		`INSERT INTO ${TABLES.refs} ${REF_COLUMNS}
 		 SELECT task_id, uri, kind, NULL, label,
-		        json_object('table', 'task_context_refs', 'family', 'context', 'id', id,
-		                    'note', note, 'added_by', added_by,
+		        json_object('id', id, 'note', note, 'added_by', added_by,
 		                    'added_by_type', added_by_type, 'added_at', added_at),
 		        NULL, visibility, ${clock("added_at")}, updated_by, '', version
-		   FROM task_context_refs WHERE true ORDER BY id ${MERGE}`,
+		   FROM task_context_refs`,
 	);
 	db.run(
 		`INSERT INTO ${TABLES.refs} ${REF_COLUMNS}
 		 SELECT task_id, provider || ':' || external_id, 'upstream', NULL, title,
-		        json_object('table', 'upstream_links', 'family', 'upstream', 'id', id,
-		                    'provider', provider, 'external_id', external_id,
+		        json_object('id', id, 'provider', provider, 'external_id', external_id,
 		                    'identifier', identifier, 'url', url, 'created_at', created_at),
 		        NULL, visibility, ${clock("updated_at")}, updated_by, '', version
-		   FROM upstream_links WHERE true ORDER BY id ${MERGE}`,
-	);
-	// The marker only told a merge which table a row came from.
-	db.run(
-		`UPDATE ${TABLES.refs} SET data = json_remove(data, '$.table')
-		  WHERE json_extract(data, '$.table') IS NOT NULL`,
+		   FROM upstream_links`,
 	);
 };
 
@@ -564,6 +600,8 @@ export namespace RecordMigration {
 	export const migrate = (db: Db): void => {
 		refuseUnplaced(db);
 		refuseUnreadableClocks(db);
+		refuseCrossFamilyRows(db);
+		refuseSharedRefKeys(db);
 		refuseUnsafeFolds(db);
 		moveThreads(db);
 		refuseChangedValues(db);

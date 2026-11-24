@@ -16,20 +16,13 @@ import {
 	type RefRow,
 	type TaskContextRef,
 } from "../schemas";
-import { refFamily } from "./families";
+import { RESERVED_REF_KINDS, refFamily } from "./families";
 import { rowToContextRef } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
 import { Planner as PlannerWorkLogs } from "./work-logs";
 
-/** The kind an upstream ref carries (`upstream-links.ts`). */
-export const UPSTREAM_KIND = "upstream";
-
-/**
- * Links, context refs and upstream links share the record's `refs` table
- * (migration 14); a context ref is one of the context family, whatever kind a
- * caller gave it.
- */
+/** A context ref is a ref of the context family (`families.ts`). */
 const isContextRef = (row: RefRow): boolean => refFamily(row) === "context";
 
 /** The old id a migrated ref keeps in `data.id`, when it has one. */
@@ -51,6 +44,13 @@ export namespace Planner {
 		db: Db,
 		input: AddContextRefInput,
 	): TaskContextRef => {
+		if (
+			refFamily(input) !== "context" ||
+			RESERVED_REF_KINDS.includes(input.kind)
+		)
+			throw new Error(
+				`A context ref takes no thread URI and no link or upstream kind (${input.kind} ${input.uri}): link threads with kabane_link, issues with kabane_upstream_link.`,
+			);
 		const now = new Date().toISOString();
 		let oldId: unknown;
 		for (const held of contextRefsOf(db, input.taskId))
@@ -68,7 +68,6 @@ export namespace Planner {
 			kind: input.kind,
 			title: input.label ?? null,
 			data: {
-				family: "context",
 				...(oldId === undefined ? {} : { id: oldId }),
 				note: input.note ?? null,
 				added_by: input.addedBy ?? null,
