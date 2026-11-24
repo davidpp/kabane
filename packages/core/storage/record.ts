@@ -81,11 +81,40 @@ const rowsOf = <S extends z.ZodType>(
 		: err(new Error(`A record row does not parse: ${parsed.error.message}`));
 };
 
-/** `WHERE <column> = ?` when a thread is given, nothing otherwise. */
-const onThread = (column: string, threadId: string | undefined) =>
+/**
+ * `visible_threads(id)` among the threads `seed` names, each by its own
+ * stored ancestry only: it shows when it has arrived and nothing on that walk
+ * is deleted, the answer the whole-record read gives it. A one-thread read
+ * costs that thread's depth instead of every thread's.
+ */
+const visibleAmong = (seed: string) => `
+WITH RECURSIVE
+  seed(id) AS (${seed}),
+  chain(start, node) AS (
+    SELECT id, id FROM seed
+    UNION
+    SELECT chain.start, t.parent_id FROM chain JOIN ${TABLES.threads} t ON t.id = chain.node
+     WHERE t.parent_id IS NOT NULL
+  ),
+  visible_threads(id) AS (
+    SELECT s.id FROM seed s JOIN ${TABLES.threads} t ON t.id = s.id
+     WHERE NOT EXISTS (
+       SELECT 1 FROM chain c JOIN ${TABLES.threads} a ON a.id = c.node
+        WHERE c.start = s.id AND a.deleted_at IS NOT NULL)
+  )`;
+
+/**
+ * What decides visibility for a read: the whole record's, or, for one thread,
+ * that thread's alone, with the filter on the read's own column.
+ */
+const scopeOf = (column: string, threadId: string | undefined) =>
 	threadId === undefined
-		? { where: "", params: [] as string[] }
-		: { where: `AND ${column} = ?`, params: [threadId] };
+		? { visible: VISIBLE_THREADS_SQL, where: "", params: [] as string[] }
+		: {
+				visible: visibleAmong("SELECT ?"),
+				where: `AND ${column} = ?`,
+				params: [threadId, threadId],
+			};
 
 export namespace RecordRead {
 	/** Visible threads, `parent_id` as it is read: null at the root or where a cycle breaks. */
@@ -107,11 +136,11 @@ export namespace RecordRead {
 
 	/** Entries on visible threads, in time order. */
 	export const entries = (db: Db, threadId?: string): Result<EntryRow[]> => {
-		const { where, params } = onThread("e.thread_id", threadId);
+		const { visible, where, params } = scopeOf("e.thread_id", threadId);
 		return rowsOf(EntryRowSchema, () =>
 			db
 				.query<unknown, string[]>(
-					`${VISIBLE_THREADS_SQL}
+					`${visible}
 					 SELECT e.* FROM ${TABLES.entries} e
 					   JOIN visible_threads v ON v.id = e.thread_id
 					  WHERE 1 = 1 ${where}
@@ -125,11 +154,11 @@ export namespace RecordRead {
 		db: Db,
 		threadId?: string,
 	): Result<AttributeRow[]> => {
-		const { where, params } = onThread("a.thread_id", threadId);
+		const { visible, where, params } = scopeOf("a.thread_id", threadId);
 		return rowsOf(AttributeRowSchema, () =>
 			db
 				.query<unknown, string[]>(
-					`${VISIBLE_THREADS_SQL}
+					`${visible}
 					 SELECT a.* FROM ${TABLES.attributes} a
 					   JOIN visible_threads v ON v.id = a.thread_id
 					  WHERE a.removed_at IS NULL ${where}
@@ -141,13 +170,17 @@ export namespace RecordRead {
 
 	/** Links whose two ends both show, from or to `threadId` when given. */
 	export const links = (db: Db, threadId?: string): Result<LinkRow[]> => {
+		const ends = `SELECT source_id FROM ${TABLES.links} WHERE source_id = ? OR target_id = ?
+		   UNION SELECT target_id FROM ${TABLES.links} WHERE source_id = ? OR target_id = ?`;
+		const visible =
+			threadId === undefined ? VISIBLE_THREADS_SQL : visibleAmong(ends);
 		const filter =
 			threadId === undefined ? "" : "AND (l.source_id = ? OR l.target_id = ?)";
-		const params = threadId === undefined ? [] : [threadId, threadId];
+		const params = threadId === undefined ? [] : Array(6).fill(threadId);
 		return rowsOf(LinkRowSchema, () =>
 			db
 				.query<unknown, string[]>(
-					`${VISIBLE_THREADS_SQL}
+					`${visible}
 					 SELECT l.* FROM ${TABLES.links} l
 					   JOIN visible_threads s ON s.id = l.source_id
 					   JOIN visible_threads t ON t.id = l.target_id
@@ -159,11 +192,11 @@ export namespace RecordRead {
 	};
 
 	export const refs = (db: Db, threadId?: string): Result<RefRow[]> => {
-		const { where, params } = onThread("r.thread_id", threadId);
+		const { visible, where, params } = scopeOf("r.thread_id", threadId);
 		return rowsOf(RefRowSchema, () =>
 			db
 				.query<unknown, string[]>(
-					`${VISIBLE_THREADS_SQL}
+					`${visible}
 					 SELECT r.* FROM ${TABLES.refs} r
 					   JOIN visible_threads v ON v.id = r.thread_id
 					  WHERE r.removed_at IS NULL ${where}
@@ -185,8 +218,8 @@ export namespace RecordRead {
 	): Result<EntryRow | undefined> => {
 		const held = rowsOf(EntryRowSchema, () =>
 			db
-				.query<unknown, [string]>(
-					`${VISIBLE_THREADS_SQL}
+				.query<unknown, [string, string]>(
+					`${visibleAmong("SELECT ?")}
 					 SELECT c.* FROM ${TABLES.entries} c
 					   JOIN visible_threads v ON v.id = c.thread_id
 					  WHERE c.thread_id = ? AND c.kind = 'claim'
@@ -199,7 +232,7 @@ export namespace RecordRead {
 					  ORDER BY c.created_at, c.id
 					  LIMIT 1`,
 				)
-				.all(threadId),
+				.all(threadId, threadId),
 		);
 		return held.ok ? ok(held.value[0]) : held;
 	};

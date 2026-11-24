@@ -208,6 +208,25 @@ describe("RecordRead — deletes, cycles and cost", () => {
 			"child",
 		]);
 	});
+
+	it("reads one thread without walking every other thread's ancestry", async () => {
+		const elapsed = await read((db) => {
+			db.transaction(() => {
+				for (let i = 0; i < 1500; i++)
+					thread(
+						db,
+						`t${String(i).padStart(4, "0")}`,
+						i === 0 ? null : `t${String(i - 1).padStart(4, "0")}`,
+					);
+			})();
+			const start = performance.now();
+			const held = RecordRead.claimHolder(db, "t0000");
+			if (!held.ok) throw held.error;
+			return performance.now() - start;
+		});
+		// A 1,500-deep chain: about 1.5 s when every thread's ancestry is walked.
+		expect(elapsed).toBeLessThan(250);
+	});
 });
 
 describe("migration 13", () => {
