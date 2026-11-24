@@ -42,6 +42,16 @@ export const ULID_LENGTH = 26;
  */
 export const SHORT_ID_PATTERN = /^[A-Z0-9]{2,4}-\d+$/i;
 
+/** Only labels the local counter could mint reserve another thread number. */
+export const mintedLabel = (label: unknown) => {
+	if (typeof label !== "string" || !/^J[A-Z0-9]{3}-\d+$/.test(label))
+		return undefined;
+	const number = Number(label.slice(5));
+	return Number.isSafeInteger(number)
+		? { prefix: label.slice(0, 4), number }
+		: undefined;
+};
+
 /**
  * What a ULID prefix can hold. Resolvers match a prefix with `LIKE`, where `%`
  * and `_` are wildcards, so an input outside this names no row and never

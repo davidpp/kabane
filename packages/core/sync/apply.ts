@@ -72,7 +72,7 @@ import {
 	SyncOpSchema,
 	type SyncTable,
 } from "../schemas";
-import { TABLES } from "../storage/helpers";
+import { mintedLabel, TABLES } from "../storage/helpers";
 import { Oplog } from "../storage/oplog";
 import { ScopeScheme } from "../storage/scope-scheme";
 import {
@@ -487,9 +487,6 @@ const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	return labels;
 };
 
-/** A label as `generateShortId` mints one: `J`, three letters or digits, a number. */
-const MINTED_LABEL = /^J[A-Z0-9]{3}-\d+$/;
-
 /** Tombstone-free storage: an absent row is otherwise a never-seen row. */
 const deleteKey = (tbl: string, rowId: string): string => `${tbl} ${rowId}`;
 
@@ -692,7 +689,7 @@ const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
 	// A thread's label feeds no rename, but its counter is raised past it so
 	// this device never mints a label a pulled thread holds.
 	const label = table === "threads" ? decision.row.short_id : undefined;
-	if (typeof label === "string" && MINTED_LABEL.test(label))
+	if (typeof label === "string" && mintedLabel(label))
 		pass.threadLabels.push(label);
 };
 

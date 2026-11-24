@@ -54,6 +54,25 @@ afterEach(() => {
 	rmSync(root, { recursive: true, force: true });
 });
 
+it("restores an unminted thread label verbatim", async () => {
+	const task = value(
+		await Planner.addTask(source, { title: "Odd label", scopeUri }),
+	);
+	const label = "ODD-99999999999999999";
+	const snapshot = value(
+		await withDb(source, (db) => {
+			db.run("UPDATE threads SET short_id=? WHERE id=?", [label, task.id]);
+			return completeSnapshot(db);
+		}),
+	);
+	value(
+		await withDb(rebuilt, (db) =>
+			value(Portable.restore(db, Portable.encode(snapshot))),
+		),
+	);
+	expect(value(await Planner.getTask(rebuilt, task.id))?.shortId).toBe(label);
+});
+
 it("rebuilds every declared table, including private module rows, and detects a same-count change", async () => {
 	const project = value(
 		await Planner.addProject(source, { title: "Project", scopeUri }),
