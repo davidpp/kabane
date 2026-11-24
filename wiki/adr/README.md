@@ -43,7 +43,7 @@ reference), which puts the ADR in the implementer's brief.
 - [0005](0005-releases-ship-on-github-not-npm.md): Releases ship on GitHub only, from one
   dispatch; nothing is published to npm. Accepted.
 - [0006](0006-the-record-is-threads-entries-attributes-links-and-refs.md): Core's record is
-  five tables (thread, entry, attribute, link, ref) with open kinds and keys, so a new need adds
+  four tables (thread, entry, attribute, ref) with open kinds and keys, so a new need adds
   data and leaves core's schema alone. Proposed, not decided.
 - [0007](0007-agents-wait-on-conditions-and-the-tick-runs-reactions.md): An agent waits on a
   condition over the record, and the tick runs a command when one becomes true. Proposed, not

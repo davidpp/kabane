@@ -1,7 +1,7 @@
-# The record as five tables: columns, reasons, and the four uses walked through
+# The record as four tables: columns, reasons, and the four uses walked through
 
-Design record for ADR 0006 (proposed). The five tables and their sync rules are built beside
-today's tables (JCAB-658, "How the five tables converge" below); nothing reads or migrates into
+Design record for ADR 0006 (proposed). The four tables and their sync rules are built beside
+today's tables (JCAB-658, "How the four tables converge" below); nothing reads or migrates into
 them yet, and the rest is not built. Counts come from David's tracker
 database, read on 2026-11-23. They are used for cost and risk only. Low use of a field so far is
 not treated as a reason to drop it, because David plans to move work from other systems into
@@ -72,15 +72,19 @@ an agent. The record holds who wrote a row. It does not hold whether anyone aske
 
 Kabane does not enforce who may call something a request. It records who asked.
 
-## The five tables
+## The four tables
 
-| Table | Fixed columns | Open part | How it resolves across devices |
-|---|---|---|---|
-| Thread | id, short id, sharing domain, kind, title, body, scope, parent, state, assignee, created by, timestamps, deleted at | `kind` | last writer wins, per group of fields (below); a delete is final |
-| Entry | id, thread, kind, kind version, author, body, time, `to`, `re`, `data` | `kind`, `data` | append-only |
-| Attribute | id (derived from thread and key), thread, key, key version, value, updated by, updated at, removed at | `key` | last writer wins per thread and key |
-| Link | id (derived from source, target and type), source thread, target thread, type, removed at | `type` | last writer wins per source, target and type; an unlink sets `removed at` |
-| Ref | id (derived from thread and URI, or thread and provider id), thread, URI, kind, kind version, title, `data`, removed at | `kind`, URI scheme | last writer wins per thread and URI, or per thread and provider id for an `upstream` ref |
+| Table | Identity | Fixed columns | Open part | How it resolves across devices |
+|---|---|---|---|---|
+| Thread | id (a ULID) | id, short id, sharing domain, kind, title, body, scope, parent, state, assignee, created by, timestamps, deleted at | `kind` | last writer wins, per group of fields (below); a delete is final |
+| Entry | id (a ULID) | id, thread, kind, kind version, author, body, time, `to`, `re`, `data` | `kind`, `data` | append-only |
+| Attribute | thread and key | thread, key, key version, value, updated by, updated at, removed at | `key` | last writer wins per thread and key |
+| Ref | thread, URI and kind | thread, URI, kind, kind version, title, `data`, removed at | `kind`, URI scheme | last writer wins per thread, URI and kind; a removal sets `removed at` |
+
+A row's identity is its natural key, stored as it is: there is no id to derive. Two devices that
+set the same attribute or make the same ref write one row. A link between two threads is a ref:
+its URI is `kabane://thread/<id>` and its kind is the link type. Key versions on attributes are
+not built yet.
 
 Every row also carries the three replication columns that exist today (`updated_by`, `version`,
 `visibility`), and the id of the device that wrote it.
@@ -136,8 +140,8 @@ when its author withdraws it. A follow-up by the author does not count.
 An entry written for an outside event takes an id built from the sharing domain, the provider,
 the account and the event's own id. A script that polls GitHub from two machines then writes the
 same row twice, and the second write is skipped. Two importers that disagree on the content are
-reported. Links, attributes and refs already take derived ids (`RecordId` in
-`packages/core/schemas/record.ts`); an entry's, from an outside event, is still to come.
+reported. Such an id is not built yet (JCAB-661 holds threads created from a key); attributes and
+refs need none, because their key is their identity.
 
 `kind version` records the version of the kind's declaration the entry was written under.
 
@@ -158,23 +162,28 @@ arriving from Slack would need labels on entries. A fact about an entry that cha
 was triaged, it was handled) is a reply to it, which stays append-only and says who did it. If
 that proves too weak, attributes on entries are a new table, which is an addition.
 
-### Link and Ref
-
-Links keep their types except `parent` and `child`. Unlinking sets `removed at` instead of
-deleting the row, so a pair unlinked on one device and linked again on another resolves by the
-later write.
+### Ref, and links as refs
 
 A ref is a URI a thread keeps pointing at, with a kind: an input (`spec`, `research`, `ADR`), a
-maintained output (`artifact`, ADR 0003), or the thread's counterpart in another tracker
-(`upstream`, with the provider's own id in `data`, because a URL can change). Context refs and
-upstream links fold into it.
+maintained output (`artifact`, ADR 0003), the thread's counterpart in another tracker
+(`upstream`), or another thread. Context refs, upstream links and links all fold into it.
+
+- **A link is a ref to a thread.** Its URI is `kabane://thread/<id>` and its kind is the link
+  type: `blocks`, `related`, `duplicate`, `follows`. `parent` and `child` are not link types;
+  nesting is the thread's `parent` column. Refs are indexed by URI, so "what points at this
+  thread", such as what blocks it, is a lookup. A link shows while both threads show.
+- **An upstream ref's URI is the provider's stable id** for the item, in the provider's own form,
+  and its URL, which can change, lives in `data`. Two devices that link the same outside item
+  with different URLs write one row, whose `data` the later write decides.
+- **Removing** sets `removed at` instead of deleting the row, so a ref removed on one device and
+  made again on another resolves by the later write.
 
 The work log stays a record of occurrences. Each row becomes an entry of kind `log` whose `data`
 lists the URIs (`commit:`, `pr:`, `branch:`, `session:`), so the same commit can be mentioned
 twice. Core keeps a local index of the URIs in entries, rebuilt from them and never replicated,
 so a view can narrow to a branch and an outside event can find its thread.
 
-## How the five tables converge
+## How the four tables converge
 
 Built in JCAB-658. Today's sync does not converge (`wiki/storage-and-sync-shapes.md`), and
 JCAB-654's attempt to fix it by holding rows failed review. Every finding there came from the
@@ -182,24 +191,24 @@ shape of today's rows, so the record converges by its shape: nothing is held, re
 snapshotted. `packages/core/sync/resolve.ts` ("The 2.0 record") holds the rules, and
 `packages/core/storage/record.ts` the reads.
 
-1. **Ids derived from keys.** A link's id is a function of source, target and type; an
-   attribute's of thread and key; a ref's of thread and URI, or of thread, provider and external
-   id for an `upstream` ref, with the URL stored beside it. Two devices that create the same one
-   make one row. The id is `<tag>_` and the first 128 bits of the SHA-256 of the JSON array
-   `[tag, ...key]` (`link`, `attr`, `ref`): fixed length, so it is never 26 characters, never a
-   label, and never a prefix of another id. The JSON array keeps two keys apart whatever a URI
-   holds.
-2. **Tombstones, never hard deletes.** A thread has `deleted_at`, and a delete is final. A link,
-   ref or attribute has `removed_at`, written like any other change to the row, so a removed pair
-   can be added again. Entries are never removed. Apply skips an op that hard-deletes a record
+1. **The natural key is the identity.** An attribute's primary key is its thread and key; a
+   ref's, its thread, URI and kind; a thread's and an entry's, their ULID. Two devices that write
+   the same key write the same row. The sync log names a row with one text, `row_id`: a
+   one-column key is the value itself, and a composite key is the JSON array of its parts in key
+   order, in `JSON.stringify` form (`RecordKey` in `packages/core/schemas/record.ts`). That is an
+   encoding, not a hash: no part's characters can make two keys look alike, and apply skips an
+   op whose `row_id` does not name its own row's key in that one form.
+2. **Tombstones, never hard deletes.** A thread has `deleted_at`, and a delete is final. A ref or
+   attribute has `removed_at`, written like any other change to the row, so a removed one can be
+   added again. Entries are never removed. Apply skips an op that hard-deletes a record
    row.
 3. **No foreign key or UNIQUE check at apply.** The tables declare none. Apply writes the winning
    row whatever has or has not arrived, and a read decides what shows: a row whose thread is
    deleted or has not arrived is hidden; a thread whose parent has not arrived shows at the root;
    a thread under a deleted thread is hidden, unless a later write moves it out.
 4. **Registers.** Each row is one or more registers, and a register keeps whichever of two values
-   is greater by its clock, then its counter, then its writing device, then its content. A link,
-   attribute, ref or entry is one register. A thread is three: the claim (state, assignee), the
+   is greater by its clock, then its counter, then its writing device, then its content. An
+   attribute, ref or entry is one register, its key aside. A thread is three: the claim (state, assignee), the
    rest of its fields, and the delete, whose clock is `deleted_at`. A live thread's `deleted_at`
    is empty and loses to any delete, so a write made after a delete is kept in the row but never
    shown.
@@ -214,8 +223,7 @@ snapshotted. `packages/core/sync/resolve.ts` ("The 2.0 record") holds the rules,
 Apply checks the boundary before it compares or stores, and skips and counts what fails: a string
 holding ill-formed Unicode, which SQLite would store as a replacement character, so the value that
 won a tie would not be the one stored; a clock not in `toISOString` form (UTC, milliseconds, `Z`),
-since clocks compare as strings; a keyed row whose id, in the envelope or the row, is not the one
-its key derives (`key-id-mismatch`). Only an untagged op on a record table reaches these rules: a
+since clocks compare as strings; a `row_id` that does not name the row's key. Only an untagged op on a record table reaches these rules: a
 module-tagged one parks like any module op. A delete hides what sits under it along the stored
 parent edges before any cycle is broken, so a cycle holding a deleted thread is hidden whole.
 
@@ -227,7 +235,7 @@ Nothing writes these tables outside tests yet.
 The harness (`packages/core/sync/record-convergence.test.ts`) reads each device's ops in every
 interleaving that keeps a device's own order, as one pass and as one op per pass, delivers every
 op a second time, and requires the same stored and visible rows each time. A seeded workload runs
-three devices through the five tables, with clocks repeating so that exact ties are common.
+three devices through the four tables, with clocks repeating so that exact ties are common.
 
 ## Kinds and keys are declared as data
 
@@ -347,7 +355,7 @@ tool round trip.
   retry. Board offers both ways too: `tasks create` and `tasks needs` one at a time, or
   `tasks create --file plan.json --idempotency-key <k>`.
 
-This adds no table. It is a second use of derived ids, after outside events.
+This adds no table. It is a second use of ids taken from a key, after outside events.
 
 ## Where a sharing domain syncs is chosen per domain, behind one interface
 
@@ -534,7 +542,7 @@ Codex's three questions for David are added below.
 
 ## Not verified
 
-- Whether the five tables' rules converge beyond the tests in "How the five tables converge":
+- Whether the four tables' rules converge beyond the tests in "How the four tables converge":
   every interleaving of the named cases and a seeded three-device workload, not a proof. Today's
   tables still diverge (`wiki/storage-and-sync-shapes.md`) until they are migrated into these.
 - Two threads created offline in one scope can carry the same `short_id`: the table has no

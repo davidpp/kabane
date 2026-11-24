@@ -1,6 +1,6 @@
-# 0006: Core's record is five tables with open kinds and keys, so a new need adds data and leaves core's schema alone
+# 0006: Core's record is four tables with open kinds and keys, so a new need adds data and leaves core's schema alone
 
-- Status: proposed (draft for David's review). The five tables and their sync rules are built
+- Status: proposed (draft for David's review). The four tables and their sync rules are built
   beside today's tables (JCAB-658); nothing reads or migrates into them yet.
 - Date: 2026-11-23
 - Issue: none filed yet
@@ -40,7 +40,7 @@ Zed's Delta makes the conversation its unit too; the pages read describe no task
 
 ## Decision
 
-Core's record is five tables. `wiki/record-primitives.md` holds the columns, the reason for
+Core's record is four tables. `wiki/record-primitives.md` holds the columns, the reason for
 each, and the four uses walked through.
 
 1. **Thread.** The container: identity, sharing domain, kind, title, body, scope, parent, state,
@@ -52,9 +52,14 @@ each, and the four uses walked through.
    fields its kind defines).
 3. **Attribute.** One row per thread and key. It replaces tags, priority, deadline and defer, and
    resolves per key across devices.
-4. **Link.** A typed relation between two threads.
-5. **Ref.** A URI a thread keeps pointing at. It replaces context refs and upstream links. The
-   work log becomes entries.
+4. **Ref.** A URI a thread keeps pointing at, with a kind. It replaces context refs, upstream
+   links and links. A link between threads is a ref to `kabane://thread/<id>` whose kind is the
+   link type; `parent` stays the thread's column. An upstream ref's URI is the provider's stable
+   id, with the URL in `data`. The work log becomes entries.
+
+A row's identity is its natural key, stored as it is: a thread's and an entry's ULID, an
+attribute's thread and key, a ref's thread, URI and kind (David, 2026-11-24). Nothing is hashed
+or derived.
 
 A kind or a key is declared as data: a name, a title, and a JSON Schema for its fields. The
 schema is checked where a tool writes, never in storage or sync, and a row no declaration covers
@@ -65,13 +70,13 @@ Scope becomes a path, and a trailing slash names the subtree, as Board's channel
 Kabane holds no sync mechanism for outside systems. It defines how an outside event is written
 on the record, and whatever the person already runs does the fetching.
 
-The five tables converge across devices by their shape, in any delivery order
-(`wiki/record-primitives.md`, "How the five tables converge"):
+The four tables converge across devices by their shape, in any delivery order
+(`wiki/record-primitives.md`, "How the four tables converge"):
 
-- A link, an attribute and a ref take an id derived from their key, so two devices that create
-  the same one make one row.
-- Nothing is hard-deleted. A thread has `deleted_at`, and a delete is final. A link, ref or
-  attribute has `removed_at`, a write like any other, so a removed pair can be added again.
+- A row's key is its identity, so two devices that set the same attribute or make the same ref
+  write one row. The sync log names a composite key as the JSON array of its parts.
+- Nothing is hard-deleted. A thread has `deleted_at`, and a delete is final. A ref or
+  attribute has `removed_at`, a write like any other, so a removed one can be added again.
   Entries are never removed.
 - Apply checks no foreign key and no UNIQUE key. It writes the winning row whatever has arrived,
   and a read decides what shows.
@@ -80,7 +85,7 @@ The five tables converge across devices by their shape, in any delivery order
 - A parent cycle breaks at its lowest id when read. Who holds a claim is derived from `claim`
   and `release` entries when read.
 
-Core's schema changes once, in one migration. After that, a change to these five tables needs a
+Core's schema changes once, in one migration. After that, a change to these four tables needs a
 new ADR. New tables, kinds and keys are additions. The tables landed first, empty (migration 13,
 JCAB-658); the data moves into them in a later migration, and today's tables go then.
 

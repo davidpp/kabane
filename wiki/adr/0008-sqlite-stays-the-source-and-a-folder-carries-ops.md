@@ -34,9 +34,9 @@ with a SQLite cache, shipped resurrection and data-loss bugs in that layer, and 
 3. No sync target without a total order ships until sync converges without one. A delete is
    final: once a thread is deleted, nothing written to it afterwards shows, on any device
    (JCAB-573:4). Convergence comes from the shape of ADR 0006's record, not from changes to
-   today's apply: ids derived from keys, tombstones in place of deletes, no foreign key or UNIQUE
+   today's apply: the natural key as each row's identity, tombstones in place of deletes, no foreign key or UNIQUE
    checked at apply, visibility decided when a row is read, and a tie broken by the row's own
-   writing device (`wiki/record-primitives.md`, "How the five tables converge"). JCAB-654 tried
+   writing device (`wiki/record-primitives.md`, "How the four tables converge"). JCAB-654 tried
    the other way, holding today's rows until their parents arrived, and was stopped after two
    reviews found data loss and wedged rows in that machinery. `short_id` labels minted offline in
    one scope can still collide; that gap is known and accepted (JCAB-573:2).
@@ -50,7 +50,7 @@ with a SQLite cache, shipped resurrection and data-loss bugs in that layer, and 
   that contributes a transport is a contract addition (`wiki/record-primitives.md`, "Where a
   sharing domain syncs").
 - `CODING_PRINCIPLE.md:33`, "any two devices that applied the same ops hold the same rows", holds
-  for the record's five tables and is tested there:
+  for the record's four tables and is tested there:
   `packages/core/sync/record-convergence.test.ts` reads each device's ops in every interleaving,
   as one pass and one op per pass, delivers them twice, and runs a seeded three-device workload.
   It stays false for today's tables, which keep their rules until a later slice migrates them
