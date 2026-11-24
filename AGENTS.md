@@ -14,7 +14,7 @@ packages/
 ├── checklist/ # @kabane/checklist — data module: the steps of one issue (kabane_checklist, kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
 ├── outcome/   # @kabane/outcome — data module: decisions, findings, verifications and summaries on the issue timeline
 ├── handoff/   # @kabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
-├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, board, doctor, mcp (stdio)
+├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, export, import, board, doctor, mcp (stdio)
 ├── board/     # @kabane/board  — OpenTUI kanban and ACP copilot; consumes extension ports, no-op defaults
 └── worker/    # kabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
 extensions/
