@@ -96,7 +96,7 @@ asked" has three cases.
 | A session kabane did not start, now gone | Nothing can resume it. A reaction notifies the person, or starts a run on the thread. |
 
 For the second case to target the right run, an ask written by a run should name that run.
-Under ADR 0006 that is a field in the ask entry's `data`. Whether a reply must reach one
+Under ADR 0006 that is a field in the ask entry's `data`. Not built (JCAB-661): no session knows its run id yet, since jobs passes it only to the attention hook and the harness prompt, so `kabane_ask` has none to write. Whether a reply must reach one
 particular run, a lasting agent identity, or anyone acting for the asker is David's call. It is
 Codex's second question in `wiki/record-primitives.md`.
 
