@@ -85,7 +85,7 @@ it("migrates prefixed tables, assigns stable ordinals and captures every write",
 	);
 	expect(ops).toHaveLength(4);
 	expect(
-		ops.every((op) => op.module === "questions" && op.module_schema === 2),
+		ops.every((op) => op.module === "questions" && op.module_schema === 3),
 	).toBe(true);
 });
 
@@ -191,7 +191,9 @@ it("inherits private visibility and never captures private questions", async () 
 	const task = await issue();
 	unwrap(
 		await withDb(base, (db) =>
-			db.run("UPDATE tasks SET visibility = 'private' WHERE id = ?", [task.id]),
+			db.run("UPDATE threads SET visibility = 'private' WHERE id = ?", [
+				task.id,
+			]),
 		),
 	);
 	const rows = await ask(task.id);
@@ -348,7 +350,7 @@ it("rolls back the answer and oplog if the task move fails, and notifies only af
 	unwrap(
 		await withDb(base, (db) =>
 			db.run(
-				"CREATE TRIGGER refuse_resume BEFORE UPDATE OF state ON tasks WHEN NEW.state = 'next' BEGIN SELECT RAISE(ABORT, 'resume refused'); END",
+				"CREATE TRIGGER refuse_resume BEFORE UPDATE OF state ON threads WHEN NEW.state = 'next' BEGIN SELECT RAISE(ABORT, 'resume refused'); END",
 			),
 		),
 	);

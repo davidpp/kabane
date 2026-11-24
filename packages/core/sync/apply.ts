@@ -92,14 +92,10 @@ import type { PullPage, RelayOp } from "./transport";
  * two ULIDs for one logical row, and these columns are how the resolver
  * recognizes that.
  */
-const NATURAL_KEY: Partial<Record<SyncTable, readonly string[]>> = {
-	task_links: ["source_id", "target_id", "type"],
-	task_context_refs: ["task_id", "uri"],
-	upstream_links: ["task_id", "provider", "external_id"],
-};
+const NATURAL_KEY: Partial<Record<SyncTable, readonly string[]>> = {};
 
 /** Tables carrying a human-facing `short_id`, i.e. the ones a rename can hit. */
-const SHORT_ID_TABLES: readonly SyncTable[] = ["tasks", "projects"];
+const SHORT_ID_TABLES: readonly SyncTable[] = ["projects"];
 
 /**
  * What SQLite does to this row when the parent goes away. Apply reproduces it
@@ -113,21 +109,7 @@ type ParentRef = {
 };
 
 const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
-	tasks: [
-		{ column: "parent_task_id", table: "tasks", onDelete: "cascade" },
-		{ column: "project_id", table: "projects", onDelete: "set-null" },
-	],
 	projects: [],
-	task_links: [
-		{ column: "source_id", table: "tasks", onDelete: "cascade" },
-		{ column: "target_id", table: "tasks", onDelete: "cascade" },
-	],
-	task_comments: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
-	task_work_log: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
-	task_context_refs: [
-		{ column: "task_id", table: "tasks", onDelete: "cascade" },
-	],
-	upstream_links: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
 };
 
 // ============================================================

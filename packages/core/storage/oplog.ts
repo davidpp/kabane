@@ -19,7 +19,7 @@
  *
  * VISIBILITY IS THE FILTER. A row whose `visibility` is `'private'` never
  * becomes an op, whatever table it lives in. The set of tables that replicate
- * (`SYNC_TABLES`, plus each registered data module's `syncTables`) is still
+ * (`Replicated.CORE_TABLES`, plus each registered data module's `syncTables`) is still
  * declared, because the resolver needs a family per table, but the per-row
  * decision is the column. Capturing any other table is refused, except a
  * delete in a table an unregistered module's recorded declaration names
@@ -27,8 +27,8 @@
  * or not the module's code is loaded.
  *
  * DELETES ARE CAPTURED FROM THE ROW THAT WAS. A delete carries no payload, but
- * the visibility check and the cascade walk both need the row before it is
- * gone, so callers snapshot first (`Oplog.snapshot`, `Oplog.cascadeOf`) and
+ * the visibility check needs the row before it is
+ * gone, so callers snapshot first (`Oplog.snapshot`) and
  * capture after.
  */
 
@@ -36,13 +36,13 @@ import { z } from "zod";
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { Modules } from "../module";
+import { Replicated } from "../replicated";
 import { err, ok, type Result } from "../result";
 import {
 	isRecordTable,
 	type QuarantinedOp,
 	RECORD_KEYS,
 	RecordKey,
-	SYNC_TABLES,
 	type SyncOp,
 	type SyncOpKind,
 	SyncOpSchema,
@@ -60,9 +60,9 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/** A core replicated table: today's, or one of the 2.0 record's. */
+/** A core replicated table: the record's, or `projects`. */
 const isCoreTable = (tbl: string): boolean =>
-	(SYNC_TABLES as readonly string[]).includes(tbl) || isRecordTable(tbl);
+	Replicated.CORE_TABLES.includes(tbl);
 
 // ============================================================
 // Types
@@ -96,7 +96,7 @@ type CaptureInput = {
 	row: Row;
 };
 
-/** Rows about to go, ordered so children precede their parent. */
+/** Rows about to go. */
 type Cascade = { tbl: string; row: Row }[];
 
 type OplogRow = {
@@ -216,71 +216,6 @@ const rowWhere = (
 		sql: RECORD_KEYS[tbl].map((column) => `"${column}" = ?`).join(" AND "),
 		params: parts,
 	};
-};
-
-const selectRows = (
-	db: Db,
-	tbl: string,
-	where: string,
-	params: string[],
-): Row[] =>
-	db.query<Row, string[]>(`SELECT * FROM ${tbl} WHERE ${where}`).all(...params);
-
-/**
- * The module tables a task delete cascades into: every registered module's
- * table declared `childOfTasks`, then those the recorded declarations of
- * unregistered modules name (`Modules.unregistered`), so a disabled or broken
- * module's rows still have their deletes captured.
- */
-const moduleChildTables = (db: Db): string[] => [
-	...Modules.tables()
-		.filter(({ spec }) => spec.childOfTasks)
-		.map(({ spec }) => spec.table),
-	...Modules.unregistered(db)
-		.filter((recorded) => recorded.childOfTasks)
-		.map((recorded) => recorded.table),
-];
-
-/**
- * Everything the FK cascade will remove when `taskId` goes: the same walk for
- * every subtask first (deepest first), then the task's own rows in the four
- * child tables and in every module table in `moduleTables`, then the task
- * itself. Subtasks nest one level in practice; the walk is recursive so a
- * deeper tree is still emitted FK-safely.
- */
-const cascadeOfTask = (
-	db: Db,
-	taskId: string,
-	moduleTables: readonly string[],
-): Cascade => {
-	const out: Cascade = [];
-	for (const subtask of selectRows(db, TABLES.tasks, "parent_task_id = ?", [
-		taskId,
-	])) {
-		const id = asString(subtask.id);
-		if (id !== undefined) out.push(...cascadeOfTask(db, id, moduleTables));
-	}
-
-	const children: [string, string, string[]][] = [
-		[TABLES.comments, "task_id = ?", [taskId]],
-		[TABLES.work_log, "task_id = ?", [taskId]],
-		[TABLES.context_refs, "task_id = ?", [taskId]],
-		[TABLES.task_links, "source_id = ? OR target_id = ?", [taskId, taskId]],
-		...moduleTables.map((table): [string, string, string[]] => [
-			table,
-			"task_id = ?",
-			[taskId],
-		]),
-	];
-	for (const [tbl, where, params] of children) {
-		for (const row of selectRows(db, tbl, where, params)) {
-			out.push({ tbl, row });
-		}
-	}
-
-	const self = selectRows(db, TABLES.tasks, "id = ?", [taskId])[0];
-	if (self !== undefined) out.push({ tbl: TABLES.tasks, row: self });
-	return out;
 };
 
 // ============================================================
@@ -472,13 +407,6 @@ export namespace Oplog {
 					.get(...where.params) ?? undefined,
 		);
 	};
-
-	/**
-	 * Every row the FK cascade will remove when task `taskId` is deleted,
-	 * children first and the task itself last. Read BEFORE the delete.
-	 */
-	export const cascadeOf = (db: Db, taskId: string): Result<Cascade> =>
-		trySync(() => cascadeOfTask(db, taskId, moduleChildTables(db)));
 
 	/**
 	 * Create the singleton state row, which is what arms capture.

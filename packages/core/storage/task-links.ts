@@ -1,13 +1,18 @@
 /**
  * Planner Storage — Task Links
+ *
+ * A link is a ref from its source thread to `kabane://thread/<target>`, the
+ * link type as its kind (migration 14). Its id is the ref's row id
+ * (`RecordKey`). `parent` and `child` are no link: they set the child's parent.
  */
 
 import { type Result } from "../result";
-import { Runtime, withDb } from "../runtime";
+import { withDb } from "../runtime";
 
-import type { TaskLink, TaskLinkDraft } from "../schemas";
-import { generateId, rowToLink, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import { RecordKey, type TaskLink, type TaskLinkDraft } from "../schemas";
+import { rowToLink } from "./helpers";
+import { RecordRead } from "./record";
+import { RecordWrite } from "./record-write";
 
 export namespace Planner {
 	export const addLink = async (
@@ -16,26 +21,28 @@ export namespace Planner {
 	): Promise<Result<TaskLink>> => {
 		return withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const id = generateId();
-
-			db.run(
-				`INSERT INTO ${TABLES.task_links}
-           (id, source_id, target_id, type, note, updated_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				[
-					id,
-					draft.sourceId,
-					draft.targetId,
-					draft.type,
-					draft.note ?? null,
-					Runtime.actor(),
-					now,
-				],
-			);
-			Oplog.afterWrite(db, "task_links", "insert", id);
+			const uri = RecordKey.threadUri(draft.targetId);
+			if (draft.type === "parent" || draft.type === "child") {
+				const [child, parent] =
+					draft.type === "parent"
+						? [draft.targetId, draft.sourceId]
+						: [draft.sourceId, draft.targetId];
+				RecordWrite.updateText(db, child, { parent_id: parent });
+			} else {
+				RecordWrite.putRef(db, {
+					threadId: draft.sourceId,
+					uri,
+					kind: draft.type,
+					title: null,
+					data:
+						draft.note === undefined
+							? { created_at: now }
+							: { note: draft.note, created_at: now },
+				});
+			}
 
 			return {
-				id,
+				id: JSON.stringify([draft.sourceId, uri, draft.type]),
 				sourceId: draft.sourceId,
 				targetId: draft.targetId,
 				type: draft.type,
@@ -45,18 +52,15 @@ export namespace Planner {
 		});
 	};
 
+	/** The task's links either way: what it points at and what points at it. */
 	export const getLinksForTask = async (
 		basePath: string,
 		taskId: string,
 	): Promise<Result<TaskLink[]>> => {
 		return withDb(basePath, (db) => {
-			const rows = db
-				.query(
-					`SELECT * FROM ${TABLES.task_links} WHERE source_id = ? OR target_id = ?`,
-				)
-				.all(taskId, taskId) as Record<string, unknown>[];
-
-			return rows.map(rowToLink);
+			const rows = RecordRead.links(db, taskId);
+			if (!rows.ok) throw rows.error;
+			return rows.value.map(rowToLink);
 		});
 	};
 
@@ -65,12 +69,7 @@ export namespace Planner {
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
-			const row = Oplog.snapshot(db, "task_links", id);
-			if (!row.ok) throw row.error;
-			db.run(`DELETE FROM ${TABLES.task_links} WHERE id = ?`, [id]);
-			if (row.value !== undefined) {
-				Oplog.afterDelete(db, [{ tbl: "task_links", row: row.value }]);
-			}
+			RecordWrite.removeRef(db, id);
 		});
 	};
 }

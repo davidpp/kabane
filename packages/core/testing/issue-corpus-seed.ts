@@ -173,11 +173,12 @@ const seed = async (): Promise<Result<string[]>> => {
 	}
 	// Test-only timestamps, not source chronology. All ordering ties are deliberate.
 	const tied = await provider.withDb(home, (db) => {
-		db.run("UPDATE tasks SET created_at = ?, updated_at = ?", [
-			FIXTURE_TIME,
-			FIXTURE_TIME,
-		]);
-		db.run("UPDATE task_comments SET created_at = ?", [FIXTURE_TIME]);
+		db.run(
+			"UPDATE threads SET created_at = ?1, updated_at = ?1, state_updated_at = ?1",
+			[FIXTURE_TIME],
+		);
+		db.run("UPDATE attributes SET updated_at = ?", [FIXTURE_TIME]);
+		db.run("UPDATE entries SET created_at = ?", [FIXTURE_TIME]);
 	});
 	if (!tied.ok) return tied;
 	return ok(ids);

@@ -16,7 +16,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const backdateCreatedAt = async (taskId: string, daysAgo: number) => {
 	const iso = new Date(Date.now() - daysAgo * DAY_MS).toISOString();
 	await withDb(TEST_BASE, (db) => {
-		db.run(`UPDATE ${TABLES.tasks} SET created_at = ? WHERE id = ?`, [
+		db.run(`UPDATE ${TABLES.threads} SET created_at = ? WHERE id = ?`, [
 			iso,
 			taskId,
 		]);
@@ -87,10 +87,14 @@ describe("Planner — Stats (health digest)", () => {
 		// updated_at also drives staleness; backdate it too.
 		await withDb(TEST_BASE, (db) => {
 			const iso = new Date(Date.now() - 10 * DAY_MS).toISOString();
-			db.run(`UPDATE ${TABLES.tasks} SET updated_at = ? WHERE id = ?`, [
-				iso,
-				stale,
-			]);
+			db.run(
+				`UPDATE ${TABLES.attributes} SET updated_at = ?1 WHERE thread_id = ?2`,
+				[iso, stale],
+			);
+			db.run(
+				`UPDATE ${TABLES.threads} SET updated_at = ?1, state_updated_at = ?1 WHERE id = ?2`,
+				[iso, stale],
+			);
 		});
 
 		const result = await Planner.stats(TEST_BASE);

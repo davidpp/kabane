@@ -17,6 +17,7 @@ import { Backfill } from "../sync/backfill";
 import { LocalRelay } from "../sync/local-relay";
 import { Sync } from "../sync/namespace";
 import { configureTestRuntime, TEST_DB_NAME } from "../testing";
+import { Legacy } from "../testing/legacy-rows";
 import { TABLES } from "./helpers";
 import { Planner } from "./index";
 import { Migrations } from "./migrations";
@@ -80,13 +81,13 @@ const at = (minute: number) =>
  */
 const seedLegacy = async (base: string) => {
 	const issue = must(
-		await Planner.addTask(base, { title: "Tabs", kind: "issue" }),
+		await Legacy.addTask(base, { title: "Tabs", kind: "issue" }),
 	);
 	const other = must(
-		await Planner.addTask(base, { title: "Bar", kind: "issue" }),
+		await Legacy.addTask(base, { title: "Bar", kind: "issue" }),
 	);
 	must(
-		await Planner.addComment(base, {
+		await Legacy.addComment(base, {
 			taskId: issue.id,
 			author: "cabane://actor/agent/claude",
 			authorType: "ai",
@@ -94,7 +95,7 @@ const seedLegacy = async (base: string) => {
 		}),
 	);
 	must(
-		await Planner.addComment(base, {
+		await Legacy.addComment(base, {
 			taskId: issue.id,
 			author: "david",
 			authorType: "human",
@@ -102,7 +103,7 @@ const seedLegacy = async (base: string) => {
 		}),
 	);
 	const loggedRef = must(
-		await Planner.addWorkLog(base, {
+		await Legacy.addWorkLog(base, {
 			taskId: other.id,
 			refs: [{ uri: "session:01S3", label: "codex" }],
 			addedBy: "loop:run-0",
@@ -260,20 +261,12 @@ describe("Migration session-outcomes on a database with session rows", () => {
 		const base = await before("migrate");
 		const { issue, other, loggedRef } = await seedLegacy(base);
 
-		must(await Planner.init(base));
-
-		expect(await outcomesOf(base, issue.id)).toEqual(EXPECTED_ISSUE_OUTCOMES);
-		expect(await outcomesOf(base, other.id)).toEqual([
-			{
-				id: "01V1",
-				kind: "outcome.verification",
-				author: "codex",
-				authorType: "ai",
-				content: "gate green",
-				createdAt: at(11),
-			},
-		]);
-		const entries = (await rows(base, TABLES.comments)).filter(
+		// The migration and the actor rename after it, before migration 14 moves
+		// their rows into the record.
+		await withDb(base, (db) =>
+			must(Migrate.run(db, Migrations.LIST.slice(0, BEFORE + 2))),
+		);
+		const entries = (await rows(base, "task_comments")).filter(
 			(r) => r.kind !== "comment",
 		);
 		// Every column comes from the source rows: the migrating device's actor
@@ -288,6 +281,28 @@ describe("Migration session-outcomes on a database with session rows", () => {
 			expect(entry.version).toBe(1);
 			expect(entry.updated_at).toBeNull();
 		}
+		const migratedLog = (await rows(base, "task_work_log")).find(
+			(r) => r.id === "01S1",
+		);
+		expect(migratedLog).toMatchObject({
+			updated_by: "kabane://actor/agent/claude",
+			visibility: "shared",
+			version: 1,
+		});
+
+		must(await Planner.init(base));
+
+		expect(await outcomesOf(base, issue.id)).toEqual(EXPECTED_ISSUE_OUTCOMES);
+		expect(await outcomesOf(base, other.id)).toEqual([
+			{
+				id: "01V1",
+				kind: "outcome.verification",
+				author: "codex",
+				authorType: "ai",
+				content: "gate green",
+				createdAt: at(11),
+			},
+		]);
 
 		expect(must(await Planner.getWorkLogs(base, issue.id))).toEqual([
 			{
@@ -327,14 +342,6 @@ describe("Migration session-outcomes on a database with session rows", () => {
 			},
 			{ id: loggedRef.id, refs: loggedRef.refs },
 		]);
-		const migratedLog = (await rows(base, TABLES.work_log)).find(
-			(r) => r.id === "01S1",
-		);
-		expect(migratedLog).toMatchObject({
-			updated_by: "kabane://actor/agent/claude",
-			visibility: "shared",
-			version: 1,
-		});
 
 		const tables = await tableNames(base);
 		expect(tables).not.toContain("agent_sessions");
@@ -355,8 +362,7 @@ describe("Migration session-outcomes on a database with session rows", () => {
 		expect(otherBrief).not.toContain("Which store?");
 
 		const snapshot = async () => ({
-			comments: await rows(base, TABLES.comments),
-			workLog: await rows(base, TABLES.work_log),
+			entries: await rows(base, TABLES.entries),
 			oplog: await rows(base, TABLES.sync_oplog),
 		});
 		const first = await snapshot();
@@ -366,7 +372,7 @@ describe("Migration session-outcomes on a database with session rows", () => {
 
 	it("runs on a database with no session rows and only drops the tables", async () => {
 		const base = await before("empty");
-		const task = must(await Planner.addTask(base, { title: "quiet" }));
+		const task = must(await Legacy.addTask(base, { title: "quiet" }));
 		must(await Planner.init(base));
 		expect(must(await Planner.getEntries(base, task.id))).toEqual([]);
 		expect(must(await Planner.getWorkLogs(base, task.id))).toEqual([]);
@@ -390,13 +396,15 @@ describe("Migration session-outcomes through sync", () => {
 		await arm(alpha, "alpha");
 		const { issue } = await seedLegacy(alpha);
 		must(await Planner.init(alpha));
+		// Migration 14 drops this device's ops on the old tables: a backfill
+		// seeds the record's rows instead.
+		expect(await rows(alpha, TABLES.sync_oplog)).toEqual([]);
+		must(await Backfill.run(alpha));
 		const captured = (await rows(alpha, TABLES.sync_oplog)).map(
 			(op) => `${op.tbl}:${op.row_id}`,
 		);
-		for (const id of ["01D1", "01D2", "01F1", "01R1", "01V1"])
-			expect(captured).toContain(`task_comments:${id}`);
-		for (const id of ["01S1", "01S2"])
-			expect(captured).toContain(`task_work_log:${id}`);
+		for (const id of ["01D1", "01D2", "01F1", "01R1", "01V1", "01S1", "01S2"])
+			expect(captured).toContain(`entries:${id}`);
 		must(await Sync.push(alpha, LocalRelay.transportFor(relay, "alpha")));
 
 		const beta = await reader("beta");
@@ -425,6 +433,8 @@ describe("Migration session-outcomes through sync", () => {
 		await Bun.sleep(5);
 		as("cabane://actor/human/beta");
 		must(await Planner.init(beta));
+		must(await Backfill.run(alpha));
+		must(await Backfill.run(beta));
 		const a = LocalRelay.transportFor(relay, "alpha");
 		const b = LocalRelay.transportFor(relay, "beta");
 		// Both directions: each device's ops reach the other.
@@ -434,14 +444,15 @@ describe("Migration session-outcomes through sync", () => {
 		must(await Sync.pull(beta, b));
 		must(await Sync.pull(alpha, a));
 
-		for (const table of [TABLES.comments, TABLES.work_log])
-			expect(await rows(alpha, table)).toEqual(await rows(beta, table));
+		expect(await rows(alpha, TABLES.entries)).toEqual(
+			await rows(beta, TABLES.entries),
+		);
 		for (const id of [issue.id, other.id])
 			expect(must(await Planner.assembleContext(alpha, id))).toBe(
 				must(await Planner.assembleContext(beta, id)),
 			);
 		expect(await outcomesOf(alpha, issue.id)).toEqual(EXPECTED_ISSUE_OUTCOMES);
-		const actors = (await rows(alpha, TABLES.comments))
+		const actors = (await rows(alpha, TABLES.entries))
 			.filter((r) => r.kind !== "comment")
 			.map((r) => r.updated_by);
 		expect(actors).not.toContain("kabane://actor/human/alpha");
@@ -499,7 +510,9 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 			"01S2",
 			"01S3",
 		]);
-		expect(await outcomesOf(base, other.id)).toEqual([]);
+		expect(
+			(await rows(base, "task_comments")).filter((r) => r.task_id === other.id),
+		).toEqual([]);
 	});
 
 	it("refuses an outcome whose id another comment holds, names the id, and keeps both", async () => {
@@ -507,7 +520,7 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 		const { issue } = await seedLegacy(base);
 		await withDb(base, (db) =>
 			db.run(
-				`INSERT INTO ${TABLES.comments} (id, task_id, kind, author, author_type, content, created_at)
+				`INSERT INTO task_comments (id, task_id, kind, author, author_type, content, created_at)
 				 VALUES ('01D2', ?, 'comment', 'david', 'human', 'unrelated comment', ?)`,
 				[issue.id, T0],
 			),
@@ -522,7 +535,7 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 			);
 		expect(await version(base)).toBe(BEFORE);
 		expect(await tableNames(base)).toContain("agent_activities");
-		const held = (await rows(base, TABLES.comments)).filter(
+		const held = (await rows(base, "task_comments")).filter(
 			(r) => r.id === "01D2" || r.kind !== "comment",
 		);
 		expect(held.map((r) => [r.id, r.content])).toEqual([
@@ -535,7 +548,7 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 		const { issue } = await seedLegacy(base);
 		await withDb(base, (db) =>
 			db.run(
-				`INSERT INTO ${TABLES.comments} (id, task_id, kind, author, author_type, content, created_at)
+				`INSERT INTO task_comments (id, task_id, kind, author, author_type, content, created_at)
 				 VALUES ('01D2', ?, 'outcome.decision', 'claude', 'ai', 'Going with SQLite', ?)`,
 				[issue.id, at(4)],
 			),
@@ -550,7 +563,7 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 		// Under 01S2's id, on another issue, naming something else.
 		await withDb(base, (db) =>
 			db.run(
-				`INSERT INTO ${TABLES.work_log} (id, task_id, refs, created_at)
+				`INSERT INTO task_work_log (id, task_id, refs, created_at)
 				 VALUES ('01S2', ?, '[{"uri":"commit:abc","addedAt":"${T0}"}]', ?)`,
 				[issue.id, T0],
 			),
@@ -565,7 +578,7 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 			);
 		expect(await tableNames(base)).toContain("agent_sessions");
 		expect(
-			(await rows(base, TABLES.comments)).filter((r) => r.kind !== "comment"),
+			(await rows(base, "task_comments")).filter((r) => r.kind !== "comment"),
 		).toEqual([]);
 	});
 
@@ -573,7 +586,7 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 		const SESSIONS = 3000;
 		const base = await before("many");
 		const task = must(
-			await Planner.addTask(base, { title: "busy", kind: "issue" }),
+			await Legacy.addTask(base, { title: "busy", kind: "issue" }),
 		);
 		await withDb(base, (db) => {
 			for (let i = 0; i < SESSIONS; i++)
@@ -590,15 +603,15 @@ describe("Migration session-outcomes loses nothing quietly", () => {
 			const counted: Db = {
 				...db,
 				query: (sql) => {
-					if (sql.includes(`FROM ${TABLES.work_log} WHERE task_id`)) reads++;
+					if (sql.includes(`FROM task_work_log WHERE task_id`)) reads++;
 					return db.query(sql);
 				},
 			};
 			SessionOutcomes.migrate(counted);
 		});
 		expect(reads).toBe(1);
-		expect(must(await Planner.getWorkLogs(base, task.id))).toHaveLength(
-			SESSIONS,
-		);
+		expect(
+			(await rows(base, "task_work_log")).filter((r) => r.task_id === task.id),
+		).toHaveLength(SESSIONS);
 	});
 });

@@ -3,7 +3,14 @@ import type { Db } from "../db/port";
 import { Replicated } from "../replicated";
 import { err, ok, type Result, toError } from "../result";
 import { fingerprintText } from "../storage/read-fingerprint";
-import { type Document, document, quote, readHeader } from "./format";
+import {
+	type Document,
+	document,
+	idOf,
+	keyColumns,
+	quote,
+	readHeader,
+} from "./format";
 
 export const ManifestSchema = z.record(
 	z.string(),
@@ -56,20 +63,21 @@ const readTable = (
 		.all()
 		.map((column) => column.name)
 		.sort();
+	const order = keyColumns(table).map(quote).join(",");
 	const literals = db
 		.query<Record<string, string>>(
-			`SELECT ${names.map(quotedCell).join(",")} FROM ${name} ORDER BY id`,
+			`SELECT ${names.map(quotedCell).join(",")} FROM ${name} ORDER BY ${order}`,
 		)
 		.all();
 	const docs: Document[] = [];
 	for (const [i, raw] of db
-		.query(`SELECT * FROM ${name} ORDER BY id`)
+		.query(`SELECT * FROM ${name} ORDER BY ${order}`)
 		.all()
 		.entries()) {
 		const row = Object.fromEntries(
 			names.map((key) => [key, storedCell(raw[key], literals[i]?.[key])]),
 		);
-		const parsed = document.safeParse({ table, id: raw.id, row });
+		const parsed = document.safeParse({ table, id: idOf(table, raw), row });
 		if (!parsed.success)
 			return err(new Error(`Unsupported portable row in ${table}`));
 		docs.push(parsed.data);

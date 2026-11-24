@@ -40,6 +40,15 @@ const oplog = () =>
 			.all(),
 	);
 
+const thread = (id: string, parent: string | null) => [
+	id,
+	`task ${id}`,
+	parent,
+	NOW,
+	NOW,
+	NOW,
+];
+
 const seedRows = () =>
 	withDb((db) => {
 		db.run(
@@ -47,27 +56,28 @@ const seedRows = () =>
        VALUES ('01PROJ', 'proj', 'active', ?, ?)`,
 			[NOW, NOW],
 		);
-		// The subtask's id sorts BEFORE its parent's, so plain `ORDER BY id` would
-		// emit the child first and the receiver's FK would reject it. Parent is
-		// inserted first only because foreign_keys = ON requires it locally.
+		// The record has no FK: a subtask may come before its parent.
 		for (const [id, parent] of [
 			["01TASKZ", null],
 			["01TASKA", "01TASKZ"],
-		] as const) {
+		] as const)
 			db.run(
-				`INSERT INTO ${TABLES.tasks}
-           (id, title, kind, state, priority, source, discovered_at,
-            parent_task_id, project_id, created_at, updated_at)
-         VALUES (?, ?, 'task', 'inbox', 'normal', 'human', ?, ?, '01PROJ', ?, ?)`,
-				[id, `task ${id}`, NOW, parent, NOW, NOW],
+				`INSERT INTO ${TABLES.threads}
+           (id, title, kind, state, parent_id, created_at, updated_at, state_updated_at)
+         VALUES (?, ?, 'task', 'inbox', ?, ?, ?, ?)`,
+				thread(id, parent),
 			);
-		}
 		db.run(
-			`INSERT INTO ${TABLES.comments} (id, task_id, author, author_type, content, created_at)
-       VALUES ('01CMT', '01TASKZ', 'me', 'human', 'hi', ?)`,
+			`INSERT INTO ${TABLES.attributes} (thread_id, key, value, updated_at)
+       VALUES ('01TASKZ', 'project_id', '01PROJ', ?)`,
 			[NOW],
 		);
-		// Excluded from SYNC_TABLES — must never be emitted.
+		db.run(
+			`INSERT INTO ${TABLES.entries} (id, thread_id, kind, author, body, created_at)
+       VALUES ('01CMT', '01TASKZ', 'comment', 'me', 'hi', ?)`,
+			[NOW],
+		);
+		// Not replicated — must never be emitted.
 		db.run(
 			`INSERT INTO ${TABLES.short_id_history} (old_short_id, task_id, superseded_at)
        VALUES ('OLD-1', '01TASKZ', ?)`,
@@ -95,7 +105,7 @@ describe("Backfill.run", () => {
 		expect(await oplog()).toEqual([]);
 	});
 
-	it("emits FK parents before their children, and task roots before subtasks", async () => {
+	it("emits the record's rows before the other tables", async () => {
 		await seedRows();
 		await withDb((db) => {
 			const armed = Oplog.initDevice(db, DEVICE);
@@ -112,25 +122,25 @@ describe("Backfill.run", () => {
 		// Every op is an insert; nothing else makes sense for a seed.
 		expect(ops.every((o) => o.op === "insert")).toBe(true);
 
-		// projects -> tasks -> task_comments, and the ROOT before its subtask even
-		// though the subtask's id sorts first.
-		expect(order.indexOf("projects:01PROJ")).toBeLessThan(
-			order.indexOf("tasks:01TASKZ"),
+		// The record first: a module's row names a thread.
+		expect(order.indexOf("threads:01TASKA")).toBeLessThan(
+			order.indexOf("projects:01PROJ"),
 		);
-		expect(order.indexOf("tasks:01TASKZ")).toBeLessThan(
-			order.indexOf("tasks:01TASKA"),
+		expect(order.indexOf("entries:01CMT")).toBeLessThan(
+			order.indexOf("projects:01PROJ"),
 		);
-		expect(order.indexOf("tasks:01TASKA")).toBeLessThan(
-			order.indexOf("task_comments:01CMT"),
-		);
+		expect(order).toContain('attributes:["01TASKZ","project_id"]');
 
 		// An excluded table never reaches the log.
 		expect(order.some((k) => k.startsWith("short_id_history:"))).toBe(false);
 
-		expect(result.value.byTable.projects).toBe(1);
-		expect(result.value.byTable.tasks).toBe(2);
-		expect(result.value.byTable.task_comments).toBe(1);
-		expect(result.value.written).toBe(4);
+		expect(result.value.byTable).toEqual({
+			threads: 2,
+			attributes: 1,
+			entries: 1,
+			projects: 1,
+		});
+		expect(result.value.written).toBe(5);
 		expect(result.value.alreadyPresent).toBe(0);
 	});
 
@@ -177,21 +187,20 @@ describe("Backfill.run", () => {
 
 		// A table with a clock column stamps it...
 		expect(clockOf("projects")).toBe(NOW);
-		expect(clockOf("tasks")).toBe(NOW);
+		expect(clockOf("threads")).toBe(NOW);
 
-		// ...but a NULL value in that column stays NULL rather than being
-		// fabricated. An unedited comment has no `updated_at` — that is the real
-		// shape, and inventing one would make it win an LWW compare it should lose.
-		expect(clockOf("task_comments")).toBeNull();
+		// ...but none is fabricated: an entry is written once and has no
+		// `updated_at`; the record resolves by its own registers.
+		expect(clockOf("entries")).toBeNull();
 	});
 
 	it("skips private rows and keys each op on the row's version", async () => {
 		await seedRows();
 		await withDb((db) => {
 			db.run(
-				`UPDATE ${TABLES.tasks} SET visibility = 'private' WHERE id = '01TASKA'`,
+				`UPDATE ${TABLES.threads} SET visibility = 'private' WHERE id = '01TASKA'`,
 			);
-			db.run(`UPDATE ${TABLES.tasks} SET version = 4 WHERE id = '01TASKZ'`);
+			db.run(`UPDATE ${TABLES.threads} SET version = 4 WHERE id = '01TASKZ'`);
 			const armed = Oplog.initDevice(db, DEVICE);
 			if (!armed.ok) throw armed.error;
 		});
@@ -201,24 +210,30 @@ describe("Backfill.run", () => {
 		if (!result.ok) return;
 
 		expect(result.value.skippedPrivate).toBe(1);
-		expect(result.value.byTable.tasks).toBe(1);
+		expect(result.value.byTable.threads).toBe(1);
 
 		const ids = await withDb((db) =>
 			db
 				.query<{ op_id: string; row_id: string }, []>(
-					`SELECT op_id, row_id FROM ${TABLES.sync_oplog} WHERE tbl = 'tasks'`,
+					`SELECT op_id, row_id FROM ${TABLES.sync_oplog} WHERE tbl = 'threads'`,
 				)
 				.all(),
 		);
-		expect(ids).toEqual([{ op_id: "bf:tasks:01TASKZ:v4", row_id: "01TASKZ" }]);
+		// A thread's op id counts its text and claim registers.
+		expect(ids).toEqual([
+			{ op_id: "bf:threads:01TASKZ:v4.1", row_id: "01TASKZ" },
+		]);
 
-		// An edit between runs is a new op, not an "already present" one.
+		// An edit between runs is a new op, not an "already present" one: to
+		// either register.
 		await withDb((db) =>
-			db.run(`UPDATE ${TABLES.tasks} SET version = 5 WHERE id = '01TASKZ'`),
+			db.run(
+				`UPDATE ${TABLES.threads} SET state_version = 2 WHERE id = '01TASKZ'`,
+			),
 		);
 		const again = await Backfill.run(base);
 		expect(again.ok).toBe(true);
-		if (again.ok) expect(again.value.byTable.tasks).toBe(1);
+		if (again.ok) expect(again.value.byTable.threads).toBe(1);
 	});
 
 	it("captures nothing itself — seeding does not re-enter the oplog", async () => {

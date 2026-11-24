@@ -16,6 +16,7 @@ import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
 import { formatQuestionBody } from "../schemas";
 import { configureTestRuntime } from "../testing";
+import { Legacy } from "../testing/legacy-rows";
 import { columnExists, TABLES } from "./helpers";
 import { Planner } from "./index";
 import { Migrations } from "./migrations";
@@ -53,6 +54,13 @@ const versionRows = (at = base) =>
 				.all(),
 		at,
 	);
+
+/** Run the list up to `version` only: a migration's own effect, before the record moves it. */
+const initTo = (version: number, at = base) =>
+	withDb((db) => {
+		const ran = Migrate.run(db, Migrations.LIST.slice(0, version));
+		if (!ran.ok) throw ran.error;
+	}, at);
 
 /** What a database reports once every migration has run. */
 const ALL_VERSIONS = Migrations.LIST.map((m, i) => ({
@@ -120,11 +128,11 @@ describe("Migrations on a database from before the runner", () => {
 
 	it("refuses it, says which kabane still upgrades it, and changes nothing", async () => {
 		base = freshBase("pre-runner");
-		await mustInit(base);
-		const task = await Planner.addTask(base, { title: "kept" });
-		if (!task.ok) throw task.error;
 		// Tables and no version table: what a build older than the runner left.
-		await withDb((db) => db.run(`DROP TABLE ${TABLES.schema_migrations}`));
+		await withDb((db) => {
+			db.run(`CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL)`);
+			db.run(`INSERT INTO tasks (id, title) VALUES ('01KEPT', 'kept')`);
+		});
 
 		for (const _boot of [1, 2]) {
 			const init = await Planner.init(base);
@@ -136,9 +144,9 @@ describe("Migrations on a database from before the runner", () => {
 		const kept = await withDb((db) =>
 			db
 				.query<{ title: string }, [string]>(
-					`SELECT title FROM ${TABLES.tasks} WHERE id = ?`,
+					"SELECT title FROM tasks WHERE id = ?",
 				)
-				.get(task.value.id),
+				.get("01KEPT"),
 		);
 		expect(kept).toEqual({ title: "kept" });
 	});
@@ -158,12 +166,12 @@ describe("Migrations on a device stamped at the baseline", () => {
 	afterEach(() => rmSync(base, { recursive: true, force: true }));
 
 	it("drops the retired tables and keeps every live row", async () => {
-		const task = await Planner.addTask(base, { title: "keeps" });
+		const task = await Legacy.addTask(base, { title: "keeps" });
 		if (!task.ok) throw task.error;
 		// Written the way a baseline build wrote it: no kind column yet.
 		await withDb((db) =>
 			db.run(
-				`INSERT INTO ${TABLES.comments} (id, task_id, author, author_type, content, created_at)
+				`INSERT INTO task_comments (id, task_id, author, author_type, content, created_at)
 				 VALUES ('01COMMENT', ?, 'david', 'human', 'keeps too', ?)`,
 				[task.value.id, NOW],
 			),
@@ -244,7 +252,7 @@ describe("Migration 5: end-of-UTC-day deadlines become the dates they meant", ()
 		const ids: string[] = [];
 		for (const [stored] of SHAPES) {
 			// Written as the old build stored it, past today's input parsing.
-			const task = await Planner.addTask(base, { title: stored });
+			const task = await Legacy.addTask(base, { title: stored });
 			if (!task.ok) throw task.error;
 			await withDb((db) =>
 				db.run(`UPDATE ${TABLES.tasks} SET deadline = ? WHERE id = ?`, [
@@ -254,7 +262,7 @@ describe("Migration 5: end-of-UTC-day deadlines become the dates they meant", ()
 			);
 			ids.push(task.value.id);
 		}
-		const none = await Planner.addTask(base, { title: "no deadline" });
+		const none = await Legacy.addTask(base, { title: "no deadline" });
 		if (!none.ok) throw none.error;
 
 		await mustInit(base);
@@ -314,7 +322,7 @@ describe("Migration 6: relayed tool-permission answers stop being decisions", ()
 			const stamped = Migrate.run(db, Migrations.LIST.slice(0, 5));
 			if (!stamped.ok) throw stamped.error;
 		});
-		const task = must(await Planner.addTask(base, { title: "t" }));
+		const task = must(await Legacy.addTask(base, { title: "t" }));
 		let sessions = 0;
 		const start = async () => {
 			const id = `s${++sessions}`;
@@ -453,17 +461,28 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 				if (!stamped.ok) throw stamped.error;
 			});
 			expect(
-				await withDb((db) => columnExists(db, TABLES.comments, "kind")),
+				await withDb((db) => columnExists(db, "task_comments", "kind")),
 			).toBe(false);
-			const task = await Planner.addTask(base, { title: "t" });
+			const task = await Legacy.addTask(base, { title: "t" });
 			if (!task.ok) throw task.error;
 			await withDb((db) =>
 				db.run(
-					`INSERT INTO ${TABLES.comments} (id, task_id, author, author_type, content, created_at)
+					`INSERT INTO task_comments (id, task_id, author, author_type, content, created_at)
 					 VALUES ('01COMMENT', ?, 'david', 'human', 'before kinds', ?)`,
 					[task.value.id, NOW],
 				),
 			);
+
+			// The index is on the table migration 14 moves into the record.
+			await initTo(9);
+			const index = await withDb((db) =>
+				db
+					.query<{ name: string }, [string]>(
+						"SELECT name FROM pragma_index_list(?) WHERE name LIKE '%task_kind_idx'",
+					)
+					.all("task_comments"),
+			);
+			expect(index).toEqual([{ name: "task_comments_task_kind_idx" }]);
 
 			await mustInit(base);
 			expect(await versionRows()).toEqual(ALL_VERSIONS);
@@ -480,14 +499,6 @@ describe("Migration 9: an issue's comments become entries of kind comment", () =
 					updatedAt: undefined,
 				},
 			]);
-			const index = await withDb((db) =>
-				db
-					.query<{ name: string }, [string]>(
-						"SELECT name FROM pragma_index_list(?) WHERE name LIKE '%task_kind_idx'",
-					)
-					.all(TABLES.comments),
-			);
-			expect(index).toEqual([{ name: `${TABLES.comments}_task_kind_idx` }]);
 		});
 	}
 });
@@ -509,18 +520,18 @@ describe("Migration 10: scopes leave the jake:// scheme", () => {
 			scopeUri: "mill",
 		});
 		if (!project.ok) throw project.error;
-		const plain = await Planner.addTask(base, {
+		const plain = await Legacy.addTask(base, {
 			title: "plain",
 			scopeUri: "mill",
 			// Text that only mentions the old scheme is not a scope.
 			description: "see jake://scope/mill for the history",
 		});
-		const extended = await Planner.addTask(base, {
+		const extended = await Legacy.addTask(base, {
 			title: "extended",
 			scopeUri: "kabane://scope/github.com%2Facme%2Fmill?branch=main",
 			scopeRefs: [{ scopeUri: "kabane://scope/other", role: "related" }],
 		});
-		const unscoped = await Planner.addTask(base, { title: "unscoped" });
+		const unscoped = await Legacy.addTask(base, { title: "unscoped" });
 		if (!plain.ok || !extended.ok || !unscoped.ok)
 			throw new Error("seeding failed");
 		// What that build stored: the same rows and ops under the old scheme.
@@ -565,8 +576,8 @@ describe("Migration 10: scopes leave the jake:// scheme", () => {
 		const before = await scopes();
 		expect(before.ops).toContainEqual(["plain", "jake://scope/mill", null]);
 
-		await mustInit(base);
-		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		await initTo(10);
+		expect(await versionRows()).toEqual(ALL_VERSIONS.slice(0, 10));
 
 		const after = await scopes();
 		const old = (uri: string) => uri.replace("kabane://", "jake://");
@@ -609,7 +620,7 @@ describe("Migration 10: scopes leave the jake:// scheme", () => {
 		);
 
 		// A second boot is a read of the version table.
-		await mustInit(base);
+		await initTo(10);
 		expect(await scopes()).toEqual(after);
 
 		// The old scheme, the new one and a bare id all name the scope.
@@ -642,12 +653,12 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				[TABLES.tasks, "reviewed_by"],
 				[TABLES.tasks, "updated_by"],
 				[TABLES.projects, "updated_by"],
-				[TABLES.task_links, "updated_by"],
-				[TABLES.comments, "author"],
-				[TABLES.comments, "updated_by"],
-				[TABLES.work_log, "updated_by"],
-				[TABLES.context_refs, "added_by"],
-				[TABLES.context_refs, "updated_by"],
+				["task_links", "updated_by"],
+				["task_comments", "author"],
+				["task_comments", "updated_by"],
+				["task_work_log", "updated_by"],
+				["task_context_refs", "added_by"],
+				["task_context_refs", "updated_by"],
 			].map(([table, column]): [string, (string | null)[]] => [
 				`${table}.${column}`,
 				db
@@ -668,7 +679,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 		});
 		must(await Planner.addProject(base, { title: "p" }));
 		const task = must(
-			await Planner.addTask(base, {
+			await Legacy.addTask(base, {
 				title: "t",
 				description: `${CLAUDE} starts this description`,
 				verification: {
@@ -678,9 +689,9 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				},
 			}),
 		);
-		const other = must(await Planner.addTask(base, { title: "o" }));
+		const other = must(await Legacy.addTask(base, { title: "o" }));
 		must(
-			await Planner.addLink(base, {
+			await Legacy.addLink(base, {
 				sourceId: task.id,
 				targetId: other.id,
 				type: "blocks",
@@ -693,7 +704,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			["kabane://actor/agent/codex", "already renamed"],
 		] as const)
 			must(
-				await Planner.addComment(base, {
+				await Legacy.addComment(base, {
 					taskId: task.id,
 					author,
 					authorType: "ai",
@@ -701,7 +712,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				}),
 			);
 		must(
-			await Planner.addWorkLog(base, {
+			await Legacy.addWorkLog(base, {
 				taskId: task.id,
 				refs: [{ uri: "commit:abc" }],
 				addedBy: CLAUDE,
@@ -709,7 +720,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			}),
 		);
 		must(
-			await Planner.addContextRef(base, {
+			await Legacy.addContextRef(base, {
 				taskId: task.id,
 				uri: "file:README.md",
 				kind: "doc",
@@ -724,12 +735,12 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			);
 			for (const table of [
 				TABLES.projects,
-				TABLES.task_links,
-				TABLES.work_log,
-				TABLES.context_refs,
+				"task_links",
+				"task_work_log",
+				"task_context_refs",
 			])
 				db.run(`UPDATE ${table} SET updated_by = ?`, [ADA]);
-			db.run(`UPDATE ${TABLES.comments} SET updated_by = author`);
+			db.run(`UPDATE task_comments SET updated_by = author`);
 			db.run(
 				`UPDATE ${TABLES.sync_oplog} SET payload = replace(payload, 'kabane://actor/unknown', ?)`,
 				[ADA],
@@ -737,7 +748,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			db.run(
 				`INSERT INTO ${TABLES.sync_oplog} (op_id, device_id, tbl, row_id, op, payload, captured_at)
 				 VALUES ('gone', 'device-a', ?, 'gone', 'delete', NULL, '2026-11-20T00:00:00.000Z')`,
-				[TABLES.comments],
+				["task_comments"],
 			);
 			// An extension's table: `requested_by` is free text, `updated_by` the writer sync carries.
 			db.run(
@@ -789,11 +800,11 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 					.all(),
 				comments: db
 					.query<{ author: string; content: string }, []>(
-						`SELECT author, content FROM ${TABLES.comments} ORDER BY id`,
+						`SELECT author, content FROM task_comments ORDER BY id`,
 					)
 					.all(),
 				refs: db
-					.query<{ refs: string }, []>(`SELECT refs FROM ${TABLES.work_log}`)
+					.query<{ refs: string }, []>(`SELECT refs FROM task_work_log`)
 					.all()
 					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
 				ops: db
@@ -817,8 +828,8 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			}));
 		const before = await rows();
 
-		await mustInit(base);
-		expect(await versionRows()).toEqual(ALL_VERSIONS);
+		await initTo(12);
+		expect(await versionRows()).toEqual(ALL_VERSIONS.slice(0, 12));
 
 		const after = await rows();
 		const renamed = (value: string) =>
@@ -933,7 +944,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 		]);
 
 		// A second boot is a read of the version table.
-		await mustInit(base);
+		await initTo(12);
 		expect(await rows()).toEqual(after);
 	});
 
@@ -944,7 +955,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			must(Migrate.run(db, Migrations.LIST.slice(0, 11)));
 			must(Oplog.initDevice(db, "device-a"));
 		});
-		const task = must(await Planner.addTask(base, { title: "t" }));
+		const task = must(await Legacy.addTask(base, { title: "t" }));
 		// A session on schema 11 that already wrote the new prefix, stored as a human.
 		for (const [author, content] of [
 			[CODEX, `${CODEX} wrote this`],
@@ -952,7 +963,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			[ADA, "a human"],
 		] as const)
 			must(
-				await Planner.addComment(base, {
+				await Legacy.addComment(base, {
 					taskId: task.id,
 					author,
 					authorType: "human",
@@ -960,7 +971,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 				}),
 			);
 		must(
-			await Planner.addWorkLog(base, {
+			await Legacy.addWorkLog(base, {
 				taskId: task.id,
 				refs: [{ uri: "commit:abc" }],
 				addedBy: CODEX,
@@ -968,7 +979,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			}),
 		);
 		must(
-			await Planner.addContextRef(base, {
+			await Legacy.addContextRef(base, {
 				taskId: task.id,
 				uri: "file:README.md",
 				kind: "doc",
@@ -980,16 +991,16 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			withDb((db) => ({
 				comments: db
 					.query<Record<string, unknown>, []>(
-						`SELECT author, author_type, content, version FROM ${TABLES.comments} ORDER BY id`,
+						`SELECT author, author_type, content, version FROM task_comments ORDER BY id`,
 					)
 					.all(),
 				refs: db
-					.query<{ refs: string }, []>(`SELECT refs FROM ${TABLES.work_log}`)
+					.query<{ refs: string }, []>(`SELECT refs FROM task_work_log`)
 					.all()
 					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
 				context: db
 					.query<Record<string, unknown>, []>(
-						`SELECT added_by, added_by_type FROM ${TABLES.context_refs}`,
+						`SELECT added_by, added_by_type FROM task_context_refs`,
 					)
 					.all(),
 				ops: db
@@ -1003,7 +1014,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 					})),
 			}));
 
-		await mustInit(base);
+		await initTo(12);
 		const after = await rows();
 		expect(after.comments).toEqual([
 			{
@@ -1033,9 +1044,9 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 		// The log's snapshots say what the rows say.
 		expect(
 			after.ops.map(({ tbl, row }) =>
-				tbl === TABLES.comments
+				tbl === "task_comments"
 					? [row.author, row.author_type]
-					: tbl === TABLES.context_refs
+					: tbl === "task_context_refs"
 						? [row.added_by, row.added_by_type]
 						: (JSON.parse(String(row.refs)) as Record<string, unknown>[]).map(
 								(ref) => [ref.addedBy, ref.addedByType],
@@ -1050,7 +1061,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 		]);
 
 		// A second boot is a read of the version table.
-		await mustInit(base);
+		await initTo(12);
 		expect(await rows()).toEqual(after);
 	});
 
@@ -1060,10 +1071,10 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			must(Migrate.run(db, Migrations.LIST.slice(0, 10)));
 			must(Oplog.initDevice(db, "device-a"));
 		});
-		const task = must(await Planner.addTask(base, { title: "t" }));
+		const task = must(await Legacy.addTask(base, { title: "t" }));
 		for (const addedBy of [CLAUDE, ADA])
 			must(
-				await Planner.addWorkLog(base, {
+				await Legacy.addWorkLog(base, {
 					taskId: task.id,
 					refs: [{ uri: "commit:abc" }],
 					addedBy,
@@ -1073,7 +1084,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			withDb((db) => ({
 				rows: db
 					.query<{ refs: string }, []>(
-						`SELECT refs FROM ${TABLES.work_log} ORDER BY id`,
+						`SELECT refs FROM task_work_log ORDER BY id`,
 					)
 					.all()
 					.map((row) => JSON.parse(row.refs) as Record<string, unknown>[]),
@@ -1081,7 +1092,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 					.query<{ payload: string }, [string]>(
 						`SELECT payload FROM ${TABLES.sync_oplog} WHERE tbl = ? ORDER BY seq`,
 					)
-					.all(TABLES.work_log)
+					.all("task_work_log")
 					.map(
 						(op) =>
 							JSON.parse(
@@ -1095,7 +1106,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 			false,
 		]);
 
-		await mustInit(base);
+		await initTo(12);
 		const after = await refs();
 		const expected = [
 			[{ addedBy: "kabane://actor/agent/claude", addedByType: "ai" }],
@@ -1116,7 +1127,7 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 					),
 			).toEqual(expected);
 
-		await mustInit(base);
+		await initTo(12);
 		expect(await refs()).toEqual(after);
 	});
 });

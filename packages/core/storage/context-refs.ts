@@ -6,18 +6,42 @@
  * (task_id, uri) upserts kind/label/note/added_at.
  */
 
+import type { Db } from "../db/port";
 import type { Result } from "../result";
-import { Runtime, withDb } from "../runtime";
+import { withDb } from "../runtime";
 
-import type { AddContextRefInput, TaskContextRef } from "../schemas";
-import { generateId, rowToContextRef, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import {
+	type AddContextRefInput,
+	RecordKey,
+	type RefRow,
+	type TaskContextRef,
+} from "../schemas";
+import { rowToContextRef } from "./helpers";
+import { RecordRead } from "./record";
+import { RecordWrite } from "./record-write";
 import { Planner as PlannerWorkLogs } from "./work-logs";
+
+/** The kind an upstream ref carries (`upstream-links.ts`). */
+export const UPSTREAM_KIND = "upstream";
+
+/**
+ * A context ref is any ref that is no link to a thread and no upstream ref:
+ * the three share the record's `refs` table (migration 14).
+ */
+const isContextRef = (row: RefRow): boolean =>
+	row.kind !== UPSTREAM_KIND &&
+	!row.uri.startsWith(RecordKey.THREAD_URI_PREFIX);
+
+const contextRefsOf = (db: Db, taskId: string): RefRow[] => {
+	const rows = RecordRead.refs(db, taskId);
+	if (!rows.ok) throw rows.error;
+	return rows.value.filter(isContextRef);
+};
 
 export namespace Planner {
 	/**
-	 * Add (or upsert) a curated context ref. Re-adding the same (task_id, uri)
-	 * updates kind/label/note/added_at rather than throwing.
+	 * Register a context ref. A task holds one per URI: re-adding the URI under
+	 * another kind removes the ref it had.
 	 */
 	export const addContextRef = async (
 		basePath: string,
@@ -25,97 +49,53 @@ export namespace Planner {
 	): Promise<Result<TaskContextRef>> => {
 		return withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const id = generateId();
-
-			// Insert or update is decided by what was there, so the captured op
-			// kind matches what the row went through.
-			const existed =
-				db
-					.query<{ id: string }, [string, string]>(
-						`SELECT id FROM ${TABLES.context_refs} WHERE task_id = ? AND uri = ?`,
-					)
-					.get(input.taskId, input.uri) !== null;
-
-			db.run(
-				`INSERT INTO ${TABLES.context_refs}
-           (id, task_id, uri, kind, label, note, added_by, added_by_type, added_at, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(task_id, uri) DO UPDATE SET
-           kind = excluded.kind,
-           label = excluded.label,
-           note = excluded.note,
-           added_at = excluded.added_at,
-           updated_by = excluded.updated_by,
-           version = version + 1`,
-				[
-					id,
-					input.taskId,
-					input.uri,
-					input.kind,
-					input.label ?? null,
-					input.note ?? null,
-					input.addedBy ?? null,
-					input.addedByType ?? null,
-					now,
-					Runtime.actor(),
-				],
+			for (const held of contextRefsOf(db, input.taskId))
+				if (held.uri === input.uri && held.kind !== input.kind)
+					RecordWrite.removeRef(db, RecordKey.rowIdOf("refs", held) ?? "");
+			RecordWrite.putRef(db, {
+				threadId: input.taskId,
+				uri: input.uri,
+				kind: input.kind,
+				title: input.label ?? null,
+				data: {
+					note: input.note ?? null,
+					added_by: input.addedBy ?? null,
+					added_by_type: input.addedByType ?? null,
+					added_at: now,
+				},
+			});
+			const row = contextRefsOf(db, input.taskId).find(
+				(ref) => ref.uri === input.uri && ref.kind === input.kind,
 			);
-
-			const row = db
-				.query(
-					`SELECT * FROM ${TABLES.context_refs} WHERE task_id = ? AND uri = ?`,
-				)
-				.get(input.taskId, input.uri) as Record<string, unknown>;
-			Oplog.afterWrite(
-				db,
-				"task_context_refs",
-				existed ? "update" : "insert",
-				row.id as string,
-			);
-
+			if (row === undefined)
+				throw new Error(
+					`context ref ${input.uri} on ${input.taskId} does not show`,
+				);
 			return rowToContextRef(row);
 		});
 	};
 
-	/**
-	 * Get the curated context refs for a task, oldest first.
-	 */
 	export const getContextRefs = async (
 		basePath: string,
 		taskId: string,
 	): Promise<Result<TaskContextRef[]>> => {
-		return withDb(basePath, (db) => {
-			const rows = db
-				.query(
-					`SELECT * FROM ${TABLES.context_refs} WHERE task_id = ? ORDER BY added_at ASC`,
-				)
-				.all(taskId) as Record<string, unknown>[];
-
-			return rows.map(rowToContextRef);
-		});
+		return withDb(basePath, (db) =>
+			contextRefsOf(db, taskId)
+				.map(rowToContextRef)
+				.sort((a, b) => a.addedAt.localeCompare(b.addedAt)),
+		);
 	};
 
-	/**
-	 * Remove a context ref from the registry by id. Never touches work logs.
-	 */
+	/** Remove the context ref `id` (its row id, `RecordKey`) names. */
 	export const deleteContextRef = async (
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
 		return withDb(basePath, (db) => {
-			const row = Oplog.snapshot(db, "task_context_refs", id);
-			if (!row.ok) throw row.error;
-			db.run(`DELETE FROM ${TABLES.context_refs} WHERE id = ?`, [id]);
-			if (row.value !== undefined) {
-				Oplog.afterDelete(db, [{ tbl: "task_context_refs", row: row.value }]);
-			}
+			RecordWrite.removeRef(db, id);
 		});
 	};
 
-	/**
-	 * Promote a ref into the curated context AND record it in the work log —
-	 * one call, two rows.
-	 */
 	export const promoteToContext = async (
 		basePath: string,
 		input: {

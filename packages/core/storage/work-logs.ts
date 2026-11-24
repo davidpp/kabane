@@ -1,13 +1,27 @@
 /**
  * Planner Storage — Work Logs
+ *
+ * A work log row is an entry of kind `log` on the thread, its refs in `data`
+ * (migration 14). Append-only, like every entry.
  */
 
+import { monotonicFactory } from "ulid";
 import type { Result } from "../result";
 import { Runtime, withDb } from "../runtime";
 
 import type { AddWorkLogInput, TaskWorkLog, WorkRef } from "../schemas";
-import { generateId, rowToWorkLog, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import { rowToWorkLog } from "./helpers";
+import { RecordRead } from "./record";
+import { RecordWrite } from "./record-write";
+
+/** The entry kind a work log is stored under. */
+export const WORK_LOG_KIND = "log";
+
+/**
+ * Rising within this process, as entry ids do: a work log reads in time order,
+ * then id, so two written in one millisecond keep their order.
+ */
+const workLogId = monotonicFactory();
 
 export namespace Planner {
 	export const addWorkLog = async (
@@ -16,9 +30,8 @@ export namespace Planner {
 	): Promise<Result<TaskWorkLog>> => {
 		return withDb(basePath, (db) => {
 			const now = new Date().toISOString();
-			const id = generateId();
+			const id = workLogId();
 
-			// Build refs with timestamps
 			const refs: WorkRef[] = input.refs.map((r) => ({
 				uri: r.uri,
 				label: r.label,
@@ -27,19 +40,15 @@ export namespace Planner {
 				addedByType: input.addedByType,
 			}));
 
-			db.run(
-				`INSERT INTO ${TABLES.work_log} (id, task_id, refs, note, updated_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-				[
-					id,
-					input.taskId,
-					JSON.stringify(refs),
-					input.note ?? null,
-					Runtime.actor(),
-					now,
-				],
-			);
-			Oplog.afterWrite(db, "task_work_log", "insert", id);
+			RecordWrite.addEntry(db, {
+				id,
+				threadId: input.taskId,
+				kind: WORK_LOG_KIND,
+				author: Runtime.actor(),
+				body: input.note ?? null,
+				data: { refs },
+				createdAt: now,
+			});
 
 			return {
 				id,
@@ -56,27 +65,11 @@ export namespace Planner {
 		taskId: string,
 	): Promise<Result<TaskWorkLog[]>> => {
 		return withDb(basePath, (db) => {
-			const rows = db
-				.query(
-					`SELECT * FROM ${TABLES.work_log} WHERE task_id = ? ORDER BY created_at ASC`,
-				)
-				.all(taskId) as Record<string, unknown>[];
-
-			return rows.map(rowToWorkLog);
-		});
-	};
-
-	export const deleteWorkLog = async (
-		basePath: string,
-		id: string,
-	): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			const row = Oplog.snapshot(db, "task_work_log", id);
-			if (!row.ok) throw row.error;
-			db.run(`DELETE FROM ${TABLES.work_log} WHERE id = ?`, [id]);
-			if (row.value !== undefined) {
-				Oplog.afterDelete(db, [{ tbl: "task_work_log", row: row.value }]);
-			}
+			const rows = RecordRead.entries(db, taskId);
+			if (!rows.ok) throw rows.error;
+			return rows.value
+				.filter((row) => row.kind === WORK_LOG_KIND)
+				.map(rowToWorkLog);
 		});
 	};
 }

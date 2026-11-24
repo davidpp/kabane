@@ -6,14 +6,17 @@ import {
 	LocalRelay,
 	Oplog,
 	Planner,
-	RECORD_TABLES,
+	Migrate,
+	Migrations,
 	type Result,
 	Runtime,
 	Sync,
 	withDb,
 } from "@kabane/core";
 import { configureTestRuntime } from "@kabane/core/testing";
+import { Legacy } from "@kabane/core/testing/legacy-rows";
 import { SqliteDb } from "@kabane/sqlite";
+import { migrations } from "./migrations";
 import { checklistModule } from "./module";
 import { Checklist } from "./storage";
 
@@ -86,23 +89,31 @@ const RENAMED = "kabane://actor/human/alpha";
 
 for (const registered of [true, false])
 	it(`renames the item ops pending at the cutover, with the module ${registered ? "registered" : "not registered"} then`, async () => {
-		const alpha = await device("alpha", true);
+		// A device on schema 11, as the build before the rename left it, with the
+		// module's first migration: its task is a row of the old table.
+		const alpha = mkdtempSync(join(tmpdir(), "checklist-alpha-"));
+		bases.push(alpha);
 		legacyWriter();
+		unwrap(
+			await withDb(alpha, (db) => {
+				unwrap(Migrate.run(db, Migrations.LIST.slice(0, 11)));
+				unwrap(
+					Migrate.run(
+						db,
+						migrations.slice(0, 1),
+						"schema_migrations_checklist",
+					),
+				);
+				unwrap(Oplog.initDevice(db, "alpha"));
+			}),
+		);
 		const task = unwrap(
-			await Planner.addTask(alpha, { title: "Pending", kind: "issue" }),
+			await Legacy.addTask(alpha, { title: "Pending", kind: "issue" }),
 		);
 		const [item] = unwrap(
 			await Checklist.add(alpha, { id: task.id, items: ["One"] }),
 		).items;
 		unwrap(await Checklist.tick(alpha, { items: [item?.id ?? ""] }));
-		// Back to schema 11, as the build before the rename left it, then the upgrade's boot.
-		unwrap(
-			await withDb(alpha, (db) => {
-				db.run("DELETE FROM schema_migrations WHERE version >= 12");
-				for (const table of RECORD_TABLES) db.run(`DROP TABLE ${table}`);
-				db.run("DELETE FROM schema_migrations_checklist WHERE version = 2");
-			}),
-		);
 		register(registered, "alpha");
 		unwrap(await Planner.init(alpha));
 		const pending = unwrap(

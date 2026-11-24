@@ -24,15 +24,7 @@ import { z } from "zod";
  * in the registry. Whether a given ROW replicates is decided by its
  * `visibility` column, not by this list.
  */
-export const SYNC_TABLES = [
-	"tasks",
-	"task_links",
-	"task_comments",
-	"task_work_log",
-	"projects",
-	"task_context_refs",
-	"upstream_links",
-] as const;
+export const SYNC_TABLES = ["projects"] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 /** The three row mutations capture records. */

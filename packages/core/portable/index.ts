@@ -4,7 +4,7 @@ import { TABLES } from "../db/tables";
 import { Replicated } from "../replicated";
 import { err, ok, type Result, trySync } from "../result";
 import { SHORT_ID_PATTERN } from "../storage/helpers";
-import { binding, document, header, quote, versions } from "./format";
+import { binding, document, header, idOf, quote, versions } from "./format";
 import * as snapshots from "./snapshot";
 
 const readHeader = (line: string): Result<z.infer<typeof header>> => {
@@ -102,7 +102,7 @@ export namespace Portable {
 					const insert = inserts.get(table);
 					if (
 						!insert ||
-						id !== row.id ||
+						id !== idOf(table, row) ||
 						Object.keys(row).length !== insert.names.length ||
 						!insert.names.every((key) => Object.hasOwn(row, key))
 					)

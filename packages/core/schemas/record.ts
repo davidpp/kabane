@@ -4,7 +4,7 @@
  * Each row schema lists the table's columns, and is what sync apply accepts a
  * pulled row against. Columns stay soft strings (kinds, keys, states), because
  * a device that lacks a declaration must still store another device's rows.
- * Nothing writes these tables outside tests yet.
+ * Since migration 14 they hold the tracker; `storage/record-write.ts` writes them.
  *
  * A row's identity is its key (`RECORD_KEYS`): a thread's and an entry's id,
  * an attribute's thread and key, a ref's thread, URI and kind. Two devices

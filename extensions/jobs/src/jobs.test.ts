@@ -134,13 +134,17 @@ it("reads a row written before the session column as a fresh job", async () => {
 			await Planner.addTask(home, { title: "Old job", kind: "job" }),
 		);
 		value(
-			await withDb(home, (db) =>
+			await withDb(home, (db) => {
+				// That migration names `tasks(id)`, a view since kabane's core
+				// migration 14, which no foreign key can check; a later one drops it.
+				db.run("PRAGMA foreign_keys = OFF");
 				db.run(
 					`INSERT INTO jobs_jobs (id, task_id, schedule, recipe, inputs, created_at, updated_at)
 					 VALUES (?, ?, '0 9 * * *', 'wiki', '{}', ?, ?)`,
 					[task.id, task.id, at(8, 0).toISOString(), at(8, 0).toISOString()],
-				),
-			),
+				);
+				db.run("PRAGMA foreign_keys = ON");
+			}),
 		);
 		configureTestRuntime({ modules: [full] });
 		value(await Planner.init(home));

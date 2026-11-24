@@ -50,7 +50,7 @@ describe("storage over bun:sqlite", () => {
 
 	it("creates the schema", () => {
 		const names = tableNames(base);
-		expect(names).toContain(TABLES.tasks);
+		expect(names).toContain(TABLES.threads);
 		expect(names).toContain(TABLES.tasks_fts);
 		expect(names).not.toContain("agent_sessions");
 		expect(names).not.toContain("agent_activities");

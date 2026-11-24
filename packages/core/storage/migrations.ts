@@ -26,6 +26,7 @@ import { err, ok, type Result } from "../result";
 import { parseQuestionBody, RECORD_TABLES } from "../schemas";
 import { ActorScheme } from "./actor-scheme";
 import { columnExists, TABLES } from "./helpers";
+import { RecordMigration } from "./record-migration";
 import { ScopeScheme } from "./scope-scheme";
 import { SessionOutcomes } from "./session-outcomes";
 
@@ -52,9 +53,9 @@ const refusePreRunner = (db: Db): void => {
  * and two indexes on `tasks`.
  */
 const completeBaseline = (db: Db): void => {
-	db.run(`ALTER TABLE ${TABLES.upstream_links} ADD COLUMN updated_by TEXT`);
+	db.run(`ALTER TABLE upstream_links ADD COLUMN updated_by TEXT`);
 	db.run(
-		`ALTER TABLE ${TABLES.upstream_links} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE upstream_links ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
 	);
 	db.run(
 		`CREATE UNIQUE INDEX IF NOT EXISTS ${TABLES.tasks}_short_id_idx ON ${TABLES.tasks}(short_id)`,
@@ -305,11 +306,11 @@ export namespace Migrations {
 			name: "entry-kind",
 			up: (db) => {
 				db.run(
-					`ALTER TABLE ${TABLES.comments} ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
+					`ALTER TABLE task_comments ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
 				);
 				db.run(
-					`CREATE INDEX IF NOT EXISTS ${TABLES.comments}_task_kind_idx
-					   ON ${TABLES.comments}(task_id, kind, created_at)`,
+					`CREATE INDEX IF NOT EXISTS task_comments_task_kind_idx
+					   ON task_comments(task_id, kind, created_at)`,
 				);
 			},
 		},
@@ -355,6 +356,13 @@ export namespace Migrations {
 				refuseTakenRecordNames(db);
 				db.exec(RECORD_SCHEMA_SQL);
 			},
+		},
+		{
+			// Today's task tables move into the record, and the task read becomes a
+			// view over it (JCAB-660, `storage/record-migration.ts`). This device's
+			// own ops on the old tables are dropped: nothing syncs through the hub.
+			name: "record-migrate",
+			up: RecordMigration.migrate,
 		},
 	];
 

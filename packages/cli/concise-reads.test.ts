@@ -2,8 +2,8 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { checklistModule } from "@kabane/checklist";
-import { KABANE_TOOLS, Oplog, Runtime } from "@kabane/core";
-import { Apply, configureTestRuntime } from "@kabane/core/testing";
+import { KABANE_TOOLS, Oplog } from "@kabane/core";
+import { configureTestRuntime } from "@kabane/core/testing";
 import { handoffModule } from "@kabane/handoff";
 import { questionsModule } from "@kabane/questions";
 import { SqliteDb } from "@kabane/sqlite";
@@ -549,7 +549,7 @@ describe.concurrent("concise actual entry points", () => {
 				// Imported giant short label still resolves by ULID. Reject before mutation.
 				const db = new Database(join(tracker.home, "kabane.db"));
 				try {
-					db.run("UPDATE tasks SET short_id = ? WHERE id = ?", [
+					db.run("UPDATE threads SET short_id = ? WHERE id = ?", [
 						"J".repeat(10000),
 						added.data.id,
 					]);
@@ -611,7 +611,7 @@ describe("concise receipt atomicity and cursor invalidation", () => {
 					// In a scope of its own, so that both targets are real moves that mint a label: an
 					// edit naming the task's current scope mints none (JCAB-344).
 					db.run(
-						"UPDATE tasks SET id = ?, short_id = NULL, scope_uri = 'kabane://scope/elsewhere', title = 'Receipt boundary', version = 1 WHERE id = ?",
+						"UPDATE threads SET id = ?, short_id = NULL, scope = 'kabane://scope/elsewhere', title = 'Receipt boundary', version = 1 WHERE id = ?",
 						[id, original],
 					);
 					const snapshot = () => ({
@@ -695,7 +695,7 @@ describe("concise receipt atomicity and cursor invalidation", () => {
 					tracker.close();
 				}
 			}, 30000);
-	it("stales a CLI cursor after an Apply collision without changing selected version/clocks", async () => {
+	it("stales a CLI cursor after a label-only change without changing selected version/clocks", async () => {
 		const seeded = await createCorpusTracker();
 		expect(seeded.ok).toBe(true);
 		if (!seeded.ok) return;
@@ -723,41 +723,10 @@ describe("concise receipt atomicity and cursor invalidation", () => {
 				.safeParse(db.query("SELECT * FROM tasks WHERE id = ?").get(local.id));
 			expect(row.success).toBe(true);
 			if (!row.success) return;
-			const remoteId = "00000000000000000000000000";
-			Runtime.configure({
-				provider: SqliteDb.provider(),
-				actor: () => "kabane://actor/human/fixture",
-				timezone: () => "UTC",
-			});
-			const armed = await SqliteDb.provider().withDb(tracker.home, (db) =>
-				Oplog.initDevice(db, "fixture"),
-			);
-			expect(armed.ok).toBe(true);
-			if (armed.ok) expect(armed.value.ok).toBe(true);
-			const applied = await Apply.applyBatch(tracker.home, {
-				ops: [
-					{
-						opId: "collision-review",
-						deviceId: "remote",
-						tbl: "tasks",
-						rowId: remoteId,
-						op: "insert",
-						rowUpdatedAt: "2025-01-01T00:00:00.000Z",
-						capturedAt: "2025-01-01T00:00:00.000Z",
-						serverSeq: 1,
-						payload: {
-							...row.data,
-							id: remoteId,
-							scope_uri: "kabane://scope/other",
-							title: "Remote label winner",
-						},
-					},
-				],
-				throughSeq: 1,
-				hasMore: false,
-			});
-			expect(applied).toMatchObject({ ok: true });
-			if (applied.ok) expect(applied.value.renamed).toBe(1);
+			// A label-only change, as a short_id rename left one: no register moves.
+			db.run("UPDATE threads SET short_id = 'JCOR-25' WHERE id = ?", [
+				local.id,
+			]);
 			const after = z
 				.record(z.string(), z.unknown())
 				.safeParse(db.query("SELECT * FROM tasks WHERE id = ?").get(local.id));

@@ -31,6 +31,7 @@ import { Planner } from "../storage/index";
 import { Migrations } from "../storage/migrations";
 import { Oplog } from "../storage/oplog";
 import { configureTestRuntime, TEST_DB_NAME } from "../testing";
+import { Legacy } from "../testing/legacy-rows";
 import { Backfill } from "./backfill";
 import { LocalRelay, type Relay } from "./local-relay";
 import { Sync } from "./namespace";
@@ -56,7 +57,7 @@ const CREATE_NOTES: Migrate.Migration = {
 		db.run(
 			`CREATE TABLE IF NOT EXISTS ${NOTES} (
 			   id TEXT PRIMARY KEY,
-			   task_id TEXT NOT NULL REFERENCES ${TABLES.tasks}(id) ON DELETE CASCADE,
+			   task_id TEXT NOT NULL,
 			   body TEXT NOT NULL,
 			   updated_at TEXT NOT NULL,
 			   updated_by TEXT,
@@ -519,25 +520,18 @@ describe("capturing a module table", () => {
 		).rejects.toThrow('Cannot capture a write to "task_notes"');
 	});
 
-	it("captures a task's notes as deletes before the task's own", async () => {
+	it("captures a task delete as its thread's tombstone, and leaves its notes to the read", async () => {
 		const alpha = await createDevice("alpha", [notes()]);
 		const task = await addTask(alpha, "doomed");
-		const note = await writeNote(alpha, { taskId: task, body: "goes too" });
+		await writeNote(alpha, { taskId: task, body: "stays stored" });
 		register(alpha.modules);
+		const before = (await oplogTables(alpha)).length;
 		const deleted = await Planner.deleteTask(alpha.base, task);
 		if (!deleted.ok) throw deleted.error;
 
-		const deletes = await as(alpha, (db) =>
-			db
-				.query<{ tbl: string; row_id: string }, []>(
-					`SELECT tbl, row_id FROM ${TABLES.sync_oplog} WHERE op = 'delete' ORDER BY seq`,
-				)
-				.all(),
-		);
-		expect(deletes).toEqual([
-			{ tbl: NOTES, row_id: note },
-			{ tbl: "tasks", row_id: task },
-		]);
+		expect((await oplogTables(alpha)).slice(before)).toEqual(["threads"]);
+		expect(await notesOn(alpha)).toHaveLength(1);
+		expect(await titles(alpha)).toEqual([]);
 	});
 
 	it("backfills a module table after core's", async () => {
@@ -561,7 +555,7 @@ describe("capturing a module table", () => {
 		register(alpha.modules);
 		const report = await Backfill.run(alpha.base);
 		if (!report.ok) throw report.error;
-		expect(report.value.byTable).toEqual({ tasks: 1, [NOTES]: 1 });
+		expect(report.value.byTable).toMatchObject({ threads: 1, [NOTES]: 1 });
 
 		const ids = await as(alpha, (db) =>
 			db
@@ -571,19 +565,20 @@ describe("capturing a module table", () => {
 				.all()
 				.map((row) => row.op_id),
 		);
-		expect(ids).toEqual([`bf:tasks:${task}:v1`, `bf:${NOTES}:${note}:v1`]);
+		// The record's tables first, so a pulled note finds its thread.
+		expect(ids).toContain(`bf:threads:${task}:v1.1`);
+		expect(ids.at(-1)).toBe(`bf:${NOTES}:${note}:v1`);
 
 		// Tagged as it was backfilled, so a push without the module keeps it.
 		await push({ ...alpha, modules: [] });
-		expect(LocalRelay.ops(relay).map((op) => op.module)).toEqual([
-			undefined,
-			{ name: "notes", schema: 1 },
-		]);
+		const tags = LocalRelay.ops(relay).map((op) => op.module);
+		expect(tags.at(-1)).toEqual({ name: "notes", schema: 1 });
+		expect(tags.slice(0, -1).every((tag) => tag === undefined)).toBe(true);
 	});
 });
 
 describe("a device that no longer registers the module", () => {
-	it("captures the deletes of the module's rows a task delete cascades into, from the recorded declaration, and they replay elsewhere", async () => {
+	it("deletes a task whose module rows it no longer reads: one tombstone, and the other device hides the thread", async () => {
 		const alpha = await createDevice("alpha", [notes()]);
 		const beta = await createDevice("beta", [notes()]);
 		const parent = await addTask(alpha, "doomed");
@@ -593,11 +588,8 @@ describe("a device that no longer registers the module", () => {
 			parentTaskId: parent,
 		});
 		if (!child.ok) throw child.error;
-		const onParent = await writeNote(alpha, { taskId: parent, body: "goes" });
-		const onChild = await writeNote(alpha, {
-			taskId: child.value.id,
-			body: "goes too",
-		});
+		await writeNote(alpha, { taskId: parent, body: "stays" });
+		await writeNote(alpha, { taskId: child.value.id, body: "stays too" });
 		await push(alpha);
 		await pull(beta);
 		expect(await notesOn(beta)).toHaveLength(2);
@@ -606,48 +598,16 @@ describe("a device that no longer registers the module", () => {
 		const disabled = { ...alpha, modules: [] };
 		await boot(disabled);
 		register(disabled.modules);
+		const before = (await oplogTables(disabled)).length;
 		const deleted = await Planner.deleteTask(disabled.base, parent);
 		if (!deleted.ok) throw deleted.error;
-		const deletes = await as(disabled, (db) =>
-			db
-				.query<
-					{
-						tbl: string;
-						row_id: string;
-						module: string | null;
-						module_schema: number | null;
-					},
-					[]
-				>(
-					`SELECT tbl, row_id, module, module_schema FROM ${TABLES.sync_oplog} WHERE op = 'delete' ORDER BY seq`,
-				)
-				.all(),
-		);
-		expect(deletes).toEqual([
-			{ tbl: NOTES, row_id: onChild, module: "notes", module_schema: 1 },
-			{
-				tbl: "tasks",
-				row_id: child.value.id,
-				module: null,
-				module_schema: null,
-			},
-			{ tbl: NOTES, row_id: onParent, module: "notes", module_schema: 1 },
-			{ tbl: "tasks", row_id: parent, module: null, module_schema: null },
-		]);
+		expect((await oplogTables(disabled)).slice(before)).toEqual(["threads"]);
 
 		await push(disabled);
-		expect(
-			LocalRelay.ops(relay)
-				.filter((op) => op.op === "delete" && op.tbl === NOTES)
-				.map((op) => [op.rowId, op.module]),
-		).toEqual([
-			[onChild, { name: "notes", schema: 1 }],
-			[onParent, { name: "notes", schema: 1 }],
-		]);
 		const pulled = await pull(beta);
 		expect(pulled.parked).toBe(0);
-		expect(await notesOn(beta)).toEqual([]);
 		expect(await titles(beta)).toEqual([]);
+		expect(await notesOn(beta)).toHaveLength(2);
 	});
 
 	it("still refuses an insert into the module's table", async () => {
@@ -725,7 +685,11 @@ describe("a module's task-state hook", () => {
 		expect((await notesOn(alpha)).map((row) => row.body)).toEqual([
 			"inbox->done",
 		]);
-		expect((await oplogTables(alpha)).slice(-2)).toEqual(["tasks", NOTES]);
+		expect((await oplogTables(alpha)).slice(-3)).toEqual([
+			"threads",
+			"attributes",
+			NOTES,
+		]);
 	});
 
 	it("rolls the state change and its capture back when it errs", async () => {
@@ -1162,23 +1126,24 @@ describe("a database from before data modules", () => {
 			const at = Migrate.run(db, Migrations.LIST.slice(0, 7));
 			if (!at.ok) throw at.error;
 		});
-		const here = await addTask(beta, "already here");
+		const here = await Legacy.addTask(beta.base, { title: "already here" });
+		if (!here.ok) throw here.error;
 		// Armed and captured as that release did: its oplog had no module columns.
 		await as(beta, (db) => {
 			const armed = Oplog.initDevice(db, "beta");
 			if (!armed.ok) throw armed.error;
 			const row = db
 				.query<Record<string, unknown>, [string]>(
-					`SELECT * FROM ${TABLES.tasks} WHERE id = ?`,
+					`SELECT * FROM tasks WHERE id = ?`,
 				)
-				.get(here);
+				.get(here.value.id);
 			db.run(
 				`INSERT INTO ${TABLES.sync_oplog}
 				   (op_id, device_id, tbl, row_id, op, row_updated_at, payload, captured_at)
 				 VALUES (?, 'beta', 'tasks', ?, 'insert', ?, ?, ?)`,
 				[
 					ulid(),
-					here,
+					here.value.id,
 					String(row?.updated_at),
 					JSON.stringify(row),
 					new Date().toISOString(),
@@ -1189,6 +1154,9 @@ describe("a database from before data modules", () => {
 		await boot(beta);
 		expect(await tableExists(beta, TABLES.sync_parked)).toBe(true);
 		expect((await status(beta)).parkedOps).toEqual({});
+		// Migration 14 dropped the op on the old table; a backfill seeds the record.
+		const seeded = await Backfill.run(beta.base);
+		if (!seeded.ok) throw seeded.error;
 
 		await addTask(alpha, "from alpha");
 		await push(alpha);

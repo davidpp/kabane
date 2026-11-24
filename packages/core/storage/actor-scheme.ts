@@ -262,23 +262,19 @@ export namespace ActorScheme {
 			columns: ["discovered_by", "reviewed_by", "updated_by"],
 			nested: { verification },
 		});
-		rename(db, TABLES.comments, {
+		rename(db, "task_comments", {
 			columns: ["author", "updated_by"],
 			types: { author: "author_type" },
 		});
-		rename(db, TABLES.context_refs, {
+		rename(db, "task_context_refs", {
 			columns: ["added_by", "updated_by"],
 			types: { added_by: "added_by_type" },
 		});
-		rename(db, TABLES.work_log, {
+		rename(db, "task_work_log", {
 			columns: ["updated_by"],
 			nested: { refs },
 		});
-		for (const table of [
-			TABLES.projects,
-			TABLES.task_links,
-			TABLES.upstream_links,
-		])
+		for (const table of [TABLES.projects, "task_links", "upstream_links"])
 			rename(db, table, { columns: ["updated_by"] });
 		for (const [table, columns] of Object.entries(MODULE_ACTORS))
 			renameSnapshots(db, table, { columns });

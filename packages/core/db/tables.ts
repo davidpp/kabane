@@ -4,15 +4,10 @@
  */
 
 export const TABLES = {
+	/** A view since migration 14: the old task row over the record (`storage/record-migration.ts`). */
 	tasks: "tasks",
 	tasks_fts: "tasks_fts",
-	task_links: "task_links",
 	sequences: "sequences",
-	comments: "task_comments",
-	comments_fts: "task_comments_fts",
-	work_log: "task_work_log",
-	context_refs: "task_context_refs",
-	upstream_links: "upstream_links",
 	projects: "projects",
 	sync_oplog: "sync_oplog",
 	sync_state: "sync_state",
@@ -21,7 +16,9 @@ export const TABLES = {
 	sync_parked_deletes: "sync_parked_deletes",
 	short_id_history: "short_id_history",
 	schema_migrations: "schema_migrations",
-	// The 2.0 record (ADR 0006), beside today's tables until a later slice migrates into it.
+	/** Migration 14 renames the old task table here: module tables may still reference it. */
+	retired_tasks: "retired_tasks",
+	// The 2.0 record (ADR 0006); migration 14 moved today's task tables into it.
 	threads: "threads",
 	entries: "entries",
 	attributes: "attributes",

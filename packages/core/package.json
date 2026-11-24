@@ -16,6 +16,7 @@
 		"./testing": "./testing.ts",
 		"./testing/issue-corpus": "./testing/issue-corpus-harness.ts",
 		"./testing/issue-corpus-seed": "./testing/issue-corpus-seed.ts",
+		"./testing/legacy-rows": "./testing/legacy-rows.ts",
 		"./testing/fixtures/issue-corpus/issues.json": "./testing/fixtures/issue-corpus/issues.json",
 		"./testing/fixtures/issue-corpus/manifest.json": "./testing/fixtures/issue-corpus/manifest.json"
 	},

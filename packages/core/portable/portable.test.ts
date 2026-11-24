@@ -155,7 +155,7 @@ it("rebuilds every declared table, including private module rows, and detects a 
 		Portable.compare(original, changed)
 			.filter((row) => !row.match)
 			.map((row) => row.table),
-	).toEqual(["tasks"]);
+	).toEqual(["threads"]);
 	const added = value(
 		await Planner.addTask(rebuilt, { title: "Third", scopeUri }),
 	);
@@ -199,7 +199,10 @@ it("puts each thread before its children and unowned rows last", async () => {
 		.trimEnd()
 		.split("\n")
 		.slice(1)
-		.map((line) => JSON.parse(line).id);
+		.map((line) => JSON.parse(line))
+		// Each task's attributes sit in its group too.
+		.filter((doc) => doc.table !== "attributes")
+		.map((doc) => doc.id);
 	expect(ids).toEqual([
 		...[a, b]
 			.sort((x, y) => x.id.localeCompare(y.id))

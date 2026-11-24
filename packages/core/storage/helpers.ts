@@ -6,13 +6,14 @@
  */
 
 import { ulid } from "ulid";
-import { z } from "zod";
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 import type {
+	EntryRow,
 	Project,
+	RefRow,
 	Task,
 	TaskContextRef,
 	TaskEntry,
@@ -21,10 +22,8 @@ import type {
 	UpstreamLink,
 	WorkRef,
 } from "../schemas";
-import { UpstreamLinkSchema } from "../schemas";
+import { RecordKey, UpstreamLinkSchema } from "../schemas";
 import { ScopeUri } from "../scope/uri";
-
-const RowSchema = z.record(z.string(), z.unknown());
 
 export { TABLES };
 
@@ -336,72 +335,86 @@ export const rowToProject = (row: Record<string, unknown>): Project => ({
 	updatedAt: row.updated_at as string,
 });
 
-export const rowToLink = (row: Record<string, unknown>): TaskLink => ({
-	id: row.id as string,
-	sourceId: row.source_id as string,
-	targetId: row.target_id as string,
-	type: row.type as TaskLink["type"],
-	note: (row.note as string) || undefined,
-	createdAt: row.created_at as string,
+/** A record row's `data`: the JSON object it holds, or an empty one. */
+const dataOf = (data: string | null): Record<string, unknown> => {
+	if (data === null) return {};
+	const parsed: unknown = JSON.parse(data);
+	return typeof parsed === "object" && parsed !== null
+		? (parsed as Record<string, unknown>)
+		: {};
+};
+
+const textOf = (value: unknown): string | undefined =>
+	typeof value === "string" && value !== "" ? value : undefined;
+
+/** A ref to another thread, read as the link it is. Its id is the ref's row id. */
+export const rowToLink = (row: RefRow): TaskLink => {
+	const data = dataOf(row.data);
+	return {
+		id: RecordKey.rowIdOf("refs", row) ?? "",
+		sourceId: row.thread_id,
+		targetId: row.uri.slice(RecordKey.THREAD_URI_PREFIX.length),
+		type: row.kind as TaskLink["type"],
+		note: textOf(data.note),
+		createdAt: textOf(data.created_at) ?? row.updated_at,
+	};
+};
+
+export const rowToEntry = (row: EntryRow): TaskEntry => {
+	const data = dataOf(row.data);
+	return {
+		id: row.id,
+		taskId: row.thread_id,
+		kind: row.kind,
+		author: row.author,
+		authorType: data.author_type as TaskEntry["authorType"],
+		content: row.body ?? "",
+		createdAt: row.created_at,
+		updatedAt: textOf(data.updated_at),
+	};
+};
+
+/** A `log` entry, read as the work log it was. */
+export const rowToWorkLog = (row: EntryRow): TaskWorkLog => ({
+	id: row.id,
+	taskId: row.thread_id,
+	refs: (dataOf(row.data).refs ?? []) as WorkRef[],
+	note: row.body ?? undefined,
+	createdAt: row.created_at,
 });
 
-export const rowToEntry = (row: Record<string, unknown>): TaskEntry => ({
-	id: row.id as string,
-	taskId: row.task_id as string,
-	kind: row.kind as string,
-	author: row.author as string,
-	authorType: row.author_type as TaskEntry["authorType"],
-	content: row.content as string,
-	createdAt: row.created_at as string,
-	updatedAt: (row.updated_at as string) || undefined,
-});
-
-export const rowToWorkLog = (row: Record<string, unknown>): TaskWorkLog => ({
-	id: row.id as string,
-	taskId: row.task_id as string,
-	refs: JSON.parse(row.refs as string) as WorkRef[],
-	note: (row.note as string) || undefined,
-	createdAt: row.created_at as string,
-});
-
-export const rowToContextRef = (
-	row: Record<string, unknown>,
-): TaskContextRef => ({
-	id: row.id as string,
-	taskId: row.task_id as string,
-	uri: row.uri as string,
-	kind: row.kind as string,
-	label: (row.label as string) || undefined,
-	note: (row.note as string) || undefined,
-	addedBy: (row.added_by as string) || undefined,
-	addedByType:
-		(row.added_by_type as TaskContextRef["addedByType"]) || undefined,
-	addedAt: row.added_at as string,
-});
+/** A context ref; its id is the ref's row id. */
+export const rowToContextRef = (row: RefRow): TaskContextRef => {
+	const data = dataOf(row.data);
+	return {
+		id: RecordKey.rowIdOf("refs", row) ?? "",
+		taskId: row.thread_id,
+		uri: row.uri,
+		kind: row.kind,
+		label: row.title ?? undefined,
+		note: textOf(data.note),
+		addedBy: textOf(data.added_by),
+		addedByType: textOf(data.added_by_type) as TaskContextRef["addedByType"],
+		addedAt: textOf(data.added_at) ?? row.updated_at,
+	};
+};
 
 /**
- * Validate and convert a SQLite upstream-link row without trusting driver
- * output. This is the persistence boundary for the private snapshot.
+ * Validate and convert an `upstream` ref without trusting what another device
+ * wrote in its `data`. Its id is the ref's row id.
  */
-export const rowToUpstreamLink = (row: unknown): Result<UpstreamLink> => {
-	const recordResult = RowSchema.safeParse(row);
-	if (!recordResult.success) {
-		return err(
-			new Error(`Invalid upstream-link row: ${recordResult.error.message}`),
-		);
-	}
-
-	const record = recordResult.data;
+export const rowToUpstreamLink = (row: RefRow): Result<UpstreamLink> => {
+	const data = dataOf(row.data);
 	const linkResult = UpstreamLinkSchema.safeParse({
-		id: record.id,
-		taskId: record.task_id,
-		provider: record.provider,
-		externalId: record.external_id,
-		identifier: record.identifier ?? undefined,
-		url: record.url,
-		title: record.title,
-		createdAt: record.created_at,
-		updatedAt: record.updated_at,
+		id: RecordKey.rowIdOf("refs", row),
+		taskId: row.thread_id,
+		provider: data.provider,
+		externalId: data.external_id,
+		identifier: data.identifier ?? undefined,
+		url: data.url,
+		title: row.title,
+		createdAt: data.created_at ?? row.updated_at,
+		updatedAt: row.updated_at,
 	});
 	if (!linkResult.success) {
 		return err(

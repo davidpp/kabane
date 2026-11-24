@@ -70,7 +70,6 @@ export const Planner = {
 	// Work Logs
 	addWorkLog: WorkLogs.addWorkLog,
 	getWorkLogs: WorkLogs.getWorkLogs,
-	deleteWorkLog: WorkLogs.deleteWorkLog,
 	// Context Refs
 	addContextRef: ContextRefs.addContextRef,
 	getContextRefs: ContextRefs.getContextRefs,

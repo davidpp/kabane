@@ -36,6 +36,3 @@ export const configureTestRuntime = (
 };
 
 configureTestRuntime();
-
-// CLI regression tests apply real sync batches before checking cursor invalidation.
-export { Apply } from "./sync/apply";

@@ -1,17 +1,17 @@
 import type { Db } from "./db/port";
 import { TABLES } from "./db/tables";
 import { Modules } from "./module";
+import { RECORD_TABLES, type RecordTable } from "./schemas/record";
 import { SYNC_TABLES, type SyncTable } from "./schemas/sync";
 
+/** Each core table's thread column; a thread's is its own id. */
 const coreThreadColumn = {
-	[TABLES.tasks]: null,
-	[TABLES.comments]: "task_id",
-	[TABLES.work_log]: "task_id",
-	[TABLES.context_refs]: "task_id",
-	[TABLES.upstream_links]: "task_id",
-	[TABLES.task_links]: "source_id",
+	threads: "id",
+	entries: "thread_id",
+	attributes: "thread_id",
+	refs: "thread_id",
 	[TABLES.projects]: null,
-} satisfies Record<SyncTable, string | null>;
+} satisfies Record<SyncTable | RecordTable, string | null>;
 
 type Table = {
 	table: string;
@@ -20,12 +20,22 @@ type Table = {
 };
 
 export namespace Replicated {
-	export const threadTable = TABLES.tasks;
+	export const threadTable = TABLES.threads;
 
-	/** Oplog capture should use this declaration too when the record tables land. */
+	/** Core's replicated tables: the record's, then the rest. */
+	export const CORE_TABLES: readonly string[] = [
+		...RECORD_TABLES,
+		...SYNC_TABLES,
+	];
+
+	/**
+	 * Every replicated table with its thread column: core's, each registered
+	 * module's, and each unregistered module's recorded tables. Export,
+	 * capture and backfill read this one declaration.
+	 */
 	export const tables = (db: Db): Table[] =>
 		[
-			...SYNC_TABLES.map((table) => ({
+			...[...RECORD_TABLES, ...SYNC_TABLES].map((table) => ({
 				table,
 				threadColumn: coreThreadColumn[table],
 			})),
