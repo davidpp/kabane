@@ -25,7 +25,9 @@ import { context } from "./commands/context";
 import { doctor } from "./commands/doctor";
 import { done } from "./commands/done";
 import { edit } from "./commands/edit";
+import { exportCommand } from "./commands/export";
 import { handoff } from "./commands/handoff";
+import { importCommand } from "./commands/import";
 import { init } from "./commands/init";
 import { link } from "./commands/link";
 import { list } from "./commands/list";
@@ -67,6 +69,8 @@ export const COMMANDS: Command[] = [
 	context,
 	scope,
 	sync,
+	exportCommand,
+	importCommand,
 	board,
 	mcp,
 	update,

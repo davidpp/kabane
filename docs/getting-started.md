@@ -895,3 +895,19 @@ Known rough edges:
 - **Add the git remote before you file tasks.** A repo with no remote is scoped by its first
   commit (`git:<hash>`). Once a remote is added, the scope switches to the remote, and the
   tasks filed under the commit scope stop showing in that repo's board.
+
+## Export and rebuild the record
+
+Run `kabane export <dir> --check` to write a backup and test its rebuild.
+Choose a directory without an existing `record.jsonl` or `manifest.json`.
+The JSON Lines file starts with the format and schema versions, followed by
+one document per replicated row, including private rows. Protect the directory
+accordingly. The manifest records each table's row count and SHA-256 digest in
+row ID order. The check prints those values and ends with `match` (exit 0) or
+`differ` (exit 1). Omit `--check` to just write the files.
+
+Run `kabane import <dir> --into <home>` with the
+same core and registered module schema versions. It rebuilds the database
+through normal migrations and checks the manifest before creating
+`<home>/kabane.db`. An existing database is refused. Device configuration,
+sync history, and tables outside the registered replication set are excluded.
