@@ -39,9 +39,8 @@ A finding names what was promised, what happens instead, and how to see it happe
   than running them. Every live step (the
   sandbox command, MCP over stdio, the gallery) is yours to run, even when the implementer
   reported it as run.
-- Run kabane through `bun run sandbox [kabane args]` (AGENTS.md, "Gate"). It gives kabane a
-  throwaway `KABANE_HOME` and git repo. Never run a check against `~/.kabane`: it is the
-  maintainer's real tracker.
+- Run kabane through `bun run sandbox [kabane args]` (AGENTS.md, "Gate"), never against
+  `~/.kabane`.
 - A board change is checked in the real board under tmux, on your own `-L` socket, and with
   `bun run gallery --print <story>` (AGENTS.md, "Validating a UI change"). An MCP change is
   checked by driving `bun run sandbox mcp` over stdio with a real `tools/call`.

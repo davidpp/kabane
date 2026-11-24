@@ -82,14 +82,14 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
 10. **Is base kabane free of text that describes an extension?** Text that base kabane writes
     in the copilot's instructions, the board, the CLI's help or a shipped template and that
     names the loop or tells the reader to use it is a finding, as a new entry on the existing
-    list under "The code breaks these rules today in named places". Kabane showing text an
-    extension contributed (its commands' usage, its settings, its procedures) is not.
+    list under "The code breaks these rules in named places". Kabane showing text an
+    extension contributed (its commands' usage, its settings) is not.
 11. **Is every rule this change states held by something?** A rule added to `ARCHITECTURE.md`,
     `CODING_PRINCIPLE.md` or a package's `AGENTS.md` names its check, or says it is held by
     review. And does every package's `AGENTS.md` still describe its package after this diff,
     including one the diff made stale without editing it?
 
-Rows in the table under "The code breaks these rules today in named places" are not findings
+Rows in the table under "The code breaks these rules in named places" are not findings
 on their own. `bun run layers` fails an exception whose edge is gone, but nothing checks the
 table: a diff that removes a named exception and leaves its row there is a finding.
 
@@ -106,7 +106,7 @@ table: a diff that removes a named exception and leaves its row there is a findi
   first-party data module registered by one host only; a package's `AGENTS.md` that the
   change made false.
 - **p3**: a rule stated with nothing holding it and no sentence saying review holds it; a row
-  left in "The code breaks these rules today in named places" after the code stopped breaking
+  left in "The code breaks these rules in named places" after the code stopped breaking
   it.
 
 A finding names the question, the section of `ARCHITECTURE.md` that states the rule, the
