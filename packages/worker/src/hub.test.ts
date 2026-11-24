@@ -239,13 +239,22 @@ describe("migration 14 over Durable Object SQLite", () => {
 				await provider.withDb(HUB_BASE, (db) => {
 					wipe(db);
 					unwrap(Migrate.run(db, Migrations.LIST.slice(0, 12)));
+					// The questions table as it stood before its own detach migration:
+					// still referencing tasks(id), which a DROP would cascade into.
 					unwrap(
 						Migrate.run(
 							db,
-							questionsModule.migrations ?? [],
+							(questionsModule.migrations ?? []).slice(0, 2),
 							"schema_migrations_questions",
 						),
 					);
+					expect(
+						db
+							.query<{ sql: string }, []>(
+								"SELECT sql FROM sqlite_master WHERE name = 'task_questions'",
+							)
+							.get()?.sql,
+					).toContain("REFERENCES tasks(id)");
 				}),
 			);
 			const at = "2026-11-24T12:00:00.000Z";
