@@ -8,6 +8,7 @@
  * files it whole.
  */
 
+import type { z } from "zod";
 import { Events, PLANNER_EVENTS } from "../events";
 import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic } from "../runtime";
@@ -28,6 +29,38 @@ type AppliedPlan = {
 	key: string;
 	threads: { key: string; id: string; shortId?: string; created: boolean }[];
 	links: { created: number; existing: number };
+};
+
+/**
+ * Two parents for one child, whether a thread's `parent` or a parent/child
+ * link names them, said in a line; undefined when each child has one. Two
+ * would overwrite each other on every apply.
+ */
+const parentConflict = (
+	plan: z.output<typeof PlanSchema>,
+	endOf: (end: string) => string,
+): string | undefined => {
+	const parents = new Map<string, string>();
+	for (const [child, parent] of [
+		...plan.threads.flatMap((thread) =>
+			thread.parent === undefined
+				? []
+				: [[endOf(thread.key), endOf(thread.parent)] as const],
+		),
+		...plan.links.flatMap((link) =>
+			link.type === "parent"
+				? [[endOf(link.to), endOf(link.from)] as const]
+				: link.type === "child"
+					? [[endOf(link.from), endOf(link.to)] as const]
+					: [],
+		),
+	]) {
+		const held = parents.get(child);
+		if (held !== undefined && held !== parent)
+			return `The plan gives ${child} two parents, ${held} and ${parent}; name one.`;
+		parents.set(child, parent);
+	}
+	return undefined;
 };
 
 export namespace Planner {
@@ -78,6 +111,9 @@ export namespace Planner {
 		}
 		const endOf = (end: string): string =>
 			idOf.get(end) ?? (ends.get(end) as string);
+
+		const conflict = parentConflict(plan, endOf);
+		if (conflict !== undefined) return err(new Error(conflict));
 
 		const scoped: {
 			thread: (typeof plan.threads)[number];

@@ -141,3 +141,18 @@ it("refuses a parent that names no task, a 26-character key included", async () 
 	expect(failed.ok).toBe(false);
 	expect(await counts()).toEqual(before);
 });
+
+it("refuses a plan that gives one child two parents, before writing", async () => {
+	const before = await counts();
+	const failed = await apply({
+		threads: [
+			{ key: "child", title: "Child", parent: "one" },
+			{ key: "one", title: "One" },
+			{ key: "two", title: "Two" },
+		],
+		links: [{ from: "two", to: "child", type: "parent" }],
+	});
+	expect(failed.ok).toBe(false);
+	if (!failed.ok) expect(failed.error.message).toContain("child");
+	expect(await counts()).toEqual(before);
+});
