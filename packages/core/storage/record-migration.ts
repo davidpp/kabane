@@ -43,7 +43,12 @@
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { RecordKey } from "../schemas";
-import { RESERVED_REF_KINDS, UPSTREAM_KIND, WORK_LOG_KIND } from "./families";
+import {
+	CORE_ENTRY_KINDS,
+	RESERVED_REF_KINDS,
+	UPSTREAM_KIND,
+	WORK_LOG_KIND,
+} from "./families";
 import { VISIBLE_THREADS_SQL } from "./record";
 
 /** Each task column that leaves the thread row, as an attribute of that name. */
@@ -217,7 +222,8 @@ const refuseUnreadableClocks = (db: Db): void => {
 /**
  * Refuse a row whose URI or kind is another family's (`families.ts`): a
  * context ref to a thread or under a link type or `upstream`, and a comment of
- * kind `log`. Each family then has keys of its own.
+ * a kind only core writes (`log`, `claim`, `release`): a comment of kind
+ * `claim` would read as one. Each family then has keys of its own.
  */
 const refuseCrossFamilyRows = (db: Db): void => {
 	const reserved = RESERVED_REF_KINDS.map((kind) => `'${kind}'`).join(", ");
@@ -226,13 +232,13 @@ const refuseCrossFamilyRows = (db: Db): void => {
 			`SELECT id FROM task_context_refs
 			  WHERE substr(uri, 1, ${RecordKey.THREAD_URI_PREFIX.length}) = '${RecordKey.THREAD_URI_PREFIX}'
 			     OR kind IN (${reserved})
-			 UNION SELECT id FROM task_comments WHERE kind = '${WORK_LOG_KIND}'
+			 UNION SELECT id FROM task_comments WHERE kind IN (${CORE_ENTRY_KINDS.map((kind) => `'${kind}'`).join(", ")})
 			 ORDER BY id`,
 		)
 		.all();
 	if (rows.length > 0)
 		throw new Error(
-			`rows whose URI or kind is another family's: a context ref to a thread or under a link or upstream kind, a comment of kind log (${rows.map(({ id }) => id).join(", ")}); nothing was changed`,
+			`rows whose URI or kind is another family's: a context ref to a thread or under a link or upstream kind, a comment of kind log, claim or release (${rows.map(({ id }) => id).join(", ")}); nothing was changed`,
 		);
 };
 

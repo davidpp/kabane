@@ -1420,14 +1420,16 @@ describe("Migration 14: the tracker moves into the record", () => {
 					uri: "file:x",
 					kind: "upstream",
 				}),
-			(a: string) =>
-				Legacy.addComment(base, {
-					taskId: a,
-					author: "me",
-					authorType: "human",
-					content: "c",
-					kind: "log",
-				}),
+			...["log", "claim", "release"].map(
+				(kind) => (a: string) =>
+					Legacy.addComment(base, {
+						taskId: a,
+						author: "me",
+						authorType: "human",
+						content: "c",
+						kind,
+					}),
+			),
 		]) {
 			await stamped();
 			const a = must(await Legacy.addTask(base, { title: "a" }));
