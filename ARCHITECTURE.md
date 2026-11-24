@@ -19,8 +19,6 @@ Every workspace package has one layer. Which workspace packages each one may lis
 `dependencies` is written once, as data, in `scripts/layers.ts`, and `bun run check` fails a
 `package.json` that lists anything else. This file says what each layer is for; it does not copy
 the table, because the two would drift apart.
-Kabane's predecessor wrote its layer table twice, in an ADR and in its `ARCHITECTURE.md`, and
-ten days later the two disagreed on what its second layer held; nothing checked either.
 
 The table lists the edges that exist. An edge the layers below allow is added to it in the
 change that first needs it. An edge they forbid is never added; where one exists today it is a
@@ -53,29 +51,17 @@ layer, with four narrowings:
 - **The hub depends on core and the data modules alone.** It runs in Workers, which cannot run
   the storage adapter, the harness client or a client.
 - **An extension depends at runtime on no `@kabane/*` package except a harness client, which it
-  bundles into its own build** (JCAB-316:2: the extension brings its own harness client). It
-  lists that package in its `dependencies`, and `scripts/layers.ts` allows exactly that edge
-  for the loop. The loop takes `@kabane/acp` from the workspace, where it stays (JCAB-316:3); how an extension
-  outside this repository gets a harness client belongs to distribution, which is not designed.
-  From the rest of kabane it imports types only, with `import type`, which the compiler erases;
-  every value it needs from kabane arrives on `host`. The loop lists `acp` as its only workspace runtime dependency;
-  `checklist`, `core` and `extension` are development dependencies for types and tests.
-  Its runtime imports use ACP capability subpaths (`/client`, `/harnesses`, `/tool-calls`,
-  `/form-field`), keeping instructions and templates out of the bundle. ACP takes result
-  helpers from `@kabane/core/result`; `result.ts` is the only core source emitted in the
-  loop build, enforced by its real-build metafile test.
+  bundles into its own build.** From the rest of kabane it imports types only, with
+  `import type`, which the compiler erases; every value it needs from kabane arrives on `host`.
 
-A client may use the harness client as a library. The board lists `@kabane/acp` for
-its copilot (`packages/board/src/copilot.ts`; see "Ports").
+A client may use the harness client as a library.
 
 A client uses only what another client could: the exports of core, the data modules, the contract
 and the harness client. It never reaches into a host or another client, and it never reads a
 table or a file another package owns except through that package's exports. No check holds this
 rule (see the end of this file).
 
-A first-party package that has a layer moves its code in the change that creates it. Kabane's
-predecessor created its layer packages as re-exports of its core and never moved the code: the
-primitives package was 120 lines over a 68,311-line core when the project stopped.
+A first-party package that has a layer moves its code in the change that creates it.
 
 ## Core keeps only what passes four questions
 
@@ -133,19 +119,9 @@ keeps no agent session (below).
 ### Core reaches a device's files through a port with a no-op default
 
 The brief inlines a `file:` context ref through `RuntimeConfig.fileReader`, set by
-`Runtime.configure`. `FileReader` takes the filesystem path stripped from the `file:` URI and
-a byte cap, and returns `Promise<FileHead>`: `{ status: "read", head: string, size: number }`,
-`{ status: "missing" }`, or `{ status: "pointer" }`. `size` is the total byte size. The no-op
-default returns `pointer`; the hub wires no reader and never opens a device file.
-The CLI wires the bounded read over `Bun.file` in `packages/cli/src/context.ts`.
-Core keeps the per-ref and total caps, truncation and missing notes, and pointer fallback.
-`ProjectScope` stays in `scope/schemas.ts` and on core's barrel as the shared resolved-scope
-type; scope detection and executable discovery belong to the CLI host.
-
-Core's production barrel needs no Bun types. The Worker's `tsconfig.json` excludes `bun`
-from `types`, so `bun run typecheck` (which includes the Worker) rejects a Bun global reachable
-from that barrel. The Worker test script also typechecks before running its Workers pool.
-Core's explicit test-support exports still use Bun and are not imported by the hub.
+`Runtime.configure`. The no-op default returns `pointer`; the hub wires no reader and never
+opens a device file. Core keeps the caps, truncation and missing notes; the CLI wires the
+bounded read.
 
 ### What core keeps of an agent session: outcomes and a URI
 
@@ -153,33 +129,6 @@ JCAB-316:7 settled **Split**. Outcomes about the issue are timeline entries, whi
 holds and replicates. A session is a `session:` URI in the work log. Its stream stays with
 whatever drove it: the loop's own store, a harness, or a World. `host` carries no session API
 (JCAB-316:2).
-
-- The first-party data module `@kabane/outcome` declares `outcome.decision`, `outcome.finding`,
-  `outcome.verification` and `outcome.summary`, all projected into Discussion. `handoff` stays
-  with `@kabane/handoff`. Both hosts register outcome after handoff. The board reads questions
-  and sends answers through `ActivitySource.questions` and `answer`; question ids and card ids
-  are namespaced by the source merger. A question names its card and optional lane directly, so
-  cards carry no session ids.
-- The loop keeps a session's lifecycle in `run.json` claims, its stream in `events.jsonl`, and
-  questions with their answers or withdrawals in `questions.jsonl`, under
-  `$KABANE_HOME/loops/<runId>/`. It mints session ids with `crypto.randomUUID()`. Only the
-  runner writes the stream and the question journal; answer surfaces submit the human's answer
-  and actor through `inbox.jsonl`. Summaries and non-permission decisions become
-  `outcome.summary` and `outcome.decision` entries through `host.record.comment`; session URIs
-  go through `host.record.log`. Runs without a question journal still load.
-- Core's migration `session-outcomes` (`storage/session-outcomes.ts`) moves what an older
-  database's session tables held onto the record, then drops them. It writes each durable
-  activity (`response`, `decision`, `finding`, `verification`, `handoff`) as a shared
-  `outcome.summary`, `outcome.decision`, `outcome.finding`, `outcome.verification` or `handoff`
-  entry, and each session as a `session:` ref in its issue's work log, both under the source
-  row's id and with every column taken from the source rows, so a re-run writes nothing and two
-  devices that migrate copies of one database converge. A missing session table or an id
-  another row holds fails the migration before anything is dropped. The stream (progress,
-  questions, answers, withdrawals) is dropped with `agent_sessions` and `agent_activities`.
-- The brief keeps every typed entry; a task whose work log holds a `session:` ref keeps none of
-  its AI comments, any other its last three, a rule every device and the hub read alike. The
-  board's detail log shows work-log refs and the host's live cards; outcomes are on its
-  comments tab.
 
 ## Ports
 
@@ -189,47 +138,14 @@ The contract and the harness client do not import the board. The types live with
 produces them and are imported directly by their readers:
 
 - **In `@kabane/extension`**, because an extension produces them and any client reads them: the
-  activity types (`ActivityStatus`, `ActivityCard`, `CardAction`, `ActivityDiff`,
-  `ActivityToolDetail`, `NoticeSeverity`, `ActivityEvent`, `ActivitySource`, and the card's map:
-  `ActivityStep`, `ActivityStepState`, `ActivitySession`, `ActivityLeft` and `ActivityFact`), the dispatch types
-  (`TriggerInput`, `TriggerDescriptor`, `DispatchTarget`, `Dispatcher`), the panel types
-  (`PanelTone`, `PanelPart`, `PanelLine`), the header types (`Header`, `HeaderView`,
-  `HeaderPart`), the job types (`JobRunState`, `JobRun`, `JobFacts`, `JobSource`), the settings field types `settings.ts` uses
-  (`SettingValue`, `SettingKind`, `SettingField`), and `CopilotShortcut`, which an extension
-  contributes (below). A constant an extension compares against, such as `STOP_ACTION`
-  (`"stop"`), is the string literal type `StopAction` in the contract; the board and loop
-  each keep their own typed constant. An `ActivityEvent` keeps its owning `lane` and may set
-  `run: true` to appear in the card's run-wide activity as well. Its optional `includes` lists
-  earlier sequence numbers the event incorporates in its transcript row.
-- **In `@kabane/acp`**, because they are the shape of an ACP elicitation: the form field types
-  (`CopilotFormField`, `CopilotFormOption`, `CopilotFormValue`, `CopilotElicitationAnswer`, which
-  `AcpClient.ElicitationField` aliases) and `FormField`, which judges a typed answer against one.
-  Two readers judge those answers, the board's form and the loop's
-  tracker questions (`packages/acp/src/form-field.ts`); the loop reaches them through its
-  own harness client, and the board through the harness client as a library. `ToolCalls` declares
-  its own detail type instead of importing `ActivityToolDetail`; the two are the same shape, so
-  an extension passes one where the other is asked for.
+  activity, dispatch, panel, header, job and settings field types, and `CopilotShortcut`. A
+  constant an extension compares against, such as `STOP_ACTION`, is a string literal type in the
+  contract; the board and the loop each keep their own typed constant.
+- **In `@kabane/acp`**, because they are the shape of an ACP elicitation: the form field types and
+  `FormField`, which judges a typed answer against one.
 - **The board keeps** what only it uses or what a host plugs into it: the `Copilot` port and its
-  update union, `BoardContext`, `Announcer`, `OpenRequests`, the settings screen's port
-  (`SettingsSource`, `SettingRow`, `SettingChange`), the no-op defaults, the keymap and the theme.
-
-`packages/board/src/copilot.ts` implements the board's `Copilot` port over the harness client
-and renders `BoardContext` into every prompt. `mailbox.ts` lives beside it. The CLI imports
-`BoardCopilot` from `@kabane/board`; acp has no dependency on the board.
-
-Of `instructions.ts`, the prose lives in the board as `packages/board/src/copilot-instructions.ts`
-(`BLOCK`, `Setup`, `setup`, `systemPrompt`, `SHORTCUTS`), and acp keeps a
-`CopilotInstructions` with two names the board reads: `actorUri` and `SERVER_NAME`. The loop keeps
-its own copies (`extensions/loop/src/session-identity.ts`). The dispatch template and the grill
-skill belong to the dispatch extension, which reads them from its own directory. The path kabane runs
-as is required in `BoardCopilot.Options.kabaneBin`; the CLI passes `Self.executable()`, so the
-board never imports `Self`, which lives in the CLI host. The CLI imports
-`@kabane/board/copilot-instructions` in `copilot-files.ts` to refuse a package.json description
-that contains one of base kabane's headings and a shortcut named like one of its shortcuts, and
-in `skills.ts` for `shellWord`, so `{{kabane}}` quotes the executable and home as the copilot's
-instructions do. The
-copilot tests use the ACP SDK's in-process agent, so the board declares the SDK as a development
-dependency.
+  update union, `BoardContext`, `Announcer`, `OpenRequests`, the settings screen's port, the no-op
+  defaults, the keymap and the theme.
 
 ### An extension describes a card header as lines of toned parts, and the board owns its layout
 
@@ -264,11 +180,6 @@ its layout:
 - **Polling and failure.** The board calls the header while the tab is open, once a second and
   immediately when expansion or width changes. It keeps the last good lines when a call fails,
   or shows a bare muted `loading…` before the first result.
-
-The loop's header is one row, the run's state in words. Where the run is (its steps and
-sessions) is card data, `ActivityCard.steps`, which the board draws as a map with a cursor: a
-header row has no cursor, no click and no fitting of its own, and a second client gets the steps
-without parsing toned text.
 
 ## Extension API v1
 
@@ -345,13 +256,6 @@ type Host = {
 };
 ```
 
-The compiled contract uses `typeof` for helper
-signatures and an explicit `harnessMode` member (Mode only, JCAB-316:8).
-`types/extension.d.ts` is generated from the types-only entry in `packages/extension`: it is
-self-contained, includes the reachable core and zod types, and exports types only. The
-published `./extension` export has a `types` condition only. Build tests compile named type
-imports and reject value imports.
-
 An extension with module-level leaf functions can keep a local `result.ts` whose four typed
 live bindings (`ok`, `err`, `tryCatch`, `trySync`) are assigned from `host.result` by
 `Kabane.bind(host)`, the first call in its factory. Imports of that module do not call the
@@ -361,13 +265,6 @@ passes accept the pattern). Review checks that module initialization calls none 
 Only these stateless functions are shared: the record, scope, settings and
 other per-host values remain explicit dependencies. The loop uses this pattern; it does not
 retain a global host or a global record.
-
-The helpers on `result`, `args`, `outcome` and `settings` keep their signatures in
-`packages/core/result.ts` and `packages/extension/index.ts`, and `defineTool` is `define` in
-`packages/core/mcp/tools.ts`, which the loop's `kabane_loop_advise` uses
-(`extensions/loop/src/mcp.ts`). `Extension.Ctx` (`packages/extension/contract.ts`) has `home`,
-`store`, `cwd`, `actor`, `harnessMode` and the `settings` port. `ctx.store` is the path of the
-database's directory; `host.store` is the storage kit bound to it.
 
 `harnessMode` is the only harness configuration `host` carries in api 1. JCAB-316:2 also names
 "which command runs claude or codex", but the device config holds a launch command only for the
@@ -428,19 +325,12 @@ results. Default scope is resolved lazily on the first record call and reused.
 
 The rule that keeps this surface honest: **`host.record` has no operation an agent cannot perform
 through a tool.** An extension that needs an operation no tool offers gets a new tool or a new
-tool input, so agents gain it too. The loop's needs added `parentTaskId` and `includeDeferred` to
-`kabane_list`, `needsReview` to `kabane_edit`, and the tools `kabane_linkList`,
-`kabane_upstreamList`, `kabane_logList` and `kabane_checklist`, whose live items the loop
-computes a task's progress from. The loop writes its work-log refs under `ctx.actor` and names
+tool input, so agents gain it too. The loop writes its work-log refs under `ctx.actor` and names
 the run in its `loop:<runId>` ref, so no tool stamps another actor. Core keeps no session, so
 there is no session tool.
 
-Why the tools and not `Planner`: opencode made its plugin context "essentially an OpenCode server
-client", and that keeps a host API from growing shortcuts only internal code can take. `Planner`
-is storage internals: it takes a `basePath`, and its module-facing calls take a `Db` inside a
-transaction. The tools already validate input at the boundary and return `Result`, and their tests
-cover what an extension would call. The cost is that renaming a tool or changing its input breaks
-extensions, so a tool's input shape is part of api 1.
+Renaming a tool or changing its input breaks extensions, so a tool's input shape is part of
+api 1.
 
 ### An extension's data modules get a storage kit on `host.store`, and the host owns commit and notification
 
@@ -485,34 +375,8 @@ write is over. A `host.record` read inside `fn` works and sees what was committe
 write began, not the write's own rows. `tx.db` is a raw handle: only the kit's capture calls are
 checked against the extension's declared tables.
 
-**What takes turns, and what does not.** Every `store.write` and every `host.record` write in the
-process takes one write turn (`HostWrites.take` in `packages/extension/host-store.ts`). A waiter
-waits at most 5000 ms, the busy timeout `@kabane/sqlite` sets, then returns an `err` naming the
-write that holds the turn (`extension notes's store.write has held it for 5004 ms`) and saying the
-holder must not await inside `fn`; a waiter that gave up is removed from the queue and never runs.
-So an `fn` that awaits a callback which writes, or never settles, costs the other writes of
-the process 5 s each and a loud error, not a silent stall. Kabane's own writes (CLI commands, the
-MCP tools through `callTool`, the board's `Planner` calls) do not take turns: they open their
-own connection and wait in SQLite's busy handler, which blocks the thread the awaiting `fn` would
-resume on, so they stall for the busy timeout and then go through (10.3 s, measured).
-Awaiting inside `fn` is the misuse behind both. Putting first-party writes in the queue is
-JCAB-386.
-
-This is `packages/extension/host.ts` as compiled. `Db`, `Row` (core's
-`Record<string, unknown>`) and `TaskUpdate` are core types the published declaration carries,
-with `KabaneModule` and `ModuleSyncTable` for the modules entry. An `err` from a `tx` call
-poisons the transaction even when `fn` ignores it and returns `ok`, so a refused capture or a
-refused state change never commits half a write. `read` gets a connection that refuses writes,
-and capture is reachable only through `tx`. `Oplog.afterDelete` takes a readonly row list for
-the kit.
-
-The kit (`packages/extension/host-store.ts`) is built from `withDb` and `atomic`
-(`packages/core/runtime.ts`), `Oplog.afterWrite`, `Oplog.snapshot` and `Oplog.afterDelete`
-(`packages/core/storage/oplog.ts`), `Planner.updateTaskIn` (`packages/core/storage/tasks.ts`) and
-`Events.emit`, so an extension's module tests run the same kit over a real database
-(`host-store.test.ts`). `afterWrite` and `afterDelete` refuse a table the calling extension's
-modules do not declare, so an extension writes only its own tables and changes tasks only through
-`updateTask`. Raw SQL on `tx.db` against another package's table is not stopped by the kit;
+`afterWrite` and `afterDelete` refuse a table the calling extension's modules do not declare, so
+an extension writes only its own tables and changes tasks only through `updateTask`. Raw SQL on `tx.db` against another package's table is not stopped by the kit;
 review holds that.
 
 ## An extension contributes through six optional fields on `Extension`, a modules entry, skills and copilot files
@@ -609,14 +473,6 @@ and on every `extensions/*` manifest that names `modules`: today `extensions/job
 `modules.ts` registers its run and job tables. Neither the loop nor dispatch names one. The extensions' builds carry a
 `modules` entry into the built manifest at its built path (`scripts/build.ts` in each).
 
-**What it costs.** With the fixture extension enabled, whose modules entry imports one small
-file and declares one table, `openContext` takes a median 5.4 ms against 4.2 ms with no extension
-enabled, and `kabane list` a median 119.8 ms of process wall time against 118.8 ms (30 runs per
-case on an M4 Pro, 2026-11-15). `openContext` is timed inside the process around the call: the
-manifest read, the modules entry's import and its transitive imports, the factory, the
-registration and the migration check, which on a boot that changes nothing only reads. An entry
-that imports more costs more; the import-graph test is what keeps that small.
-
 ### A module that fails to load stops writes; anything else that fails is skipped
 
 A failing command, board port, MCP tool, doctor check or copilot file costs only that
@@ -701,8 +557,6 @@ commands (`.opencode/commands/<name>.md`):
   into the prompt line as `/name`. A built-in name wins; two extensions with one name are both
   refused with a diagnostic, because a human types it. A shortcut stays a file: it is how a human
   on the board reaches a skill.
-- `copilot/procedures/` is retired (ADR 0004): the host does not read it, so one left in a
-  third-party extension is ignored.
 - `templates/<name>/`: skill templates a skill tells the agent to copy into a
   project.
 
@@ -751,18 +605,6 @@ permission policy in its type, though its text can still ask for anything.
 Long work runs in a detached process the board only observes, as the loop's runner does
 (`extensions/loop/index.ts`), because a host cannot interrupt a synchronous loop in its own
 process.
-
-This follows the 2026-11-04 research note except in three places:
-
-- **`api` sits in the manifest**, read before the import, where the note put it on the exported
-  object. An incompatible extension then runs no code at all.
-- **There are no official extensions inside the bundle.** The note kept official extensions on
-  internals because they ship in lockstep with the CLI. JCAB-316:3 builds the loop as an
-  external extension against API v1 alone, so the CLI keeps no list of official names, and an
-  official name has no precedence to defend.
-- **A single `<name>.ts` file is not an extension.** The note accepted one; a directory is the one
-  shape, as opencode requires for configured local paths, so a later install command has a single
-  thing to put in place.
 
 ## The code breaks these rules in named places
 
