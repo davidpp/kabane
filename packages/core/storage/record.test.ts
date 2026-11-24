@@ -150,6 +150,64 @@ describe("RecordRead — deletes, cycles and cost", () => {
 	afterEach(() => {
 		rmSync(TEST_BASE, { recursive: true, force: true });
 	});
+
+	it("hides a whole parent cycle when one of its members is deleted", async () => {
+		const seen = await read((db) => {
+			thread(db, "A", "B");
+			thread(db, "B", "C", at(1));
+			thread(db, "C", "A");
+			entry(db, "claim-a", "claim", "claude", at(2), "A");
+			const threads = RecordRead.threads(db);
+			const holder = RecordRead.claimHolder(db, "A");
+			if (!threads.ok) throw threads.error;
+			if (!holder.ok) throw holder.error;
+			return { threads: threads.value, holder: holder.value };
+		});
+		expect(seen).toEqual({ threads: [], holder: undefined });
+	});
+
+	it("reads one thread the way the whole record reads it", async () => {
+		const scoped = await read((db) => {
+			// A cycle, a cycle with a deleted member, a missing parent, a deleted
+			// grandparent, a self-parent, and plain roots and children.
+			const parents: [string, string | null, string | null][] = [
+				["c1", "c2", null],
+				["c2", "c1", null],
+				["d1", "d2", null],
+				["d2", "d1", at(1)],
+				["d3", "d1", null],
+				["orphan", "not-arrived", null],
+				["gp", null, at(1)],
+				["p", "gp", null],
+				["k", "p", null],
+				["self", "self", null],
+				["root", null, null],
+				["child", "root", null],
+			];
+			for (const [id, parent, deleted] of parents) {
+				thread(db, id, parent, deleted);
+				entry(db, `claim-${id}`, "claim", "claude", at(2), id);
+			}
+			const whole = RecordRead.threads(db);
+			if (!whole.ok) throw whole.error;
+			const visible = whole.value.map((t) => t.id);
+			return parents.map(([id]) => {
+				const entries = RecordRead.entries(db, id);
+				if (!entries.ok) throw entries.error;
+				return [id, entries.value.length > 0, visible.includes(id)];
+			});
+		});
+		for (const [id, entriesShow, threadShows] of scoped)
+			expect(entriesShow, String(id)).toBe(threadShows);
+		expect(scoped.filter(([, shows]) => shows).map(([id]) => id)).toEqual([
+			"c1",
+			"c2",
+			"orphan",
+			"self",
+			"root",
+			"child",
+		]);
+	});
 });
 
 describe("migration 13", () => {

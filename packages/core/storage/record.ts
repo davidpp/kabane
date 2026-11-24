@@ -5,7 +5,9 @@
  * row may point at a thread that is deleted, missing, or caught in a parent
  * cycle. These reads are where that is settled, the same way on every device:
  *
- * - a thread that is deleted, or sits under a deleted thread, is hidden;
+ * - a thread that is deleted, or sits under a deleted thread by its stored
+ *   parent, is hidden, and so is every member of a cycle holding a deleted
+ *   thread;
  * - a thread whose parent has not arrived shows at the root;
  * - in a parent cycle, the member with the lowest id is read as having no
  *   parent, so no thread disappears;
@@ -34,13 +36,20 @@ import {
 } from "../schemas";
 
 /**
- * `up(start, node)`: every thread a thread reaches through its parents. A
- * thread on a cycle reaches itself, and the cycle's members are all it
- * reaches, so the lowest of them is where the cycle breaks. `UNION` drops the
- * repeated pairs a cycle produces, which is what ends the recursion.
+ * `hidden`: every deleted thread, and every thread under one along the stored
+ * parent edges, cycles included, so a delete hides all a cycle holds before
+ * any cycle is broken. `up(start, node)`: every thread a thread reaches
+ * through its parents. A thread on a cycle reaches itself, and the cycle's
+ * members are all it reaches, so the lowest of them is where the cycle breaks.
+ * `UNION` drops the repeated rows a cycle produces, which ends each recursion.
  */
 export const VISIBLE_THREADS_SQL = `
 WITH RECURSIVE
+  hidden(id) AS (
+    SELECT id FROM ${TABLES.threads} WHERE deleted_at IS NOT NULL
+    UNION
+    SELECT t.id FROM ${TABLES.threads} t JOIN hidden h ON t.parent_id = h.id
+  ),
   up(start, node) AS (
     SELECT id, parent_id FROM ${TABLES.threads} WHERE parent_id IS NOT NULL
     UNION
@@ -51,21 +60,13 @@ WITH RECURSIVE
     SELECT start FROM up GROUP BY start
     HAVING SUM(start = node) > 0 AND start = MIN(node)
   ),
-  placed(id, parent_id, deleted_at) AS (
+  visible_threads(id, parent_id) AS (
     SELECT t.id,
-           CASE WHEN b.id IS NOT NULL OR p.id IS NULL THEN NULL ELSE t.parent_id END,
-           t.deleted_at
+           CASE WHEN b.id IS NOT NULL OR p.id IS NULL THEN NULL ELSE t.parent_id END
       FROM ${TABLES.threads} t
       LEFT JOIN breaker b ON b.id = t.id
       LEFT JOIN ${TABLES.threads} p ON p.id = t.parent_id
-  ),
-  hidden(id) AS (
-    SELECT id FROM placed WHERE deleted_at IS NOT NULL
-    UNION
-    SELECT placed.id FROM placed JOIN hidden ON placed.parent_id = hidden.id
-  ),
-  visible_threads(id, parent_id) AS (
-    SELECT id, parent_id FROM placed WHERE id NOT IN (SELECT id FROM hidden)
+     WHERE t.id NOT IN (SELECT id FROM hidden)
   )`;
 
 const rowsOf = <S extends z.ZodType>(
