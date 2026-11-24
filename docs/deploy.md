@@ -734,12 +734,17 @@ empty cloud device: nothing carries over from the old one.
        [ "$(echo "$out" | jq .batches)" -lt 100 ] && return 0
      done
    }
-   # Shared rows of every replicated table: core's, then each module's this device registers.
+   # Replicated.tables(db) includes the five core tables and this database's module declarations.
    counts() {
-     for t in projects tasks task_links task_comments task_work_log task_context_refs \
-         upstream_links $(sqlite3 "$db" "SELECT tbl FROM module_declarations ORDER BY tbl"); do
-       echo "$t $(sqlite3 "$1" "SELECT count(*) FROM $t WHERE visibility != 'private'")"
-     done
+     local queries
+     queries=$(sqlite3 -readonly -bail "$1" "
+       WITH replicated(tbl) AS (
+         VALUES ('threads'), ('entries'), ('attributes'), ('refs'), ('projects')
+         UNION SELECT tbl FROM module_declarations
+       )
+       SELECT printf('SELECT %Q, count(*) FROM \"%w\" WHERE visibility != ''private'';', tbl, tbl)
+       FROM replicated ORDER BY tbl;") || return 1
+     sqlite3 -readonly -bail "$1" "$queries"
    }
    ```
 
@@ -749,7 +754,7 @@ empty cloud device: nothing carries over from the old one.
    ([`getting-started.md`](getting-started.md#upgrading-from-100-beta0-actor-uris)).
    Migration 12 renames what step 1 brought in and logs no op of its own, so nothing is left
    to exchange with the old hub. On the device you will check from, record the baseline:
-   `counts "$db" > "$home/hub-baseline.txt"`.
+   `counts "$db" > "$home/hub-baseline.txt" || exit 1`.
 3. Dashboard → **Workers & Pages → `cabane-worker` → Settings → Domains & Routes**: remove
    `<your-domain>`. A hostname serves one Worker at a time.
 4. Set `SERVICE_ACTORS` with `kabane://actor/agent/<name>` values: the Worker refuses any
@@ -789,7 +794,9 @@ empty cloud device: nothing carries over from the old one.
    jq --slurpfile own "$home/config.json" '.extensions = ($own[0].extensions // [])' \
      "$check/config.json" > "$check/config.next" && mv "$check/config.next" "$check/config.json"
    KABANE_HOME="$check" level
-   diff "$home/hub-baseline.txt" <(counts "$check/kabane.db") && echo "the new hub holds the baseline"
+   counts "$check/kabane.db" > "$check/counts.txt" || exit 1
+   diff "$home/hub-baseline.txt" "$check/counts.txt" || exit 1
+   echo "the new hub holds the baseline"
    rm -rf "$check"
    ```
 

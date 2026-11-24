@@ -1,7 +1,8 @@
 # 0006: Core's record is four tables with open kinds and keys, so a new need adds data and leaves core's schema alone
 
-- Status: proposed (draft for David's review). The four tables and their sync rules are built
-  beside today's tables (JCAB-658); nothing reads or migrates into them yet.
+- Status: proposed (draft for David's review).
+- Implementation: 2.0.0-beta.0 stores tasks in the four record tables and syncs them. It shipped
+  addressed questions, claims, keyed plans and whole-device export and rebuild.
 - Date: 2026-11-23
 - Issue: none filed yet
 - Companion: ADR 0007 (proposed) says how agents wait and how work continues on this record.

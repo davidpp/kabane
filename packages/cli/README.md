@@ -348,9 +348,9 @@ are <=2KiB with identity/state/version and no description echo. Follow
 text or raw `--json` records. See [concise read semantics](../../docs/concise-reads.md),
 including query-relevant stale cursors and independent MCP today buckets.
 
-Ids are short ids (`JCAB-12`) or ULIDs. Short ids are labels, not identities:
-two devices can mint the same one offline, and `sync pull` relabels the later
-one (`sync status` counts `renamed ids`).
+A thread ID is a ULID or plan key. Two devices can mint the same short label offline.
+Both threads keep that label. Use the thread ID to select the one you mean.
+Only project labels are renamed on pull, counted under `renamed ids` in `sync status`.
 
 ## Checklists
 
@@ -426,7 +426,7 @@ snippets is `src/mcp-clients.ts`; `McpInstall.run(harnesses, opts)` in
 command.
 
 Same tools as a hub at `https://<your-domain>/mcp`: `kabane_scopeList`,
-`kabane_add`, `kabane_get`, `kabane_list`, `kabane_search`, `kabane_today`,
+`kabane_add`, `kabane_apply`, `kabane_get`, `kabane_list`, `kabane_search`, `kabane_today`,
 `kabane_context`, `kabane_edit`, `kabane_done`, `kabane_link`,
 `kabane_comment`, `kabane_log`, `kabane_contextAdd`, `kabane_contextList`,
 `kabane_contextRemove`, `kabane_linkList`, `kabane_upstreamList`, `kabane_logList`,

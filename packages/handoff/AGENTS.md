@@ -2,7 +2,7 @@
 
 A data module with no table: it declares the timeline entry kind `handoff`, its template, the
 `kabane_handoff` tool and one MCP instructions paragraph. A handoff is an entry in core's
-`task_comments`, and core renders the brief's `handoff.latest` section from the kind's
+`entries`, and core renders the brief's `handoff.latest` section from the kind's
 declaration in `module.ts`. `README.md` describes the template, the tool, the brief section and
 the CLI; read it before changing any of them.
 

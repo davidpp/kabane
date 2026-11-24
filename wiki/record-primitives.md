@@ -1,8 +1,8 @@
 # The record as four tables: columns, reasons, and the four uses walked through
 
-Design record for ADR 0006 (proposed). The four tables and their sync rules are built
-(JCAB-658, "How the four tables converge" below), and migration 14 moved the tracker into them
-(JCAB-660, "The migration" below); the rest is not built. Counts come from David's tracker
+Design record for ADR 0006 (proposed). Version 2.0.0-beta.0 shipped the four record tables and
+their sync rules, migration 14, questions as addressed entries, claim and release entries,
+keyed plans, and whole-device export and rebuild. Counts come from David's tracker
 database, read on 2026-11-23. They are used for cost and risk only. Low use of a field so far is
 not treated as a reason to drop it, because David plans to move work from other systems into
 kabane.
@@ -334,8 +334,8 @@ record has a defined file form, and the database can be rebuilt from it.
 - The form is one JSON document per row, grouped by thread: the thread, then its entries,
   attributes, links and refs. Each document carries its table, its kind or key, and the
   declaration version it was written under.
-- `kabane export <scope>/` writes a subtree in that form, and `kabane import` rebuilds rows
-  from it. A test rebuilds a database from an export and compares it with the original.
+- `kabane export <dir>` writes a whole-device backup of replicated rows, including private
+  rows in every scope. `--check` rebuilds and compares it. Scoped export remains proposed.
 - A portion that leaves kabane (to a patente artifact, a git repository, a backup) leaves in
   this form. Entries are append-only, so what comes back from a shared copy is new entries and
   changed attributes, never rewritten history.

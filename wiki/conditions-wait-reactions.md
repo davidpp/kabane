@@ -1,7 +1,7 @@
 # Conditions, `kabane wait` and reactions: the rules behind ADR 0007
 
-Design record for ADR 0007 (proposed). Nothing here is built. It describes what exists today
-where that matters, with the file that holds it.
+Design record for ADR 0007 (proposed). Version 2.0.0-beta.0 shipped the four record conditions
+in `kabane wait`. General reactions on the jobs tick remain proposed.
 
 ## What exists today
 
@@ -21,11 +21,11 @@ its session. Run rows sync.
 
 | Condition | True when | Works on today's schema |
 |---|---|---|
-| `answered <ask>` | the ask has an answer, or was withdrawn; the output says which | yes: `task_questions.status` |
+| `answered <ask>` | the ask has an answer, or was withdrawn; the output says which | yes: a closing reply to the ask entry |
 | `state <thread> <states>` | the thread is in one of the states named, such as `done` or `waiting` | yes |
 | `ready <thread>` | every thread that blocks it is `done` or `cancelled` | yes: the `blocks` links |
 | `run <run> <states>` | the run's row is in one of the states named: `waiting`, `idle`, `ended` | yes: this is what `jobs.onAttention` reads |
-| `addressed <actor>` | something is addressed to that actor and nothing has closed it | partly: open questions today, any addressed entry under ADR 0006 |
+| `addressed <actor>` | something is addressed to that actor and nothing has closed it | yes: addressed entries without a closing reply |
 
 `ready` is the rule the loop already applies inside a run (`extensions/loop/src/plan.ts`),
 including that a cancelled blocker no longer blocks. It moves to core as a read, so a plain
