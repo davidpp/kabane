@@ -108,8 +108,10 @@ is a package in the data module layer, registered by the host (`MODULES` in
 `packages/cli/src/context.ts`). An extension's own table is a `KabaneModule` it contributes from the modules
 entry its manifest names (below), with its own migrations and `syncTables`; its rows then
 replicate through the oplog like a first-party module's. A change to the task row itself stays a
-core migration, and so does the staged 2.0 record (proposed ADR 0006): its four tables are created
-by core's migration 13, empty beside the task row they are to replace. `packages/core/AGENTS.md` ("Data modules") holds the module seam's rules.
+core migration, and so does the 2.0 record (proposed ADR 0006): its four tables (`threads`,
+`entries`, `attributes`, `refs`) are created by core's migration 13, and migration 14 moves the
+task tables into them and makes `tasks` a view that reads the old task row back. A data module
+table names its thread by `task_id` with no foreign key: no key can name a view. `packages/core/AGENTS.md` ("Data modules") holds the module seam's rules.
 
 The verdicts for what core holds that is not obviously the record:
 

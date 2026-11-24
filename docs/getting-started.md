@@ -862,6 +862,26 @@ changes. The database moves to schema 13 the first time this version opens it.
 - **No going back.** The old version refuses a database this one has opened. Going back takes a
   backup made before the first open.
 
+### Upgrading: the tracker moves into the record
+
+This version moves every task, comment, work-log row, link, context ref and linked issue into the
+four record tables, keeps every stored value, and reads them back as before. The database moves to
+schema 14 the first time this version opens it.
+
+- **What you see.** `list`, `show`, `context`, `questions` and the board read as they did. A
+  `parent` or `child` link becomes the child's parent, so the child shows as a subtask. The id of
+  a link, a context ref or a linked issue changes: it is now made from what the row points at,
+  so take ids from a fresh read (`kabane_linkList`, `kabane_contextList`, `kabane_upstreamList`).
+- **Sync: back up, update every device and the hub, then re-seed.** The ops this device had not
+  pushed yet are dropped: they named the old tables. Run `kabane sync backfill` once on the
+  device whose copy you keep, then `kabane sync push`; the others pull. A device still on
+  schema 13 stops pulling at the first op from 14, until it updates.
+- **Extensions with their own tables.** An extension table that referenced `tasks(id)` is
+  rebuilt without that reference by the extension's own update. One that is not enabled keeps
+  pointing at the old table, renamed `retired_tasks`, until it is.
+- **No going back.** The old version refuses a database this one has opened. Going back takes a
+  backup made before the first open.
+
 ### Subsequent updates
 
 ```bash
