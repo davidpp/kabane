@@ -27,7 +27,7 @@ export const isRecordTable = (tbl: string): tbl is RecordTable =>
 	(RECORD_TABLES as readonly string[]).includes(tbl);
 
 /** The record's tables whose ids are derived from a key (`RecordId`). */
-export const KEYED_TABLES = ["attributes", "links", "refs"] as const;
+const KEYED_TABLES = ["attributes", "links", "refs"] as const;
 export type KeyedTable = (typeof KEYED_TABLES)[number];
 
 export const isKeyedTable = (tbl: string): tbl is KeyedTable =>
