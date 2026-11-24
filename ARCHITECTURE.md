@@ -654,30 +654,8 @@ consistent only while the module is registered. The rule has two parts:
 tables stay, with their rows. A task delete hides its thread. Module reads join the visible tasks to hide its retained rows. Its `onTaskStateChange` no longer runs, its tools leave `kabane mcp`, and the ops
 other devices push for its tables park on this device, as for any device that lacks a module
 (the header of `packages/core/module.ts`). Enabling it again registers the module, and the next pull
-replays what parked. Removing its tables is a separate, explicit step, designed below and not
-built.
-
-**Removing a disabled extension's tables (designed, not built).** A new command,
-`kabane modules forget <module>`, takes a module name as `module_declarations` records it,
-because a disabled or broken extension's code is not loaded and the declarations know modules,
-not extensions; `kabane modules` with no argument lists the recorded modules that are not
-registered, with their tables and row counts. It opens the database through the same stages as
-every other command, so it runs only when every enabled extension's modules load. It refuses:
-
-- a module that is registered, which means its extension is enabled: disable it first;
-- a module with ops parked in `sync_parked`: other devices' writes are waiting for it, so enable
-  it and sync, or accept losing them with `--discard-parked`, which deletes them in the same
-  transaction;
-- a module whose tables have ops in this device's own oplog past `last_pushed_seq`: sync first,
-  so the deletes and writes this device already captured reach the other devices.
-
-Then, in one transaction, it drops each table the declaration names, the module's version table
-(`schema_migrations_<name>`), its `module_declarations` rows and its tables' `sync_parked_deletes`
-rows. It captures nothing: the rows are this device's copy, the other devices keep theirs, and a
-delete op would erase them there. Afterwards the device is one that never had the module: its
-ops park on pull. Enabling it again migrates from version 0 and replays only what parked since,
-so rows nobody wrote after the forget stay absent here; rebuilding them needs the module's ops
-from the start of the log, which no device reads today, and the command says so before it runs.
+replays what parked. Removing its tables is a separate, explicit step, designed in
+`wiki/extension-api.md` and not built.
 
 The alternatives, a read-only mode and refusing writes command by command, are in
 `wiki/extension-api.md`.
