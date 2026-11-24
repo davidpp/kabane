@@ -7,23 +7,9 @@ the one failure it watches for. Everything else it needs is in AGENTS.md, which 
 loads, and in its package's `AGENTS.md`, which its few-liner sends it to. A territory with no
 specialist gets the Builder's few-liner.
 
-What a specialist may import is its package's entry in `scripts/layers.ts`, and `bun run check`
-fails anything else. A specialist for a client or an extension is told that wall first, because
-its work is the most likely to want something from a layer it may not reach.
-
-## Project agents
-
-None, and none is written for a harness. Claude Code reads a named agent from
-`.claude/agents/<name>.md` (YAML frontmatter, the body as its system prompt); Codex reads one
-from `.codex/agents/<name>.toml` (`name`, `description`, `developer_instructions`). Neither reads
-the other's format or anything under `.agents/`. A few-liner pasted into the prompt reaches
-either harness the same way, so this file is the one definition.
-
-The loop's `agent:<name>` tag uses the names in brackets below. It resolves a name only on
-Claude, from a `.claude/agents/<name>.md` whose frontmatter `name` or file name matches, nearest
-the project first and then `~/.claude/agents`, committed when the run uses a worktree. This
-repository has no such file, so a tagged session runs as the default agent and `kabane loop
-advise` says so. Codex runs every tagged session without an agent.
+This repository defines no harness agents (`.claude/agents/`, `.codex/agents/`): a few-liner
+pasted into the prompt reaches either harness the same way. The names in brackets are what the
+loop's `agent:<name>` tag would use.
 
 ## Territories
 
@@ -41,16 +27,6 @@ advise` says so. Codex runs every tagged session without an agent.
 | scripts | `scripts/**` | general-purpose (Builder) |
 | docs | `docs/**`, `README.md`, `packages/*/README.md` | The Chronicler (`chronicler`) |
 | wiki | `wiki/**` | The Chronicler |
-
-A specialist follows a layer in `ARCHITECTURE.md` whose rules a general few-liner does not carry.
-A package joins another's specialist when it shares that layer's contract and is too small to
-need a reading list of its own: the SQLite adapter implements core's `Db` port in one file, and
-each data module is one feature's rows over core's module seam, which `packages/core/AGENTS.md`
-describes. The contract joins the host because the CLI is the one package that implements it,
-and a change to either side changes the other. The hub keeps its own specialist although it is
-small, because it runs in Workers and tests under vitest, which nothing else in the repository
-does. The loop and the dispatch extension share one, because an extension's walls are the same
-whichever extension it is. `scripts/` is tooling with no layer and stays with the Builder.
 
 Settle an ambiguous owner with a call-site search rather than a guess: the issue that changes the
 callee owns the file.
