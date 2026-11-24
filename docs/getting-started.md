@@ -871,9 +871,16 @@ schema 14 the first time this version opens it.
 - **What you see.** `list`, `show`, `context`, `questions` and the board read as they did. A
   `parent` or `child` link becomes the child's parent, so the child shows as a subtask. The id of
   a link, a context ref or a linked issue changes: it is now made from what the row points at,
-  so take ids from a fresh read (`kabane_linkList`, `kabane_contextList`, `kabane_upstreamList`).
+  so take ids from a fresh read (`kabane_linkList`, `kabane_contextList`, `kabane_upstreamList`);
+  a context ref's old id still removes it.
+- **When it refuses.** The migration changes nothing and names the rows when a child's `parent`
+  or `child` links name two parents, when such a link's visibility differs from its child's, or
+  when a stored time cannot be read as an instant. Fix those rows with the old version (or in
+  SQLite), then open this one again.
 - **Sync: back up, update every device and the hub, then re-seed.** The ops this device had not
-  pushed yet are dropped: they named the old tables. Run `kabane sync backfill` once on the
+  pushed yet are dropped: they named the old tables. Enable every extension whose rows you
+  want on the other devices first (backfill seeds only the tables of enabled ones, and a run
+  after you enable one more seeds its rows then). Run `kabane sync backfill` on the
   device whose copy you keep, then `kabane sync push`; the others pull. A device still on
   schema 13 stops pulling at the first op from 14, until it updates.
 - **Extensions with their own tables.** An extension table that referenced `tasks(id)` is
