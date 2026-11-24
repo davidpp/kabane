@@ -597,7 +597,8 @@ const decideRecordRow = (
 ): RecordDecision => {
 	// A record row is never hard-deleted: its delete is a tombstone, written
 	// as an update. An op saying otherwise came from no writer of this record.
-	if (op.op === "delete") return skip("malformed-payload");
+	if (op.op === "delete" || !op.rowId.isWellFormed())
+		return skip("malformed-payload");
 	const parsed = RECORD_ROW_SCHEMAS[table].safeParse(op.payload);
 	if (!parsed.success) return skip("malformed-payload");
 	const incoming: Row = parsed.data;

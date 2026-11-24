@@ -26,8 +26,26 @@ export type RecordTable = (typeof RECORD_TABLES)[number];
 export const isRecordTable = (tbl: string): tbl is RecordTable =>
 	(RECORD_TABLES as readonly string[]).includes(tbl);
 
-const text = z.string().nullable();
+/**
+ * A string SQLite stores as it was sent. An unpaired surrogate is replaced
+ * when bound, so the value that won a comparison would not be the one stored.
+ */
+const str = z.string().refine((value) => value.isWellFormed(), {
+	message: "holds ill-formed Unicode",
+});
+const text = str.nullable();
 const counter = z.number().int();
+
+/**
+ * A clock in the one form that sorts as it reads: UTC, milliseconds, `Z`
+ * (`Date.prototype.toISOString`). Registers and the claim holder compare
+ * clocks as strings, so an offset or a missing fraction would misorder them.
+ */
+const clock = z
+	.string()
+	.regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, {
+		message: "is not a UTC instant in toISOString form",
+	});
 
 /**
  * A thread resolves in three groups, each with its own clock, counter and
@@ -35,94 +53,94 @@ const counter = z.number().int();
  * (`state_updated_*`, `state_version`) and the delete (`deleted_*`).
  */
 export const ThreadRowSchema = z.object({
-	id: z.string(),
+	id: str,
 	short_id: text,
-	kind: z.string(),
+	kind: str,
 	kind_version: counter.nullable(),
-	title: z.string(),
+	title: str,
 	body: text,
 	scope: text,
 	parent_id: text,
 	created_by: text,
-	created_at: z.string(),
-	visibility: z.string(),
-	updated_at: z.string(),
+	created_at: clock,
+	visibility: str,
+	updated_at: clock,
 	updated_by: text,
-	updated_device: z.string(),
+	updated_device: str,
 	version: counter,
 	state: text,
 	assignee: text,
-	state_updated_at: z.string(),
+	state_updated_at: clock,
 	state_updated_by: text,
-	state_updated_device: z.string(),
+	state_updated_device: str,
 	state_version: counter,
-	deleted_at: text,
+	deleted_at: clock.nullable(),
 	deleted_device: text,
 });
 export type ThreadRow = z.infer<typeof ThreadRowSchema>;
 
 /** Append-only. `addressed_to` is a JSON array of actors, `data` a JSON object. */
 export const EntryRowSchema = z.object({
-	id: z.string(),
-	thread_id: z.string(),
-	kind: z.string(),
+	id: str,
+	thread_id: str,
+	kind: str,
 	kind_version: counter.nullable(),
-	author: z.string(),
+	author: str,
 	body: text,
 	addressed_to: text,
 	re: text,
 	data: text,
-	visibility: z.string(),
-	created_at: z.string(),
+	visibility: str,
+	created_at: clock,
 	updated_by: text,
-	created_device: z.string(),
+	created_device: str,
 	version: counter,
 });
 export type EntryRow = z.infer<typeof EntryRowSchema>;
 
 /** One row per thread and key; `removed_at` is its tombstone. */
 export const AttributeRowSchema = z.object({
-	id: z.string(),
-	thread_id: z.string(),
-	key: z.string(),
+	id: str,
+	thread_id: str,
+	key: str,
 	value: text,
-	removed_at: text,
-	visibility: z.string(),
-	updated_at: z.string(),
+	removed_at: clock.nullable(),
+	visibility: str,
+	updated_at: clock,
 	updated_by: text,
-	updated_device: z.string(),
+	updated_device: str,
 	version: counter,
 });
 export type AttributeRow = z.infer<typeof AttributeRowSchema>;
 
 export const LinkRowSchema = z.object({
-	id: z.string(),
-	source_id: z.string(),
-	target_id: z.string(),
-	type: z.string(),
-	removed_at: text,
-	visibility: z.string(),
-	updated_at: z.string(),
+	id: str,
+	source_id: str,
+	target_id: str,
+	type: str,
+	removed_at: clock.nullable(),
+	visibility: str,
+	updated_at: clock,
 	updated_by: text,
-	updated_device: z.string(),
+	updated_device: str,
 	version: counter,
 });
 export type LinkRow = z.infer<typeof LinkRowSchema>;
 
 /** An `upstream` ref keeps the provider's id in `data` (`provider`, `externalId`). */
 export const RefRowSchema = z.object({
-	id: z.string(),
-	thread_id: z.string(),
-	uri: z.string(),
-	kind: z.string(),
+	id: str,
+	thread_id: str,
+	uri: str,
+	kind: str,
 	kind_version: counter.nullable(),
 	title: text,
 	data: text,
-	removed_at: text,
-	visibility: z.string(),
-	updated_at: z.string(),
+	removed_at: clock.nullable(),
+	visibility: str,
+	updated_at: clock,
 	updated_by: text,
-	updated_device: z.string(),
+	updated_device: str,
 	version: counter,
 });
 export type RefRow = z.infer<typeof RefRowSchema>;
