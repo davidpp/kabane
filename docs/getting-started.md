@@ -352,6 +352,23 @@ kabane list --all                            # include done and cancelled
 kabane search license --format concise
 ```
 
+A script can wait for a change on this device. The command checks immediately and then
+once per second. By default it waits until the condition holds or the process is stopped.
+
+```sh
+kabane wait answered JMYA-1:1 --timeout 30s
+kabane wait state JMYA-1 done cancelled --timeout 10m
+kabane wait ready JMYA-2 --timeout 2h
+```
+
+Exit 0 prints one JSON line with `condition` and the task ULID in `taskId`.
+`answered` also returns `questionId` and a `status` of `answered` or `withdrawn`.
+It accepts the same question handle or `id:<ULID>` as `kabane answer`.
+`state` returns the matching `state`. A thread is `ready` when every incoming
+`blocks` and outgoing `blocked_by` or `follows` dependency is done or cancelled.
+A thread with no blockers is ready immediately. Exit 1 means the timeout expired.
+Other errors exit 2 with a message on stderr.
+
 For agent reads, select concise explicitly: concise output is opt-in, and without it a command
 prints its human text, or its full records with `--json`
 ([what changed in them since 1.0.0-beta.0](#upgrading-from-100-beta0-comment-kinds-and-handoffs)).
@@ -911,3 +928,19 @@ Known rough edges:
 - **Add the git remote before you file tasks.** A repo with no remote is scoped by its first
   commit (`git:<hash>`). Once a remote is added, the scope switches to the remote, and the
   tasks filed under the commit scope stop showing in that repo's board.
+
+## Export and rebuild the record
+
+Run `kabane export <dir> --check` to write a backup and test its rebuild.
+Choose a directory without an existing `record.jsonl` or `manifest.json`.
+The JSON Lines file starts with the format and schema versions, followed by
+one document per replicated row, including private rows. Protect the directory
+accordingly. The manifest records each table's row count and SHA-256 digest in
+row ID order. The check prints those values and ends with `match` (exit 0) or
+`differ` (exit 1). Omit `--check` to just write the files.
+
+Run `kabane import <dir> --into <home>` with the
+same core and registered module schema versions. It rebuilds the database
+through normal migrations and checks the manifest before creating
+`<home>/kabane.db`. An existing database is refused. Device configuration,
+sync history, and tables outside the registered replication set are excluded.

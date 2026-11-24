@@ -10,6 +10,7 @@
 
 import { Planner as AssembleContext } from "./assemble-context";
 import { Planner as Comments } from "./comments";
+import { Planner as Conditions } from "./conditions";
 import { Planner as ContextPages } from "./context-pages";
 import { Planner as ContextRefs } from "./context-refs";
 // Import domain namespaces
@@ -48,6 +49,8 @@ export const Planner = {
 	searchTaskPage: TaskPages.searchTaskPage,
 	getTodayPages: TaskPages.getTodayPages,
 	// Task Links
+	matchingState: Conditions.matchingState,
+	isReady: Conditions.isReady,
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
 	deleteLink: TaskLinks.deleteLink,

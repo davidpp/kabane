@@ -25,7 +25,9 @@ import { context } from "./commands/context";
 import { doctor } from "./commands/doctor";
 import { done } from "./commands/done";
 import { edit } from "./commands/edit";
+import { exportCommand } from "./commands/export";
 import { handoff } from "./commands/handoff";
+import { importCommand } from "./commands/import";
 import { init } from "./commands/init";
 import { link } from "./commands/link";
 import { list } from "./commands/list";
@@ -39,6 +41,7 @@ import { show } from "./commands/show";
 import { sync } from "./commands/sync";
 import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
+import { wait } from "./commands/wait";
 import { configPath, resolveHome } from "./config";
 import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
@@ -61,12 +64,15 @@ export const COMMANDS: Command[] = [
 	comment,
 	questions,
 	answer,
+	wait,
 	checklist,
 	handoff,
 	log,
 	context,
 	scope,
 	sync,
+	exportCommand,
+	importCommand,
 	board,
 	mcp,
 	update,
@@ -195,13 +201,18 @@ export const run = async (
 	if (command.standalone) return command.run(args, bareCtx(home, cwd));
 
 	const ctx = await openContext(home, cwd, args);
-	if (!ctx.ok) return failure(ctx.error);
+	if (!ctx.ok)
+		return {
+			...failure(ctx.error),
+			exitCode: command.contextErrorExitCode ?? 1,
+		};
 	return command.run(args, ctx.value);
 };
 
 export const main = async (argv: string[]): Promise<number> => {
 	const json = argv.includes("--json");
-	const outcome = await run(argv.filter((a) => a !== "--json"));
+	const args = argv.filter((a) => a !== "--json");
+	const outcome = await run(args);
 	print(outcome, json);
 	return outcome.exitCode;
 };
