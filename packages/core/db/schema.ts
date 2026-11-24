@@ -595,7 +595,6 @@ CREATE TABLE IF NOT EXISTS attributes (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   key TEXT NOT NULL,
-  key_version INTEGER,
   value TEXT,
   removed_at TEXT,
   visibility TEXT NOT NULL DEFAULT 'shared',

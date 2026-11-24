@@ -87,7 +87,6 @@ export const AttributeRowSchema = z.object({
 	id: z.string(),
 	thread_id: z.string(),
 	key: z.string(),
-	key_version: counter.nullable(),
 	value: text,
 	removed_at: text,
 	visibility: z.string(),

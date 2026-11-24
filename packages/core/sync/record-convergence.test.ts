@@ -266,7 +266,7 @@ const attribute = async (
 		"attributes",
 		unwrap(await RecordId.attribute(threadId, key)),
 		clock,
-		{ thread_id: threadId, key, key_version: null, value },
+		{ thread_id: threadId, key, value },
 		removed,
 	);
 
