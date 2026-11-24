@@ -157,14 +157,19 @@ it("replicates a close's withdrawals, and the receiving device withdraws nothing
 	expect(unwrap(await Questions.list(alpha, { id: task.id }))).toEqual(rows);
 	// Beta captured nothing: had its hook run on apply, it would hold its own withdrawal.
 	register(true, "beta");
-	const captured = unwrap(
-		await withDb(beta, (db) =>
-			db
-				.query<{ n: number }>(
-					"SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'task_questions'",
-				)
-				.get(),
+	const counted = (sql: string) =>
+		withDb(beta, (db) => db.query<{ n: number }, []>(sql).get()?.n);
+	// Questions are entries now: beta logged none, and holds alpha's one withdrawal.
+	expect(
+		unwrap(
+			await counted("SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'entries'"),
 		),
-	);
-	expect(captured?.n).toBe(0);
+	).toBe(0);
+	expect(
+		unwrap(
+			await counted(
+				"SELECT COUNT(*) n FROM entries WHERE kind = 'questions.withdraw'",
+			),
+		),
+	).toBe(1);
 });
