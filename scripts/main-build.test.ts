@@ -30,6 +30,8 @@ describe("main-build", () => {
 		const home = join(TMP, "home");
 		mkdirSync(home);
 		const open = new Database(join(home, "kabane.db"));
+		// No fsync, so a disk busy flushing other writes cannot stall the setup.
+		open.run("PRAGMA synchronous = OFF");
 		open.run("PRAGMA journal_mode = WAL");
 		open.run("CREATE TABLE tasks (title TEXT)");
 		open.run("INSERT INTO tasks VALUES ('first')");

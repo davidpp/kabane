@@ -40,8 +40,10 @@ export const backupFile = (home: string): string =>
 
 /**
  * Copies `home`'s database into its one backup file through SQLite, so the copy is consistent
- * while other processes hold the database open in WAL mode. The previous backup stays until the
- * new copy is whole. Returns the backup's path, or null when `home` has no database.
+ * while other processes hold the database open in WAL mode. The previous backup is removed only
+ * once the new copy is written, but nothing is synced: a power cut before the OS writes the new
+ * copy out can leave no backup at all. Returns the backup's path, or null when `home` has no
+ * database.
  */
 export const backupDatabase = (home: string): string | null => {
 	const source = join(home, DB_NAME);
@@ -53,10 +55,16 @@ export const backupDatabase = (home: string): string | null => {
 	rmSync(partial, { force: true });
 	const db = new Database(source, { readonly: true });
 	try {
+		// VACUUM INTO syncs its output at this connection's level, and a sync waits seconds on a
+		// disk busy flushing other writes (a CI runner after `bun install`).
+		db.run("PRAGMA synchronous = OFF");
 		db.run("VACUUM INTO ?", [partial]);
 	} finally {
 		db.close();
 	}
+	// Renaming over an existing file makes ext4 start writing the new one out (auto_da_alloc),
+	// which waits on that same busy disk, and so does deleting the file afterwards.
+	rmSync(target, { force: true });
 	renameSync(partial, target);
 	return target;
 };
