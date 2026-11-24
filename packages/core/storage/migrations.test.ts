@@ -39,6 +39,11 @@ const freshBase = (label: string): string => {
 	return dir;
 };
 
+const must = <T>(r: Result<T>): T => {
+	if (!r.ok) throw r.error;
+	return r.value;
+};
+
 const mustInit = async (at: string): Promise<void> => {
 	const init = await Planner.init(at);
 	if (!init.ok) throw init.error;
@@ -1129,6 +1134,161 @@ describe("Migration 12: actors leave the cabane:// scheme", () => {
 
 		await initTo(12);
 		expect(await refs()).toEqual(after);
+	});
+});
+
+describe("Migration 14: the tracker moves into the record", () => {
+	afterEach(() => {
+		configureTestRuntime();
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	const RECORD = Migrations.LIST.findIndex((m) => m.name === "record-migrate");
+
+	/** A device at 13 with a module table that still references tasks(id). */
+	const stamped = async () => {
+		base = freshBase("record-migrate");
+		await initTo(RECORD);
+		await withDb((db) =>
+			db.run(
+				`CREATE TABLE probe_rows (id TEXT PRIMARY KEY,
+				   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE)`,
+			),
+		);
+	};
+
+	const count = (table: string) =>
+		withDb(
+			(db) =>
+				db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table}`).get()
+					?.n,
+		);
+
+	it("moves every row, keeps a module row that referenced its task, and reads it back", async () => {
+		await stamped();
+		const parent = must(await Legacy.addTask(base, { title: "parent" }));
+		const child = must(await Legacy.addTask(base, { title: "child" }));
+		const other = must(await Legacy.addTask(base, { title: "other" }));
+		must(
+			await Legacy.addLink(base, {
+				sourceId: parent.id,
+				targetId: child.id,
+				type: "parent",
+			}),
+		);
+		const blocks = must(
+			await Legacy.addLink(base, {
+				sourceId: other.id,
+				targetId: parent.id,
+				type: "blocks",
+				note: "why",
+			}),
+		);
+		must(
+			await Legacy.addComment(base, {
+				taskId: parent.id,
+				author: "david",
+				authorType: "human",
+				content: "hello",
+			}),
+		);
+		must(
+			await Legacy.addWorkLog(base, {
+				taskId: parent.id,
+				refs: [{ uri: "commit:abc" }],
+				note: "did it",
+			}),
+		);
+		must(
+			await Legacy.addContextRef(base, {
+				taskId: parent.id,
+				uri: "file:spec.md",
+				kind: "spec",
+				label: "Spec",
+			}),
+		);
+		await withDb((db) => {
+			db.run(
+				`UPDATE tasks SET priority = 'high', tags = '["b","a"]' WHERE id = ?`,
+				[parent.id],
+			);
+			db.run("INSERT INTO probe_rows (id, task_id) VALUES ('p1', ?)", [
+				parent.id,
+			]);
+		});
+
+		await mustInit(base);
+		expect(await versionRows()).toEqual(ALL_VERSIONS);
+
+		expect(await count("threads")).toBe(3);
+		expect(await count("entries")).toBe(2);
+		expect(await count("refs")).toBe(2);
+		expect(await count("probe_rows")).toBe(1);
+		expect(await count("retired_tasks")).toBe(3);
+		const read = must(await Planner.getTask(base, parent.id));
+		expect(read).toMatchObject({
+			title: "parent",
+			priority: "high",
+			tags: ["b", "a"],
+			state: "inbox",
+			shortId: parent.shortId,
+		});
+		expect(must(await Planner.getTask(base, child.id))?.parentTaskId).toBe(
+			parent.id,
+		);
+		const links = must(await Planner.getLinksForTask(base, parent.id));
+		expect(links.map((l) => [l.sourceId, l.targetId, l.type, l.note])).toEqual([
+			[other.id, parent.id, "blocks", "why"],
+		]);
+		const stored = await withDb((db) =>
+			db
+				.query<{ data: string }, []>(
+					"SELECT data FROM refs WHERE kind = 'blocks'",
+				)
+				.get(),
+		);
+		expect(JSON.parse(stored?.data ?? "{}").id).toBe(blocks.id);
+		expect(
+			must(await Planner.getComments(base, parent.id)).map((c) => c.content),
+		).toEqual(["hello"]);
+		expect(
+			must(await Planner.getWorkLogs(base, parent.id)).map((w) => w.note),
+		).toEqual(["did it"]);
+		expect(
+			must(await Planner.searchTasks(base, "child")).map((t) => t.id),
+		).toEqual([child.id]);
+	});
+
+	it("refuses a column it does not place, and a parent link its child disagrees with, changing nothing", async () => {
+		for (const spoil of [
+			(db: Db) => db.run("ALTER TABLE tasks ADD COLUMN unplaced TEXT"),
+			(db: Db) =>
+				db.run(
+					`INSERT INTO task_links (id, source_id, target_id, type, created_at)
+					 SELECT 'l1', a.id, b.id, 'parent', '${NOW}'
+					   FROM tasks a, tasks b WHERE a.title = 'a' AND b.title = 'b'`,
+				),
+		]) {
+			await stamped();
+			const a = must(await Legacy.addTask(base, { title: "a" }));
+			must(await Legacy.addTask(base, { title: "b", parentTaskId: a.id }));
+			must(await Legacy.addTask(base, { title: "c" }));
+			await withDb((db) => {
+				db.run(
+					"UPDATE tasks SET parent_task_id = (SELECT id FROM tasks WHERE title = 'c') WHERE title = 'b'",
+				);
+				spoil(db);
+			});
+			const init = await Planner.init(base);
+			expect(init.ok).toBe(false);
+			expect(init.ok ? "" : init.error.message).toContain(
+				"nothing was changed",
+			);
+			expect((await versionRows()).length).toBe(RECORD);
+			expect(await count("tasks")).toBe(3);
+			expect(await count("threads")).toBe(0);
+			rmSync(base, { recursive: true, force: true });
+		}
 	});
 });
 

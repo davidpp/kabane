@@ -59,9 +59,11 @@ const TASK_ATTRIBUTES = [
 ] as const;
 
 /**
- * Every column of each source table this migration places somewhere. The ids
- * of links, context refs and upstream links are not carried over: a ref's
- * identity is its thread, URI and kind.
+ * Every column of each source table this migration places somewhere. A ref's
+ * identity is its thread, URI and kind, so the old ULID of a link, context ref
+ * or upstream link is kept in its `data` as `id`, a stored value and nothing
+ * more. A folded `parent` or `child` link keeps nothing but the parent it
+ * names.
  */
 const PLACED: Record<string, readonly string[]> = {
 	tasks: [
@@ -245,15 +247,15 @@ const moveRefs = (db: Db): void => {
 		`INSERT INTO ${TABLES.refs} ${REF_COLUMNS}
 		 SELECT source_id, '${RecordKey.THREAD_URI_PREFIX}' || target_id, type, NULL, NULL,
 		        CASE WHEN note IS NULL
-		             THEN json_object('created_at', created_at)
-		             ELSE json_object('note', note, 'created_at', created_at) END,
+		             THEN json_object('id', id, 'created_at', created_at)
+		             ELSE json_object('id', id, 'note', note, 'created_at', created_at) END,
 		        NULL, visibility, created_at, updated_by, '', version
 		   FROM task_links WHERE type NOT IN ('parent', 'child')`,
 	);
 	db.run(
 		`INSERT INTO ${TABLES.refs} ${REF_COLUMNS}
 		 SELECT task_id, uri, kind, NULL, label,
-		        json_object('note', note, 'added_by', added_by,
+		        json_object('id', id, 'note', note, 'added_by', added_by,
 		                    'added_by_type', added_by_type, 'added_at', added_at),
 		        NULL, visibility, added_at, updated_by, '', version
 		   FROM task_context_refs`,
@@ -261,7 +263,7 @@ const moveRefs = (db: Db): void => {
 	db.run(
 		`INSERT INTO ${TABLES.refs} ${REF_COLUMNS}
 		 SELECT task_id, provider || ':' || external_id, 'upstream', NULL, title,
-		        json_object('provider', provider, 'external_id', external_id,
+		        json_object('id', id, 'provider', provider, 'external_id', external_id,
 		                    'identifier', identifier, 'url', url, 'created_at', created_at),
 		        NULL, visibility, updated_at, updated_by, '', version
 		   FROM upstream_links`,
