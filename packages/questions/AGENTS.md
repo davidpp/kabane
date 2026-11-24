@@ -7,22 +7,6 @@ surface. It owns three entry kinds on the record (`kinds.ts`), the migrations th
 instructions paragraph, and an `onTaskStateChange` hook that withdraws open questions when their
 issue closes. `README.md` describes the tools and their rules; read it before changing one.
 
-## It depends on core alone and both hosts register it
-
-Its layer is `data module`; its entry in `scripts/layers.ts` (`"@kabane/questions"`) says what
-it may list. The CLI (`MODULES` in `packages/cli/src/context.ts`) and the hub
-(`packages/worker/src/hub.ts`) register `questionsModule`, so a change to what it declares
-reaches both. The board and the CLI's `questions` and `answer` commands call its exports:
-`Questions` (`storage.ts`), the page and markdown renderers (`page.ts`, `markdown.ts`), the
-decision body parser (`body.ts`) and `validateAnswer` (`answer.ts`).
-
-The module seam's rules (migrations, capture, task state changes) are in
-`packages/core/AGENTS.md`, "Data modules"; `storage.ts` follows each of them.
-
-Read before writing: `module.ts`, `kinds.ts`, `storage.ts`, `sync.test.ts` (two devices through
-the in-process relay, with and without the module registered). It writes entries through
-`Planner.addEntryIn` only, never raw SQL on `entries`, so each write is stamped and captured.
-
 ## Verify
 
 ```bash
@@ -41,7 +25,8 @@ bun run gallery --print question-open --width 80
 ## Mistakes that are easy to make here
 
 - Returning an `err` from inside an `atomic` callback. `atomic` commits whatever the callback
-  returns, an `err` included; only a throw rolls back. `storage.ts:278` throws when
-  `Planner.updateTaskIn` fails for that reason.
+  returns, an `err` included; only a throw rolls back.
+- Writing raw SQL on `entries`. Write through `Planner.addEntryIn`, so each write is stamped
+  and captured.
 - Crediting the human with an answer an agent chose. `relayed: true` is only for a reply the
   human gave; the README says what `kabane mcp` and the hub do when no human is known.
