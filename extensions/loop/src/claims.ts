@@ -323,8 +323,13 @@ export namespace Claims {
 				state: "in_progress",
 				assignee: harness,
 			});
-			if (!moved.ok || !moved.value) {
-				const detail = moved.ok ? "the task was deleted" : moved.error.message;
+			// Another actor's claim stands before this run's: it lost, so it stops.
+			if (!moved.ok || !moved.value || moved.value.claimHeld === false) {
+				const detail = !moved.ok
+					? moved.error.message
+					: !moved.value
+						? "the task was deleted"
+						: `${moved.value.claimedBy ?? "nobody"} holds its claim`;
 				RunState.event(ctx, {
 					...tag,
 					type: "warning",

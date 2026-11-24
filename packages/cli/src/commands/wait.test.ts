@@ -81,6 +81,7 @@ it("matches any requested state and distinguishes invalid input from timeout", a
 		condition: "state",
 		taskId: task.id,
 		state: "waiting",
+		claimedBy: null,
 	});
 	expect((await check("state", task.id, "done")).exitCode).toBe(1);
 	expect((await check("state", task.id, "unknown")).exitCode).toBe(2);
@@ -118,4 +119,33 @@ it("waits on open questions and reports answers and withdrawals", async () => {
 			status: withdraw ? "withdrawn" : "answered",
 		});
 	}
+});
+
+it("names who holds the claim when the state is reached, so a claimant that lost can stop", async () => {
+	const task = value(
+		await Planner.addTask(home, {
+			title: "work",
+			kind: "issue",
+			state: "next",
+		}),
+	);
+	const as = (actor: string) =>
+		cli([
+			"edit",
+			task.id,
+			"--state",
+			"in_progress",
+			"--assignee",
+			"agent",
+			"--as",
+			actor,
+		]);
+	expect((await as("kabane://actor/agent/codex")).exitCode).toBe(0);
+	expect((await as("kabane://actor/agent/claude")).exitCode).toBe(0);
+	expect((await check("state", task.id, "in_progress")).json).toEqual({
+		condition: "state",
+		taskId: task.id,
+		state: "in_progress",
+		claimedBy: "kabane://actor/agent/codex",
+	});
 });

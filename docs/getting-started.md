@@ -365,7 +365,7 @@ kabane wait addressed kabane://actor/human/ana --timeout 1h
 Exit 0 prints one JSON line with `condition` and the task ULID in `taskId`.
 `answered` also returns `questionId` and a `status` of `answered` or `withdrawn`.
 It accepts the same question handle or `id:<ULID>` as `kabane answer`.
-`state` returns the matching `state`. A thread is `ready` when every incoming
+`state` returns the matching `state` and who holds the task's claim, `claimedBy` (null when nobody does). A thread is `ready` when every incoming
 `blocks` and outgoing `blocked_by` or `follows` dependency is done or cancelled.
 A thread with no blockers is ready immediately. `addressed` is true while an entry
 addressed to that actor waits on them: a question `kabane_ask` filed for them that nobody
@@ -377,7 +377,7 @@ and `kind`. Exit 1 means the timeout expired. Other errors exit 2 with a message
 Setting a task `in_progress` with an assignee claims it for whoever made the edit, and the
 result says who holds the claim (`claimedBy`). When two agents claim the same task, on one
 device or on two that were offline, the earlier claim holds on every device once both have
-synced, and the later one reads someone else in `claimedBy`: that agent leaves the task. A
+synced, and the later one reads someone else in `claimedBy` (and `claimHeld: false` on its edit): that agent leaves the task. An agent that claimed offline learns it lost from `kabane wait state <id> in_progress` once its device has synced, and a loop run launches no session for a task whose claim another agent holds. A
 claim lasts while the task is `in_progress` or `waiting`; putting it back in any other state
 releases it. A claim never expires on its own.
 

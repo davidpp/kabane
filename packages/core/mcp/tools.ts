@@ -462,7 +462,7 @@ const editInput = {
 const edit = define({
 	name: CORE_TOOL_NAMES.edit,
 	kind: "write",
-	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue: the result's claimedBy names who holds the claim, and when it is not you, another agent claimed it first, so leave it. Putting it back (any state but in_progress or waiting) releases the claim.
+	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue: the result's claimedBy names who holds the claim, and claimHeld is false when it is not you: another agent claimed it first, so leave it. Putting it back (any state but in_progress or waiting) releases the claim.
 
 Parameters:
 - id: ${ID_HINT}
@@ -510,7 +510,11 @@ Parameters:
 		if (!result.ok || args.state !== "in_progress") return result;
 		const holder = await Planner.claimHolder(ctx.basePath, id.value);
 		return holder.ok
-			? ok({ ...result.value, claimedBy: holder.value })
+			? ok({
+					...result.value,
+					claimedBy: holder.value,
+					claimHeld: holder.value === Runtime.actor(),
+				})
 			: holder;
 	},
 });

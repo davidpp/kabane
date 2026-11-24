@@ -29,10 +29,13 @@ const claimOf = async (
 	store: string,
 	id: string,
 	update: TaskUpdate,
-): Promise<Result<{ claimedBy?: string | null }>> => {
+	actor: string,
+): Promise<Result<{ claimedBy?: string | null; claimHeld?: boolean }>> => {
 	if (update.state !== "in_progress") return ok({});
 	const holder = await Planner.claimHolder(store, id);
-	return holder.ok ? ok({ claimedBy: holder.value }) : holder;
+	return holder.ok
+		? ok({ claimedBy: holder.value, claimHeld: holder.value === actor })
+		: holder;
 };
 
 const claimLine = (holder: string | null, actor: string): string =>
@@ -88,14 +91,14 @@ export const edit: Command = {
 				update,
 			);
 			if (!receipt.ok) return failure(receipt.error);
-			const claim = await claimOf(ctx.store, resolved.value, update);
+			const claim = await claimOf(ctx.store, resolved.value, update, ctx.actor);
 			if (!claim.ok) return failure(claim.error);
 			return conciseSuccess({ ...receipt.value, ...claim.value });
 		}
 		const updated = await Planner.updateTask(ctx.store, resolved.value, update);
 		if (!updated.ok) return failure(updated.error);
 		if (!updated.value) return failure(`No task found: ${input}`);
-		const claim = await claimOf(ctx.store, resolved.value, update);
+		const claim = await claimOf(ctx.store, resolved.value, update, ctx.actor);
 		if (!claim.ok) return failure(claim.error);
 		const lines = [`✏️  Updated ${formatTaskLine(updated.value)}`];
 		if (claim.value.claimedBy !== undefined)
