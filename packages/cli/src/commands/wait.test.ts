@@ -51,6 +51,28 @@ it.each(["blocks", "blocked_by", "follows"] as const)(
 	},
 );
 
+it("requires every remaining blocker to be closed", async () => {
+	const task = value(await Planner.addTask(home, { title: "work" }));
+	const closed = value(
+		await Planner.addTask(home, { title: "closed", state: "done" }),
+	);
+	const open = value(await Planner.addTask(home, { title: "open" }));
+	for (const blocker of [closed, open])
+		value(
+			await Planner.addLink(home, {
+				type: "blocks",
+				sourceId: blocker.id,
+				targetId: task.id,
+			}),
+		);
+	expect((await check("ready", task.id)).exitCode).toBe(1);
+	value(await Planner.updateTask(home, open.id, { state: "cancelled" }));
+	expect((await check("ready", task.id)).exitCode).toBe(0);
+	value(await Planner.updateTask(home, open.id, { state: "next" }));
+	value(await Planner.deleteTask(home, open.id));
+	expect((await check("ready", task.id)).exitCode).toBe(0);
+});
+
 it("matches any requested state and distinguishes invalid input from timeout", async () => {
 	const task = value(
 		await Planner.addTask(home, { title: "work", state: "waiting" }),

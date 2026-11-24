@@ -198,7 +198,10 @@ export const run = async (
 
 	const ctx = await openContext(home, cwd, args);
 	if (!ctx.ok)
-		return { ...failure(ctx.error), exitCode: command === wait ? 2 : 1 };
+		return {
+			...failure(ctx.error),
+			exitCode: command.contextErrorExitCode ?? 1,
+		};
 	return command.run(args, ctx.value);
 };
 
@@ -206,9 +209,6 @@ export const main = async (argv: string[]): Promise<number> => {
 	const json = argv.includes("--json");
 	const args = argv.filter((a) => a !== "--json");
 	const outcome = await run(args);
-	// A successful wait is one newline-terminated JSON record in either output mode.
-	const waitRecord =
-		args[0] === wait.name && outcome.exitCode === 0 && !argv.includes("--help");
-	print(outcome, json && !waitRecord);
+	print(outcome, json);
 	return outcome.exitCode;
 };

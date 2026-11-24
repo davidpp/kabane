@@ -1,5 +1,5 @@
 import { map, Planner, TaskStateSchema, type Result } from "@kabane/core";
-import { success, usage, type Outcome } from "@kabane/extension";
+import { conciseSuccess, usage, type Outcome } from "@kabane/extension";
 import { Questions } from "@kabane/questions";
 import type { Command } from "../context";
 
@@ -20,8 +20,7 @@ const poll = async (
 	for (;;) {
 		const result = await read();
 		if (!result.ok) return problem(result.error);
-		if (result.value)
-			return success(result.value, JSON.stringify(result.value));
+		if (result.value) return conciseSuccess(result.value);
 		const remaining = deadline - performance.now();
 		if (remaining <= 0)
 			return { exitCode: 1, json: { timeout: true }, text: "Wait timed out" };
@@ -40,6 +39,7 @@ const duration = (value: unknown): number => {
 
 export const wait: Command = {
 	name: "wait",
+	contextErrorExitCode: 2,
 	summary:
 		"Wait for a question to close, a task state, or every blocker to close",
 	usage: USAGE,
@@ -78,9 +78,21 @@ export const wait: Command = {
 			);
 		const id = await Planner.resolveTaskId(ctx.store, input);
 		if (!id.ok) return problem(id.error);
-		const expected = condition === "ready" ? "ready" : parsed.data;
+		const taskId = id.value;
+		if (condition === "ready")
+			return poll(
+				async () =>
+					map(await Planner.isReady(ctx.store, taskId), (ready) =>
+						ready ? { condition, taskId } : null,
+					),
+				timeout,
+			);
 		return poll(
-			() => Planner.taskCondition(ctx.store, id.value, expected),
+			async () =>
+				map(
+					await Planner.matchingState(ctx.store, taskId, parsed.data),
+					(state) => (state ? { condition, taskId, state } : null),
+				),
 			timeout,
 		);
 	},
