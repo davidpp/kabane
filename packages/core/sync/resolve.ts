@@ -51,7 +51,9 @@
 
 import { Modules } from "../module";
 import {
+	isKeyedTable,
 	RECORD_ROW_SCHEMAS,
+	RecordId,
 	type RecordTable,
 	SYNC_TABLES,
 	type SyncOp,
@@ -152,6 +154,12 @@ export const SKIP_REASONS = [
 	"already-absent",
 	/** Delete loses to a strictly newer local update. */
 	"newer-local-update",
+	/**
+	 * A record attribute, link or ref whose id is not the one its key derives
+	 * (`RecordId`), in the envelope or the row: storing it would make a second
+	 * row for one key.
+	 */
+	"key-id-mismatch",
 ] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
 
@@ -602,6 +610,13 @@ const decideRecordRow = (
 	const parsed = RECORD_ROW_SCHEMAS[table].safeParse(op.payload);
 	if (!parsed.success) return skip("malformed-payload");
 	const incoming: Row = parsed.data;
+	if (isKeyedTable(table)) {
+		if (
+			incoming.id !== op.rowId ||
+			RecordId.forRow(table, incoming) !== op.rowId
+		)
+			return skip("key-id-mismatch");
+	} else if (incoming.id !== op.rowId) return skip("malformed-payload");
 	const apply = (row: Row): RecordDecision => ({
 		kind: "apply",
 		rowId: op.rowId,

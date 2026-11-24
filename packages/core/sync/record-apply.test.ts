@@ -12,7 +12,7 @@ import { join } from "node:path";
 import type { Db } from "../db/port";
 import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
-import type { SyncOp } from "../schemas";
+import { RecordId, type SyncOp } from "../schemas";
 import { Planner } from "../storage/index";
 import { Oplog } from "../storage/oplog";
 import { RecordRead } from "../storage/record";
@@ -173,5 +173,76 @@ describe("2.0 record — what apply refuses", () => {
 			["later", 2],
 			["later", 2],
 		]);
+	});
+
+	it("skips an attribute, link or ref whose id is not the one its key derives", async () => {
+		const stamps = {
+			removed_at: null,
+			visibility: "shared",
+			updated_at: T0,
+			updated_by: null,
+			updated_device: "d",
+			version: 1,
+		};
+		const attribute = { ...stamps, thread_id: "thread", key: "priority" };
+		const link = {
+			...stamps,
+			source_id: "thread",
+			target_id: "other",
+			type: "blocks",
+		};
+		const ref = {
+			...stamps,
+			thread_id: "thread",
+			kind: "upstream",
+			kind_version: null,
+			title: null,
+			uri: "https://github.com/acme/repo/issues/7",
+			data: JSON.stringify({ provider: "github", externalId: "7" }),
+		};
+		const base = await device();
+		const report = await apply(base, [
+			op("threads", thread("thread")),
+			op("threads", thread("other")),
+			op("attributes", {
+				...attribute,
+				id: RecordId.attribute("thread", "priority"),
+				value: "high",
+			}),
+			op("attributes", { ...attribute, id: "wrong", value: "low" }),
+			op("links", { ...link, id: "wrong" }),
+			op("refs", { ...ref, id: RecordId.ref("thread", ref.uri) }),
+			op("refs", {
+				...ref,
+				id: RecordId.upstreamRef("thread", "github", "7"),
+				data: JSON.stringify({ provider: "github" }),
+			}),
+			// The envelope names one row, the payload another.
+			op(
+				"attributes",
+				{
+					...attribute,
+					id: RecordId.attribute("thread", "priority"),
+					value: "x",
+				},
+				{ rowId: "wrong" },
+			),
+		]);
+		expect(report.skipped["key-id-mismatch"]).toBe(5);
+		const stored = await withDb(base, (db) =>
+			db
+				.query<{ id: string; value: string }, []>(
+					"SELECT id, value FROM attributes",
+				)
+				.all(),
+		);
+		expect(stored).toEqual([
+			{ id: RecordId.attribute("thread", "priority"), value: "high" },
+		]);
+		expect(
+			await withDb(base, (db) =>
+				db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM links").get(),
+			),
+		).toEqual({ n: 0 });
 	});
 });

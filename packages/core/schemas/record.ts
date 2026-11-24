@@ -26,6 +26,13 @@ export type RecordTable = (typeof RECORD_TABLES)[number];
 export const isRecordTable = (tbl: string): tbl is RecordTable =>
 	(RECORD_TABLES as readonly string[]).includes(tbl);
 
+/** The record's tables whose ids are derived from a key (`RecordId`). */
+export const KEYED_TABLES = ["attributes", "links", "refs"] as const;
+export type KeyedTable = (typeof KEYED_TABLES)[number];
+
+export const isKeyedTable = (tbl: string): tbl is KeyedTable =>
+	(KEYED_TABLES as readonly string[]).includes(tbl);
+
 /**
  * A string SQLite stores as it was sent. An unpaired surrogate is replaced
  * when bound, so the value that won a comparison would not be the one stored.
@@ -181,4 +188,46 @@ export namespace RecordId {
 		provider: string,
 		externalId: string,
 	) => derive("ref", ["upstream", threadId, provider, externalId]);
+
+	const UpstreamKeySchema = z.object({
+		provider: z.string(),
+		externalId: z.string(),
+	});
+
+	const upstreamOf = (threadId: string, data: unknown): string | undefined => {
+		if (typeof data !== "string") return undefined;
+		let decoded: unknown;
+		try {
+			decoded = JSON.parse(data);
+		} catch {
+			return undefined;
+		}
+		const key = UpstreamKeySchema.safeParse(decoded);
+		return key.success
+			? upstreamRef(threadId, key.data.provider, key.data.externalId)
+			: undefined;
+	};
+
+	const asString = (value: unknown): string | undefined =>
+		typeof value === "string" ? value : undefined;
+
+	/**
+	 * The id a row of a keyed table must carry, derived from its own key, or
+	 * undefined when the key cannot be read (an `upstream` ref whose `data`
+	 * lacks the provider's id).
+	 */
+	export const forRow = (
+		table: KeyedTable,
+		row: Readonly<Record<string, unknown>>,
+	): string | undefined => {
+		const [a, b, c] = (
+			table === "links"
+				? [row.source_id, row.target_id, row.type]
+				: [row.thread_id, table === "attributes" ? row.key : row.uri, ""]
+		).map(asString);
+		if (a === undefined || b === undefined || c === undefined) return undefined;
+		if (table === "links") return link(a, b, c);
+		if (table === "attributes") return attribute(a, b);
+		return row.kind === "upstream" ? upstreamOf(a, row.data) : ref(a, b);
+	};
 }
