@@ -211,6 +211,14 @@ snapshotted. `packages/core/sync/resolve.ts` ("The 2.0 record") holds the rules,
 7. **The claim holder is derived.** It is the earliest `claim` entry, by time and then id, that no
    later `release` entry by the same author has released (`RecordRead.claimHolder`).
 
+Apply checks the boundary before it compares or stores, and skips and counts what fails: a string
+holding ill-formed Unicode, which SQLite would store as a replacement character, so the value that
+won a tie would not be the one stored; a clock not in `toISOString` form (UTC, milliseconds, `Z`),
+since clocks compare as strings; a keyed row whose id, in the envelope or the row, is not the one
+its key derives (`key-id-mismatch`). Only an untagged op on a record table reaches these rules: a
+module-tagged one parks like any module op. A delete hides what sits under it along the stored
+parent edges before any cycle is broken, so a cycle holding a deleted thread is hidden whole.
+
 A writer has one duty for this to hold: a write stamps the group it changes with a clock no lower
 than the one stored, a counter one past it, and its own device id. A device that never armed sync
 has no device id and writes an empty one; its rows still converge, by counter and then content.
