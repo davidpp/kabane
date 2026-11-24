@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
 import { Modules } from "../module";
+import type { Result } from "../result";
 import { withDb } from "../runtime";
-import { RecordId } from "../schemas";
+import { RecordKey } from "../schemas";
 import { Planner } from "./index";
 import { Migrations } from "./migrations";
 import { RecordRead } from "./record";
@@ -116,26 +117,52 @@ describe("RecordRead", () => {
 	});
 
 	it("shows a thread whose parent has not arrived at the root, and hides everything under a deleted one", async () => {
-		const visible = await read((db) => {
+		const ref = (from: string, uri: string, kind: string) => (db: Db) =>
+			insert(db, "refs", { thread_id: from, uri, kind, updated_at: T0 });
+		const link = (from: string, to: string) =>
+			ref(from, RecordKey.threadUri(to), "blocks");
+		const seen = await read((db) => {
 			thread(db, "orphan", "not-arrived");
+			thread(db, "other");
 			thread(db, "grandparent", null, at(1));
 			thread(db, "parent", "grandparent");
 			thread(db, "grandchild", "parent");
-			insert(db, "links", {
-				id: RecordId.link("orphan", "grandchild", "blocks"),
-				source_id: "orphan",
-				target_id: "grandchild",
-				type: "blocks",
-				updated_at: T0,
-			});
-			const threads = RecordRead.threads(db);
-			const links = RecordRead.links(db);
-			if (!threads.ok) throw threads.error;
-			if (!links.ok) throw links.error;
-			return { threads: threads.value, links: links.value };
+			for (const write of [
+				link("orphan", "grandchild"),
+				link("orphan", "other"),
+				link("other", "orphan"),
+				link("orphan", "not-arrived"),
+				ref("orphan", "file:spec.md", "spec"),
+			])
+				write(db);
+			const all = <T>(result: Result<T>): T => {
+				if (!result.ok) throw result.error;
+				return result.value;
+			};
+			const pairs = (rows: { thread_id: string; uri: string }[]) =>
+				rows.map((r) => `${r.thread_id} -> ${r.uri}`);
+			return {
+				threads: all(RecordRead.threads(db)).map((t) => [t.id, t.parent_id]),
+				refs: pairs(all(RecordRead.refs(db))),
+				refsOfOrphan: pairs(all(RecordRead.refs(db, "orphan"))),
+				links: pairs(all(RecordRead.links(db))),
+				linksOfOther: pairs(all(RecordRead.links(db, "other"))),
+				linksOfGrandchild: pairs(all(RecordRead.links(db, "grandchild"))),
+			};
 		});
-		expect(visible.threads).toMatchObject([{ id: "orphan", parent_id: null }]);
-		expect(visible.links).toEqual([]);
+		const orphanToOther = "orphan -> kabane://thread/other";
+		const otherToOrphan = "other -> kabane://thread/orphan";
+		expect(seen).toEqual({
+			threads: [
+				["orphan", null],
+				["other", null],
+			],
+			refs: ["orphan -> file:spec.md", orphanToOther, otherToOrphan],
+			refsOfOrphan: ["orphan -> file:spec.md", orphanToOther],
+			links: [orphanToOther, otherToOrphan],
+			linksOfOther: [orphanToOther, otherToOrphan],
+			linksOfGrandchild: [],
+		});
 	});
 });
 
@@ -245,11 +272,11 @@ describe("migration 13", () => {
 			const declared = Modules.ensureDeclarations(db);
 			if (!declared.ok) throw declared.error;
 			db.exec(
-				"CREATE TABLE links (id TEXT PRIMARY KEY, source_id TEXT, target_id TEXT, legacy TEXT)",
+				"CREATE TABLE refs (id TEXT PRIMARY KEY, source_id TEXT, target_id TEXT, legacy TEXT)",
 			);
 			db.run(
 				`INSERT INTO module_declarations (tbl, module, module_schema, family, clock, child_of_tasks)
-				 VALUES ('links', 'example', 1, 'append-only', NULL, 0)`,
+				 VALUES ('refs', 'example', 1, 'append-only', NULL, 0)`,
 			);
 			const migrated = Migrations.apply(db);
 			return {
@@ -269,29 +296,32 @@ describe("migration 13", () => {
 		if (!outcome.ok) throw outcome.error;
 		expect(outcome.value.version).toBe(12);
 		expect(outcome.value.threads).toBe(0);
-		expect(outcome.value.error).toContain('"links"');
+		expect(outcome.value.error).toContain('"refs"');
 		expect(outcome.value.error).toContain('"example"');
 	});
 });
 
-describe("RecordId", () => {
-	it("derives one id per key, apart per table, never mistaken for a ULID or a label", () => {
-		const values = [
-			RecordId.link("a", "b", "blocks"),
-			RecordId.link("a", "b", "blocks"),
-			RecordId.link("b", "a", "blocks"),
-			RecordId.attribute("a", "b"),
-			RecordId.ref("a", "b"),
-			RecordId.ref("a", "upstream"),
-			RecordId.upstreamRef("a", "github", "7"),
-		];
-		expect(values[0]).toBe(values[1] ?? "");
-		expect(new Set(values).size).toBe(values.length - 1);
-		for (const id of values) {
-			expect(id).toMatch(/^(link|attr|ref)_[0-9a-f]{32}$/);
-			expect(id).not.toHaveLength(26);
-		}
-		// A change here would split every derived row in two.
-		expect(values[0]).toBe("link_177e2e9e8bb05da0f650bab09d03511a");
+describe("RecordKey", () => {
+	it("names a row by its key: the value alone, or the JSON array of its parts", () => {
+		expect(RecordKey.rowIdOf("threads", { id: "01ABC" })).toBe("01ABC");
+		const rowId = RecordKey.rowIdOf("refs", {
+			thread_id: "t",
+			uri: 'file:a,"b"]',
+			kind: "spec",
+		});
+		expect(rowId).toBe('["t","file:a,\\"b\\"]","spec"]');
+		expect(RecordKey.partsOf("refs", rowId ?? "")).toEqual([
+			"t",
+			'file:a,"b"]',
+			"spec",
+		]);
+		// One row has one row id: another spelling of the same parts names none.
+		expect(
+			RecordKey.partsOf("refs", '["t", "file:a", "spec"]'),
+		).toBeUndefined();
+		expect(
+			RecordKey.partsOf("attributes", '["t","k","extra"]'),
+		).toBeUndefined();
+		expect(RecordKey.rowIdOf("attributes", { thread_id: "t" })).toBeUndefined();
 	});
 });

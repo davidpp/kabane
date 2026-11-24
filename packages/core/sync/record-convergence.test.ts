@@ -1,7 +1,7 @@
 /**
  * The 2.0 record converges in every delivery order (JCAB-658).
  *
- * Devices write the five tables the way a storage writer will: read the row,
+ * Devices write the four tables the way a storage writer will: read the row,
  * change one group, stamp that group's clock (never below the stored one), its
  * counter and the writing device, then capture it. Their ops go through the
  * in-process relay, and the same ops are then read back as one file per
@@ -19,7 +19,12 @@ import { join } from "node:path";
 import type { Db } from "../db/port";
 import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
-import { RECORD_TABLES, RecordId } from "../schemas";
+import {
+	RECORD_KEYS,
+	RECORD_TABLES,
+	RecordKey,
+	type RecordTable,
+} from "../schemas";
 import { Planner } from "../storage/index";
 import { Oplog } from "../storage/oplog";
 import { RecordRead, VISIBLE_THREADS_SQL } from "../storage/record";
@@ -95,13 +100,22 @@ const notBelow = (clock: string, stored: unknown): string =>
 const nextCount = (stored: unknown): number =>
 	(typeof stored === "number" ? stored : 0) + 1;
 
-const upsert = (db: Db, table: string, row: Row) => {
+const keyColumns = (table: RecordTable): readonly string[] =>
+	RECORD_KEYS[table];
+
+/** `WHERE` over a table's key columns, in key order. */
+const byKey = (table: RecordTable) =>
+	keyColumns(table)
+		.map((c) => `"${c}" = ?`)
+		.join(" AND ");
+
+const upsert = (db: Db, table: RecordTable, row: Row) => {
 	const columns = Object.keys(row);
 	db.run(
 		`INSERT INTO ${table} (${columns.map((c) => `"${c}"`).join(", ")})
 		 VALUES (${columns.map(() => "?").join(", ")})
-		 ON CONFLICT(id) DO UPDATE SET ${columns
-				.filter((c) => c !== "id")
+		 ON CONFLICT(${keyColumns(table).join(", ")}) DO UPDATE SET ${columns
+				.filter((c) => !keyColumns(table).includes(c))
 				.map((c) => `"${c}" = excluded."${c}"`)
 				.join(", ")}`,
 		columns.map((c) => {
@@ -113,21 +127,32 @@ const upsert = (db: Db, table: string, row: Row) => {
 	);
 };
 
-/** Read the row, let `next` change it (undefined: write nothing), write and capture. */
+/**
+ * Read the row `key` names (its key columns), let `next` change it
+ * (undefined: write nothing), write it and capture it under its `row_id`.
+ */
 const write = (
 	device: Device,
-	table: string,
-	id: string,
+	table: RecordTable,
+	key: Row,
 	next: (stored: Row | undefined) => Row | undefined,
 ) =>
 	withDb(device.base, (db) => {
+		const rowId = RecordKey.rowIdOf(table, key);
+		if (rowId === undefined) throw new Error(`no key for ${table}`);
 		const stored =
-			db.query<Row, [string]>(`SELECT * FROM ${table} WHERE id = ?`).get(id) ??
-			undefined;
+			db
+				.query<Row, string[]>(`SELECT * FROM ${table} WHERE ${byKey(table)}`)
+				.get(...(RecordKey.partsOf(table, rowId) ?? [])) ?? undefined;
 		const row = next(stored);
 		if (row === undefined) return;
-		upsert(db, table, { ...row, id });
-		Oplog.afterWrite(db, table, stored === undefined ? "insert" : "update", id);
+		upsert(db, table, { ...row, ...key });
+		Oplog.afterWrite(
+			db,
+			table,
+			stored === undefined ? "insert" : "update",
+			rowId,
+		);
 	});
 
 type ThreadFields = Partial<{
@@ -139,7 +164,7 @@ type ThreadFields = Partial<{
 
 /** Create a thread, or change its text group. A deleted thread takes no write. */
 const thread = (d: Device, id: string, clock: string, fields: ThreadFields) =>
-	write(d, "threads", id, (stored) => {
+	write(d, "threads", { id }, (stored) => {
 		if (stored !== undefined && stored.deleted_at !== null) return undefined;
 		const base = stored ?? {
 			short_id: null,
@@ -179,7 +204,7 @@ const claim = (
 	state: string | null,
 	assignee: string | null,
 ) =>
-	write(d, "threads", id, (stored) =>
+	write(d, "threads", { id }, (stored) =>
 		stored === undefined || stored.deleted_at !== null
 			? undefined
 			: {
@@ -194,7 +219,7 @@ const claim = (
 	);
 
 const deleteThread = (d: Device, id: string, clock: string) =>
-	write(d, "threads", id, (stored) =>
+	write(d, "threads", { id }, (stored) =>
 		stored === undefined || stored.deleted_at !== null
 			? undefined
 			: { ...stored, deleted_at: clock, deleted_device: d.deviceId },
@@ -208,7 +233,7 @@ const entry = (
 	clock: string,
 	author = ACTOR,
 ) =>
-	write(d, "entries", id, (stored) =>
+	write(d, "entries", { id }, (stored) =>
 		stored !== undefined
 			? undefined
 			: {
@@ -228,16 +253,16 @@ const entry = (
 				},
 	);
 
-/** Set (or, with `removed`, remove) an attribute, link or ref: one register per row. */
+/** Set (or, with `removed`, remove) an attribute or ref: one register per row. */
 const keyed = (
 	d: Device,
-	table: "attributes" | "links" | "refs",
-	id: string,
+	table: "attributes" | "refs",
+	key: Row,
 	clock: string,
 	fields: Row,
 	removed = false,
 ) =>
-	write(d, table, id, (stored) => {
+	write(d, table, key, (stored) => {
 		if (removed && (stored === undefined || stored.removed_at !== null))
 			return undefined;
 		const stamped = notBelow(clock, stored?.updated_at);
@@ -253,7 +278,7 @@ const keyed = (
 		};
 	});
 
-const attribute = async (
+const attribute = (
 	d: Device,
 	threadId: string,
 	key: string,
@@ -264,13 +289,16 @@ const attribute = async (
 	keyed(
 		d,
 		"attributes",
-		RecordId.attribute(threadId, key),
+		{ thread_id: threadId, key },
 		clock,
-		{ thread_id: threadId, key, value },
+		{ value },
 		removed,
 	);
 
-const link = async (
+const REF_FIELDS = { kind_version: null, title: null, data: null };
+
+/** A link: a ref from `source` to `kabane://thread/<target>`, its kind the link type. */
+const link = (
 	d: Device,
 	source: string,
 	target: string,
@@ -280,14 +308,14 @@ const link = async (
 ) =>
 	keyed(
 		d,
-		"links",
-		RecordId.link(source, target, type),
+		"refs",
+		{ thread_id: source, uri: RecordKey.threadUri(target), kind: type },
 		clock,
-		{ source_id: source, target_id: target, type },
+		REF_FIELDS,
 		removed,
 	);
 
-const ref = async (
+const ref = (
 	d: Device,
 	threadId: string,
 	uri: string,
@@ -297,20 +325,14 @@ const ref = async (
 	keyed(
 		d,
 		"refs",
-		RecordId.ref(threadId, uri),
+		{ thread_id: threadId, uri, kind: "spec" },
 		clock,
-		{
-			thread_id: threadId,
-			uri,
-			kind: "spec",
-			kind_version: null,
-			title: null,
-			data: null,
-		},
+		REF_FIELDS,
 		removed,
 	);
 
-const upstream = async (
+/** An upstream ref: the provider's stable id is its URI, the URL is in `data`. */
+const upstream = (
 	d: Device,
 	threadId: string,
 	externalId: string,
@@ -320,16 +342,13 @@ const upstream = async (
 	keyed(
 		d,
 		"refs",
-		RecordId.upstreamRef(threadId, "github", externalId),
-		clock,
 		{
 			thread_id: threadId,
-			uri: url,
+			uri: `github:issue/${externalId}`,
 			kind: "upstream",
-			kind_version: null,
-			title: null,
-			data: JSON.stringify({ provider: "github", externalId }),
 		},
+		clock,
+		{ ...REF_FIELDS, data: JSON.stringify({ url }) },
 	);
 
 // ============================================================
@@ -346,7 +365,11 @@ const snapshot = (base: string): Promise<Snapshot> =>
 		stored: Object.fromEntries(
 			RECORD_TABLES.map((table) => [
 				table,
-				db.query<Row, []>(`SELECT * FROM ${table} ORDER BY id`).all(),
+				db
+					.query<Row, []>(
+						`SELECT * FROM ${table} ORDER BY ${keyColumns(table).join(", ")}`,
+					)
+					.all(),
 			]),
 		),
 		visible: {
@@ -529,12 +552,15 @@ describe("2.0 record — convergence in every delivery order", () => {
 			await link(b, "thread-x", "thread-y", "blocks", at(4));
 
 			const rows = await resolveRace([a, b, c]);
-			expect(rows.stored.links).toHaveLength(1);
-			expect(rows.stored.links?.[0]).toMatchObject({
+			expect(rows.stored.refs).toHaveLength(1);
+			expect(rows.stored.refs?.[0]).toMatchObject({
+				uri: RecordKey.threadUri("thread-y"),
+				kind: "blocks",
 				removed_at: null,
 				updated_at: at(4),
 			});
 			expect(rows.visible.links).toHaveLength(1);
+			expect(rows.visible.refs).toHaveLength(1);
 		},
 		SLOW,
 	);
@@ -606,7 +632,13 @@ describe("2.0 record — convergence in every delivery order", () => {
 			const rows = await resolveRace([a, b]);
 			expect(rows.stored.refs).toHaveLength(1);
 			expect(rows.visible.refs).toMatchObject([
-				{ uri: "https://github.com/acme/renamed/issues/7", kind: "upstream" },
+				{
+					uri: "github:issue/acme-7",
+					kind: "upstream",
+					data: JSON.stringify({
+						url: "https://github.com/acme/renamed/issues/7",
+					}),
+				},
 			]);
 		},
 		SLOW,
@@ -812,7 +844,7 @@ describe("2.0 record — convergence in every delivery order", () => {
 
 const SEEDS = Number(process.env.RECORD_SEEDS ?? 12);
 
-describe("2.0 record — seeded random workload over the five tables", () => {
+describe("2.0 record — seeded random workload over the four tables", () => {
 	beforeEach(() => {
 		relay = LocalRelay.create();
 		bases = [];
@@ -904,18 +936,17 @@ describe("2.0 record — seeded random workload over the five tables", () => {
 							clock,
 						);
 					else if (roll === 11) {
-						const table =
-							pick(["attributes", "links", "refs"] as const) ?? "links";
+						const table = pick(["attributes", "refs"] as const) ?? "refs";
 						const held = await withDb(d.base, (db) =>
 							db
-								.query<{ id: string }, []>(
-									`SELECT id FROM ${table} WHERE removed_at IS NULL ORDER BY id`,
+								.query<Row, []>(
+									`SELECT ${keyColumns(table).join(", ")} FROM ${table}
+									  WHERE removed_at IS NULL ORDER BY ${keyColumns(table).join(", ")}`,
 								)
-								.all()
-								.map((row) => row.id),
+								.all(),
 						);
-						const id = pick(held);
-						if (id !== undefined) await keyed(d, table, id, clock, {}, true);
+						const key = pick(held);
+						if (key !== undefined) await keyed(d, table, key, clock, {}, true);
 					} else {
 						await push(d);
 						unwrap(
@@ -944,7 +975,7 @@ describe("2.0 record — seeded random workload over the five tables", () => {
 								.get()?.n,
 					);
 				console.log(
-					`seed ${seed}: ops ${LocalRelay.ops(relay).length}, threads ${expected.stored.threads?.length} (deleted ${await count("threads", "deleted_at IS NOT NULL")}, on a parent cycle ${await withDb(authors[0]?.base ?? "", (db) => db.query<{ n: number }, []>(`${VISIBLE_THREADS_SQL} SELECT COUNT(DISTINCT start) AS n FROM up WHERE start = node`).get()?.n)}, visible ${expected.visible.threads?.length}), entries ${expected.stored.entries?.length}, removed attributes/links/refs ${await count("attributes", "removed_at IS NOT NULL")}/${await count("links", "removed_at IS NOT NULL")}/${await count("refs", "removed_at IS NOT NULL")}`,
+					`seed ${seed}: ops ${LocalRelay.ops(relay).length}, threads ${expected.stored.threads?.length} (deleted ${await count("threads", "deleted_at IS NOT NULL")}, on a parent cycle ${await withDb(authors[0]?.base ?? "", (db) => db.query<{ n: number }, []>(`${VISIBLE_THREADS_SQL} SELECT COUNT(DISTINCT start) AS n FROM up WHERE start = node`).get()?.n)}, visible ${expected.visible.threads?.length}), entries ${expected.stored.entries?.length}, links ${await count("refs", `substr(uri, 1, 16) = '${RecordKey.THREAD_URI_PREFIX}'`)}, removed attributes/refs ${await count("attributes", "removed_at IS NOT NULL")}/${await count("refs", "removed_at IS NOT NULL")}`,
 				);
 
 				const files = filesOf(LocalRelay.ops(relay));

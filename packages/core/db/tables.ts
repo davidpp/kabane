@@ -25,7 +25,6 @@ export const TABLES = {
 	threads: "threads",
 	entries: "entries",
 	attributes: "attributes",
-	links: "links",
 	refs: "refs",
 	// Bookkeeping of the module pass, created idempotently, never replicated (`Modules.ensureDeclarations`).
 	module_declarations: "module_declarations",

@@ -40,20 +40,21 @@
  * decision, checked first, so the applier can filter orphans out before it
  * executes anything.
  *
- * THE 2.0 RECORD (`threads`, `entries`, `attributes`, `links`, `refs`) RESOLVES
- * BY ITS SHAPE INSTEAD, with none of the above: no orphan, no delete evidence,
- * no natural key, no receiving device. Each row is one or more registers, and
- * a register keeps whichever of two values is greater by its clock, then its
- * counter, then its writing device, then its content: a total order read only
- * from the two rows, so the same rows in any order, any number of times, end
- * as the same row (`Resolve.decideRecord`).
+ * THE 2.0 RECORD (`threads`, `entries`, `attributes`, `refs`) RESOLVES BY ITS
+ * SHAPE INSTEAD, with none of the above: no orphan, no delete evidence, no
+ * second key beside the primary one, no receiving device. A row's key is its
+ * identity, so two devices that write the same key write the same row. Each
+ * row is one or more registers, and a register keeps whichever of two values
+ * is greater by its clock, then its counter, then its writing device, then its
+ * content: a total order read only from the two rows, so the same rows in any
+ * order, any number of times, end as the same row (`Resolve.decideRecord`).
  */
 
 import { Modules } from "../module";
 import {
-	isKeyedTable,
+	RECORD_KEYS,
 	RECORD_ROW_SCHEMAS,
-	RecordId,
+	RecordKey,
 	type RecordTable,
 	SYNC_TABLES,
 	type SyncOp,
@@ -154,12 +155,6 @@ export const SKIP_REASONS = [
 	"already-absent",
 	/** Delete loses to a strictly newer local update. */
 	"newer-local-update",
-	/**
-	 * A record attribute, link or ref whose id is not the one its key derives
-	 * (`RecordId`), in the envelope or the row: storing it would make a second
-	 * row for one key.
-	 */
-	"key-id-mismatch",
 ] as const;
 export type SkipReason = (typeof SKIP_REASONS)[number];
 
@@ -516,10 +511,15 @@ type Register = {
 	columns: readonly string[];
 };
 
-const columnsOf = (table: RecordTable): string[] =>
-	Object.keys(RECORD_ROW_SCHEMAS[table].shape).filter((c) => c !== "id");
+/** The columns a register can hold: all but the row's key, which is its identity. */
+const columnsOf = (table: RecordTable): string[] => {
+	const key: readonly string[] = RECORD_KEYS[table];
+	return Object.keys(RECORD_ROW_SCHEMAS[table].shape).filter(
+		(c) => !key.includes(c),
+	);
+};
 
-/** Every column of `table` but the id, as one register. */
+/** Every column of `table` but its key, as one register. */
 const wholeRow = (
 	table: RecordTable,
 	clock: string,
@@ -570,7 +570,6 @@ const REGISTERS: Record<RecordTable, readonly Register[]> = {
 	],
 	entries: wholeRow("entries", "created_at", "created_device"),
 	attributes: wholeRow("attributes", "updated_at", "updated_device"),
-	links: wholeRow("links", "updated_at", "updated_device"),
 	refs: wholeRow("refs", "updated_at", "updated_device"),
 };
 
@@ -610,13 +609,9 @@ const decideRecordRow = (
 	const parsed = RECORD_ROW_SCHEMAS[table].safeParse(op.payload);
 	if (!parsed.success) return skip("malformed-payload");
 	const incoming: Row = parsed.data;
-	if (isKeyedTable(table)) {
-		if (
-			incoming.id !== op.rowId ||
-			RecordId.forRow(table, incoming) !== op.rowId
-		)
-			return skip("key-id-mismatch");
-	} else if (incoming.id !== op.rowId) return skip("malformed-payload");
+	// The envelope names the row by its key; a row it does not name is not this op's.
+	if (RecordKey.rowIdOf(table, incoming) !== op.rowId)
+		return skip("malformed-payload");
 	const apply = (row: Row): RecordDecision => ({
 		kind: "apply",
 		rowId: op.rowId,

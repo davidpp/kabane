@@ -12,7 +12,7 @@ import { join } from "node:path";
 import type { Db } from "../db/port";
 import type { Result } from "../result";
 import { withDb as runWithDb } from "../runtime";
-import { RecordId, type SyncOp } from "../schemas";
+import { isRecordTable, RecordKey, type SyncOp } from "../schemas";
 import { Planner } from "../storage/index";
 import { Oplog } from "../storage/oplog";
 import { RecordRead } from "../storage/record";
@@ -94,7 +94,9 @@ const op = (
 	opId: `op-${++opCount}`,
 	deviceId: `writer-${opCount}`,
 	tbl,
-	rowId: String(payload.id),
+	rowId:
+		(isRecordTable(tbl) ? RecordKey.rowIdOf(tbl, payload) : undefined) ??
+		String(payload.id),
 	op: "insert",
 	payload,
 	capturedAt: T0,
@@ -175,7 +177,7 @@ describe("2.0 record — what apply refuses", () => {
 		]);
 	});
 
-	it("skips an attribute, link or ref whose id is not the one its key derives", async () => {
+	it("skips an op whose row id does not name its row's key, in the one form", async () => {
 		const stamps = {
 			removed_at: null,
 			visibility: "shared",
@@ -185,65 +187,40 @@ describe("2.0 record — what apply refuses", () => {
 			version: 1,
 		};
 		const attribute = { ...stamps, thread_id: "thread", key: "priority" };
-		const link = {
-			...stamps,
-			source_id: "thread",
-			target_id: "other",
-			type: "blocks",
-		};
 		const ref = {
 			...stamps,
 			thread_id: "thread",
-			kind: "upstream",
+			uri: "file:spec.md",
+			kind: "spec",
 			kind_version: null,
 			title: null,
-			uri: "https://github.com/acme/repo/issues/7",
-			data: JSON.stringify({ provider: "github", externalId: "7" }),
+			data: null,
 		};
 		const base = await device();
 		const report = await apply(base, [
 			op("threads", thread("thread")),
-			op("threads", thread("other")),
-			op("attributes", {
-				...attribute,
-				id: RecordId.attribute("thread", "priority"),
-				value: "high",
-			}),
-			op("attributes", { ...attribute, id: "wrong", value: "low" }),
-			op("links", { ...link, id: "wrong" }),
-			op("refs", { ...ref, id: RecordId.ref("thread", ref.uri) }),
-			op("refs", {
-				...ref,
-				id: RecordId.upstreamRef("thread", "github", "7"),
-				data: JSON.stringify({ provider: "github" }),
-			}),
-			// The envelope names one row, the payload another.
+			op("attributes", { ...attribute, value: "high" }),
+			// The envelope names another key than the row's.
 			op(
 				"attributes",
-				{
-					...attribute,
-					id: RecordId.attribute("thread", "priority"),
-					value: "x",
-				},
-				{ rowId: "wrong" },
+				{ ...attribute, value: "low" },
+				{ rowId: JSON.stringify(["thread", "agent"]) },
 			),
+			// The right parts, not in JSON.stringify's form.
+			op("refs", ref, { rowId: '["thread", "file:spec.md", "spec"]' }),
+			// No JSON array at all.
+			op("refs", ref, { rowId: "thread file:spec.md spec" }),
 		]);
-		expect(report.skipped["key-id-mismatch"]).toBe(5);
-		const stored = await withDb(base, (db) =>
-			db
-				.query<{ id: string; value: string }, []>(
-					"SELECT id, value FROM attributes",
-				)
-				.all(),
-		);
-		expect(stored).toEqual([
-			{ id: RecordId.attribute("thread", "priority"), value: "high" },
-		]);
+		expect(report.skipped["malformed-payload"]).toBe(3);
 		expect(
-			await withDb(base, (db) =>
-				db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM links").get(),
-			),
-		).toEqual({ n: 0 });
+			await withDb(base, (db) => [
+				db.query<Row, []>("SELECT thread_id, key, value FROM attributes").all(),
+				db.query<Row, []>("SELECT COUNT(*) AS n FROM refs").get(),
+			]),
+		).toEqual([
+			[{ thread_id: "thread", key: "priority", value: "high" }],
+			{ n: 0 },
+		]);
 	});
 
 	it("parks a module-tagged op on a record table's name, never applies it as a record row", async () => {

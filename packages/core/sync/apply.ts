@@ -64,6 +64,8 @@ import { atomic } from "../runtime";
 
 import {
 	isRecordTable,
+	RECORD_KEYS,
+	RecordKey,
 	type RecordTable,
 	SYNC_TABLES,
 	type SyncOp,
@@ -294,6 +296,25 @@ const writeRow = (db: Db, meta: TableMeta, rowId: string, row: Row) => {
      VALUES (${placeholders})
      ON CONFLICT(id) ${onConflict}`,
 		params,
+	);
+};
+
+/** Upsert a record row on its key, whatever columns that key spans. */
+const writeRecordRow = (
+	db: Db,
+	meta: TableMeta,
+	key: readonly string[],
+	row: Row,
+) => {
+	const columns = meta.columns.filter((column) => column in row);
+	const updates = columns
+		.filter((column) => !key.includes(column))
+		.map((column) => `"${column}" = excluded."${column}"`);
+	db.run(
+		`INSERT INTO ${meta.table} (${columns.map((column) => `"${column}"`).join(", ")})
+     VALUES (${columns.map(() => "?").join(", ")})
+     ON CONFLICT(${key.map((column) => `"${column}"`).join(", ")}) DO UPDATE SET ${updates.join(", ")}`,
+		columns.map((column) => toBind(row[column])),
 	);
 };
 
@@ -654,22 +675,34 @@ const execute = (
 };
 
 /**
- * An op on the 2.0 record: the merged row is written as the resolver built it,
- * every column taken from the register that won it. Nothing here reads the
+ * An op on the 2.0 record: the row is found and written by the key its
+ * `row_id` names (`RecordKey`), as the resolver merged it, every column taken
+ * from the register that won it. Nothing here reads the
  * pass, a parent, or this device, and `withVersion` stays out: `version` is
  * the text register's own counter, never raised past the content it counts.
  */
 const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
 	const { db, counts } = pass;
+	const parts = RecordKey.partsOf(table, op.rowId);
+	if (parts === undefined) {
+		counts.skipped["malformed-payload"]++;
+		return;
+	}
 	const meta = pass.metas.get(table) ?? tableMeta(db, table);
 	pass.metas.set(table, meta);
-	const local = selectRow(db, table, "id = ?", [op.rowId]);
+	const key: readonly string[] = RECORD_KEYS[table];
+	const local = selectRow(
+		db,
+		table,
+		key.map((column) => `"${column}" = ?`).join(" AND "),
+		parts,
+	);
 	const decision = Resolve.decideRecord(table, op, local);
 	if (decision.kind === "skip") {
 		counts.skipped[decision.reason]++;
 		return;
 	}
-	writeRow(db, meta, decision.rowId, decision.row);
+	writeRecordRow(db, meta, key, decision.row);
 	counts.applied++;
 };
 

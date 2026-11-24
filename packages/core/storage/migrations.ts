@@ -347,7 +347,7 @@ export namespace Migrations {
 			up: ActorScheme.migrate,
 		},
 		{
-			// The 2.0 record's five tables (ADR 0006, JCAB-658), empty beside today's
+			// The 2.0 record's four tables (ADR 0006, JCAB-658), empty beside today's
 			// until a later slice migrates into them. They replicate under their own
 			// rules (`sync/resolve.ts`, "The 2.0 record").
 			name: "record-tables",

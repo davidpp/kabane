@@ -80,20 +80,17 @@ export {
 	type QuestionMeta,
 	QuestionMetaSchema,
 } from "./question-body";
-// The 2.0 record's rows (ADR 0006) and its derived ids
+// The 2.0 record's rows (ADR 0006) and their keys
 export {
 	type AttributeRow,
 	AttributeRowSchema,
 	type EntryRow,
 	EntryRowSchema,
-	isKeyedTable,
 	isRecordTable,
-	type KeyedTable,
-	type LinkRow,
-	LinkRowSchema,
 	RECORD_ROW_SCHEMAS,
 	RECORD_TABLES,
-	RecordId,
+	RECORD_KEYS,
+	RecordKey,
 	type RecordTable,
 	type RefRow,
 	RefRowSchema,

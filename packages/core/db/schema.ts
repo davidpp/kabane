@@ -538,8 +538,9 @@ CREATE TABLE IF NOT EXISTS short_id_history (
 `;
 
 /**
- * The 2.0 record's five tables (ADR 0006), created by migration 13 beside
- * today's tables. No foreign key and no UNIQUE beyond the primary key: sync
+ * The 2.0 record's four tables (ADR 0006), created by migration 13 beside
+ * today's tables. An attribute's and a ref's primary key is its natural key
+ * (`RECORD_KEYS`). No foreign key and no UNIQUE beyond the primary key: sync
  * apply writes whatever row wins, whatever else has arrived, and a read decides
  * what shows (`storage/record.ts`). Columns match `schemas/record.ts`.
  */
@@ -592,7 +593,6 @@ CREATE TABLE entries (
 CREATE INDEX entries_thread_idx ON entries(thread_id, kind, created_at);
 
 CREATE TABLE attributes (
-  id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   key TEXT NOT NULL,
   value TEXT,
@@ -601,27 +601,13 @@ CREATE TABLE attributes (
   updated_at TEXT NOT NULL,
   updated_by TEXT,
   updated_device TEXT NOT NULL DEFAULT '',
-  version INTEGER NOT NULL DEFAULT 1
+  version INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (thread_id, key)
 );
-CREATE INDEX attributes_thread_idx ON attributes(thread_id, key);
 
-CREATE TABLE links (
-  id TEXT PRIMARY KEY,
-  source_id TEXT NOT NULL,
-  target_id TEXT NOT NULL,
-  type TEXT NOT NULL,
-  removed_at TEXT,
-  visibility TEXT NOT NULL DEFAULT 'shared',
-  updated_at TEXT NOT NULL,
-  updated_by TEXT,
-  updated_device TEXT NOT NULL DEFAULT '',
-  version INTEGER NOT NULL DEFAULT 1
-);
-CREATE INDEX links_source_idx ON links(source_id);
-CREATE INDEX links_target_idx ON links(target_id);
-
+-- A link between threads is a ref to kabane://thread/<id>, its kind the link
+-- type; refs_uri_idx makes "what points at this thread" a lookup.
 CREATE TABLE refs (
-  id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   uri TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -633,8 +619,8 @@ CREATE TABLE refs (
   updated_at TEXT NOT NULL,
   updated_by TEXT,
   updated_device TEXT NOT NULL DEFAULT '',
-  version INTEGER NOT NULL DEFAULT 1
+  version INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (thread_id, uri, kind)
 );
-CREATE INDEX refs_thread_idx ON refs(thread_id);
 CREATE INDEX refs_uri_idx ON refs(uri);
 `;

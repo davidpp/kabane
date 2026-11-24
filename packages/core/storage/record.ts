@@ -11,8 +11,9 @@
  * - a thread whose parent has not arrived shows at the root;
  * - in a parent cycle, the member with the lowest id is read as having no
  *   parent, so no thread disappears;
- * - an entry, attribute or ref shows when its thread does, and a link when
- *   both ends do; a removed attribute, link or ref never shows.
+ * - an entry, attribute or ref shows when its thread does, and a ref to a
+ *   thread (a link) only when that thread shows too; a removed attribute or
+ *   ref never shows.
  *
  * `VISIBLE_THREADS_SQL` is the common part, a `WITH RECURSIVE` clause ending
  * in `visible_threads(id, parent_id)`, for a read that needs its own query.
@@ -27,8 +28,7 @@ import {
 	AttributeRowSchema,
 	type EntryRow,
 	EntryRowSchema,
-	type LinkRow,
-	LinkRowSchema,
+	RecordKey,
 	type RefRow,
 	RefRowSchema,
 	type ThreadRow,
@@ -116,6 +116,15 @@ const scopeOf = (column: string, threadId: string | undefined) =>
 				params: [threadId, threadId],
 			};
 
+const PREFIX = RecordKey.THREAD_URI_PREFIX;
+/** True when ref `r` points at no thread. */
+const NOT_A_LINK = `substr(r.uri, 1, ${PREFIX.length}) <> '${PREFIX}'`;
+/** The thread ref `r` points at (meaningful only when it is a link). */
+const TARGET = `substr(r.uri, ${PREFIX.length + 1})`;
+/** The threads links point at, for a seed; a caller narrows it with `AND`. */
+const TARGETS = `SELECT substr(uri, ${PREFIX.length + 1}) FROM ${TABLES.refs}
+  WHERE substr(uri, 1, ${PREFIX.length}) = '${PREFIX}'`;
+
 export namespace RecordRead {
 	/** Visible threads, `parent_id` as it is read: null at the root or where a cycle breaks. */
 	export const threads = (db: Db): Result<ThreadRow[]> =>
@@ -168,39 +177,56 @@ export namespace RecordRead {
 		);
 	};
 
-	/** Links whose two ends both show, from or to `threadId` when given. */
-	export const links = (db: Db, threadId?: string): Result<LinkRow[]> => {
-		const ends = `SELECT source_id FROM ${TABLES.links} WHERE source_id = ? OR target_id = ?
-		   UNION SELECT target_id FROM ${TABLES.links} WHERE source_id = ? OR target_id = ?`;
-		const visible =
-			threadId === undefined ? VISIBLE_THREADS_SQL : visibleAmong(ends);
-		const filter =
-			threadId === undefined ? "" : "AND (l.source_id = ? OR l.target_id = ?)";
-		const params = threadId === undefined ? [] : Array(6).fill(threadId);
-		return rowsOf(LinkRowSchema, () =>
-			db
-				.query<unknown, string[]>(
-					`${visible}
-					 SELECT l.* FROM ${TABLES.links} l
-					   JOIN visible_threads s ON s.id = l.source_id
-					   JOIN visible_threads t ON t.id = l.target_id
-					  WHERE l.removed_at IS NULL ${filter}
-					  ORDER BY l.id`,
-				)
-				.all(...params),
-		);
-	};
-
+	/**
+	 * Refs on visible threads. A ref to a thread (`kabane://thread/<id>`, a
+	 * link) shows only while that thread shows too.
+	 */
 	export const refs = (db: Db, threadId?: string): Result<RefRow[]> => {
-		const { visible, where, params } = scopeOf("r.thread_id", threadId);
+		const visible =
+			threadId === undefined
+				? VISIBLE_THREADS_SQL
+				: visibleAmong(`SELECT ? UNION ${TARGETS} AND thread_id = ?`);
+		const params = threadId === undefined ? [] : [threadId, threadId, threadId];
 		return rowsOf(RefRowSchema, () =>
 			db
 				.query<unknown, string[]>(
 					`${visible}
 					 SELECT r.* FROM ${TABLES.refs} r
 					   JOIN visible_threads v ON v.id = r.thread_id
-					  WHERE r.removed_at IS NULL ${where}
-					  ORDER BY r.id`,
+					  WHERE r.removed_at IS NULL
+					    AND (${NOT_A_LINK} OR ${TARGET} IN (SELECT id FROM visible_threads))
+					    ${threadId === undefined ? "" : "AND r.thread_id = ?"}
+					  ORDER BY r.thread_id, r.uri, r.kind`,
+				)
+				.all(...params),
+		);
+	};
+
+	/**
+	 * Links: refs from one thread to another, both of which show. Given a
+	 * thread, its links either way: what it points at, and what points at it
+	 * (an indexed lookup on the ref's URI).
+	 */
+	export const links = (db: Db, threadId?: string): Result<RefRow[]> => {
+		const scoped = threadId !== undefined;
+		const visible = scoped
+			? visibleAmong(
+					`SELECT ? UNION ${TARGETS} AND thread_id = ?
+					 UNION SELECT thread_id FROM ${TABLES.refs} WHERE uri = ?`,
+				)
+			: VISIBLE_THREADS_SQL;
+		const uri = scoped ? RecordKey.threadUri(threadId) : "";
+		const params = scoped ? [threadId, threadId, uri, threadId, uri] : [];
+		return rowsOf(RefRowSchema, () =>
+			db
+				.query<unknown, string[]>(
+					`${visible}
+					 SELECT r.* FROM ${TABLES.refs} r
+					   JOIN visible_threads s ON s.id = r.thread_id
+					   JOIN visible_threads t ON t.id = ${TARGET}
+					  WHERE r.removed_at IS NULL AND NOT ${NOT_A_LINK}
+					    ${scoped ? "AND (r.thread_id = ? OR r.uri = ?)" : ""}
+					  ORDER BY r.thread_id, r.uri, r.kind`,
 				)
 				.all(...params),
 		);

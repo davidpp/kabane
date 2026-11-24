@@ -1,24 +1,25 @@
 /**
- * The 2.0 record (ADR 0006): threads, entries, attributes, links and refs.
+ * The 2.0 record (ADR 0006): threads, entries, attributes and refs.
  *
  * Each row schema lists the table's columns, and is what sync apply accepts a
- * pulled row against. Columns stay soft strings (kinds, keys, states, types),
- * because a device that lacks a declaration must still store another device's
- * rows. Nothing writes these tables outside tests yet.
+ * pulled row against. Columns stay soft strings (kinds, keys, states), because
+ * a device that lacks a declaration must still store another device's rows.
+ * Nothing writes these tables outside tests yet.
  *
- * A link, an attribute and a ref take an id derived from what makes them the
- * same row (`RecordId`), so two devices that create the same one make one row.
+ * A row's identity is its key (`RECORD_KEYS`): a thread's and an entry's id,
+ * an attribute's thread and key, a ref's thread, URI and kind. Two devices
+ * that set the same attribute or make the same ref write one row. A link
+ * between threads is a ref to `kabane://thread/<id>` whose kind is the link's
+ * type.
  */
 
 import { z } from "zod";
-import { sha256Hex } from "./sha256";
 
 /** The record's tables, in the order a reader lists them. */
 export const RECORD_TABLES = [
 	"threads",
 	"entries",
 	"attributes",
-	"links",
 	"refs",
 ] as const;
 export type RecordTable = (typeof RECORD_TABLES)[number];
@@ -26,12 +27,13 @@ export type RecordTable = (typeof RECORD_TABLES)[number];
 export const isRecordTable = (tbl: string): tbl is RecordTable =>
 	(RECORD_TABLES as readonly string[]).includes(tbl);
 
-/** The record's tables whose ids are derived from a key (`RecordId`). */
-const KEYED_TABLES = ["attributes", "links", "refs"] as const;
-export type KeyedTable = (typeof KEYED_TABLES)[number];
-
-export const isKeyedTable = (tbl: string): tbl is KeyedTable =>
-	(KEYED_TABLES as readonly string[]).includes(tbl);
+/** Each table's identity: its primary key, in order. */
+export const RECORD_KEYS = {
+	threads: ["id"],
+	entries: ["id"],
+	attributes: ["thread_id", "key"],
+	refs: ["thread_id", "uri", "kind"],
+} as const satisfies Record<RecordTable, readonly string[]>;
 
 /**
  * A string SQLite stores as it was sent. An unpaired surrogate is replaced
@@ -107,7 +109,6 @@ export type EntryRow = z.infer<typeof EntryRowSchema>;
 
 /** One row per thread and key; `removed_at` is its tombstone. */
 export const AttributeRowSchema = z.object({
-	id: str,
 	thread_id: str,
 	key: str,
 	value: text,
@@ -120,23 +121,13 @@ export const AttributeRowSchema = z.object({
 });
 export type AttributeRow = z.infer<typeof AttributeRowSchema>;
 
-export const LinkRowSchema = z.object({
-	id: str,
-	source_id: str,
-	target_id: str,
-	type: str,
-	removed_at: clock.nullable(),
-	visibility: str,
-	updated_at: clock,
-	updated_by: text,
-	updated_device: str,
-	version: counter,
-});
-export type LinkRow = z.infer<typeof LinkRowSchema>;
-
-/** An `upstream` ref keeps the provider's id in `data` (`provider`, `externalId`). */
+/**
+ * A URI a thread points at, as a `kind` of reference. A link to another
+ * thread is a ref to `kabane://thread/<id>` (`RecordKey.threadUri`) with the
+ * link type as its kind. An `upstream` ref's URI is the provider's stable id
+ * for the item, and its URL, which can change, lives in `data`.
+ */
 export const RefRowSchema = z.object({
-	id: str,
 	thread_id: str,
 	uri: str,
 	kind: str,
@@ -156,78 +147,52 @@ export const RECORD_ROW_SCHEMAS = {
 	threads: ThreadRowSchema,
 	entries: EntryRowSchema,
 	attributes: AttributeRowSchema,
-	links: LinkRowSchema,
 	refs: RefRowSchema,
 } as const satisfies Record<RecordTable, z.ZodObject>;
 
 /**
- * Ids derived from a row's key: `<tag>_<32 hex>`, the first 128 bits of the
- * SHA-256 of the JSON array `[tag, ...key]`. The JSON array keeps any two keys
- * apart whatever characters a URI holds, and the tag keeps two tables apart.
- * The output is never 26 characters and never matches the short id pattern,
- * so thread lookup cannot mistake it for a ULID or a label. Stable across
- * versions: changing it would split every derived row in two. Synchronous, so
- * a write or an apply derives it inside its transaction.
+ * How the sync log names a record row: `row_id` is one text. A one-column key
+ * is that value. A composite key is the JSON array of its parts in key order,
+ * `["<thread>","<key>"]`, which no part's characters can make ambiguous; the
+ * array is written in `JSON.stringify` form, so one row has one `row_id`.
  */
-export namespace RecordId {
-	const derive = (tag: string, key: readonly string[]): string =>
-		`${tag}_${sha256Hex(JSON.stringify([tag, ...key])).slice(0, 32)}`;
+export namespace RecordKey {
+	/** What a ref's URI starts with when it points at a thread. */
+	export const THREAD_URI_PREFIX = "kabane://thread/";
 
-	export const link = (sourceId: string, targetId: string, type: string) =>
-		derive("link", [sourceId, targetId, type]);
+	export const rowIdOf = (
+		table: RecordTable,
+		row: Readonly<Record<string, unknown>>,
+	): string | undefined => {
+		const parts: string[] = [];
+		for (const column of RECORD_KEYS[table]) {
+			const part = row[column];
+			if (typeof part !== "string") return undefined;
+			parts.push(part);
+		}
+		return parts.length === 1 ? parts[0] : JSON.stringify(parts);
+	};
 
-	export const attribute = (threadId: string, key: string) =>
-		derive("attr", [threadId, key]);
-
-	export const ref = (threadId: string, uri: string) =>
-		derive("ref", [threadId, uri]);
-
-	/** Keyed by the provider's own id, since the URL can change. */
-	export const upstreamRef = (
-		threadId: string,
-		provider: string,
-		externalId: string,
-	) => derive("ref", ["upstream", threadId, provider, externalId]);
-
-	const UpstreamKeySchema = z.object({
-		provider: z.string(),
-		externalId: z.string(),
-	});
-
-	const upstreamOf = (threadId: string, data: unknown): string | undefined => {
-		if (typeof data !== "string") return undefined;
+	/** The key parts `rowId` names, or undefined when it is not a row id of `table`. */
+	export const partsOf = (
+		table: RecordTable,
+		rowId: string,
+	): string[] | undefined => {
+		const columns = RECORD_KEYS[table];
+		if (columns.length === 1) return [rowId];
 		let decoded: unknown;
 		try {
-			decoded = JSON.parse(data);
+			decoded = JSON.parse(rowId);
 		} catch {
 			return undefined;
 		}
-		const key = UpstreamKeySchema.safeParse(decoded);
-		return key.success
-			? upstreamRef(threadId, key.data.provider, key.data.externalId)
+		const parts = z.array(z.string()).length(columns.length).safeParse(decoded);
+		return parts.success && JSON.stringify(parts.data) === rowId
+			? parts.data
 			: undefined;
 	};
 
-	const asString = (value: unknown): string | undefined =>
-		typeof value === "string" ? value : undefined;
-
-	/**
-	 * The id a row of a keyed table must carry, derived from its own key, or
-	 * undefined when the key cannot be read (an `upstream` ref whose `data`
-	 * lacks the provider's id).
-	 */
-	export const forRow = (
-		table: KeyedTable,
-		row: Readonly<Record<string, unknown>>,
-	): string | undefined => {
-		const [a, b, c] = (
-			table === "links"
-				? [row.source_id, row.target_id, row.type]
-				: [row.thread_id, table === "attributes" ? row.key : row.uri, ""]
-		).map(asString);
-		if (a === undefined || b === undefined || c === undefined) return undefined;
-		if (table === "links") return link(a, b, c);
-		if (table === "attributes") return attribute(a, b);
-		return row.kind === "upstream" ? upstreamOf(a, row.data) : ref(a, b);
-	};
+	/** The URI a ref uses to point at a thread. */
+	export const threadUri = (threadId: string): string =>
+		`${THREAD_URI_PREFIX}${threadId}`;
 }
