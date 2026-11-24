@@ -380,6 +380,32 @@ describe("Migration session-outcomes on a database with session rows", () => {
 	});
 });
 
+describe("Migration session-outcomes as shipped", () => {
+	it("captures what it writes on an armed device, and migration 14 drops those ops", async () => {
+		as(MIGRATOR);
+		const base = await before("shipped");
+		await arm(base, "alpha");
+		await seedLegacy(base);
+		await withDb(base, (db) =>
+			must(Migrate.run(db, Migrations.LIST.slice(0, BEFORE + 1))),
+		);
+		const captured = (await rows(base, TABLES.sync_oplog)).map(
+			(op) => `${op.tbl}:${op.row_id}`,
+		);
+		for (const id of ["01D1", "01D2", "01F1", "01R1", "01V1"])
+			expect(captured).toContain(`task_comments:${id}`);
+		for (const id of ["01S1", "01S2"])
+			expect(captured).toContain(`task_work_log:${id}`);
+
+		must(await Planner.init(base));
+		expect(
+			(await rows(base, TABLES.sync_oplog)).filter((op) =>
+				["task_comments", "task_work_log"].includes(String(op.tbl)),
+			),
+		).toEqual([]);
+	});
+});
+
 describe("Migration session-outcomes through sync", () => {
 	/** A device that took no part in the session, fully migrated and armed. */
 	const reader = async (name: string) => {

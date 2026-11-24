@@ -53,9 +53,9 @@ const refusePreRunner = (db: Db): void => {
  * and two indexes on `tasks`.
  */
 const completeBaseline = (db: Db): void => {
-	db.run(`ALTER TABLE upstream_links ADD COLUMN updated_by TEXT`);
+	db.run(`ALTER TABLE ${TABLES.upstream_links} ADD COLUMN updated_by TEXT`);
 	db.run(
-		`ALTER TABLE upstream_links ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE ${TABLES.upstream_links} ADD COLUMN version INTEGER NOT NULL DEFAULT 1`,
 	);
 	db.run(
 		`CREATE UNIQUE INDEX IF NOT EXISTS ${TABLES.tasks}_short_id_idx ON ${TABLES.tasks}(short_id)`,
@@ -306,11 +306,11 @@ export namespace Migrations {
 			name: "entry-kind",
 			up: (db) => {
 				db.run(
-					`ALTER TABLE task_comments ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
+					`ALTER TABLE ${TABLES.comments} ADD COLUMN kind TEXT NOT NULL DEFAULT 'comment'`,
 				);
 				db.run(
-					`CREATE INDEX IF NOT EXISTS task_comments_task_kind_idx
-					   ON task_comments(task_id, kind, created_at)`,
+					`CREATE INDEX IF NOT EXISTS ${TABLES.comments}_task_kind_idx
+					   ON ${TABLES.comments}(task_id, kind, created_at)`,
 				);
 			},
 		},

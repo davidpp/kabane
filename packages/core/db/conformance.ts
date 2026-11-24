@@ -325,7 +325,7 @@ const schema: ConformanceCase["run"] = async (provider) => {
 			for (const required of [
 				TABLES.tasks,
 				TABLES.tasks_fts,
-				"task_work_log",
+				TABLES.work_log,
 				TABLES.sync_oplog,
 			]) {
 				assert(names.includes(required), `schema creates ${required}`);

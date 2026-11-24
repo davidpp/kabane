@@ -19,7 +19,8 @@
  *
  * VISIBILITY IS THE FILTER. A row whose `visibility` is `'private'` never
  * becomes an op, whatever table it lives in. The set of tables that replicate
- * (`Replicated.CORE_TABLES`, plus each registered data module's `syncTables`) is still
+ * (`Replicated.lookup`: core's, each registered module's, and the tables
+ * migration 14 retired, which only the shipped migrations before it write) is still
  * declared, because the resolver needs a family per table, but the per-row
  * decision is the column. Capturing any other table is refused, except a
  * delete in a table an unregistered module's recorded declaration names
@@ -60,9 +61,9 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/** A core replicated table: the record's, or `projects`. */
-const isCoreTable = (tbl: string): boolean =>
-	Replicated.CORE_TABLES.includes(tbl);
+/** A table `Replicated` declares: core's, a retired one, or a registered module's. */
+const isDeclared = (tbl: string): boolean =>
+	Replicated.lookup(tbl) !== undefined;
 
 // ============================================================
 // Types
@@ -290,11 +291,7 @@ export namespace Oplog {
 	export const capture = (db: Db, input: CaptureInput): Result<boolean> => {
 		const recorded = recordedTag(db, input);
 		if (!recorded.ok) return recorded;
-		if (
-			!isCoreTable(input.tbl) &&
-			Modules.table(input.tbl) === undefined &&
-			recorded.value === undefined
-		)
+		if (!isDeclared(input.tbl) && recorded.value === undefined)
 			return err(
 				new Error(
 					`Cannot capture a write to "${input.tbl}": it is no core replicated table and no registered module declares it in syncTables. Register the module with Runtime.configure({ modules }).`,
@@ -327,12 +324,7 @@ export namespace Oplog {
 		db: Db,
 		input: CaptureInput,
 	): Result<{ name: string; schema: number } | undefined> => {
-		if (
-			input.op !== "delete" ||
-			isCoreTable(input.tbl) ||
-			Modules.table(input.tbl) !== undefined
-		)
-			return ok(undefined);
+		if (input.op !== "delete" || isDeclared(input.tbl)) return ok(undefined);
 		return trySync(
 			() =>
 				Modules.unregistered(db).find((row) => row.table === input.tbl)?.tag,

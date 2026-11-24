@@ -266,7 +266,7 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		await converge(a, b);
 
 		// Every replicated table, row for row, both directions.
-		for (const table of Replicated.CORE_TABLES) {
+		for (const { table } of await withDb(a.base, Replicated.tables)) {
 			const onA = await rowsOf(a.base, table);
 			const onB = await rowsOf(b.base, table);
 			expect(

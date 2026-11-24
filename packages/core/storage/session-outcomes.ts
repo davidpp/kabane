@@ -27,6 +27,8 @@
 
 import type { Db } from "../db/port";
 import { parseQuestionBody } from "../schemas";
+import { TABLES } from "./helpers";
+import { Oplog } from "./oplog";
 
 const SESSIONS = "agent_sessions";
 const ACTIVITIES = "agent_activities";
@@ -147,7 +149,7 @@ const moveOutcomes = (db: Db): void => {
 		// be lost under it.
 		const held = db
 			.query<{ task_id: string; kind: string; content: string }, [string]>(
-				`SELECT task_id, kind, content FROM task_comments WHERE id = ?`,
+				`SELECT task_id, kind, content FROM ${TABLES.comments} WHERE id = ?`,
 			)
 			.get(a.id);
 		if (held) {
@@ -157,12 +159,12 @@ const moveOutcomes = (db: Db): void => {
 				held.content !== content
 			)
 				refuse(
-					`task_comments already holds a different row with id ${a.id}, the id of the ${a.type} it would keep from session ${a.session_id}`,
+					`${TABLES.comments} already holds a different row with id ${a.id}, the id of the ${a.type} it would keep from session ${a.session_id}`,
 				);
 			continue;
 		}
 		db.run(
-			`INSERT INTO task_comments
+			`INSERT INTO ${TABLES.comments}
 			   (id, task_id, kind, author, author_type, content, updated_by, visibility, created_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, 'shared', ?)`,
 			[
@@ -176,8 +178,7 @@ const moveOutcomes = (db: Db): void => {
 				a.created_at,
 			],
 		);
-		// Not captured: these tables stopped replicating at migration 14, which
-		// runs right after and drops this device's ops on them.
+		Oplog.afterWrite(db, TABLES.comments, "insert", a.id);
 	}
 };
 
@@ -221,7 +222,7 @@ const moveSessions = (db: Db): void => {
 		const uris = new Set(
 			db
 				.query<{ refs: string }, [string]>(
-					`SELECT refs FROM task_work_log WHERE task_id = ?`,
+					`SELECT refs FROM ${TABLES.work_log} WHERE task_id = ?`,
 				)
 				.all(taskId)
 				.flatMap((row) => refUris(row.refs)),
@@ -246,20 +247,20 @@ const moveSessions = (db: Db): void => {
 		// any other would lose the session's ref under it.
 		const taken = db
 			.query<{ one: number }, [string]>(
-				`SELECT 1 AS one FROM task_work_log WHERE id = ?`,
+				`SELECT 1 AS one FROM ${TABLES.work_log} WHERE id = ?`,
 			)
 			.get(s.id);
 		if (taken)
 			refuse(
-				`task_work_log already holds a different row with id ${s.id}, the id of session ${s.id}'s ref`,
+				`${TABLES.work_log} already holds a different row with id ${s.id}, the id of session ${s.id}'s ref`,
 			);
 		db.run(
-			`INSERT INTO task_work_log
+			`INSERT INTO ${TABLES.work_log}
 			   (id, task_id, refs, updated_by, visibility, created_at)
 			 VALUES (?, ?, ?, ?, 'shared', ?)`,
 			[s.id, s.task_id, refs, actorOf(s.agent), s.started_at],
 		);
-		// Not captured, as above.
+		Oplog.afterWrite(db, TABLES.work_log, "insert", s.id);
 		uris.add(uri);
 	}
 };
