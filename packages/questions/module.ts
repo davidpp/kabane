@@ -1,5 +1,6 @@
 import type { KabaneModule } from "@kabane/core";
-import { migrations, QUESTIONS_TABLE } from "./migrations";
+import { questionKinds } from "./kinds";
+import { migrations } from "./migrations";
 import { decisionsSection } from "./section";
 import { Questions } from "./storage";
 import { questionTools } from "./tools";
@@ -7,14 +8,9 @@ import { questionTools } from "./tools";
 export const questionsModule: KabaneModule = {
 	name: "questions",
 	migrations,
-	syncTables: [
-		{
-			table: QUESTIONS_TABLE,
-			family: "row-lww",
-			clock: "updated_at",
-			childOfTasks: true,
-		},
-	],
+	// Questions are entries on the record (migration 4), which core replicates.
+	syncTables: [],
+	kinds: questionKinds,
 	contextSections: [decisionsSection],
 	tools: questionTools,
 	onTaskStateChange: Questions.withdrawOnClose,

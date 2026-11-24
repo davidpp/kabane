@@ -45,7 +45,7 @@ const ask = async (id: string) =>
 		}),
 	);
 
-it("migrates prefixed tables, assigns stable ordinals and captures every write", async () => {
+it("assigns stable ordinals and captures every write as a record entry", async () => {
 	const task = await issue();
 	const rows = await ask(task.shortId ?? task.id);
 	expect(rows.map((row) => row.handle)).toEqual([
@@ -77,16 +77,15 @@ it("migrates prefixed tables, assigns stable ordinals and captures every write",
 	const ops = unwrap(
 		await withDb(base, (db) =>
 			db
-				.query<{ module: string; module_schema: number }>(
-					"SELECT module, module_schema FROM sync_oplog WHERE tbl = 'task_questions'",
+				.query<{ module: string | null }>(
+					"SELECT module FROM sync_oplog WHERE tbl = 'entries'",
 				)
 				.all(),
 		),
 	);
+	// Two asks and two answers, each an untagged op on core's `entries`.
 	expect(ops).toHaveLength(4);
-	expect(
-		ops.every((op) => op.module === "questions" && op.module_schema === 3),
-	).toBe(true);
+	expect(ops.every((op) => op.module === null)).toBe(true);
 });
 
 it("refuses invalid batches and answers without partial writes", async () => {
@@ -205,7 +204,7 @@ it("inherits private visibility and never captures private questions", async () 
 	expect(first.visibility).toBe("private");
 	const ops = unwrap(
 		await withDb(base, (db) =>
-			db.query("SELECT * FROM sync_oplog WHERE tbl = 'task_questions'").all(),
+			db.query("SELECT * FROM sync_oplog WHERE tbl = 'entries'").all(),
 		),
 	);
 	expect(ops).toHaveLength(0);
@@ -589,7 +588,7 @@ const questionOps = async () =>
 		await withDb(base, (db) =>
 			db
 				.query<{ n: number }>(
-					"SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'task_questions'",
+					"SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'entries'",
 				)
 				.get(),
 		),
@@ -634,7 +633,7 @@ it("rolls the close back when withdrawing its questions fails", async () => {
 	unwrap(
 		await withDb(base, (db) =>
 			db.run(
-				"CREATE TRIGGER refuse_withdraw BEFORE UPDATE OF status ON task_questions WHEN NEW.status = 'withdrawn' BEGIN SELECT RAISE(ABORT, 'withdraw refused'); END",
+				"CREATE TRIGGER refuse_withdraw BEFORE INSERT ON entries WHEN NEW.kind = 'questions.withdraw' BEGIN SELECT RAISE(ABORT, 'withdraw refused'); END",
 			),
 		),
 	);

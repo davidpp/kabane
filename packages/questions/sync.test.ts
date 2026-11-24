@@ -43,7 +43,7 @@ const device = async (name: string, enabled: boolean) => {
 	return base;
 };
 
-it("parks real question rows on a device without the module and replays on registration", async () => {
+it("questions are record entries: a device without the module keeps them and reads them once it registers", async () => {
 	const relay = LocalRelay.create();
 	const alpha = await device("alpha", true);
 	const a = LocalRelay.transportFor(relay, "alpha");
@@ -64,17 +64,14 @@ it("parks real question rows on a device without the module and replays on regis
 	unwrap(await Sync.push(alpha, a));
 	const beta = await device("beta", false);
 	const b = LocalRelay.transportFor(relay, "beta");
-	expect(unwrap(await Sync.pull(beta, b)).parked).toBe(2);
-	expect(unwrap(await Sync.status(beta)).parkedOps).toEqual({ questions: 2 });
+	expect(unwrap(await Sync.pull(beta, b)).parked).toBe(0);
 	expect(unwrap(await Planner.getTask(beta, task.id))?.title).toBe(task.title);
 	register(true, "beta");
 	unwrap(await Planner.init(beta));
-	expect(unwrap(await Sync.pull(beta, b)).replayed).toBe(2);
 	expect(unwrap(await Questions.list(beta, { id: task.id }))[0]).toMatchObject({
 		answer: "This",
 		version: 2,
 	});
-	expect(unwrap(await Sync.status(beta)).parkedOps).toEqual({});
 });
 
 it("converges concurrent re-answers on two real SQLite devices", async () => {
@@ -121,7 +118,8 @@ it("converges concurrent re-answers on two real SQLite devices", async () => {
 	expect(unwrap(await Questions.list(alpha, { id: task.id }))).toEqual(
 		betaRows,
 	);
-	expect(betaRows[0]?.version).toBe(3);
+	// Every answer is an entry of its own, so all three survive; the newest decides.
+	expect(betaRows[0]?.version).toBe(4);
 	expect(["Alpha", "Beta"]).toContain(betaRows[0]?.answer ?? "");
 });
 

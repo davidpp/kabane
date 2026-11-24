@@ -785,9 +785,9 @@ export namespace DetailModel {
 	export const lifted = (records: BoardData.DetailRecords): LiftedEntry[] =>
 		records.kinds
 			.flatMap((kind) =>
-				kind.projection === "discussion"
-					? []
-					: [{ kind, latest: kind.projection.latest }],
+				typeof kind.projection === "object"
+					? [{ kind, latest: kind.projection.latest }]
+					: [],
 			)
 			.sort(
 				(a, b) =>

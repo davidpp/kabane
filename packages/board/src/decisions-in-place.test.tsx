@@ -165,7 +165,10 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 		mockInput.pressEnter();
 		await read((f) => f.includes("Reasoning · 2 of 2"));
 		await withDb(BASE, (db) =>
-			db.run("DELETE FROM task_questions WHERE task_id = ?", [scopeId]),
+			db.run(
+				"DELETE FROM entries WHERE thread_id = ? AND kind LIKE 'questions.%'",
+				[scopeId],
+			),
 		);
 		mockInput.pressEnter();
 		const failed = await until((f) => f.includes("No question found"));

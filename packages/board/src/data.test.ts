@@ -553,7 +553,12 @@ describe("BoardData", () => {
 			if (!added.ok) throw added.error;
 			const records = await BoardData.taskDetail(TEST_BASE, added.value.id);
 			if (!records.ok) throw records.error;
-			expect(records.value.kinds.map((kind) => kind.name)).toEqual(["handoff"]);
+			expect(records.value.kinds.map((kind) => kind.name)).toEqual([
+				"questions.ask",
+				"questions.answer",
+				"questions.withdraw",
+				"handoff",
+			]);
 		});
 	});
 

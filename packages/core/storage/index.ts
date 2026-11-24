@@ -54,6 +54,7 @@ export const Planner = {
 	matchingState: Conditions.matchingState,
 	isReady: Conditions.isReady,
 	claimHolder: Conditions.claimHolder,
+	addressed: Conditions.addressed,
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
 	deleteLink: TaskLinks.deleteLink,
@@ -66,6 +67,7 @@ export const Planner = {
 	queryProjects: Projects.queryProjects,
 	// Timeline entries (a comment is an entry of kind `comment`)
 	addEntry: Comments.addEntry,
+	addEntryIn: Comments.addEntryIn,
 	getEntries: Comments.getEntries,
 	latestEntry: Comments.latestEntry,
 	addComment: Comments.addComment,

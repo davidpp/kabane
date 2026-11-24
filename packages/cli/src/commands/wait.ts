@@ -4,7 +4,7 @@ import { Questions } from "@kabane/questions";
 import type { Command } from "../context";
 
 const USAGE =
-	"kabane wait (answered <question> | state <thread> <state>... | ready <thread>) [--timeout <duration>]";
+	"kabane wait (answered <question> | state <thread> <state>... | ready <thread> | addressed <actor>) [--timeout <duration>]";
 
 const problem = (error: Error): Outcome => ({
 	exitCode: 2,
@@ -41,7 +41,7 @@ export const wait: Command = {
 	name: "wait",
 	contextErrorExitCode: 2,
 	summary:
-		"Wait for a question to close, a task state, or every blocker to close",
+		"Wait for a question to close, a task state, every blocker to close, or something addressed to an actor",
 	usage: USAGE,
 	run: async (args, ctx) => {
 		const [condition, input, ...states] = args.positionals;
@@ -68,6 +68,14 @@ export const wait: Command = {
 				timeout,
 			);
 		}
+		if (condition === "addressed")
+			return poll(
+				async () =>
+					map(await Planner.addressed(ctx.store, input), (open) =>
+						open.length ? { condition, actor: input, entries: open } : null,
+					),
+				timeout,
+			);
 		if (condition !== "state" && condition !== "ready")
 			return usage("Unknown condition", USAGE);
 		const parsed = TaskStateSchema.array().safeParse(states);

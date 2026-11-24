@@ -195,7 +195,7 @@ const kindProblem = (
 		const field = issue?.path.join(".") || "the declaration";
 		const message =
 			issue === undefined || issue.code === "invalid_union"
-				? `must be "discussion" or { latest: { after: <core section>, framing: <one line> } }`
+				? `must be "discussion", "none" or { latest: { after: <core section>, framing: <one line> } }`
 				: issue.message;
 		return `${where}: ${field} ${message}`;
 	}
@@ -206,7 +206,7 @@ const kindProblem = (
 	const owner = kinds.get(kind.name);
 	if (owner !== undefined)
 		return `${where}: the name is already ${owner}; pick another`;
-	if (kind.projection !== "discussion") {
+	if (typeof kind.projection === "object") {
 		const section = latestSectionName(kind.name);
 		const holder = sections.get(section);
 		if (holder !== undefined)
@@ -238,7 +238,7 @@ const readSurfaceProblem = (
 			const problem = kindProblem(module, kind, kinds, sections);
 			if (problem !== undefined) return problem;
 			kinds.set(kind.name, `a kind of module "${module.name}"`);
-			if (kind.projection !== "discussion")
+			if (typeof kind.projection === "object")
 				sections.set(
 					latestSectionName(kind.name),
 					`the section of kind "${kind.name}"`,
@@ -307,7 +307,7 @@ export namespace Modules {
 	/** The sections `module`'s kinds projected as `latest` render as, in declaration order. */
 	export const latestSections = (module: KabaneModule): LatestKindSection[] =>
 		(module.kinds ?? []).flatMap((kind) =>
-			kind.projection === "discussion"
+			typeof kind.projection !== "object"
 				? []
 				: [
 						{

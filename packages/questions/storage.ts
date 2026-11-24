@@ -7,7 +7,6 @@ import {
 	err,
 	normalizeScopeUri,
 	ok,
-	Oplog,
 	Planner,
 	type Result,
 	Runtime,
@@ -16,31 +15,77 @@ import {
 	TABLES,
 	withDb,
 } from "@kabane/core";
-import { monotonicFactory } from "ulid";
 import { validateAnswer } from "./answer";
 import { formatDecisionBody, parseDecisionBody } from "./body";
-import { QUESTIONS_TABLE } from "./migrations";
+import { ANSWER_KIND, ASK_KIND, REPLY_KINDS, WITHDRAW_KIND } from "./kinds";
 import {
 	AnswerSchema,
 	AskSchema,
 	type AnswerInput,
 	type AskInput,
-	type Question,
 	type QuestionStatus,
 	type QuestionView,
 } from "./schema";
 
-const generateId = monotonicFactory();
+/**
+ * A question is an entry of kind `questions.ask` on its issue, addressed to
+ * the human asked; an answer or a withdrawal is an entry that replies to it
+ * (`re`). The newest reply decides its status, answer and reasoning, so a
+ * second answer overwrites the first as it did when a row held them.
+ */
+const REPLIES = REPLY_KINDS.map((kind) => `'${kind}'`).join(", ");
+
+const dataOf = (data: string | null): Record<string, string | undefined> =>
+	data === null ? {} : (JSON.parse(data) as Record<string, string>);
+
+const statusOf = (kind: string | null): QuestionStatus =>
+	kind === ANSWER_KIND
+		? "answered"
+		: kind === WITHDRAW_KIND
+			? "withdrawn"
+			: "open";
+
+type AskRow = {
+	id: string;
+	thread_id: string;
+	author: string;
+	body: string;
+	data: string | null;
+	visibility: string;
+	created_at: string;
+	updated_by: string | null;
+	short_id: string | null;
+	title: string;
+	priority: string;
+	state: string;
+	ordinal: number;
+	replies: number;
+	reply_kind: string | null;
+	reply_author: string | null;
+	reply_body: string | null;
+	reply_data: string | null;
+	reply_at: string | null;
+	reply_by: string | null;
+};
 
 /** Ordinals include closed questions, so answering never renumbers handles. */
 const selectQuestions = (
 	db: Db,
-	filter: { taskId?: string; scopeUri?: string; status?: "open" | "all" } = {},
+	filter: {
+		taskId?: string;
+		scopeUri?: string;
+		status?: "open" | "all";
+		id?: string;
+	} = {},
 ): QuestionView[] => {
-	const where: string[] = [];
+	const where: string[] = [`a.kind = '${ASK_KIND}'`];
 	const params: SqlValue[] = [];
+	if (filter.id !== undefined) {
+		where.push("a.id = ?");
+		params.push(filter.id);
+	}
 	if (filter.taskId !== undefined) {
-		where.push("q.task_id = ?");
+		where.push("a.thread_id = ?");
 		params.push(filter.taskId);
 	}
 	if (filter.scopeUri !== undefined) {
@@ -48,48 +93,65 @@ const selectQuestions = (
 		where.push(scope.sql);
 		params.push(...scope.params);
 	}
-	if (filter.status === "open") where.push("q.status = 'open'");
+	if (filter.status === "open") where.push("r.id IS NULL");
 	return db
-		.query<
-			Question &
-				Pick<QuestionView, "ordinal" | "title" | "priority" | "state"> & {
-					short_id: string | null;
-				}
-		>(`SELECT q.*, t.short_id, t.title, t.priority, t.state,
-		(SELECT COUNT(*) FROM ${QUESTIONS_TABLE} preceding WHERE preceding.task_id = q.task_id AND preceding.id <= q.id) AS ordinal
-		FROM ${QUESTIONS_TABLE} q JOIN ${TABLES.tasks} t ON t.id = q.task_id
-		${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-		ORDER BY q.task_id, q.id`)
+		.query<AskRow, SqlValue[]>(
+			`SELECT a.id, a.thread_id, a.author, a.body, a.data, a.visibility, a.created_at, a.updated_by,
+			        t.short_id, t.title, t.priority, t.state,
+			        (SELECT COUNT(*) FROM ${TABLES.entries} p
+			          WHERE p.thread_id = a.thread_id AND p.kind = '${ASK_KIND}' AND p.id <= a.id) AS ordinal,
+			        (SELECT COUNT(*) FROM ${TABLES.entries} c
+			          WHERE c.thread_id = a.thread_id AND c.re = a.id AND c.kind IN (${REPLIES})) AS replies,
+			        r.kind AS reply_kind, r.author AS reply_author, r.body AS reply_body,
+			        r.data AS reply_data, r.created_at AS reply_at, r.updated_by AS reply_by
+			   FROM ${TABLES.entries} a JOIN ${TABLES.tasks} t ON t.id = a.thread_id
+			   LEFT JOIN ${TABLES.entries} r ON r.id = (
+			     SELECT x.id FROM ${TABLES.entries} x
+			      WHERE x.thread_id = a.thread_id AND x.re = a.id AND x.kind IN (${REPLIES})
+			      ORDER BY x.created_at DESC, x.id DESC LIMIT 1)
+			  WHERE ${where.join(" AND ")}
+			  ORDER BY a.thread_id, a.id`,
+		)
 		.all(...params)
-		.map((row) => ({
-			id: row.id,
-			taskId: row.task_id,
-			status: row.status,
-			askedBy: row.asked_by,
-			answeredBy: row.answered_by ?? undefined,
-			answeredAt: row.answered_at ?? undefined,
-			createdAt: row.created_at,
-			updatedAt: row.updated_at,
-			updatedBy: row.updated_by,
-			version: row.version,
-			visibility: row.visibility,
-			body: row.body,
-			why: row.why ?? undefined,
-			answer: row.answer ?? undefined,
-			reasoning: row.reasoning ?? undefined,
-			handle: `${row.short_id ?? row.task_id}:${row.ordinal}`,
-			ordinal: row.ordinal,
-			title: row.title,
-			priority: row.priority,
-			state: row.state,
-			shortId: row.short_id ?? undefined,
-		}));
+		.map((row) => {
+			const ask = dataOf(row.data);
+			const reply = dataOf(row.reply_data);
+			const status = statusOf(row.reply_kind);
+			return {
+				id: row.id,
+				taskId: row.thread_id,
+				status,
+				askedBy: row.author,
+				answeredBy: row.reply_author ?? undefined,
+				answeredAt: row.reply_at ?? undefined,
+				createdAt: row.created_at,
+				updatedAt: row.reply_at ?? row.created_at,
+				updatedBy: row.reply_by ?? row.updated_by ?? row.author,
+				version: 1 + row.replies,
+				visibility: row.visibility,
+				body: row.body,
+				why: ask.why,
+				answer:
+					status === "answered" ? (row.reply_body ?? undefined) : undefined,
+				reasoning: reply.reasoning,
+				handle: `${row.short_id ?? row.thread_id}:${row.ordinal}`,
+				ordinal: row.ordinal,
+				title: row.title,
+				priority: row.priority,
+				state: row.state,
+				shortId: row.short_id ?? undefined,
+			};
+		});
 };
 
-/** Answer or withdraw one question, and capture it. */
+/** The open questions on an issue, oldest first. */
+const openOn = (db: Db, taskId: string): QuestionView[] =>
+	selectQuestions(db, { taskId, status: "open" });
+
+/** Answer or withdraw one question: a reply to its entry. */
 const close = (
 	db: Db,
-	id: string,
+	question: { id: string; taskId: string },
 	closing: {
 		status: "answered" | "withdrawn";
 		answer: string | null;
@@ -97,21 +159,15 @@ const close = (
 		by: string;
 	},
 ): void => {
-	const now = new Date().toISOString();
-	db.run(
-		`UPDATE ${QUESTIONS_TABLE} SET status = ?, answer = ?, reasoning = ?, answered_by = ?, answered_at = ?, updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?`,
-		[
-			closing.status,
-			closing.answer,
-			closing.reasoning,
-			closing.by,
-			now,
-			now,
-			Runtime.actor(),
-			id,
-		],
-	);
-	Oplog.afterWrite(db, QUESTIONS_TABLE, "update", id);
+	Planner.addEntryIn(db, {
+		taskId: question.taskId,
+		kind: closing.status === "answered" ? ANSWER_KIND : WITHDRAW_KIND,
+		author: closing.by,
+		body: closing.answer,
+		re: question.id,
+		data:
+			closing.reasoning === null ? undefined : { reasoning: closing.reasoning },
+	});
 };
 
 export namespace Questions {
@@ -128,13 +184,8 @@ export namespace Questions {
 	export const withdrawOnClose = (db: Db, task: Task): Result<void> => {
 		if (task.state !== "done" && task.state !== "cancelled")
 			return ok(undefined);
-		const open = db
-			.query<{ id: string }>(
-				`SELECT id FROM ${QUESTIONS_TABLE} WHERE task_id = ? AND status = 'open' ORDER BY id`,
-			)
-			.all(task.id);
-		for (const { id } of open)
-			close(db, id, {
+		for (const question of openOn(db, task.id))
+			close(db, question, {
 				status: "withdrawn",
 				answer: null,
 				reasoning: CLOSED_REASON,
@@ -186,19 +237,20 @@ export namespace Questions {
 
 	export const status = (basePath: string, questionId: string) =>
 		withDb(basePath, (db) => {
-			const row = db
-				.query<{ taskId: string; status: QuestionStatus }>(
-					`SELECT task_id AS taskId, status FROM ${QUESTIONS_TABLE} WHERE id = ?`,
-				)
-				.get(questionId);
+			const [row] = selectQuestions(db, { id: questionId });
 			if (!row) throw new Error(`No question found: ${questionId}`);
-			return row;
+			return { taskId: row.taskId, status: row.status };
 		});
 
+	/**
+	 * File questions on an issue, addressed to `to`: the human asked, or none
+	 * when the asking surface knows no human.
+	 */
 	export const ask = async (
 		basePath: string,
 		input: AskInput,
 		actor = Runtime.actor(),
+		{ to }: { to?: readonly string[] } = {},
 	): Promise<Result<QuestionView[]>> => {
 		const parsed = AskSchema.safeParse(input);
 		if (!parsed.success)
@@ -217,8 +269,8 @@ export namespace Questions {
 		}
 		const written = await atomic(basePath, (db) => {
 			const task = db
-				.query<{ kind: string; visibility: string; state: string }>(
-					`SELECT kind, visibility, state FROM ${TABLES.tasks} WHERE id = ?`,
+				.query<{ kind: string; state: string }>(
+					`SELECT kind, state FROM ${TABLES.tasks} WHERE id = ?`,
 				)
 				.get(resolved.value);
 			if (!task || task.kind !== "issue")
@@ -235,13 +287,9 @@ export namespace Questions {
 			] of parsed.data.questions.entries()) {
 				const predecessor = replaced[index];
 				if (predecessor !== undefined) {
-					const old = db
-						.query<{ task_id: string; status: QuestionStatus }>(
-							`SELECT task_id, status FROM ${QUESTIONS_TABLE} WHERE id = ?`,
-						)
-						.get(predecessor);
+					const [old] = selectQuestions(db, { id: predecessor });
 					if (!old) throw new Error(`No question found: ${replaces}`);
-					if (old.task_id !== resolved.value)
+					if (old.taskId !== resolved.value)
 						throw new Error(
 							`${replaces} is on another issue; ask its replacement on that issue.`,
 						);
@@ -252,22 +300,15 @@ export namespace Questions {
 					if (replaced.indexOf(predecessor) !== index)
 						throw new Error(`${replaces} is replaced twice in one call.`);
 				}
-				const id = generateId();
-				db.run(
-					`INSERT INTO ${QUESTIONS_TABLE} (id, task_id, asked_by, created_at, updated_at, updated_by, visibility, body, why) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					[
-						id,
-						resolved.value,
-						actor,
-						now,
-						now,
-						Runtime.actor(),
-						task.visibility,
-						formatDecisionBody(question, meta),
-						why ?? null,
-					],
-				);
-				Oplog.afterWrite(db, QUESTIONS_TABLE, "insert", id);
+				const id = Planner.addEntryIn(db, {
+					taskId: resolved.value,
+					kind: ASK_KIND,
+					author: actor,
+					body: formatDecisionBody(question, meta),
+					to,
+					data: why === undefined ? undefined : { why },
+					createdAt: now,
+				});
 				ids.push(id);
 			}
 			const rows = selectQuestions(db, { taskId: resolved.value }).filter(
@@ -277,12 +318,16 @@ export namespace Questions {
 			replaced.forEach((predecessor, index) => {
 				const successor = rows.find((row) => row.id === ids[index]);
 				if (predecessor === undefined || !successor) return;
-				close(db, predecessor, {
-					status: "withdrawn",
-					answer: null,
-					reasoning: `${REPLACED_REASON} ${successor.handle} id:${successor.id}`,
-					by: actor,
-				});
+				close(
+					db,
+					{ id: predecessor, taskId: resolved.value },
+					{
+						status: "withdrawn",
+						answer: null,
+						reasoning: `${REPLACED_REASON} ${successor.handle} id:${successor.id}`,
+						by: actor,
+					},
+				);
 			});
 			let changedTask: Task | null = null;
 			if (parsed.data.waiting && task.state !== "waiting") {
@@ -311,9 +356,7 @@ export namespace Questions {
 		const resolved = await resolve(basePath, parsed.data.question);
 		if (!resolved.ok) return resolved;
 		const written = await atomic(basePath, (db) => {
-			const question = db
-				.query<Question>(`SELECT * FROM ${QUESTIONS_TABLE} WHERE id = ?`)
-				.get(resolved.value);
+			const [question] = selectQuestions(db, { id: resolved.value });
 			if (!question) throw new Error(`No question found: ${input.question}`);
 			const answer = parsed.data.withdraw
 				? ok(null)
@@ -322,31 +365,27 @@ export namespace Questions {
 						parsed.data.answer ?? "",
 					);
 			if (!answer.ok) throw answer.error;
-			close(db, question.id, {
+			close(db, question, {
 				status: parsed.data.withdraw ? "withdrawn" : "answered",
 				answer: answer.value,
 				reasoning: parsed.data.reasoning ?? null,
 				by: actor,
 			});
 			let changedTask: Task | null = null;
-			const open = db
-				.query<{ id: string }>(
-					`SELECT id FROM ${QUESTIONS_TABLE} WHERE task_id = ? AND status = 'open' LIMIT 1`,
-				)
-				.get(question.task_id);
+			const open = openOn(db, question.taskId).length > 0;
 			const task = db
 				.query<{ state: string }>(
 					`SELECT state FROM ${TABLES.tasks} WHERE id = ?`,
 				)
-				.get(question.task_id);
+				.get(question.taskId);
 			if (question.status === "open" && !open && task?.state === "waiting") {
-				const moved = Planner.updateTaskIn(db, question.task_id, {
+				const moved = Planner.updateTaskIn(db, question.taskId, {
 					state: "next",
 				});
 				if (!moved.ok) throw moved.error;
 				changedTask = moved.value;
 			}
-			const updated = selectQuestions(db, { taskId: question.task_id }).find(
+			const updated = selectQuestions(db, { taskId: question.taskId }).find(
 				(row) => row.id === question.id,
 			);
 			if (!updated) throw new Error(`Question disappeared: ${question.id}`);

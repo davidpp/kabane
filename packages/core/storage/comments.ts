@@ -9,9 +9,11 @@
  */
 
 import { monotonicFactory } from "ulid";
+import type { Db } from "../db/port";
 import { err, ok, quoted, type Result } from "../result";
 import { atomic, withDb } from "../runtime";
 
+import { Modules } from "../module";
 import {
 	DEFAULT_ENTRY_KIND,
 	ENTRY_KIND_PATTERN,
@@ -33,7 +35,54 @@ import { RecordWrite } from "./record-write";
  */
 const entryId = monotonicFactory();
 
+/** Why `kind` is no kind a caller may write, or undefined when it is one. */
+const kindProblem = (kind: string): string | undefined => {
+	if (kind === WORK_LOG_KIND)
+		return `Entry kind ${quoted(kind)} is the work log's: record work with kabane_log.`;
+	if (CORE_ENTRY_KINDS.includes(kind))
+		return `Entry kind ${quoted(kind)} is the claim's: set the task in_progress, or put it back, with kabane_edit.`;
+	if (!ENTRY_KIND_PATTERN.test(kind))
+		return `Entry kind ${quoted(kind)} is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`;
+	return undefined;
+};
+
 export namespace Planner {
+	/**
+	 * Append an entry in the caller's transaction, for a module whose write
+	 * spans more than the entry: addressed to actors (`to`), replying to an
+	 * entry (`re`), its kind's fields in `data`. Returns its id. Throws on a
+	 * kind no caller may write, so the transaction rolls back.
+	 */
+	export const addEntryIn = (
+		db: Db,
+		draft: {
+			taskId: string;
+			kind: string;
+			author: string;
+			body: string | null;
+			to?: readonly string[];
+			re?: string;
+			data?: Record<string, unknown>;
+			createdAt?: string;
+		},
+	): string => {
+		const problem = kindProblem(draft.kind);
+		if (problem !== undefined) throw new Error(problem);
+		const id = entryId();
+		RecordWrite.addEntry(db, {
+			id,
+			threadId: draft.taskId,
+			kind: draft.kind,
+			author: draft.author,
+			body: draft.body,
+			data: draft.data ?? null,
+			createdAt: draft.createdAt ?? new Date().toISOString(),
+			to: draft.to,
+			re: draft.re,
+		});
+		return id;
+	};
+
 	/**
 	 * Append an entry to a task's timeline. The kind is checked for its shape
 	 * only: a kind no module declares is stored like any other, and the body is
@@ -43,24 +92,8 @@ export namespace Planner {
 		basePath: string,
 		draft: TaskEntryDraft,
 	): Promise<Result<TaskEntry>> => {
-		if (draft.kind === WORK_LOG_KIND)
-			return err(
-				new Error(
-					`Entry kind ${quoted(draft.kind)} is the work log's: record work with kabane_log.`,
-				),
-			);
-		if (CORE_ENTRY_KINDS.includes(draft.kind))
-			return err(
-				new Error(
-					`Entry kind ${quoted(draft.kind)} is the claim's: set the task in_progress, or put it back, with kabane_edit.`,
-				),
-			);
-		if (!ENTRY_KIND_PATTERN.test(draft.kind))
-			return err(
-				new Error(
-					`Entry kind ${quoted(draft.kind)} is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`,
-				),
-			);
+		const problem = kindProblem(draft.kind);
+		if (problem !== undefined) return err(new Error(problem));
 		return atomic(basePath, (db) => {
 			const now = new Date().toISOString();
 			const id = entryId();
@@ -90,7 +123,9 @@ export namespace Planner {
 
 	/**
 	 * A task's timeline in time order, only the entries of `kind` when it is
-	 * given. The work log's and the claim's entries are never among them.
+	 * given. The work log's and the claim's entries are never among them, nor
+	 * a kind its module declares with projection `none`: that module shows
+	 * those entries itself.
 	 */
 	export const getEntries = async (
 		basePath: string,
@@ -104,6 +139,7 @@ export namespace Planner {
 				.filter(
 					(row) =>
 						!CORE_ENTRY_KINDS.includes(row.kind) &&
+						Modules.kind(row.kind)?.projection !== "none" &&
 						(kind === undefined || row.kind === kind),
 				)
 				.map(rowToEntry);

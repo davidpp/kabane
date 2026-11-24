@@ -81,10 +81,12 @@ const OneLineSchema = z
  * `discussion`: every entry in the Discussion, in time order, labelled with its
  * kind. `latest`: only the newest entry, as its own section `<kind>.latest`
  * after the core section `after`, under the one-line `framing`; the older ones
- * are counted, not shown.
+ * are counted, not shown. `none`: the brief and the timeline show none of
+ * them, because the declaring module shows them itself (a context section).
  */
 const EntryProjectionSchema = z.union([
 	z.literal("discussion"),
+	z.literal("none"),
 	z
 		.object({
 			latest: z
@@ -109,6 +111,12 @@ export const EntryKindSchema = z
 		/** Markdown shown to whoever writes one. Never checked against a body. */
 		template: z.string(),
 		projection: EntryProjectionSchema,
+		/**
+		 * For an entry addressed to someone (`to`): the kinds of reply (`re`)
+		 * that close it. A reply of another kind, a clarification, leaves it
+		 * open. Without it, any reply closes it.
+		 */
+		closedBy: z.array(EntryKindNameSchema).min(1).optional(),
 	})
 	.strict();
 export type EntryKind = z.infer<typeof EntryKindSchema>;

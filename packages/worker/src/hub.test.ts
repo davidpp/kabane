@@ -19,7 +19,7 @@ import {
 	Planner,
 } from "@kabane/core";
 import type { Db } from "@kabane/core";
-import { questionsModule } from "@kabane/questions";
+import { Questions, questionsModule } from "@kabane/questions";
 import { describe, expect, it } from "vitest";
 import { DoDb } from "./db-do";
 import { type KabaneHub, HUB_BASE, hubTimezone } from "./hub";
@@ -308,13 +308,7 @@ describe("migration 14 over Durable Object SQLite", () => {
 			const counts = unwrap(
 				await provider.withDb(HUB_BASE, (db) =>
 					Object.fromEntries(
-						[
-							"threads",
-							"entries",
-							"refs",
-							"retired_tasks",
-							"task_questions",
-						].map((table) => [
+						["threads", "entries", "refs", "retired_tasks"].map((table) => [
 							table,
 							db
 								.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table}`)
@@ -323,15 +317,20 @@ describe("migration 14 over Durable Object SQLite", () => {
 					),
 				),
 			);
-			// Two threads; a comment and a work log; a blocks link, a context ref
+			// Two threads; a comment, a work log and the question (the questions
+			// module moved its table onto the record); a blocks link, a context ref
 			// and an upstream ref (the parent link is the child's parent now).
 			expect(counts).toEqual({
 				threads: 2,
-				entries: 2,
+				entries: 3,
 				refs: 3,
 				retired_tasks: 2,
-				task_questions: 1,
 			});
+			expect(
+				unwrap(
+					await Questions.list(HUB_BASE, { id: "01TASKPARENT00000000000000" }),
+				).map((q) => [q.id, q.status, q.body]),
+			).toEqual([["01QUESTION", "open", "Which?"]]);
 			const child = unwrap(
 				await Planner.getTask(HUB_BASE, "01TASKCHILD000000000000000"),
 			);
