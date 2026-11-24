@@ -11,7 +11,15 @@
  */
 
 import { env, runInDurableObject } from "cloudflare:test";
-import { conformanceCases, Deadline, Migrate, Planner } from "@kabane/core";
+import {
+	conformanceCases,
+	Deadline,
+	Migrate,
+	Migrations,
+	Planner,
+} from "@kabane/core";
+import type { Db } from "@kabane/core";
+import { questionsModule } from "@kabane/questions";
 import { describe, expect, it } from "vitest";
 import { DoDb } from "./db-do";
 import { type KabaneHub, HUB_BASE, hubTimezone } from "./hub";
@@ -30,7 +38,8 @@ describe("KabaneHub boot", () => {
 		const h = hub("boot");
 		expect(unwrap(await h.boot())).toBeUndefined();
 		const tables = await h.tables();
-		expect(tables).toContain("tasks");
+		// The task row is a view over the record since migration 14.
+		expect(tables).toContain("threads");
 		expect(tables).toContain("tasks_fts");
 		// Core keeps no agent session: migration session-outcomes drops both.
 		expect(tables).not.toContain("agent_sessions");
@@ -104,11 +113,32 @@ describe("the hub's timezone", () => {
 	});
 });
 
+/**
+ * Empty the object's database. The constructor boots every object to the
+ * latest schema, where `tasks` is a view migration 1's DDL cannot index.
+ */
+const wipe = (db: Db): void => {
+	const objects = db
+		.query<{ type: string; name: string }, []>(
+			"SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND sql NOT LIKE 'CREATE VIRTUAL%'",
+		)
+		.all();
+	for (const fts of ["tasks_fts", "task_comments_fts"])
+		db.run(`DROP TABLE IF EXISTS ${fts}`);
+	for (const { type, name } of objects)
+		db.run(`DROP ${type === "view" ? "VIEW" : "TABLE"} IF EXISTS "${name}"`);
+};
+
 describe("Db port conformance over Durable Object SQLite", () => {
 	for (const c of conformanceCases()) {
 		it(c.name, async () => {
-			await runInDurableObject(hub("conformance"), async (_i: KabaneHub, ctx) =>
-				c.run(DoDb.provider(ctx.storage)),
+			await runInDurableObject(
+				hub(`conformance-${c.name}`),
+				async (_i: KabaneHub, ctx) => {
+					const provider = DoDb.provider(ctx.storage);
+					unwrap(await provider.withDb(HUB_BASE, wipe));
+					return c.run(provider);
+				},
 			);
 		});
 	}
@@ -193,6 +223,135 @@ describe("storage over Durable Object SQLite", () => {
 		await runInDurableObject(h, async () => {
 			unwrap(await Planner.init(HUB_BASE));
 			expect(unwrap(await Planner.stats(HUB_BASE))).toBeDefined();
+		});
+	});
+});
+
+describe("migration 14 over Durable Object SQLite", () => {
+	it("moves a schema-12 hub's rows into the record, keeps its module rows, and serves them", async () => {
+		const h = hub("record-migrate");
+		unwrap(await h.boot());
+		await runInDurableObject(h, async (_i: KabaneHub, ctx) => {
+			const provider = DoDb.provider(ctx.storage);
+			// The constructor booted this object to the latest schema: start over
+			// from a hub as schema 12 left it, with the questions module beside it.
+			unwrap(
+				await provider.withDb(HUB_BASE, (db) => {
+					wipe(db);
+					unwrap(Migrate.run(db, Migrations.LIST.slice(0, 12)));
+					unwrap(
+						Migrate.run(
+							db,
+							questionsModule.migrations ?? [],
+							"schema_migrations_questions",
+						),
+					);
+				}),
+			);
+			const at = "2026-11-24T12:00:00.000Z";
+			unwrap(
+				await provider.withDb(HUB_BASE, (db) => {
+					db.run(
+						`INSERT INTO tasks (id, short_id, title, description, state, priority, tags,
+						   discovered_at, discovered_by, updated_by, created_at, updated_at)
+						 VALUES ('01TASKPARENT00000000000000', 'JHUB-1', 'parent', 'body', 'next',
+						   'high', '["x"]', ?, 'kabane://actor/human/ada', 'kabane://actor/human/ada', ?, ?),
+						        ('01TASKCHILD000000000000000', 'JHUB-2', 'child searchable', NULL, 'inbox',
+						   'normal', '[]', ?, NULL, 'kabane://actor/human/ada', ?, ?)`,
+						[at, at, at, at, at, at],
+					);
+					db.run(
+						`INSERT INTO task_links (id, source_id, target_id, type, created_at)
+						 VALUES ('01LINKPARENT', '01TASKPARENT00000000000000', '01TASKCHILD000000000000000', 'parent', ?),
+						        ('01LINKBLOCKS', '01TASKCHILD000000000000000', '01TASKPARENT00000000000000', 'blocks', ?)`,
+						[at, at],
+					);
+					db.run(
+						`INSERT INTO task_comments (id, task_id, author, author_type, content, created_at, kind)
+						 VALUES ('01COMMENT', '01TASKPARENT00000000000000', 'ada', 'human', 'hello', ?, 'comment')`,
+						[at],
+					);
+					db.run(
+						`INSERT INTO task_work_log (id, task_id, refs, note, created_at)
+						 VALUES ('01WORKLOG', '01TASKPARENT00000000000000', '[{"uri":"commit:abc","addedAt":"${at}"}]', 'did it', ?)`,
+						[at],
+					);
+					db.run(
+						`INSERT INTO task_context_refs (id, task_id, uri, kind, label, added_at)
+						 VALUES ('01CTX', '01TASKPARENT00000000000000', 'file:spec.md', 'spec', 'Spec', ?)`,
+						[at],
+					);
+					db.run(
+						`INSERT INTO upstream_links (id, task_id, provider, external_id, identifier, url, title, created_at, updated_at)
+						 VALUES ('01UP', '01TASKPARENT00000000000000', 'github', '42', 'o/r#1', 'https://example.org/1', 'Up', ?, ?)`,
+						[at, at],
+					);
+					db.run(
+						`INSERT INTO task_questions (id, task_id, asked_by, created_at, updated_at, updated_by, body)
+						 VALUES ('01QUESTION', '01TASKPARENT00000000000000', 'kabane://actor/agent/claude', ?, ?, 'kabane://actor/agent/claude', 'Which?')`,
+						[at, at],
+					);
+				}),
+			);
+
+			unwrap(await Planner.init(HUB_BASE));
+
+			const counts = unwrap(
+				await provider.withDb(HUB_BASE, (db) =>
+					Object.fromEntries(
+						[
+							"threads",
+							"entries",
+							"refs",
+							"retired_tasks",
+							"task_questions",
+						].map((table) => [
+							table,
+							db
+								.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${table}`)
+								.get()?.n,
+						]),
+					),
+				),
+			);
+			// Two threads; a comment and a work log; a blocks link, a context ref
+			// and an upstream ref (the parent link is the child's parent now).
+			expect(counts).toEqual({
+				threads: 2,
+				entries: 2,
+				refs: 3,
+				retired_tasks: 2,
+				task_questions: 1,
+			});
+			const child = unwrap(
+				await Planner.getTask(HUB_BASE, "01TASKCHILD000000000000000"),
+			);
+			expect(child?.parentTaskId).toBe("01TASKPARENT00000000000000");
+			const parent = unwrap(
+				await Planner.getTask(HUB_BASE, "01TASKPARENT00000000000000"),
+			);
+			expect(parent).toMatchObject({
+				shortId: "JHUB-1",
+				description: "body",
+				priority: "high",
+				tags: ["x"],
+				state: "next",
+			});
+			expect(
+				unwrap(
+					await Planner.getComments(HUB_BASE, "01TASKPARENT00000000000000"),
+				).length,
+			).toBe(1);
+			expect(
+				unwrap(await Planner.searchTasks(HUB_BASE, "searchable")).map(
+					(t) => t.id,
+				),
+			).toEqual(["01TASKCHILD000000000000000"]);
+			// A new task after the migration lands in the record and reads back.
+			const added = unwrap(await Planner.addTask(HUB_BASE, { title: "after" }));
+			expect(unwrap(await Planner.getTask(HUB_BASE, added.id))?.title).toBe(
+				"after",
+			);
 		});
 	});
 });
