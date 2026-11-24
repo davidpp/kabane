@@ -33,8 +33,7 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
 2. **Does each thing added to `packages/core` pass all four questions?** Is it the record,
    how the record replicates, or a definition every reader goes through? Do two packages in
    different layers, core itself not counted, use it in this diff or on main? Does it run in Workers, with no
-   Bun, Node or process call reachable from `packages/core/index.ts` beyond the ones
-   `CODING_PRINCIPLE.md` names as never called by the hub? Is kabane the only tool that keeps
+   Bun API reachable from `packages/core/index.ts`? Is kabane the only tool that keeps
    it, or should the record hold a URI to it? Name where a "no" sends it. A subpath export
    keeps a call off the barrel but is no more Workers-safe: something new on one that only a
    device runs is a finding too, and needs naming in the verdict table even when it sits beside
@@ -97,9 +96,9 @@ table: a diff that removes a named exception and leaves its row there is a findi
 ## Severity
 
 - **p1**: a forbidden production edge added to `scripts/layers.ts`, or an exception added
-  with no issue that removes it; a new Bun, Node or process call reachable from core's barrel
-  beyond the ones `CODING_PRINCIPLE.md` names; a new replicated table in core's migrations; a
-  contract type a second client could not use; a `host.record` operation no tool offers.
+  with no issue that removes it; a new Bun API reachable from core's barrel; a new replicated
+  table in core's migrations; a contract type a second client could not use; a `host.record`
+  operation no tool offers.
 - **p2**: something placed in a layer that should not own it but cheap to move now (a helper
   with one consumer in core, a device-only export on a core subpath, a board import that only
   the CLI could satisfy); a `host` member or `Extension` field outside what `ARCHITECTURE.md`

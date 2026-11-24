@@ -89,8 +89,8 @@ A thing belongs in `packages/core` when the answer to all four is yes:
 2. **Do two or more packages, in different layers, use it today?** A thing with one consumer
    lives with that consumer, even if that costs some repetition later. Something new starts in
    the package that needs it and moves to core when a package in another layer needs it too.
-3. **Does it run in Workers as well as Bun?** No Bun, Node or process call is reachable from the
-   package barrel, except the ones `CODING_PRINCIPLE.md` names as never called by the hub.
+3. **Does it run in Workers as well as Bun?** No Bun API is reachable from the package barrel.
+   The hub runs with `nodejs_compat` (`packages/worker/wrangler.jsonc`).
 4. **Is kabane the only tool that keeps it?** Git keeps commits, a harness keeps its
    transcript, a team tracker keeps the team record; for those the answer is no, and kabane keeps
    a URI to them: a work-log ref, an upstream link.
