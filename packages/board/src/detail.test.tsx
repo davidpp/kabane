@@ -1054,6 +1054,9 @@ test("Detail opens on now when a handoff is all an issue holds, the handoff firs
 });
 
 test("Detail marks a fresh block seen only while nothing is drawn over it", async () => {
+	// Taken at entry, and short of the test's own timeout by the wait below the report, so however
+	// long setup takes, a miss still reaches `finally` and stops both views' checks.
+	const deadline = performance.now() + 8_500;
 	const task = await seed({ title: "Watched" });
 	const items = await Checklist.add(TEST_BASE, {
 		id: task.id,
@@ -1088,9 +1091,7 @@ test("Detail marks a fresh block seen only while nothing is drawn over it", asyn
 	const open = await view(false);
 	try {
 		// The dwell runs on real timers, so wait for the report rather than a fixed span: on a loaded
-		// machine the renders and checks lag past any margin. The deadline sits inside the test's own
-		// timeout so a miss still reaches `finally` and stops both views' checks.
-		const deadline = performance.now() + 9_000;
+		// machine the renders and checks lag past any margin.
 		while (open.seen.length === 0) {
 			if (performance.now() > deadline)
 				throw new Error("the uncovered view never reported its block seen");
@@ -1098,6 +1099,9 @@ test("Detail marks a fresh block seen only while nothing is drawn over it", asyn
 		}
 		// At once: the block stays fresh here, so the open view reports it again one dwell later.
 		expect(open.seen).toEqual(["checklist"]);
+		// Each view runs its own 250 ms check, so the covered one's may not have passed the dwell yet.
+		// Let two go by first: lag here only lengthens the wait before a negative, never fails it.
+		await sleep(500);
 		expect(under.seen).toEqual([]);
 	} finally {
 		under.destroy();
