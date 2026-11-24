@@ -25,6 +25,7 @@ YAGNI · DRY · boyscout rule · KISS · obvious correctness over cleverness · 
 
 - **Verify before done** — `bun run check`, `bun run typecheck`, and `bun run test` pass before any commit claim.
 - **Errors are DX** — say what failed, with which input, and what to do next, in one line.
+- **No code first** — when one option needs no code and another adds some, take the one without, try it for real, and write the code once a real failure asks for it. Pass every choice through this lens; a stated reason can still outweigh it. It weighs most on guardrails: checks, refusals, limits, ownership rules, protective flags. Each is code that can carry its own bug, and a guard written before its failure was seen has broken more here than it prevented. Features are judged on what they let someone do.
 
 ## Architectural invariants
 
