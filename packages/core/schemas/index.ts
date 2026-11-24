@@ -80,6 +80,24 @@ export {
 	type QuestionMeta,
 	QuestionMetaSchema,
 } from "./question-body";
+// The 2.0 record's rows (ADR 0006) and its derived ids
+export {
+	type AttributeRow,
+	AttributeRowSchema,
+	type EntryRow,
+	EntryRowSchema,
+	isRecordTable,
+	type LinkRow,
+	LinkRowSchema,
+	RECORD_ROW_SCHEMAS,
+	RECORD_TABLES,
+	RecordId,
+	type RecordTable,
+	type RefRow,
+	RefRowSchema,
+	type ThreadRow,
+	ThreadRowSchema,
+} from "./record";
 // Sync schemas
 export {
 	type ParkedFailure,

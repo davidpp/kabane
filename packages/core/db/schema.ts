@@ -536,3 +536,106 @@ CREATE TABLE IF NOT EXISTS short_id_history (
   superseded_at TEXT NOT NULL
 );
 `;
+
+/**
+ * The 2.0 record's five tables (ADR 0006), created by migration 13 beside
+ * today's tables. No foreign key and no UNIQUE beyond the primary key: sync
+ * apply writes whatever row wins, whatever else has arrived, and a read decides
+ * what shows (`storage/record.ts`). Columns match `schemas/record.ts`.
+ */
+export const RECORD_SCHEMA_SQL = `
+CREATE TABLE threads (
+  id TEXT PRIMARY KEY,
+  short_id TEXT,
+  kind TEXT NOT NULL,
+  kind_version INTEGER,
+  title TEXT NOT NULL,
+  body TEXT,
+  scope TEXT,
+  parent_id TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'shared',
+  updated_at TEXT NOT NULL,
+  updated_by TEXT,
+  updated_device TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1,
+  state TEXT,
+  assignee TEXT,
+  state_updated_at TEXT NOT NULL,
+  state_updated_by TEXT,
+  state_updated_device TEXT NOT NULL DEFAULT '',
+  state_version INTEGER NOT NULL DEFAULT 1,
+  deleted_at TEXT,
+  deleted_device TEXT
+);
+CREATE INDEX threads_parent_idx ON threads(parent_id);
+CREATE INDEX threads_scope_idx ON threads(scope);
+CREATE INDEX threads_short_id_idx ON threads(short_id);
+
+CREATE TABLE entries (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  kind_version INTEGER,
+  author TEXT NOT NULL,
+  body TEXT,
+  addressed_to TEXT,
+  re TEXT,
+  data TEXT,
+  visibility TEXT NOT NULL DEFAULT 'shared',
+  created_at TEXT NOT NULL,
+  updated_by TEXT,
+  created_device TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX entries_thread_idx ON entries(thread_id, kind, created_at);
+
+CREATE TABLE attributes (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  key_version INTEGER,
+  value TEXT,
+  removed_at TEXT,
+  visibility TEXT NOT NULL DEFAULT 'shared',
+  updated_at TEXT NOT NULL,
+  updated_by TEXT,
+  updated_device TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX attributes_thread_idx ON attributes(thread_id, key);
+
+CREATE TABLE links (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  removed_at TEXT,
+  visibility TEXT NOT NULL DEFAULT 'shared',
+  updated_at TEXT NOT NULL,
+  updated_by TEXT,
+  updated_device TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX links_source_idx ON links(source_id);
+CREATE INDEX links_target_idx ON links(target_id);
+
+CREATE TABLE refs (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  uri TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  kind_version INTEGER,
+  title TEXT,
+  data TEXT,
+  removed_at TEXT,
+  visibility TEXT NOT NULL DEFAULT 'shared',
+  updated_at TEXT NOT NULL,
+  updated_by TEXT,
+  updated_device TEXT NOT NULL DEFAULT '',
+  version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX refs_thread_idx ON refs(thread_id);
+CREATE INDEX refs_uri_idx ON refs(uri);
+`;

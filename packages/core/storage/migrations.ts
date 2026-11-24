@@ -20,7 +20,7 @@
 
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
-import { applySchema } from "../db/schema";
+import { applySchema, RECORD_SCHEMA_SQL } from "../db/schema";
 import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import { parseQuestionBody } from "../schemas";
@@ -313,6 +313,13 @@ export namespace Migrations {
 			// device updates before the next sync (docs/getting-started.md).
 			name: "actor-scheme",
 			up: ActorScheme.migrate,
+		},
+		{
+			// The 2.0 record's five tables (ADR 0006, JCAB-658), empty beside today's
+			// until a later slice migrates into them. They replicate under their own
+			// rules (`sync/resolve.ts`, "The 2.0 record").
+			name: "record-tables",
+			up: (db) => db.exec(RECORD_SCHEMA_SQL),
 		},
 	];
 
