@@ -1,10 +1,11 @@
 # 0008: SQLite stays each device's source of truth; a shared folder may carry sync ops, never records
 
-- Status: proposed (draft for David's review; nothing is built)
-- Date: 2026-11-23
-- Issue: JCAB-573, under goal JCAB-652
-- Decided by: not decided. Drafted by Claude from the JCAB-573 research
-  (`wiki/storage-and-sync-shapes.md`).
+- Status: accepted
+- Date: 2026-11-23, accepted 2026-11-24
+- Issue: JCAB-573, under goal JCAB-652; decision 3's preconditions met by the 2.0 record in
+  JCAB-658
+- Decided by: David, 2026-11-24 (JCAB-573:5 → A). Drafted by Claude from the JCAB-573
+  research (`wiki/storage-and-sync-shapes.md`).
 
 ## Context
 
@@ -30,11 +31,15 @@ with a SQLite cache, shipped resurrection and data-loss bugs in that layer, and 
 2. A shared folder may be a sync target: a `SyncTransport` over one append-only JSONL file per
    device, written from `sync_oplog` at push. Each file has one writer, so a sync tool copies
    files and never merges them. Reading the record with file tools is ADR 0006's export.
-3. No sync target without a total order ships until sync converges without one. That takes
-   durable delete evidence, a child that waits for its parent, `version` kept at the highest value
-   seen, a ruling on whether a delete is final, and a `short_id` rule that converges. The hub fails
-   the delete and rename cases today, so these belong in core whether or not a folder transport
-   follows.
+3. No sync target without a total order ships until sync converges without one. A delete is
+   final: once a thread is deleted, nothing written to it afterwards shows, on any device
+   (JCAB-573:4). Convergence comes from the shape of ADR 0006's record, not from changes to
+   today's apply: ids derived from keys, tombstones in place of deletes, no foreign key or UNIQUE
+   checked at apply, visibility decided when a row is read, and a tie broken by the row's own
+   writing device (`wiki/record-primitives.md`, "How the five tables converge"). JCAB-654 tried
+   the other way, holding today's rows until their parents arrived, and was stopped after two
+   reviews found data loss and wedged rows in that machinery. `short_id` labels minted offline in
+   one scope can still collide; that gap is known and accepted (JCAB-573:2).
 
 ## Consequences
 
@@ -44,11 +49,16 @@ with a SQLite cache, shipped resurrection and data-loss bugs in that layer, and 
 - `SyncTransport` gains a watermark per file in place of one `serverSeq` integer, and an extension
   that contributes a transport is a contract addition (`wiki/record-primitives.md`, "Where a
   sharing domain syncs").
-- `CODING_PRINCIPLE.md:33`, "any two devices that applied the same ops hold the same rows", is
-  false today. It becomes a tested property: convergence tests with ops in shuffled per-device
-  orders and split passes, as well as in the relay's order.
-- The delete rule and the `short_id` rule are open questions on JCAB-573. Point 3 cannot be built
-  until both are answered.
+- `CODING_PRINCIPLE.md:33`, "any two devices that applied the same ops hold the same rows", holds
+  for the record's five tables and is tested there:
+  `packages/core/sync/record-convergence.test.ts` reads each device's ops in every interleaving,
+  as one pass and one op per pass, delivers them twice, and runs a seeded three-device workload.
+  It stays false for today's tables, which keep their rules until a later slice migrates them
+  into the record. Nothing syncs through the hub meanwhile.
+- Both rules are decided. A delete is final (JCAB-573:4), so an edit made on one device after
+  another device deleted the thread never shows. The `short_id` gap is accepted (JCAB-573:2): the
+  record's threads keep the label with no UNIQUE index and no rename, so two threads created
+  offline in one scope can carry the same label.
 - How large a folder grows is unmeasured: each op is a full row snapshot, and nothing prunes
   `sync_oplog`.
 
