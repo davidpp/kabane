@@ -38,7 +38,10 @@ import { TABLES } from "../db/tables";
 import { Modules } from "../module";
 import { err, ok, type Result } from "../result";
 import {
+	isRecordTable,
 	type QuarantinedOp,
+	RECORD_KEYS,
+	RecordKey,
 	SYNC_TABLES,
 	type SyncOp,
 	type SyncOpKind,
@@ -57,9 +60,9 @@ const LOCAL_STATE_ID = "local";
 /** The `visibility` value that keeps a row out of the log. */
 const PRIVATE = "private";
 
-/** A core replicated table. */
+/** A core replicated table: today's, or one of the 2.0 record's. */
 const isCoreTable = (tbl: string): boolean =>
-	(SYNC_TABLES as readonly string[]).includes(tbl);
+	(SYNC_TABLES as readonly string[]).includes(tbl) || isRecordTable(tbl);
 
 // ============================================================
 // Types
@@ -197,6 +200,24 @@ const toDrainedOp = (row: OplogRow): Result<DrainedOp> => {
 	return ok({ ...parsed.data, seq: row.seq });
 };
 
+/** The `row_id` an op carries: a record row's key, any other row's `id`. */
+const rowIdOf = (tbl: string, row: Row): string | undefined =>
+	isRecordTable(tbl) ? RecordKey.rowIdOf(tbl, row) : asString(row.id);
+
+/** How to find the row `rowId` names in `tbl`, or undefined when it names none. */
+const rowWhere = (
+	tbl: string,
+	rowId: string,
+): { sql: string; params: string[] } | undefined => {
+	if (!isRecordTable(tbl)) return { sql: "id = ?", params: [rowId] };
+	const parts = RecordKey.partsOf(tbl, rowId);
+	if (parts === undefined) return undefined;
+	return {
+		sql: RECORD_KEYS[tbl].map((column) => `"${column}" = ?`).join(" AND "),
+		params: parts,
+	};
+};
+
 const selectRows = (
 	db: Db,
 	tbl: string,
@@ -290,7 +311,7 @@ export namespace Oplog {
 			opId: args.opId ?? randomOpId(),
 			deviceId: args.deviceId,
 			tbl: args.tbl,
-			rowId: asString(args.row.id) ?? "",
+			rowId: rowIdOf(args.tbl, args.row) ?? "",
 			op: args.op,
 			rowUpdatedAt: isDelete ? undefined : asString(args.row.updated_at),
 			payload: isDelete ? undefined : args.row,
@@ -428,18 +449,29 @@ export namespace Oplog {
 		return ok(recorded);
 	};
 
-	/** The row as it is now, for a capture or for a pre-delete snapshot. */
+	/**
+	 * The row as it is now, for a capture or for a pre-delete snapshot. A
+	 * record row is found by the key its `row_id` names (`RecordKey`).
+	 */
 	export const snapshot = (
 		db: Db,
 		tbl: string,
 		rowId: string,
-	): Result<Row | undefined> =>
-		trySync(
+	): Result<Row | undefined> => {
+		const where = rowWhere(tbl, rowId);
+		if (where === undefined)
+			return err(
+				new Error(
+					`Cannot capture "${tbl}" row ${rowId}: it is not a row id of that table (RecordKey.rowIdOf).`,
+				),
+			);
+		return trySync(
 			() =>
 				db
-					.query<Row, [string]>(`SELECT * FROM ${tbl} WHERE id = ?`)
-					.get(rowId) ?? undefined,
+					.query<Row, string[]>(`SELECT * FROM ${tbl} WHERE ${where.sql}`)
+					.get(...where.params) ?? undefined,
 		);
+	};
 
 	/**
 	 * Every row the FK cascade will remove when task `taskId` is deleted,

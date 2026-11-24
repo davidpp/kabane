@@ -6,6 +6,7 @@ import {
 	LocalRelay,
 	Oplog,
 	Planner,
+	RECORD_TABLES,
 	type Result,
 	Runtime,
 	Sync,
@@ -97,7 +98,8 @@ for (const registered of [true, false])
 		// Back to schema 11, as the build before the rename left it, then the upgrade's boot.
 		unwrap(
 			await withDb(alpha, (db) => {
-				db.run("DELETE FROM schema_migrations WHERE version = 12");
+				db.run("DELETE FROM schema_migrations WHERE version >= 12");
+				for (const table of RECORD_TABLES) db.run(`DROP TABLE ${table}`);
 				db.run("DELETE FROM schema_migrations_checklist WHERE version = 2");
 			}),
 		);

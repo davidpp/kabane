@@ -63,6 +63,10 @@ import { ok, type Result, trySync } from "../result";
 import { atomic } from "../runtime";
 
 import {
+	isRecordTable,
+	RECORD_KEYS,
+	RecordKey,
+	type RecordTable,
 	SYNC_TABLES,
 	type SyncOp,
 	SyncOpSchema,
@@ -295,6 +299,25 @@ const writeRow = (db: Db, meta: TableMeta, rowId: string, row: Row) => {
 	);
 };
 
+/** Upsert a record row on its key, whatever columns that key spans. */
+const writeRecordRow = (
+	db: Db,
+	meta: TableMeta,
+	key: readonly string[],
+	row: Row,
+) => {
+	const columns = meta.columns.filter((column) => column in row);
+	const updates = columns
+		.filter((column) => !key.includes(column))
+		.map((column) => `"${column}" = excluded."${column}"`);
+	db.run(
+		`INSERT INTO ${meta.table} (${columns.map((column) => `"${column}"`).join(", ")})
+     VALUES (${columns.map(() => "?").join(", ")})
+     ON CONFLICT(${key.map((column) => `"${column}"`).join(", ")}) DO UPDATE SET ${updates.join(", ")}`,
+		columns.map((column) => toBind(row[column])),
+	);
+};
+
 const deleteRow = (db: Db, table: string, rowId: string) => {
 	db.run(`DELETE FROM ${table} WHERE id = ?`, [rowId]);
 };
@@ -458,10 +481,25 @@ const zeroSkips = (): Record<SkipReason, number> =>
 		number
 	>;
 
-/** Every `short_id` anywhere in the batch, whatever its table or fate. */
+/**
+ * An op on the 2.0 record: a record table's, carrying no module tag. A tagged
+ * op under a record table's name belongs to a module and parks like any other
+ * module op; it never reaches the record's resolver.
+ */
+const isRecordOp = (
+	op: SyncOp,
+): op is SyncOp & { tbl: RecordTable; module: undefined } =>
+	op.module === undefined && isRecordTable(op.tbl);
+
+/**
+ * Every `short_id` the batch delivers to today's tables, whatever its fate. A
+ * thread's label is no label of theirs: counting it would renumber a task's
+ * rename by whether the thread shared its page.
+ */
 const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	const labels: string[] = [];
 	for (const op of ops) {
+		if (isRecordOp(op)) continue;
 		const label =
 			op.payload === undefined ? undefined : asString(op.payload.short_id);
 		if (label?.includes("-")) labels.push(label);
@@ -636,8 +674,41 @@ const execute = (
 	}
 };
 
+/**
+ * An op on the 2.0 record: the row is found and written by the key its
+ * `row_id` names (`RecordKey`), as the resolver merged it, every column taken
+ * from the register that won it. Nothing here reads the
+ * pass, a parent, or this device, and `withVersion` stays out: `version` is
+ * the text register's own counter, never raised past the content it counts.
+ */
+const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
+	const { db, counts } = pass;
+	const parts = RecordKey.partsOf(table, op.rowId);
+	if (parts === undefined) {
+		counts.skipped["malformed-payload"]++;
+		return;
+	}
+	const meta = pass.metas.get(table) ?? tableMeta(db, table);
+	pass.metas.set(table, meta);
+	const key: readonly string[] = RECORD_KEYS[table];
+	const local = selectRow(
+		db,
+		table,
+		key.map((column) => `"${column}" = ?`).join(" AND "),
+		parts,
+	);
+	const decision = Resolve.decideRecord(table, op, local);
+	if (decision.kind === "skip") {
+		counts.skipped[decision.reason]++;
+		return;
+	}
+	writeRecordRow(db, meta, key, decision.row);
+	counts.applied++;
+};
+
 const applyOne = (pass: Pass, op: RelayOp) => {
 	const { db, counts } = pass;
+	if (isRecordOp(op)) return applyRecord(pass, op.tbl, op);
 	const tag = parkingTag(db, op);
 	if (tag !== undefined) return park(pass, op, tag);
 

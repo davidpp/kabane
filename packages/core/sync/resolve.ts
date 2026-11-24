@@ -39,10 +39,27 @@
  * intervene, taking every legitimate sibling write in the batch with it. Hence a
  * decision, checked first, so the applier can filter orphans out before it
  * executes anything.
+ *
+ * THE 2.0 RECORD (`threads`, `entries`, `attributes`, `refs`) RESOLVES BY ITS
+ * SHAPE INSTEAD, with none of the above: no orphan, no delete evidence, no
+ * second key beside the primary one, no receiving device. A row's key is its
+ * identity, so two devices that write the same key write the same row. Each
+ * row is one or more registers, and a register keeps whichever of two values
+ * is greater by its clock, then its counter, then its writing device, then its
+ * content: a total order read only from the two rows, so the same rows in any
+ * order, any number of times, end as the same row (`Resolve.decideRecord`).
  */
 
 import { Modules } from "../module";
-import { SYNC_TABLES, type SyncOp, type SyncTable } from "../schemas";
+import {
+	RECORD_KEYS,
+	RECORD_ROW_SCHEMAS,
+	RecordKey,
+	type RecordTable,
+	SYNC_TABLES,
+	type SyncOp,
+	type SyncTable,
+} from "../schemas";
 
 // ============================================================
 // Constants
@@ -229,7 +246,9 @@ const asString = (value: unknown): string | undefined =>
 const col = (row: Row | undefined, name: string): string | undefined =>
 	row === undefined ? undefined : asString(row[name]);
 
-const skip = (reason: SkipReason): ResolveDecision => ({
+const skip = (
+	reason: SkipReason,
+): Extract<ResolveDecision, { kind: "skip" }> => ({
 	kind: "skip",
 	reason,
 });
@@ -476,6 +495,141 @@ const resolveDelete = (
 };
 
 // ============================================================
+// The 2.0 record
+// ============================================================
+
+/**
+ * One register of a record row: the columns that change together, stamped by
+ * the write that changed them last. The counter is the writer's count of its
+ * writes to the group, so a device writing twice in one clock tick still
+ * orders them; a group without one (a thread's delete) is written once.
+ */
+type Register = {
+	clock: string;
+	counter: string | undefined;
+	device: string;
+	columns: readonly string[];
+};
+
+/** The columns a register can hold: all but the row's key, which is its identity. */
+const columnsOf = (table: RecordTable): string[] => {
+	const key: readonly string[] = RECORD_KEYS[table];
+	return Object.keys(RECORD_ROW_SCHEMAS[table].shape).filter(
+		(c) => !key.includes(c),
+	);
+};
+
+/** Every column of `table` but its key, as one register. */
+const wholeRow = (
+	table: RecordTable,
+	clock: string,
+	device: string,
+): Register[] => [
+	{ clock, counter: "version", device, columns: columnsOf(table) },
+];
+
+const CLAIM_COLUMNS = [
+	"state",
+	"assignee",
+	"state_updated_at",
+	"state_updated_by",
+	"state_updated_device",
+	"state_version",
+];
+const DELETE_COLUMNS = ["deleted_at", "deleted_device"];
+
+/**
+ * A thread is three registers. The claim (state, assignee) and the text
+ * (everything else) each keep their own clock, so a title edited offline
+ * leaves another device's claim alone. The delete is the third: a live row's
+ * `deleted_at` is null and loses to any delete, so once deleted a thread stays
+ * deleted on every device, whatever its other registers take afterwards.
+ */
+const REGISTERS: Record<RecordTable, readonly Register[]> = {
+	threads: [
+		{
+			clock: "updated_at",
+			counter: "version",
+			device: "updated_device",
+			columns: columnsOf("threads").filter(
+				(c) => !CLAIM_COLUMNS.includes(c) && !DELETE_COLUMNS.includes(c),
+			),
+		},
+		{
+			clock: "state_updated_at",
+			counter: "state_version",
+			device: "state_updated_device",
+			columns: CLAIM_COLUMNS,
+		},
+		{
+			clock: "deleted_at",
+			counter: undefined,
+			device: "deleted_device",
+			columns: DELETE_COLUMNS,
+		},
+	],
+	entries: wholeRow("entries", "created_at", "created_device"),
+	attributes: wholeRow("attributes", "updated_at", "updated_device"),
+	refs: wholeRow("refs", "updated_at", "updated_device"),
+};
+
+/** Null lowest, then numbers, then strings: a total order over stored values. */
+const compareValues = (a: unknown, b: unknown): number => {
+	const rank = (v: unknown) =>
+		v === null || v === undefined ? 0 : typeof v === "number" ? 1 : 2;
+	if (rank(a) !== rank(b)) return rank(a) - rank(b);
+	if (typeof a === "number" && typeof b === "number") return a - b;
+	const [x, y] = [String(a ?? ""), String(b ?? "")];
+	return x === y ? 0 : x < y ? -1 : 1;
+};
+
+const contentOf = (row: Row, register: Register): string =>
+	JSON.stringify(register.columns.map((c) => row[c] ?? null));
+
+/** Positive when `a` holds the greater value of `register`. */
+const compareRegister = (a: Row, b: Row, register: Register): number =>
+	compareValues(a[register.clock], b[register.clock]) ||
+	(register.counter === undefined
+		? 0
+		: compareValues(a[register.counter], b[register.counter])) ||
+	compareValues(a[register.device], b[register.device]) ||
+	compareValues(contentOf(a, register), contentOf(b, register));
+
+type RecordDecision = Extract<ResolveDecision, { kind: "apply" | "skip" }>;
+
+const decideRecordRow = (
+	table: RecordTable,
+	op: SyncOp,
+	local: Row | undefined,
+): RecordDecision => {
+	// A record row is never hard-deleted: its delete is a tombstone, written
+	// as an update. An op saying otherwise came from no writer of this record.
+	if (op.op === "delete" || !op.rowId.isWellFormed())
+		return skip("malformed-payload");
+	const parsed = RECORD_ROW_SCHEMAS[table].safeParse(op.payload);
+	if (!parsed.success) return skip("malformed-payload");
+	const incoming: Row = parsed.data;
+	// The envelope names the row by its key; a row it does not name is not this op's.
+	if (RecordKey.rowIdOf(table, incoming) !== op.rowId)
+		return skip("malformed-payload");
+	const apply = (row: Row): RecordDecision => ({
+		kind: "apply",
+		rowId: op.rowId,
+		row,
+		dropRowId: undefined,
+	});
+	if (local === undefined) return apply(incoming);
+
+	let merged = local;
+	for (const register of REGISTERS[table]) {
+		if (compareRegister(incoming, local, register) <= 0) continue;
+		for (const column of register.columns)
+			merged = { ...merged, [column]: incoming[column] ?? null };
+	}
+	return merged === local ? skip("not-newer") : apply(merged);
+};
+
+// ============================================================
 // Resolve Namespace
 // ============================================================
 
@@ -519,4 +673,12 @@ export namespace Resolve {
 
 		return RESOLVERS[rule.family]({ rule, op, payload, local });
 	};
+
+	/**
+	 * What one op does to a row of the 2.0 record: the merge of the row held
+	 * here and the row the op carries, register by register, or a skip when the
+	 * held row already wins every register. Order-free and idempotent: no
+	 * delete evidence, no parent check, nothing about the receiving device.
+	 */
+	export const decideRecord = decideRecordRow;
 }

@@ -20,10 +20,10 @@
 
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
-import { applySchema } from "../db/schema";
+import { applySchema, RECORD_SCHEMA_SQL } from "../db/schema";
 import { type KabaneModule, Modules } from "../module";
 import { err, ok, type Result } from "../result";
-import { parseQuestionBody } from "../schemas";
+import { parseQuestionBody, RECORD_TABLES } from "../schemas";
 import { ActorScheme } from "./actor-scheme";
 import { columnExists, TABLES } from "./helpers";
 import { ScopeScheme } from "./scope-scheme";
@@ -123,6 +123,38 @@ namespace RelayedPermissions {
 		}
 	};
 }
+
+/**
+ * Core reserves the record's table names (`TABLES`), but a module registered
+ * before migration 13 could have taken one. Adopting that table would leave
+ * the record reading columns it lacks, so the migration stops and names it.
+ */
+const refuseTakenRecordNames = (db: Db): void => {
+	const declarations =
+		db
+			.query<{ one: number }, [string]>(
+				"SELECT 1 AS one FROM sqlite_master WHERE type = 'table' AND name = ?",
+			)
+			.get(TABLES.module_declarations) !== null;
+	for (const table of RECORD_TABLES) {
+		const taken = db
+			.query<{ one: number }, [string]>(
+				"SELECT 1 AS one FROM sqlite_master WHERE name = ?",
+			)
+			.get(table);
+		if (taken === null) continue;
+		const owner = declarations
+			? db
+					.query<{ module: string }, [string]>(
+						`SELECT module FROM ${TABLES.module_declarations} WHERE tbl = ?`,
+					)
+					.get(table)?.module
+			: undefined;
+		throw new Error(
+			`the record table "${table}" cannot be created: the database already has a table of that name${owner === undefined ? "" : `, declared by the module "${owner}"`}. Nothing was changed; rename or drop that table, or update the module that owns it, then open kabane again`,
+		);
+	}
+};
 
 /** Drop a retired table; its indexes and triggers go with it. */
 const dropTable = (db: Db, table: string): void => {
@@ -313,6 +345,16 @@ export namespace Migrations {
 			// device updates before the next sync (docs/getting-started.md).
 			name: "actor-scheme",
 			up: ActorScheme.migrate,
+		},
+		{
+			// The 2.0 record's four tables (ADR 0006, JCAB-658), empty beside today's
+			// until a later slice migrates into them. They replicate under their own
+			// rules (`sync/resolve.ts`, "The 2.0 record").
+			name: "record-tables",
+			up: (db) => {
+				refuseTakenRecordNames(db);
+				db.exec(RECORD_SCHEMA_SQL);
+			},
 		},
 	];
 

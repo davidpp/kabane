@@ -109,6 +109,7 @@ export { ActorScheme } from "./storage/actor-scheme";
 export { Migrations } from "./storage/migrations";
 export { Oplog } from "./storage/oplog";
 export { Portable } from "./portable";
+export { RecordRead } from "./storage/record";
 export { Replicated } from "./replicated";
 // Sync (multi-device replication)
 export { Backfill } from "./sync/backfill";
