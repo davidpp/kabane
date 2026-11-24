@@ -20,7 +20,7 @@ import {
 	type TaskEntry,
 	type TaskEntryDraft,
 } from "../schemas";
-import { isWorkLog, WORK_LOG_KIND } from "./families";
+import { CORE_ENTRY_KINDS, WORK_LOG_KIND } from "./families";
 import { rowToEntry } from "./helpers";
 import { RecordRead } from "./record";
 import { RecordWrite } from "./record-write";
@@ -47,6 +47,12 @@ export namespace Planner {
 			return err(
 				new Error(
 					`Entry kind ${quoted(draft.kind)} is the work log's: record work with kabane_log.`,
+				),
+			);
+		if (CORE_ENTRY_KINDS.includes(draft.kind))
+			return err(
+				new Error(
+					`Entry kind ${quoted(draft.kind)} is the claim's: set the task in_progress, or put it back, with kabane_edit.`,
 				),
 			);
 		if (!ENTRY_KIND_PATTERN.test(draft.kind))
@@ -83,8 +89,8 @@ export namespace Planner {
 	};
 
 	/**
-	 * A task's entries in time order, only those of `kind` when it is given.
-	 * The work log's entries are never among them.
+	 * A task's timeline in time order, only the entries of `kind` when it is
+	 * given. The work log's and the claim's entries are never among them.
 	 */
 	export const getEntries = async (
 		basePath: string,
@@ -96,7 +102,9 @@ export namespace Planner {
 			if (!rows.ok) throw rows.error;
 			return rows.value
 				.filter(
-					(row) => !isWorkLog(row) && (kind === undefined || row.kind === kind),
+					(row) =>
+						!CORE_ENTRY_KINDS.includes(row.kind) &&
+						(kind === undefined || row.kind === kind),
 				)
 				.map(rowToEntry);
 		});

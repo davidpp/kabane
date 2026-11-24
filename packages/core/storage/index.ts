@@ -53,6 +53,7 @@ export const Planner = {
 	// Task Links
 	matchingState: Conditions.matchingState,
 	isReady: Conditions.isReady,
+	claimHolder: Conditions.claimHolder,
 	addLink: TaskLinks.addLink,
 	getLinksForTask: TaskLinks.getLinksForTask,
 	deleteLink: TaskLinks.deleteLink,

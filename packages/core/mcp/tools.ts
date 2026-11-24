@@ -462,7 +462,7 @@ const editInput = {
 const edit = define({
 	name: CORE_TOOL_NAMES.edit,
 	kind: "write",
-	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue.
+	description: `Edit a task. Pass the id and only the fields to change. Setting state to in_progress with your own assignee is how a runtime claims an issue: the result's claimedBy names who holds the claim, and when it is not you, another agent claimed it first, so leave it. Putting it back (any state but in_progress or waiting) releases the claim.
 
 Parameters:
 - id: ${ID_HINT}
@@ -498,13 +498,20 @@ Parameters:
 		if (Object.keys(update).length === 0) {
 			return err(new Error("Nothing to change: pass at least one field."));
 		}
-		if (args.responseFormat === "concise")
-			return Planner.updateTaskReceipt(ctx.basePath, id.value, update);
-		const updated = await Planner.updateTask(ctx.basePath, id.value, update);
-		if (!updated.ok) return updated;
-		return updated.value
-			? ok(updated.value)
-			: err(new Error(`No task found: ${args.id}`));
+		const result: Result<object> =
+			args.responseFormat === "concise"
+				? await Planner.updateTaskReceipt(ctx.basePath, id.value, update)
+				: await Planner.updateTask(ctx.basePath, id.value, update).then(
+						(updated) =>
+							!updated.ok || updated.value
+								? (updated as Result<object>)
+								: err(new Error(`No task found: ${args.id}`)),
+					);
+		if (!result.ok || args.state !== "in_progress") return result;
+		const holder = await Planner.claimHolder(ctx.basePath, id.value);
+		return holder.ok
+			? ok({ ...result.value, claimedBy: holder.value })
+			: holder;
 	},
 });
 

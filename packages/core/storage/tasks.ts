@@ -17,6 +17,7 @@ import {
 	type TaskUpdate,
 	TaskUpdateSchema,
 } from "../schemas";
+import { CLAIM_KIND, RELEASE_KIND } from "./families";
 import {
 	derivePrefix,
 	generateId,
@@ -128,6 +129,56 @@ const draftAttributes = (
 	] as const;
 
 const CLOSED = ["done", "cancelled"];
+
+/** The states a claim lasts through: the work, and a wait on someone. */
+const HELD = ["in_progress", "waiting"];
+
+/**
+ * The claim entries a state change writes (ADR 0006). Setting a thread in
+ * progress with an assignee claims it for the writer, unless the writer's
+ * claim already stands. Moving it to any state but in progress or waiting
+ * releases every standing claim, each in its claimant's name, since only the
+ * claimant's own release clears a claim (`RecordRead.openClaims`); `re` names
+ * the claim. Who holds it is then the read's to say.
+ */
+const writeClaim = (db: Db, id: string, state: string): void => {
+	const standing = RecordRead.openClaims(db, id);
+	if (!standing.ok) throw standing.error;
+	const now = new Date().toISOString();
+	const entry = (kind: string, author: string, at: string, re?: string) =>
+		RecordWrite.addEntry(db, {
+			id: generateId(),
+			threadId: id,
+			kind,
+			author,
+			body: null,
+			data: null,
+			createdAt: at,
+			re,
+		});
+	if (state === "in_progress") {
+		const actor = Runtime.actor();
+		const assignee = db
+			.query<{ assignee: string | null }, [string]>(
+				`SELECT assignee FROM ${TABLES.threads} WHERE id = ?`,
+			)
+			.get(id)?.assignee;
+		if (assignee && !standing.value.some((claim) => claim.author === actor))
+			entry(CLAIM_KIND, actor, now);
+		return;
+	}
+	if (HELD.includes(state)) return;
+	for (const claim of standing.value)
+		entry(
+			RELEASE_KIND,
+			claim.author,
+			// A release counts only after its claim, whose clock may be ahead of ours.
+			claim.created_at < now
+				? now
+				: new Date(Date.parse(claim.created_at) + 1).toISOString(),
+			claim.id,
+		);
+};
 
 /**
  * `completed_at` after a state change: kept when a closed task closes again,
@@ -574,6 +625,7 @@ export namespace Planner {
 		}
 		RecordWrite.updateText(db, id, text);
 		RecordWrite.updateClaim(db, id, claimUpdates(updates));
+		if (updates.state !== undefined) writeClaim(db, id, updates.state);
 
 		for (const [key, value] of attributeUpdates(updates))
 			if (value !== undefined) RecordWrite.setAttribute(db, id, key, value);

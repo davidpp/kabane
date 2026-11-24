@@ -1,5 +1,7 @@
 import { err, map, NotFoundError, ok, type Result } from "../result";
+import { withDb } from "../runtime";
 import type { TaskState } from "../schemas";
+import { RecordRead } from "./record";
 import { Planner as Links } from "./task-links";
 import { Planner as Tasks } from "./tasks";
 
@@ -12,6 +14,17 @@ const requireTask = async (basePath: string, id: string) => {
 };
 
 export namespace Planner {
+	/** The actor who holds thread `id`'s claim (`RecordRead.claimHolder`), or null. */
+	export const claimHolder = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<string | null>> =>
+		withDb(basePath, (db) => {
+			const held = RecordRead.claimHolder(db, id);
+			if (!held.ok) throw held.error;
+			return held.value?.author ?? null;
+		});
+
 	export const matchingState = async (
 		basePath: string,
 		id: string,

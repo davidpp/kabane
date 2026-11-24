@@ -1,5 +1,7 @@
 import {
 	Deadline,
+	ok,
+	type Result,
 	type ItemKind,
 	Planner,
 	Runtime,
@@ -21,6 +23,22 @@ import { responseFormat } from "../response-format";
 
 const nothingToChange = (update: TaskUpdate): boolean =>
 	Object.values(update).every((v) => v === undefined);
+
+/** Setting in_progress claims the task: who holds the claim afterwards. */
+const claimOf = async (
+	store: string,
+	id: string,
+	update: TaskUpdate,
+): Promise<Result<{ claimedBy?: string | null }>> => {
+	if (update.state !== "in_progress") return ok({});
+	const holder = await Planner.claimHolder(store, id);
+	return holder.ok ? ok({ claimedBy: holder.value }) : holder;
+};
+
+const claimLine = (holder: string | null, actor: string): string =>
+	holder === actor
+		? `Claimed by you (${holder})`
+		: `Claim held by ${holder ?? "nobody"}, not you (${actor}): leave it`;
 
 export const edit: Command = {
 	name: "edit",
@@ -69,16 +87,19 @@ export const edit: Command = {
 				resolved.value,
 				update,
 			);
-			return receipt.ok
-				? conciseSuccess(receipt.value)
-				: failure(receipt.error);
+			if (!receipt.ok) return failure(receipt.error);
+			const claim = await claimOf(ctx.store, resolved.value, update);
+			if (!claim.ok) return failure(claim.error);
+			return conciseSuccess({ ...receipt.value, ...claim.value });
 		}
 		const updated = await Planner.updateTask(ctx.store, resolved.value, update);
 		if (!updated.ok) return failure(updated.error);
 		if (!updated.value) return failure(`No task found: ${input}`);
-		return success(
-			updated.value,
-			`✏️  Updated ${formatTaskLine(updated.value)}`,
-		);
+		const claim = await claimOf(ctx.store, resolved.value, update);
+		if (!claim.ok) return failure(claim.error);
+		const lines = [`✏️  Updated ${formatTaskLine(updated.value)}`];
+		if (claim.value.claimedBy !== undefined)
+			lines.push(claimLine(claim.value.claimedBy, ctx.actor));
+		return success({ ...updated.value, ...claim.value }, lines.join("\n"));
 	},
 };
