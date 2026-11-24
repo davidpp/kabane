@@ -1259,6 +1259,180 @@ describe("Migration 14: the tracker moves into the record", () => {
 		).toEqual([child.id]);
 	});
 
+	/** Migrate a copy stamped at 13 and expect a refusal naming `id`, nothing changed. */
+	const refused = async (id: string) => {
+		const init = await Planner.init(base);
+		expect(init.ok).toBe(false);
+		expect(init.ok ? "" : init.error.message).toContain(id);
+		expect(init.ok ? "" : init.error.message).toContain("nothing was changed");
+		expect((await versionRows()).length).toBe(RECORD);
+		expect(await count("threads")).toBe(0);
+	};
+
+	it("refuses two parent links that give one child two parents, naming both", async () => {
+		await stamped();
+		const child = must(await Legacy.addTask(base, { title: "child" }));
+		const one = must(await Legacy.addTask(base, { title: "one" }));
+		const two = must(await Legacy.addTask(base, { title: "two" }));
+		const first = must(
+			await Legacy.addLink(base, {
+				sourceId: one.id,
+				targetId: child.id,
+				type: "parent",
+			}),
+		);
+		const second = must(
+			await Legacy.addLink(base, {
+				sourceId: child.id,
+				targetId: two.id,
+				type: "child",
+			}),
+		);
+		const init = await Planner.init(base);
+		expect(init.ok ? "" : init.error.message).toContain(first.id);
+		await refused(second.id);
+	});
+
+	it("refuses to fold a link whose visibility is not its child's", async () => {
+		await stamped();
+		const child = must(await Legacy.addTask(base, { title: "child" }));
+		const parent = must(await Legacy.addTask(base, { title: "parent" }));
+		const link = must(
+			await Legacy.addLink(base, {
+				sourceId: parent.id,
+				targetId: child.id,
+				type: "parent",
+			}),
+		);
+		await withDb((db) =>
+			db.run("UPDATE task_links SET visibility = 'private' WHERE id = ?", [
+				link.id,
+			]),
+		);
+		await refused(link.id);
+	});
+
+	it("keeps a folded link's own fields on its child", async () => {
+		await stamped();
+		const child = must(await Legacy.addTask(base, { title: "child" }));
+		const parent = must(await Legacy.addTask(base, { title: "parent" }));
+		const link = must(
+			await Legacy.addLink(base, {
+				sourceId: parent.id,
+				targetId: child.id,
+				type: "parent",
+				note: "kept",
+			}),
+		);
+		await mustInit(base);
+		expect(must(await Planner.getTask(base, child.id))?.parentTaskId).toBe(
+			parent.id,
+		);
+		const kept = await withDb((db) =>
+			db
+				.query<{ value: string; visibility: string }, [string]>(
+					"SELECT value, visibility FROM attributes WHERE thread_id = ? AND key = 'parent_links'",
+				)
+				.get(child.id),
+		);
+		expect(kept?.visibility).toBe("shared");
+		expect(JSON.parse(kept?.value ?? "[]")).toMatchObject([
+			{ id: link.id, type: "parent", note: "kept", source_id: parent.id },
+		]);
+	});
+
+	it("keeps a REAL confidence exactly", async () => {
+		await stamped();
+		const task = must(await Legacy.addTask(base, { title: "sure" }));
+		await withDb((db) =>
+			db.run("UPDATE tasks SET confidence = 0.12345678901234567 WHERE id = ?", [
+				task.id,
+			]),
+		);
+		await mustInit(base);
+		// The binary64 SQLite stored, read from the retired copy of the row.
+		const stored = await withDb(
+			(db) =>
+				db
+					.query<{ c: number }, [string]>(
+						"SELECT confidence AS c FROM retired_tasks WHERE id = ?",
+					)
+					.get(task.id)?.c,
+		);
+		expect(stored).toBeNumber();
+		expect(must(await Planner.getTask(base, task.id))?.confidence).toBe(
+			stored ?? Number.NaN,
+		);
+	});
+
+	it("writes legacy clocks in toISOString form, and refuses one it cannot read", async () => {
+		await stamped();
+		const task = must(await Legacy.addTask(base, { title: "clocked" }));
+		await withDb((db) =>
+			db.run(
+				"UPDATE tasks SET updated_at = '2027-01-01T00:00:00Z', created_at = '2026-01-01T00:00:00+02:00' WHERE id = ?",
+				[task.id],
+			),
+		);
+		await mustInit(base);
+		expect(
+			await withDb((db) =>
+				db
+					.query<{ c: string; u: string; s: string }, [string]>(
+						"SELECT created_at AS c, updated_at AS u, state_updated_at AS s FROM threads WHERE id = ?",
+					)
+					.get(task.id),
+			),
+		).toEqual({
+			c: "2025-12-31T22:00:00.000Z",
+			u: "2027-01-01T00:00:00.000Z",
+			s: "2027-01-01T00:00:00.000Z",
+		});
+		rmSync(base, { recursive: true, force: true });
+
+		await stamped();
+		const broken = must(await Legacy.addTask(base, { title: "broken" }));
+		await withDb((db) =>
+			db.run("UPDATE tasks SET updated_at = 'yesterday' WHERE id = ?", [
+				broken.id,
+			]),
+		);
+		await refused(broken.id);
+	});
+
+	it("keeps one ref where two old tables meet on one key, and the other's row in its data", async () => {
+		await stamped();
+		const a = must(await Legacy.addTask(base, { title: "a" }));
+		const b = must(await Legacy.addTask(base, { title: "b" }));
+		const link = must(
+			await Legacy.addLink(base, {
+				sourceId: a.id,
+				targetId: b.id,
+				type: "related",
+			}),
+		);
+		const ref = must(
+			await Legacy.addContextRef(base, {
+				taskId: a.id,
+				uri: `kabane://thread/${b.id}`,
+				kind: "related",
+				note: "also",
+			}),
+		);
+		await mustInit(base);
+		const rows = await withDb((db) =>
+			db
+				.query<{ data: string }, []>("SELECT data FROM refs")
+				.all()
+				.map((row) => JSON.parse(row.data)),
+		);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ id: link.id, family: "link" });
+		expect(rows[0].merged).toMatchObject([
+			{ table: "task_context_refs", data: { id: ref.id, note: "also" } },
+		]);
+	});
+
 	it("refuses a column it does not place, and a parent link its child disagrees with, changing nothing", async () => {
 		for (const spoil of [
 			(db: Db) => db.run("ALTER TABLE tasks ADD COLUMN unplaced TEXT"),
