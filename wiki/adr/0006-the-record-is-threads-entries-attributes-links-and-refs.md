@@ -1,6 +1,7 @@
 # 0006: Core's record is five tables with open kinds and keys, so a new need adds data and leaves core's schema alone
 
-- Status: proposed (draft for David's review; nothing is built)
+- Status: proposed (draft for David's review). The five tables and their sync rules are built
+  beside today's tables (JCAB-658); nothing reads or migrates into them yet.
 - Date: 2026-11-23
 - Issue: none filed yet
 - Companion: ADR 0007 (proposed) says how agents wait and how work continues on this record.
@@ -64,8 +65,24 @@ Scope becomes a path, and a trailing slash names the subtree, as Board's channel
 Kabane holds no sync mechanism for outside systems. It defines how an outside event is written
 on the record, and whatever the person already runs does the fetching.
 
+The five tables converge across devices by their shape, in any delivery order
+(`wiki/record-primitives.md`, "How the five tables converge"):
+
+- A link, an attribute and a ref take an id derived from their key, so two devices that create
+  the same one make one row.
+- Nothing is hard-deleted. A thread has `deleted_at`, and a delete is final. A link, ref or
+  attribute has `removed_at`, a write like any other, so a removed pair can be added again.
+  Entries are never removed.
+- Apply checks no foreign key and no UNIQUE key. It writes the winning row whatever has arrived,
+  and a read decides what shows.
+- A tie is broken by the two rows' own clocks, counters and writing devices, never by the device
+  receiving them.
+- A parent cycle breaks at its lowest id when read. Who holds a claim is derived from `claim`
+  and `release` entries when read.
+
 Core's schema changes once, in one migration. After that, a change to these five tables needs a
-new ADR. New tables, kinds and keys are additions.
+new ADR. New tables, kinds and keys are additions. The tables landed first, empty (migration 13,
+JCAB-658); the data moves into them in a later migration, and today's tables go then.
 
 ## Consequences
 
