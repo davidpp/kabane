@@ -544,7 +544,7 @@ CREATE TABLE IF NOT EXISTS short_id_history (
  * what shows (`storage/record.ts`). Columns match `schemas/record.ts`.
  */
 export const RECORD_SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS threads (
+CREATE TABLE threads (
   id TEXT PRIMARY KEY,
   short_id TEXT,
   kind TEXT NOT NULL,
@@ -569,11 +569,11 @@ CREATE TABLE IF NOT EXISTS threads (
   deleted_at TEXT,
   deleted_device TEXT
 );
-CREATE INDEX IF NOT EXISTS threads_parent_idx ON threads(parent_id);
-CREATE INDEX IF NOT EXISTS threads_scope_idx ON threads(scope);
-CREATE INDEX IF NOT EXISTS threads_short_id_idx ON threads(short_id);
+CREATE INDEX threads_parent_idx ON threads(parent_id);
+CREATE INDEX threads_scope_idx ON threads(scope);
+CREATE INDEX threads_short_id_idx ON threads(short_id);
 
-CREATE TABLE IF NOT EXISTS entries (
+CREATE TABLE entries (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -589,9 +589,9 @@ CREATE TABLE IF NOT EXISTS entries (
   created_device TEXT NOT NULL DEFAULT '',
   version INTEGER NOT NULL DEFAULT 1
 );
-CREATE INDEX IF NOT EXISTS entries_thread_idx ON entries(thread_id, kind, created_at);
+CREATE INDEX entries_thread_idx ON entries(thread_id, kind, created_at);
 
-CREATE TABLE IF NOT EXISTS attributes (
+CREATE TABLE attributes (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   key TEXT NOT NULL,
@@ -603,9 +603,9 @@ CREATE TABLE IF NOT EXISTS attributes (
   updated_device TEXT NOT NULL DEFAULT '',
   version INTEGER NOT NULL DEFAULT 1
 );
-CREATE INDEX IF NOT EXISTS attributes_thread_idx ON attributes(thread_id, key);
+CREATE INDEX attributes_thread_idx ON attributes(thread_id, key);
 
-CREATE TABLE IF NOT EXISTS links (
+CREATE TABLE links (
   id TEXT PRIMARY KEY,
   source_id TEXT NOT NULL,
   target_id TEXT NOT NULL,
@@ -617,10 +617,10 @@ CREATE TABLE IF NOT EXISTS links (
   updated_device TEXT NOT NULL DEFAULT '',
   version INTEGER NOT NULL DEFAULT 1
 );
-CREATE INDEX IF NOT EXISTS links_source_idx ON links(source_id);
-CREATE INDEX IF NOT EXISTS links_target_idx ON links(target_id);
+CREATE INDEX links_source_idx ON links(source_id);
+CREATE INDEX links_target_idx ON links(target_id);
 
-CREATE TABLE IF NOT EXISTS refs (
+CREATE TABLE refs (
   id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
   uri TEXT NOT NULL,
@@ -635,6 +635,6 @@ CREATE TABLE IF NOT EXISTS refs (
   updated_device TEXT NOT NULL DEFAULT '',
   version INTEGER NOT NULL DEFAULT 1
 );
-CREATE INDEX IF NOT EXISTS refs_thread_idx ON refs(thread_id);
-CREATE INDEX IF NOT EXISTS refs_uri_idx ON refs(uri);
+CREATE INDEX refs_thread_idx ON refs(thread_id);
+CREATE INDEX refs_uri_idx ON refs(uri);
 `;

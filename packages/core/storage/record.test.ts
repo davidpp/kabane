@@ -2,10 +2,13 @@ import "../testing";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
+import { Modules } from "../module";
 import { withDb } from "../runtime";
 import { RecordId } from "../schemas";
 import { Planner } from "./index";
+import { Migrations } from "./migrations";
 import { RecordRead } from "./record";
 
 const TEST_BASE = join(import.meta.dir, ".test-data-record");
@@ -133,6 +136,64 @@ describe("RecordRead", () => {
 		});
 		expect(visible.threads).toMatchObject([{ id: "orphan", parent_id: null }]);
 		expect(visible.links).toEqual([]);
+	});
+});
+
+describe("RecordRead — deletes, cycles and cost", () => {
+	beforeEach(async () => {
+		rmSync(TEST_BASE, { recursive: true, force: true });
+		mkdirSync(TEST_BASE, { recursive: true });
+		const init = await Planner.init(TEST_BASE);
+		if (!init.ok) throw init.error;
+	});
+
+	afterEach(() => {
+		rmSync(TEST_BASE, { recursive: true, force: true });
+	});
+});
+
+describe("migration 13", () => {
+	const base = join(import.meta.dir, ".test-data-record-migration");
+
+	afterEach(() => {
+		rmSync(base, { recursive: true, force: true });
+	});
+
+	it("refuses, changing nothing, a database where a table already holds a record table's name", async () => {
+		rmSync(base, { recursive: true, force: true });
+		mkdirSync(base, { recursive: true });
+		const outcome = await withDb(base, (db) => {
+			const before = Migrate.run(db, Migrations.LIST.slice(0, 12));
+			if (!before.ok) throw before.error;
+			const declared = Modules.ensureDeclarations(db);
+			if (!declared.ok) throw declared.error;
+			db.exec(
+				"CREATE TABLE links (id TEXT PRIMARY KEY, source_id TEXT, target_id TEXT, legacy TEXT)",
+			);
+			db.run(
+				`INSERT INTO module_declarations (tbl, module, module_schema, family, clock, child_of_tasks)
+				 VALUES ('links', 'example', 1, 'append-only', NULL, 0)`,
+			);
+			const migrated = Migrations.apply(db);
+			return {
+				error: migrated.ok ? undefined : migrated.error.message,
+				version: db
+					.query<{ v: number }, []>(
+						"SELECT MAX(version) AS v FROM schema_migrations",
+					)
+					.get()?.v,
+				threads: db
+					.query<{ n: number }, []>(
+						"SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'threads'",
+					)
+					.get()?.n,
+			};
+		});
+		if (!outcome.ok) throw outcome.error;
+		expect(outcome.value.version).toBe(12);
+		expect(outcome.value.threads).toBe(0);
+		expect(outcome.value.error).toContain('"links"');
+		expect(outcome.value.error).toContain('"example"');
 	});
 });
 
