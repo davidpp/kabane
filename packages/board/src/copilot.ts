@@ -67,6 +67,7 @@ export namespace BoardCopilot {
 	// reload; everything else the agent runs is its own business.
 	const WRITE_TOOLS = [
 		"kabane_add",
+		"kabane_apply",
 		"kabane_edit",
 		"kabane_done",
 		"kabane_link",
