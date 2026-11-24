@@ -2,13 +2,6 @@
 
 The rules this repository holds itself to. Each one is true of the code today; a change that breaks one either fixes the code or changes this file in the same commit.
 
-## Research. Then build.
-
-1.  Understand — restate the task; name assumptions.
-2.  Read — the relevant package and its `AGENTS.md`, not the whole repo.
-3.  Prior art — search for the canonical helper, schema, or port before adding one.
-4.  Flag unknowns — surface ambiguities and decisions BEFORE code.
-
 ## Non-negotiables
 
 - **TypeScript strict.** No `as any`, no non-null `!`, no `@ts-ignore` or `@ts-expect-error`. Narrow with a check or a schema instead.
@@ -23,7 +16,6 @@ The rules this repository holds itself to. Each one is true of the code today; a
 
 YAGNI · DRY · boyscout rule · KISS · obvious correctness over cleverness · every abstraction layer must justify its existence · readable diffs · fail fast.
 
-- **Verify before done** — `bun run check`, `bun run typecheck`, and `bun run test` pass before any commit claim.
 - **Errors are DX** — say what failed, with which input, and what to do next, in one line.
 - **No code first** — when one option needs no code and another adds some, take the one without, try it for real, and write the code once a real failure asks for it. Pass every choice through this lens; a stated reason can still outweigh it. It weighs most on guardrails: checks, refusals, limits, ownership rules, protective flags. Each is code that can carry its own bug, and a guard written before its failure was seen has broken more here than it prevented. Features are judged on what they let someone do.
 
@@ -33,7 +25,7 @@ YAGNI · DRY · boyscout rule · KISS · obvious correctness over cleverness · 
 - **The hub is one more device.** The Worker runs the same core on Durable Object SQLite, arms capture under its own device id, and pushes and pulls through the log like any other device. The Worker also hosts that log; the cloud device reaches it through a stub instead of HTTP and gets no other privilege.
 - **The oplog is append-only and sync converges by it.** Every write to a replicated table ends with an `Oplog` capture in the storage layer, never a trigger. The log assigns a total order, and `sync/resolve.ts` breaks ties the same way on every device, so any two devices that applied the same ops hold the same rows. Convergence is asserted against the in-process relay (`sync/local-relay.ts`), with no Cloudflare.
 - **A private row never enters the oplog.** The filter is the row's `visibility` column, whichever table it lives in.
-- **The same core runs in Bun and in Workers.** It talks to storage only through the `Db` port. Scope detection, executable discovery and MCP transports live in their hosts. Core dereferences `file:` refs through `RuntimeConfig.fileReader`, whose no-op default leaves a pointer; the CLI wires the bounded filesystem read. The hub's typecheck includes no Bun types and rejects a Bun global reachable from core's production barrel.
+- **The same core runs in Bun and in Workers.** It talks to storage only through the `Db` port. The hub's typecheck includes no Bun types and rejects a Bun global reachable from core's production barrel.
 - **Migrations are numbered and append-only.** Version = list index + 1, each applied once in its own transaction. Never edit or reorder a shipped migration; append one. This rule is held by review, not by a check.
 
 ## Invariants at construction
