@@ -474,9 +474,10 @@ Codex's three questions for David are added below.
 
 ## Not verified
 
-- Whether sync converges without the hub's total order (`serverSeq`). JCAB-573's brief flags it
-  as unproven for deletes, orphaned children and short-id renames. Any sync target other than
-  the hub depends on the answer, a folder of JSONL files and a platform adapter included.
+- Whether sync converges without the hub's total order (`serverSeq`). JCAB-573 answered it on
+  2026-11-24 (`wiki/storage-and-sync-shapes.md`): it does not, and deletes and three-device
+  short-id renames diverge under the hub's order too. Three apply changes fix everything but
+  renames in the tests run there; renames and delete semantics wait on David.
 
 - How the table renames interact with the full-text tables, parked sync ops and the names
   extension API v1 exposes (`childOfTasks`, `parentTaskId`).

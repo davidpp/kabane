@@ -48,3 +48,6 @@ reference), which puts the ADR in the implementer's brief.
 - [0007](0007-agents-wait-on-conditions-and-the-tick-runs-reactions.md): An agent waits on a
   condition over the record, and the tick runs a command when one becomes true. Proposed, not
   decided; it would supersede 0002.
+- [0008](0008-sqlite-stays-the-source-and-a-folder-carries-ops.md): SQLite stays each device's
+  source of truth; a shared folder may carry sync ops, one append-only file per device, once sync
+  converges without the hub's order. Proposed, not decided.
