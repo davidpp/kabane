@@ -108,7 +108,7 @@ export { normalizeScopeUri, Planner, scopeClause } from "./storage";
 export { ActorScheme } from "./storage/actor-scheme";
 export { Migrations } from "./storage/migrations";
 export { Oplog } from "./storage/oplog";
-export { RecordRead, VISIBLE_THREADS_SQL } from "./storage/record";
+export { RecordRead } from "./storage/record";
 // Sync (multi-device replication)
 export { Backfill } from "./sync/backfill";
 export { type ConnectedSync, SyncDevice } from "./sync/device";
