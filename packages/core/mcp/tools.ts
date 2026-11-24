@@ -191,13 +191,11 @@ Parameters:
 		};
 		const created = await Planner.addTask(ctx.basePath, draft, {
 			key: args.key,
+			concise: args.responseFormat === "concise",
 		});
 		if (!created.ok) return created;
 		if (args.responseFormat !== "concise") return created;
-		const receipt = taskReceipt(created.value);
-		return receipt.ok && created.value.existed
-			? ok({ ...receipt.value, existed: true })
-			: receipt;
+		return taskReceipt(created.value);
 	},
 });
 
@@ -498,15 +496,17 @@ Parameters:
 		if (Object.keys(update).length === 0) {
 			return err(new Error("Nothing to change: pass at least one field."));
 		}
-		const result: Result<object> =
-			args.responseFormat === "concise"
-				? await Planner.updateTaskReceipt(ctx.basePath, id.value, update)
-				: await Planner.updateTask(ctx.basePath, id.value, update).then(
-						(updated) =>
-							!updated.ok || updated.value
-								? (updated as Result<object>)
-								: err(new Error(`No task found: ${args.id}`)),
-					);
+		if (args.responseFormat === "concise")
+			return Planner.updateTaskReceipt(ctx.basePath, id.value, update);
+		const result: Result<object> = await Planner.updateTask(
+			ctx.basePath,
+			id.value,
+			update,
+		).then((updated) =>
+			!updated.ok || updated.value
+				? (updated as Result<object>)
+				: err(new Error(`No task found: ${args.id}`)),
+		);
 		if (!result.ok || args.state !== "in_progress") return result;
 		const holder = await Planner.claimHolder(ctx.basePath, id.value);
 		return holder.ok

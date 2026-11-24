@@ -91,9 +91,7 @@ export const edit: Command = {
 				update,
 			);
 			if (!receipt.ok) return failure(receipt.error);
-			const claim = await claimOf(ctx.store, resolved.value, update, ctx.actor);
-			if (!claim.ok) return failure(claim.error);
-			return conciseSuccess({ ...receipt.value, ...claim.value });
+			return conciseSuccess(receipt.value);
 		}
 		const updated = await Planner.updateTask(ctx.store, resolved.value, update);
 		if (!updated.ok) return failure(updated.error);
