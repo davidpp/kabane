@@ -5,6 +5,11 @@ carrying its own prompt, `kabane run` to start
 one in an `hc` (herdr core) terminal, `kabane runs` to list, read, send to, attach to and stop
 those runs, and `kabane job` to start one on a schedule. `docs/recipes.md` is what a user reads.
 
+## On the board
+
+A card has no tab and no events (JCAB-483): kabane does not render a harness's terminal. The card
+carries the state and `kabane runs attach <id>`; hc shows the session.
+
 ## Verify
 
 ```bash
