@@ -375,6 +375,8 @@ export namespace RecordWrite {
 			to?: readonly string[];
 			/** The entry it replies to. */
 			re?: string;
+			/** Private whatever its thread is: a reply to a private entry. */
+			private?: boolean;
 		},
 	): void => {
 		db.run(
@@ -391,7 +393,7 @@ export namespace RecordWrite {
 				entry.to?.length ? JSON.stringify(entry.to) : null,
 				entry.re ?? null,
 				entry.data === null ? null : JSON.stringify(entry.data),
-				visibilityOf(db, entry.threadId),
+				entry.private ? "private" : visibilityOf(db, entry.threadId),
 				entry.createdAt,
 				Runtime.actor(),
 				deviceOf(db),

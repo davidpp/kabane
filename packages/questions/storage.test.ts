@@ -692,3 +692,40 @@ it("answers nothing through a handle whose issue part is a LIKE wildcard", async
 		unwrap(await Questions.list(base, { id: task.id })).map((q) => q.status),
 	).toEqual(["open", "open"]);
 });
+
+it("a reply to a private question on a shared issue stays private and out of the log", async () => {
+	const task = await issue();
+	const [first] = await ask(task.id);
+	if (!first) throw new Error("Missing question");
+	// A migrated question keeps its own visibility, private on a shared issue here.
+	unwrap(
+		await withDb(base, (db) =>
+			db.run("UPDATE entries SET visibility = 'private' WHERE id = ?", [
+				first.id,
+			]),
+		),
+	);
+	unwrap(
+		await Questions.answer(base, { question: first.id, answer: "SQLite" }),
+	);
+	const reply = unwrap(
+		await withDb(base, (db) =>
+			db
+				.query<{ id: string; visibility: string }, [string]>(
+					"SELECT id, visibility FROM entries WHERE re = ?",
+				)
+				.get(first.id),
+		),
+	);
+	expect(reply?.visibility).toBe("private");
+	const logged = unwrap(
+		await withDb(base, (db) =>
+			db
+				.query<{ n: number }, [string]>(
+					"SELECT COUNT(*) n FROM sync_oplog WHERE tbl = 'entries' AND row_id = ?",
+				)
+				.get(reply?.id ?? ""),
+		),
+	);
+	expect(logged?.n).toBe(0);
+});

@@ -64,6 +64,8 @@ export namespace Planner {
 			re?: string;
 			data?: Record<string, unknown>;
 			createdAt?: string;
+			/** Private whatever its thread is, as a reply to a private entry must be. */
+			private?: boolean;
 		},
 	): string => {
 		const problem = kindProblem(draft.kind);
@@ -79,6 +81,7 @@ export namespace Planner {
 			createdAt: draft.createdAt ?? new Date().toISOString(),
 			to: draft.to,
 			re: draft.re,
+			private: draft.private,
 		});
 		return id;
 	};

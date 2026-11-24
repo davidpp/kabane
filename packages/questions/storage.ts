@@ -151,7 +151,7 @@ const openOn = (db: Db, taskId: string): QuestionView[] =>
 /** Answer or withdraw one question: a reply to its entry. */
 const close = (
 	db: Db,
-	question: { id: string; taskId: string },
+	question: { id: string; taskId: string; visibility: string },
 	closing: {
 		status: "answered" | "withdrawn";
 		answer: string | null;
@@ -167,6 +167,8 @@ const close = (
 		re: question.id,
 		data:
 			closing.reasoning === null ? undefined : { reasoning: closing.reasoning },
+		// A private question's reply is private too, whatever its issue is.
+		private: question.visibility === "private",
 	});
 };
 
@@ -318,16 +320,14 @@ export namespace Questions {
 			replaced.forEach((predecessor, index) => {
 				const successor = rows.find((row) => row.id === ids[index]);
 				if (predecessor === undefined || !successor) return;
-				close(
-					db,
-					{ id: predecessor, taskId: resolved.value },
-					{
-						status: "withdrawn",
-						answer: null,
-						reasoning: `${REPLACED_REASON} ${successor.handle} id:${successor.id}`,
-						by: actor,
-					},
-				);
+				const [replacedQuestion] = selectQuestions(db, { id: predecessor });
+				if (!replacedQuestion) return;
+				close(db, replacedQuestion, {
+					status: "withdrawn",
+					answer: null,
+					reasoning: `${REPLACED_REASON} ${successor.handle} id:${successor.id}`,
+					by: actor,
+				});
 			});
 			let changedTask: Task | null = null;
 			if (parsed.data.waiting && task.state !== "waiting") {
