@@ -162,6 +162,34 @@ const dropTable = (db: Db, table: string): void => {
 	db.run(`DROP TABLE IF EXISTS ${table}`);
 };
 
+/** Check under the migration's write lock while the legacy tables still exist.
+ * Schema 8 added parked ops; schema 9 gave comments a kind. */
+const checkLegacyQuestions = (db: Db, version: number): void => {
+	if (version >= 14) return;
+	if (
+		version >= 8 &&
+		db
+			.query(
+				`SELECT 1 FROM ${TABLES.sync_parked} WHERE tbl = 'task_questions' LIMIT 1`,
+			)
+			.get()
+	)
+		throw new Error(
+			"Legacy task_questions ops are parked. Restore the pre-upgrade backup if already upgraded, then sync with the questions module enabled on the previous release before upgrading.",
+		);
+	if (version >= 9) {
+		const comments = db
+			.query<{ id: string }>(
+				`SELECT id FROM ${TABLES.comments} WHERE kind IN ('questions.ask', 'questions.answer') ORDER BY id`,
+			)
+			.all();
+		if (comments.length)
+			throw new Error(
+				`Rename the question kinds on these legacy comments before upgrading: ${comments.map((row) => row.id).join(", ")}`,
+			);
+	}
+};
+
 export namespace Migrations {
 	/**
 	 * Append-only. Version = index + 1. A migration may be any SQL, including a
@@ -374,7 +402,13 @@ export namespace Migrations {
 
 	/** Bring `db` up to `SCHEMA_VERSION`, or say which migration failed. */
 	export const apply = (db: Db): Result<Migrate.Report> =>
-		Migrate.run(db, LIST);
+		Migrate.run(
+			db,
+			LIST,
+			TABLES.schema_migrations,
+			undefined,
+			checkLegacyQuestions,
+		);
 
 	/**
 	 * Bring each registered module up to its own list, in registration order,

@@ -119,7 +119,7 @@ const refuseParked = (db: Db): void => {
 		.get(QUESTIONS_TABLE)?.n;
 	if (parked)
 		throw new Error(
-			`${parked} ${QUESTIONS_TABLE} ops are parked here, questions no other row holds; run this build's previous release with the questions module enabled and sync once to apply them, then upgrade. Nothing was changed.`,
+			`${parked} ${QUESTIONS_TABLE} ops are parked here, questions no other row holds; restore the pre-upgrade backup before opening it with the previous release, enable the questions module and sync once to apply them, then upgrade.`,
 		);
 };
 
