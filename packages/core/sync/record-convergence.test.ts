@@ -711,14 +711,24 @@ describe("2.0 record — convergence in every delivery order", () => {
 			await pull(b);
 			await pull(c);
 
-			// Same clock, same counter, same actor: only the writing device differs.
+			// Same clock, same counter, same actor in each group: only the writing
+			// device differs. Three titles compete, and two claims.
 			await thread(a, "thread-t", at(1), { title: "from a" });
+			await claim(a, "thread-t", at(1), "in_progress", "claude");
 			await thread(b, "thread-t", at(1), { title: "from b" });
+			await thread(c, "thread-t", at(1), { title: "from c" });
 			await claim(c, "thread-t", at(1), "next", "codex");
 
 			const rows = await resolveRace([a, b, c]);
 			expect(rows.visible.threads).toMatchObject([
-				{ title: "from b", version: 2, state: "next" },
+				{
+					title: "from c",
+					version: 2,
+					updated_device: "device-c",
+					state: "next",
+					state_version: 2,
+					state_updated_device: "device-c",
+				},
 			]);
 		},
 		SLOW,
