@@ -1,8 +1,3 @@
-// This repo's landing policy, one task for every caller: a branch lands as a pull request that
-// GitHub merges once the required `gate` check passes. The loop runs it as its `onLanded` hook,
-// after its own push and PR; dispatch runs it from the main checkout for each finished branch.
-// It runs the user's own git and gh and holds no credentials. Running it again is safe: a loop
-// retry runs `onLanded` again, and an existing PR is found rather than opened twice.
 import { z } from "zod";
 import { err, ok, type Result } from "../packages/core/result";
 
@@ -40,7 +35,6 @@ export const parseLandArgs = (argv: string[]): Result<Args> => {
 	});
 };
 
-/** The branch to land: the argument, else the loop's, else the checkout's; `null` is a detached HEAD. */
 export const resolveBranch = (
 	arg: string | undefined,
 	env: NodeJS.ProcessEnv,
@@ -96,7 +90,6 @@ const parsePullRequest = (stdout: string): PullRequest | null => {
 	}
 };
 
-/** The PR `selector` (a URL or a branch) names, or `null` when the branch has none. */
 const findPullRequest = (selector: string): Result<PullRequest | null> => {
 	const view = spawn(
 		["gh", "pr", "view", selector, "--json", "url,state"],
@@ -115,7 +108,6 @@ const findPullRequest = (selector: string): Result<PullRequest | null> => {
 export const land = (args: Args, env: NodeJS.ProcessEnv): Result<string> => {
 	const branch = resolveBranch(args.branch, env, currentBranch);
 	if (!branch.ok) return branch;
-	// A command that changes something, run or, on --dry-run, printed.
 	const change = (argv: string[]): Result<string> => {
 		if (args.dryRun) {
 			console.error(`would run: ${argv.join(" ")}`);
