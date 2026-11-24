@@ -848,8 +848,8 @@ kabane config set extensions "" --layer global
 
 ### Upgrading: empty tables for the next record
 
-This version adds five empty tables (`threads`, `entries`, `attributes`, `links`, `refs`) that a
-later release moves the tracker into. Nothing reads or writes them yet, and nothing you have
+This version adds four empty tables (`threads`, `entries`, `attributes`, `refs`) that a later
+release moves the tracker into. Nothing reads or writes them yet, and nothing you have
 changes. The database moves to schema 13 the first time this version opens it.
 
 - **Sync: update every device, and the hub, before syncing again.** Every op an updated device
@@ -857,7 +857,7 @@ changes. The database moves to schema 13 the first time this version opens it.
   it updates. Update the hub with the devices
   ([deploy.md](deploy.md)): a hub on schema 12 stops pulling from updated devices the same way.
 - **When it refuses.** A database where an extension already keeps a table under one of those
-  five names is not migrated: kabane names the table and the extension that declared it, and
+  four names is not migrated: kabane names the table and the extension that declared it, and
   changes nothing. Rename or drop that table, or update the extension, then open kabane again.
 - **No going back.** The old version refuses a database this one has opened. Going back takes a
   backup made before the first open.
