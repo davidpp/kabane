@@ -460,10 +460,25 @@ const zeroSkips = (): Record<SkipReason, number> =>
 		number
 	>;
 
-/** Every `short_id` anywhere in the batch, whatever its table or fate. */
+/**
+ * An op on the 2.0 record: a record table's, carrying no module tag. A tagged
+ * op under a record table's name belongs to a module and parks like any other
+ * module op; it never reaches the record's resolver.
+ */
+const isRecordOp = (
+	op: SyncOp,
+): op is SyncOp & { tbl: RecordTable; module: undefined } =>
+	op.module === undefined && isRecordTable(op.tbl);
+
+/**
+ * Every `short_id` the batch delivers to today's tables, whatever its fate. A
+ * thread's label is no label of theirs: counting it would renumber a task's
+ * rename by whether the thread shared its page.
+ */
 const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	const labels: string[] = [];
 	for (const op of ops) {
+		if (isRecordOp(op)) continue;
 		const label =
 			op.payload === undefined ? undefined : asString(op.payload.short_id);
 		if (label?.includes("-")) labels.push(label);
@@ -660,7 +675,7 @@ const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
 
 const applyOne = (pass: Pass, op: RelayOp) => {
 	const { db, counts } = pass;
-	if (isRecordTable(op.tbl)) return applyRecord(pass, op.tbl, op);
+	if (isRecordOp(op)) return applyRecord(pass, op.tbl, op);
 	const tag = parkingTag(db, op);
 	if (tag !== undefined) return park(pass, op, tag);
 

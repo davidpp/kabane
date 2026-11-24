@@ -245,4 +245,46 @@ describe("2.0 record — what apply refuses", () => {
 			),
 		).toEqual({ n: 0 });
 	});
+
+	it("parks a module-tagged op on a record table's name, never applies it as a record row", async () => {
+		const base = await device();
+		const report = await apply(base, [
+			op("threads", thread("thread"), {
+				module: { name: "example", schema: 1 },
+			}),
+		]);
+		expect(report).toMatchObject({ applied: 0, parked: 1 });
+		expect(
+			await withDb(base, (db) =>
+				db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM threads").get(),
+			),
+		).toEqual({ n: 0 });
+	});
+
+	it("leaves today's task labels alone, whichever page a thread's label arrives in", async () => {
+		const source = await device();
+		unwrap(await Planner.addTask(source, { title: "template" }));
+		const task = await withDb(source, (db) =>
+			db.query<Row, []>("SELECT * FROM tasks LIMIT 1").get(),
+		);
+		const tasks = ["task-a", "task-b"].map((id) =>
+			op("tasks", { ...task, id, short_id: "ABC-1" }),
+		);
+		const label = op("threads", thread("thread", { short_id: "ABC-99" }));
+		const labels: unknown[] = [];
+		for (const pages of [[tasks, [label]], [[...tasks, label]]]) {
+			const base = await device();
+			for (const page of pages) await apply(base, page);
+			labels.push(
+				await withDb(base, (db) =>
+					db.query<Row, []>("SELECT id, short_id FROM tasks ORDER BY id").all(),
+				),
+			);
+		}
+		expect(labels[1]).toEqual(labels[0]);
+		expect(labels[0]).toEqual([
+			{ id: "task-a", short_id: "ABC-1" },
+			{ id: "task-b", short_id: "ABC-2" },
+		]);
+	});
 });
