@@ -238,30 +238,24 @@ describe("2.0 record — what apply refuses", () => {
 		).toEqual({ n: 0 });
 	});
 
-	it("leaves today's task labels alone, whichever page a thread's label arrives in", async () => {
-		const source = await device();
-		unwrap(await Planner.addTask(source, { title: "template" }));
-		const task = await withDb(source, (db) =>
-			db.query<Row, []>("SELECT * FROM tasks LIMIT 1").get(),
-		);
-		const tasks = ["task-a", "task-b"].map((id) =>
-			op("tasks", { ...task, id, short_id: "ABC-1" }),
-		);
-		const label = op("threads", thread("thread", { short_id: "ABC-99" }));
-		const labels: unknown[] = [];
-		for (const pages of [[tasks, [label]], [[...tasks, label]]]) {
-			const base = await device();
-			for (const page of pages) await apply(base, page);
-			labels.push(
-				await withDb(base, (db) =>
-					db.query<Row, []>("SELECT id, short_id FROM tasks ORDER BY id").all(),
-				),
-			);
-		}
-		expect(labels[1]).toEqual(labels[0]);
-		expect(labels[0]).toEqual([
-			{ id: "task-a", short_id: "ABC-1" },
-			{ id: "task-b", short_id: "ABC-2" },
+	it("raises no counter for a thread op it refused, nor for a label it does not mint", async () => {
+		const base = await device();
+		const report = await apply(base, [
+			op("threads", { id: "01KZREFUSED000000000000000", short_id: "JTES-99" }),
+			op(
+				"threads",
+				thread("01KZODDLABEL00000000000000", { short_id: "ODD-7" }),
+			),
 		]);
+		expect(report.skipped["malformed-payload"]).toBe(1);
+		expect(
+			await withDb(base, (db) =>
+				db.query<{ prefix: string }, []>("SELECT prefix FROM sequences").all(),
+			),
+		).toEqual([]);
+		const added = unwrap(
+			await Planner.addTask(base, { title: "next", scopeUri: "tes" }),
+		);
+		expect(added.shortId).toBe("JTES-1");
 	});
 });

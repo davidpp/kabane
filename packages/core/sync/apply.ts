@@ -92,14 +92,10 @@ import type { PullPage, RelayOp } from "./transport";
  * two ULIDs for one logical row, and these columns are how the resolver
  * recognizes that.
  */
-const NATURAL_KEY: Partial<Record<SyncTable, readonly string[]>> = {
-	task_links: ["source_id", "target_id", "type"],
-	task_context_refs: ["task_id", "uri"],
-	upstream_links: ["task_id", "provider", "external_id"],
-};
+const NATURAL_KEY: Partial<Record<SyncTable, readonly string[]>> = {};
 
 /** Tables carrying a human-facing `short_id`, i.e. the ones a rename can hit. */
-const SHORT_ID_TABLES: readonly SyncTable[] = ["tasks", "projects"];
+const SHORT_ID_TABLES: readonly SyncTable[] = ["projects"];
 
 /**
  * What SQLite does to this row when the parent goes away. Apply reproduces it
@@ -113,21 +109,7 @@ type ParentRef = {
 };
 
 const PARENTS: Record<SyncTable, readonly ParentRef[]> = {
-	tasks: [
-		{ column: "parent_task_id", table: "tasks", onDelete: "cascade" },
-		{ column: "project_id", table: "projects", onDelete: "set-null" },
-	],
 	projects: [],
-	task_links: [
-		{ column: "source_id", table: "tasks", onDelete: "cascade" },
-		{ column: "target_id", table: "tasks", onDelete: "cascade" },
-	],
-	task_comments: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
-	task_work_log: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
-	task_context_refs: [
-		{ column: "task_id", table: "tasks", onDelete: "cascade" },
-	],
-	upstream_links: [{ column: "task_id", table: "tasks", onDelete: "cascade" }],
 };
 
 // ============================================================
@@ -197,16 +179,14 @@ const tableMeta = (db: Db, table: string): TableMeta => ({
 	hasShortId: isSyncTable(table) && SHORT_ID_TABLES.includes(table),
 });
 
-/** The FK parents to check before resolving: core's list, or a module table's task. */
-const parentsOf = (
-	table: string,
-	rule: { childOfTasks: boolean },
-): readonly ParentRef[] => {
-	if (isSyncTable(table)) return PARENTS[table];
-	return rule.childOfTasks
-		? [{ column: "task_id", table: "tasks", onDelete: "cascade" }]
-		: [];
-};
+/**
+ * The FK parents to check before resolving: core's list. A module table's
+ * `task_id` names a thread with no foreign key since migration 14: the row is
+ * stored whatever has arrived, and the `tasks` view decides what shows, the
+ * same way on every device.
+ */
+const parentsOf = (table: string): readonly ParentRef[] =>
+	isSyncTable(table) ? PARENTS[table] : [];
 
 /**
  * JSON row snapshots only ever hold scalars, because `json_object` reads column
@@ -507,6 +487,9 @@ const collectLabels = (ops: readonly SyncOp[]): string[] => {
 	return labels;
 };
 
+/** A label as `generateShortId` mints one: `J`, three letters or digits, a number. */
+const MINTED_LABEL = /^J[A-Z0-9]{3}-\d+$/;
+
 /** Tombstone-free storage: an absent row is otherwise a never-seen row. */
 const deleteKey = (tbl: string, rowId: string): string => `${tbl} ${rowId}`;
 
@@ -587,6 +570,8 @@ type Pass = {
 	localDeviceId: string;
 	now: string;
 	batchLabels: readonly string[];
+	/** Labels of the thread rows this pass applied. */
+	threadLabels: string[];
 	deletedAt: Map<string, string>;
 	metas: Map<string, TableMeta>;
 	counts: Counts;
@@ -704,6 +689,11 @@ const applyRecord = (pass: Pass, table: RecordTable, op: RelayOp) => {
 	}
 	writeRecordRow(db, meta, key, decision.row);
 	counts.applied++;
+	// A thread's label feeds no rename, but its counter is raised past it so
+	// this device never mints a label a pulled thread holds.
+	const label = table === "threads" ? decision.row.short_id : undefined;
+	if (typeof label === "string" && MINTED_LABEL.test(label))
+		pass.threadLabels.push(label);
 };
 
 const applyOne = (pass: Pass, op: RelayOp) => {
@@ -721,11 +711,7 @@ const applyOne = (pass: Pass, op: RelayOp) => {
 	const meta = pass.metas.get(op.tbl) ?? tableMeta(db, op.tbl);
 	pass.metas.set(op.tbl, meta);
 
-	const prepared = prepareParents(
-		db,
-		parentsOf(op.tbl, rule),
-		currentScopes(op),
-	);
+	const prepared = prepareParents(db, parentsOf(op.tbl), currentScopes(op));
 	counts.clearedRefs += prepared.cleared;
 
 	// Before the resolver, and for every table: a dangling FK is the one
@@ -779,6 +765,7 @@ const applyOps = (
 		localDeviceId,
 		now,
 		batchLabels: collectLabels(ops),
+		threadLabels: [],
 		deletedAt,
 		metas: new Map(),
 		counts: {
@@ -790,7 +777,7 @@ const applyOps = (
 		},
 	};
 	for (const op of ops) applyOne(pass, op);
-	reserveBatchLabels(db, pass.batchLabels, now);
+	reserveBatchLabels(db, [...pass.batchLabels, ...pass.threadLabels], now);
 	return pass.counts;
 };
 

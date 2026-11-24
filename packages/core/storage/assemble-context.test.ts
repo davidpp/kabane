@@ -645,7 +645,7 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 		// landing between two reads would leave behind.
 		let timelineReads = 0;
 		let injected = false;
-		const reads = /FROM task_comments\b(?!_)/;
+		const reads = /FROM entries\b/;
 		const racing = (db: Db): Db =>
 			new Proxy(db, {
 				get: (target, property) => {
@@ -669,8 +669,8 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 									if (!injected) {
 										injected = true;
 										target.run(
-											`INSERT INTO ${TABLES.comments} (id, task_id, kind, author, author_type, content, created_at)
-											 VALUES ('01LATEAIVERDICT', ?, 'verdicts', ?, 'ai', 'AI_VERDICT', '2999-01-01T00:00:00.000Z')`,
+											`INSERT INTO ${TABLES.entries} (id, thread_id, kind, author, body, data, created_at)
+											 VALUES ('01LATEAIVERDICT', ?, 'verdicts', ?, 'AI_VERDICT', '{"author_type":"ai"}', '2999-01-01T00:00:00.000Z')`,
 											[id, AGENT],
 										);
 									}
@@ -700,7 +700,9 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 			sections: ["discussion"],
 		});
 		if (!raced.ok) throw raced.error;
-		expect(timelineReads).toBe(1);
+		// The timeline is read first; the work log and the page's fingerprint read
+		// entries too since migration 14, after the injection.
+		expect(timelineReads).toBeGreaterThan(1);
 		expect(raced.value.completeness.humanSteeringComplete).toBe(false);
 
 		// The AI verdict did land: the next read's snapshot has it newest.
@@ -708,7 +710,6 @@ describe("Planner — assembleContext over typed timeline entries", () => {
 			sections: ["discussion", "verdicts.latest"],
 		});
 		if (!after.ok) throw after.error;
-		expect(timelineReads).toBe(2);
 		expect(after.value.markdown).toContain("AI_VERDICT");
 		expect(after.value.completeness.humanSteeringComplete).toBe(true);
 	});

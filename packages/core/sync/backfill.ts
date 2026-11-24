@@ -14,25 +14,27 @@
  * PRIVATE ROWS STAY HOME. The visibility filter is the same one live capture
  * applies; a row marked private is skipped and counted, never emitted.
  *
- * ORDER IS FK ORDER. The receiving device applies in `seq` order inside one
- * transaction, and `foreign_keys = ON` there means a child arriving before its
- * parent aborts the whole batch. Parents are emitted first, and within `tasks`
- * the roots precede their subtasks. Registered data modules' tables follow
- * core's, in registration and declaration order (`Modules.tables`).
+ * THE RECORD GOES FIRST. The tables come from `Replicated.tables`, the record's
+ * before the rest: a data module's row names a thread, and the receiving
+ * device skips it as an orphan when that thread has not arrived. The record
+ * itself has no FK, so its order is free.
  *
- * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from table, row and version
- * rather than minted randomly, so a second run collides on `UNIQUE(op_id)` and
- * is ignored, while a row edited since the last run gets a fresh op. That
+ * IDEMPOTENT BY CONSTRUCTION. `op_id` is derived from table, row key and the
+ * row's content rather than minted randomly, so a second run collides on
+ * `UNIQUE(op_id)` and is ignored, while a row edited since the last run gets a
+ * fresh op, and two devices holding different values of one row send two ops
+ * the resolver decides between. That
  * matters because the honest response to a half-finished backfill is to run it
  * again.
  */
 
+import { createHash } from "node:crypto";
 import type { Db } from "../db/port";
-import { Modules } from "../module";
+import { Replicated } from "../replicated";
 import { err, ok, type Result } from "../result";
 import { withDb } from "../runtime";
 
-import type { SyncTable } from "../schemas";
+import { isRecordTable, RecordKey } from "../schemas";
 import { Oplog } from "../storage/oplog";
 
 /** Local mirror of the `oplog.ts` idiom — SQLite throws, this module does not. */
@@ -54,23 +56,38 @@ const trySync = <T>(fn: () => T): Result<T> => {
  * `projects` first (`tasks.project_id` references it), then `tasks`, then the
  * four tables holding an FK to `tasks`.
  */
-const BACKFILL_ORDER: readonly SyncTable[] = [
-	"projects",
-	"tasks",
-	"task_links",
-	"task_comments",
-	"task_work_log",
-	"task_context_refs",
-];
+/**
+ * Every replicated table this device writes (`Replicated.tables`), the
+ * record's first: a module row names a thread, and a device applying it
+ * checks the thread has arrived. The record has no FK, so its own order does
+ * not matter.
+ */
+const backfillOrder = (db: Db): string[] => {
+	const tables = Replicated.tables(db)
+		.filter(({ unregisteredModule }) => unregisteredModule === undefined)
+		.map(({ table }) => table);
+	return [
+		...tables.filter(isRecordTable),
+		...tables.filter((table) => !isRecordTable(table)),
+	];
+};
 
 /**
- * `tasks.parent_task_id` references `tasks`, so a subtask emitted before its
- * parent would abort the receiver's batch. Roots first; one level of nesting is
- * all the planner allows, so this is sufficient rather than a topological sort.
+ * A row's content, keys sorted: what its op id is made from, so two devices
+ * holding different values of one row emit different ops and identical rows
+ * emit one.
  */
-const ROW_ORDER: Partial<Record<string, string>> = {
-	tasks: "(parent_task_id IS NOT NULL), id",
-};
+const contentOf = (row: Record<string, unknown>): string =>
+	createHash("sha256")
+		.update(
+			JSON.stringify(
+				Object.keys(row)
+					.sort()
+					.map((key) => [key, row[key]]),
+			),
+		)
+		.digest("hex")
+		.slice(0, 32);
 
 // ============================================================
 // Types
@@ -103,8 +120,8 @@ const emptyReport = (): BackfillReport => ({
  * the log and can never collide with live capture's random hex; versioned so a
  * row edited between two runs is re-emitted rather than treated as seen.
  */
-const backfillOpId = (tbl: string, rowId: string, version: number): string =>
-	`bf:${tbl}:${rowId}:v${version}`;
+const backfillOpId = (tbl: string, rowId: string, content: string): string =>
+	`bf:${tbl}:${rowId}:${content}`;
 
 const backfillTable = (
 	db: Db,
@@ -113,27 +130,20 @@ const backfillTable = (
 	capturedAt: string,
 	report: BackfillReport,
 ): Result<void> => {
-	const order = ROW_ORDER[tbl] ?? "id";
-
 	const rows = trySync(() =>
-		db
-			.query<Record<string, unknown>, []>(
-				`SELECT * FROM ${tbl} ORDER BY ${order}`,
-			)
-			.all(),
+		db.query<Record<string, unknown>, []>(`SELECT * FROM ${tbl}`).all(),
 	);
 	if (!rows.ok) return rows;
 
 	let written = 0;
 	for (const row of rows.value) {
-		const rowId = row.id;
+		const rowId = isRecordTable(tbl) ? RecordKey.rowIdOf(tbl, row) : row.id;
 		if (typeof rowId !== "string") continue;
 		if (!Oplog.isShared(row)) {
 			report.skippedPrivate += 1;
 			continue;
 		}
 
-		const version = typeof row.version === "number" ? row.version : 1;
 		const done = Oplog.record(
 			db,
 			Oplog.snapshotOp({
@@ -142,7 +152,7 @@ const backfillTable = (
 				op: "insert",
 				row,
 				capturedAt,
-				opId: backfillOpId(tbl, rowId, version),
+				opId: backfillOpId(tbl, rowId, contentOf(row)),
 			}),
 		);
 		if (!done.ok) return done;
@@ -189,11 +199,7 @@ export namespace Backfill {
 
 			const run = trySync(() =>
 				db.transaction(() => {
-					const tables = [
-						...BACKFILL_ORDER,
-						...Modules.tables().map(({ spec }) => spec.table),
-					];
-					for (const tbl of tables) {
+					for (const tbl of backfillOrder(db)) {
 						const done = backfillTable(db, tbl, deviceId, capturedAt, report);
 						// Inside a bun:sqlite transaction, throwing is the only way to
 						// roll back — see JJAK-1077 on Transaction.atomic committing an

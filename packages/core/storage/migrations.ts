@@ -26,6 +26,7 @@ import { err, ok, type Result } from "../result";
 import { parseQuestionBody, RECORD_TABLES } from "../schemas";
 import { ActorScheme } from "./actor-scheme";
 import { columnExists, TABLES } from "./helpers";
+import { RecordMigration } from "./record-migration";
 import { ScopeScheme } from "./scope-scheme";
 import { SessionOutcomes } from "./session-outcomes";
 
@@ -355,6 +356,13 @@ export namespace Migrations {
 				refuseTakenRecordNames(db);
 				db.exec(RECORD_SCHEMA_SQL);
 			},
+		},
+		{
+			// Today's task tables move into the record, and the task read becomes a
+			// view over it (JCAB-660, `storage/record-migration.ts`). This device's
+			// own ops on the old tables are dropped: nothing syncs through the hub.
+			name: "record-migrate",
+			up: RecordMigration.migrate,
 		},
 	];
 

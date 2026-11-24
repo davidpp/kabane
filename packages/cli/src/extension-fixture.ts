@@ -26,7 +26,7 @@ export default (host: Host): KabaneModule[] => {
 						db.run(
 							\`CREATE TABLE IF NOT EXISTS \${NOTES} (
 							   id TEXT PRIMARY KEY,
-							   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+							   task_id TEXT NOT NULL,
 							   body TEXT NOT NULL,
 							   updated_at TEXT NOT NULL,
 							   updated_by TEXT,

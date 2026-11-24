@@ -367,22 +367,24 @@ describe("hub MCP over Streamable HTTP", () => {
 		const before = await (
 			await log("/pull", { deviceId: "write-inputs", sinceSeq: 0, limit: 1000 })
 		).json<PullPage>();
+		// Comments and work logs are entries on the thread since migration 14.
 		const rows = before.ops
 			.map((op) => JSON.parse(op.payload))
-			.filter((op) => op.payload?.task_id === id);
-		const comments = rows.filter((op) => op.tbl === "task_comments");
+			.filter((op) => op.tbl === "entries" && op.payload?.thread_id === id);
+		const comments = rows.filter((op) => op.payload.kind === "comment");
 		expect(comments).toHaveLength(4);
-		for (const comment of comments)
+		for (const comment of comments) {
 			expect(comment.payload).toMatchObject({
-				content: body,
+				body,
 				author: "kabane://actor/agent/hermes",
-				author_type: "ai",
 			});
+			expect(JSON.parse(comment.payload.data)).toEqual({ author_type: "ai" });
+		}
 		expect(
 			rows
-				.filter((op) => op.tbl === "task_work_log")
+				.filter((op) => op.payload.kind === "log")
 				.map((op) =>
-					JSON.parse(op.payload.refs).map(
+					JSON.parse(op.payload.data).refs.map(
 						(ref: { uri: string; label?: string }) => ({
 							uri: ref.uri,
 							label: ref.label,
@@ -568,7 +570,7 @@ describe("hub as sync device cloud", () => {
 		).json<PullPage>();
 		const titles = page.ops
 			.map((o) => JSON.parse(o.payload))
-			.filter((op) => op.deviceId === "cloud" && op.tbl === "tasks")
+			.filter((op) => op.deviceId === "cloud" && op.tbl === "threads")
 			.map((op) => op.payload?.title);
 		expect(titles).toContain("Replicated from the hub");
 		expect(
@@ -593,7 +595,7 @@ describe("hub as sync device cloud", () => {
 		).json<PullPage>();
 		const template = page.ops
 			.map((o) => JSON.parse(o.payload))
-			.find((op) => op.tbl === "tasks" && op.payload?.id === seed.id);
+			.find((op) => op.tbl === "threads" && op.payload?.id === seed.id);
 		expect(template).toBeDefined();
 
 		const rowId = `01DEVICEA${crypto.randomUUID().replace(/-/g, "").slice(0, 17).toUpperCase()}`;
@@ -612,8 +614,12 @@ describe("hub as sync device cloud", () => {
 				short_id: "JSYN-9001",
 				title: "Written on device-a",
 				updated_by: "kabane://actor/human/david",
+				updated_device: "device-a",
+				state_updated_by: "kabane://actor/human/david",
+				state_updated_device: "device-a",
 				created_at: now,
 				updated_at: now,
+				state_updated_at: now,
 			},
 		};
 		const ack = await (

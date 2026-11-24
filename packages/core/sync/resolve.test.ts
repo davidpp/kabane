@@ -43,7 +43,7 @@ const makeOp = (
 	...over,
 });
 
-const taskRow = (id: string, updatedAt: string, extra: Row = {}): Row => ({
+const projectRow = (id: string, updatedAt: string, extra: Row = {}): Row => ({
 	id,
 	short_id: "JMIL-5",
 	title: "Task",
@@ -51,37 +51,6 @@ const taskRow = (id: string, updatedAt: string, extra: Row = {}): Row => ({
 	created_at: T1,
 	updated_at: updatedAt,
 	...extra,
-});
-
-const commentRow = (id: string, taskId: string): Row => ({
-	id,
-	task_id: taskId,
-	author: "david",
-	author_type: "human",
-	content: "note",
-	created_at: T1,
-	updated_at: null,
-});
-
-const linkRow = (id: string): Row => ({
-	id,
-	source_id: "task-1",
-	target_id: "task-2",
-	type: "blocks",
-	note: null,
-	created_at: T1,
-});
-
-const contextRefRow = (id: string, addedAt: string, label: string): Row => ({
-	id,
-	task_id: "task-1",
-	uri: "obsidian://prd",
-	kind: "PRD",
-	label,
-	note: null,
-	added_by: "david",
-	added_by_type: "human",
-	added_at: addedAt,
 });
 
 type Case = {
@@ -109,60 +78,60 @@ const cases: Case[] = [
 	},
 	{
 		name: "insert with no payload is malformed",
-		op: makeOp({ tbl: "tasks", rowId: LOW, op: "insert" }),
+		op: makeOp({ tbl: "projects", rowId: LOW, op: "insert" }),
 		state: NO_LOCAL,
 		expected: { kind: "skip", reason: "malformed-payload" },
 	},
 
-	// --- tasks / projects: row LWW ---
+	// --- projects: row LWW (the record resolves under its own rules) ---
 	{
-		name: "tasks: absent locally, applied",
+		name: "projects: absent locally, applied",
 		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "insert",
 			rowUpdatedAt: T2,
-			payload: taskRow(LOW, T2),
+			payload: projectRow(LOW, T2),
 		}),
 		state: NO_LOCAL,
 		expected: {
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T2),
+			row: projectRow(LOW, T2),
 			dropRowId: undefined,
 		},
 	},
 	{
-		name: "tasks: strictly newer incoming wins",
+		name: "projects: strictly newer incoming wins",
 		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "update",
 			rowUpdatedAt: T3,
-			payload: taskRow(LOW, T3, { title: "Newer" }),
+			payload: projectRow(LOW, T3, { title: "Newer" }),
 		}),
-		state: local({ byId: taskRow(LOW, T2), byShortId: taskRow(LOW, T2) }),
+		state: local({ byId: projectRow(LOW, T2), byShortId: projectRow(LOW, T2) }),
 		expected: {
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T3, { title: "Newer" }),
+			row: projectRow(LOW, T3, { title: "Newer" }),
 			dropRowId: undefined,
 		},
 	},
 	{
-		name: "tasks: older incoming loses",
+		name: "projects: older incoming loses",
 		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "update",
 			rowUpdatedAt: T1,
-			payload: taskRow(LOW, T1),
+			payload: projectRow(LOW, T1),
 		}),
-		state: local({ byId: taskRow(LOW, T2) }),
+		state: local({ byId: projectRow(LOW, T2) }),
 		expected: { kind: "skip", reason: "not-newer" },
 	},
 	{
-		name: "projects: same LWW rule as tasks",
+		name: "projects: a row without a short_id",
 		op: makeOp({
 			tbl: "projects",
 			rowId: LOW,
@@ -179,268 +148,51 @@ const cases: Case[] = [
 		},
 	},
 
-	// --- task_comments / task_work_log: insert-if-absent ---
 	{
-		name: "task_comments: absent locally with a live parent, applied",
+		name: "orphan rule is scoped to child tables: a project never orphans",
 		op: makeOp({
-			tbl: "task_comments",
-			rowId: LOW,
-			op: "insert",
-			payload: commentRow(LOW, "task-1"),
-		}),
-		state: local({ parentPresent: true }),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: commentRow(LOW, "task-1"),
-			dropRowId: undefined,
-		},
-	},
-	{
-		name: "task_comments: already present, append-only so nothing to do",
-		op: makeOp({
-			tbl: "task_comments",
-			rowId: LOW,
-			op: "insert",
-			payload: commentRow(LOW, "task-1"),
-		}),
-		state: local({ byId: commentRow(LOW, "task-1"), parentPresent: true }),
-		expected: { kind: "skip", reason: "already-present" },
-	},
-	{
-		name: "task_work_log: absent locally with a live parent, applied",
-		op: makeOp({
-			tbl: "task_work_log",
-			rowId: LOW,
-			op: "insert",
-			payload: { id: LOW, task_id: "task-1", refs: "[]", created_at: T1 },
-		}),
-		state: local({ parentPresent: true }),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: { id: LOW, task_id: "task-1", refs: "[]", created_at: T1 },
-			dropRowId: undefined,
-		},
-	},
-
-	// --- FK orphans: a child created on one device after another deleted the
-	// parent, whose delete is earlier in the log ---
-	{
-		name: "orphan: comment created after another device deleted the parent is skipped",
-		op: makeOp({
-			tbl: "task_comments",
-			rowId: LOW,
-			op: "insert",
-			payload: commentRow(LOW, "task-1"),
-		}),
-		state: local({ parentPresent: false }),
-		expected: { kind: "skip", reason: "orphan-parent" },
-	},
-	{
-		name: "orphan: work log insert with an absent parent is skipped",
-		op: makeOp({
-			tbl: "task_work_log",
-			rowId: LOW,
-			op: "insert",
-			payload: { id: LOW, task_id: "task-1", refs: "[]", created_at: T1 },
-		}),
-		state: local({ parentPresent: false }),
-		expected: { kind: "skip", reason: "orphan-parent" },
-	},
-	{
-		name: "orphan: link insert with an absent endpoint is skipped",
-		op: makeOp({
-			tbl: "task_links",
-			rowId: LOW,
-			op: "insert",
-			payload: linkRow(LOW),
-		}),
-		state: local({ parentPresent: false }),
-		expected: { kind: "skip", reason: "orphan-parent" },
-	},
-	{
-		name: "orphan: context ref insert with an absent parent is skipped",
-		op: makeOp({
-			tbl: "task_context_refs",
-			rowId: LOW,
-			op: "insert",
-			payload: contextRefRow(LOW, T2, "PRD"),
-		}),
-		state: local({ parentPresent: false }),
-		expected: { kind: "skip", reason: "orphan-parent" },
-	},
-	{
-		name: "orphan rule is scoped to child tables: a task never orphans",
-		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "insert",
 			rowUpdatedAt: T2,
-			payload: taskRow(LOW, T2),
+			payload: projectRow(LOW, T2),
 		}),
 		state: local({ parentPresent: false }),
 		expected: {
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T2),
+			row: projectRow(LOW, T2),
 			dropRowId: undefined,
 		},
 	},
 
-	// --- task_links: natural-key dedupe ---
-	{
-		name: "task_links: no local row, applied",
-		op: makeOp({
-			tbl: "task_links",
-			rowId: LOW,
-			op: "insert",
-			payload: linkRow(LOW),
-		}),
-		state: local({ parentPresent: true }),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: linkRow(LOW),
-			dropRowId: undefined,
-		},
-	},
-	{
-		name: "task_links: natural key held by a lower local ULID, incoming dropped",
-		op: makeOp({
-			tbl: "task_links",
-			rowId: HIGH,
-			op: "insert",
-			payload: linkRow(HIGH),
-		}),
-		state: local({ byNaturalKey: linkRow(LOW), parentPresent: true }),
-		expected: { kind: "skip", reason: "duplicate-natural-key" },
-	},
-	{
-		name: "task_links: incoming ULID is lower, local duplicate dropped",
-		op: makeOp({
-			tbl: "task_links",
-			rowId: LOW,
-			op: "insert",
-			payload: linkRow(LOW),
-		}),
-		state: local({ byNaturalKey: linkRow(HIGH), parentPresent: true }),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: linkRow(LOW),
-			dropRowId: HIGH,
-		},
-	},
-
-	// --- task_context_refs: natural-key upsert, LWW on added_at ---
-	{
-		name: "task_context_refs: no local row, applied",
-		op: makeOp({
-			tbl: "task_context_refs",
-			rowId: LOW,
-			op: "insert",
-			payload: contextRefRow(LOW, T2, "remote"),
-		}),
-		state: local({ parentPresent: true }),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: contextRefRow(LOW, T2, "remote"),
-			dropRowId: undefined,
-		},
-	},
-	{
-		name: "task_context_refs: newer added_at re-promotes onto the surviving lower ULID",
-		op: makeOp({
-			tbl: "task_context_refs",
-			rowId: HIGH,
-			op: "insert",
-			payload: contextRefRow(HIGH, T3, "remote"),
-		}),
-		state: local({
-			byNaturalKey: contextRefRow(LOW, T2, "localAndOlder"),
-			parentPresent: true,
-		}),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: { ...contextRefRow(HIGH, T3, "remote"), id: LOW },
-			dropRowId: undefined,
-		},
-	},
-	{
-		name: "task_context_refs: added_at tie breaks on lower ULID, whose content wins",
-		op: makeOp({
-			tbl: "task_context_refs",
-			rowId: LOW,
-			op: "insert",
-			payload: contextRefRow(LOW, T2, "remoteAndLower"),
-		}),
-		state: local({
-			byNaturalKey: contextRefRow(HIGH, T2, "localAndHigher"),
-			parentPresent: true,
-		}),
-		expected: {
-			kind: "apply",
-			rowId: LOW,
-			row: contextRefRow(LOW, T2, "remoteAndLower"),
-			dropRowId: HIGH,
-		},
-	},
-	{
-		name: "task_context_refs: older incoming on the same id loses",
-		op: makeOp({
-			tbl: "task_context_refs",
-			rowId: LOW,
-			op: "insert",
-			payload: contextRefRow(LOW, T1, "remote"),
-		}),
-		state: local({
-			byId: contextRefRow(LOW, T2, "local"),
-			parentPresent: true,
-		}),
-		expected: { kind: "skip", reason: "not-newer" },
-	},
-
-	// --- deletes: tombstone-free, both orderings ---
+	// --- deletes ---
 	{
 		name: "delete: no newer local update, applied",
-		op: makeOp({ tbl: "tasks", rowId: LOW, op: "delete", capturedAt: T3 }),
-		state: local({ byId: taskRow(LOW, T2) }),
+		op: makeOp({ tbl: "projects", rowId: LOW, op: "delete", capturedAt: T3 }),
+		state: local({ byId: projectRow(LOW, T2) }),
 		expected: { kind: "delete", rowId: LOW },
 	},
 	{
 		name: "delete: loses to a strictly newer local update",
-		op: makeOp({ tbl: "tasks", rowId: LOW, op: "delete", capturedAt: T2 }),
-		state: local({ byId: taskRow(LOW, T3) }),
+		op: makeOp({ tbl: "projects", rowId: LOW, op: "delete", capturedAt: T2 }),
+		state: local({ byId: projectRow(LOW, T3) }),
 		expected: { kind: "skip", reason: "newer-local-update" },
 	},
 	{
 		name: "delete: row already gone",
-		op: makeOp({ tbl: "tasks", rowId: LOW, op: "delete", capturedAt: T3 }),
+		op: makeOp({ tbl: "projects", rowId: LOW, op: "delete", capturedAt: T3 }),
 		state: NO_LOCAL,
 		expected: { kind: "skip", reason: "already-absent" },
 	},
 	{
-		name: "delete: clock-less table always applies",
-		op: makeOp({
-			tbl: "task_work_log",
-			rowId: LOW,
-			op: "delete",
-			capturedAt: T1,
-		}),
-		state: local({ byId: { id: LOW, task_id: "task-1", created_at: T3 } }),
-		expected: { kind: "delete", rowId: LOW },
-	},
-	{
 		name: "delete first: a late update to a deleted row is dropped",
 		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "update",
 			rowUpdatedAt: T1,
-			payload: taskRow(LOW, T1),
+			payload: projectRow(LOW, T1),
 		}),
 		state: local({ deletedAt: T2 }),
 		expected: { kind: "skip", reason: "deleted" },
@@ -448,28 +200,28 @@ const cases: Case[] = [
 	{
 		name: "delete first: an update strictly newer than the delete resurrects the row",
 		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "update",
 			rowUpdatedAt: T3,
-			payload: taskRow(LOW, T3),
+			payload: projectRow(LOW, T3),
 		}),
 		state: local({ deletedAt: T2 }),
 		expected: {
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T3),
+			row: projectRow(LOW, T3),
 			dropRowId: undefined,
 		},
 	},
 	{
 		name: "delete first: an update at exactly the delete's capture time is dropped",
 		op: makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "update",
 			rowUpdatedAt: T2,
-			payload: taskRow(LOW, T2),
+			payload: projectRow(LOW, T2),
 		}),
 		state: local({ deletedAt: T2 }),
 		expected: { kind: "skip", reason: "deleted" },
@@ -494,12 +246,12 @@ describe("Resolve.decide — same-id clock tie", () => {
 	/** One row, one `updated_at`, two devices holding different content. */
 	const edit = (deviceId: string, title: string): SyncOp =>
 		makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId: LOW,
 			op: "update",
 			deviceId,
 			rowUpdatedAt: T2,
-			payload: taskRow(LOW, T2, { title }),
+			payload: projectRow(LOW, T2, { title }),
 		});
 
 	it("converges on the lower device_id from both directions", () => {
@@ -507,7 +259,7 @@ describe("Resolve.decide — same-id clock tie", () => {
 		const onA = Resolve.decide(
 			edit(DEVICE_B, "from bbb"),
 			local({
-				byId: taskRow(LOW, T2, { title: "from aaa" }),
+				byId: projectRow(LOW, T2, { title: "from aaa" }),
 				localDeviceId: DEVICE_A,
 			}),
 		);
@@ -515,7 +267,7 @@ describe("Resolve.decide — same-id clock tie", () => {
 		const onB = Resolve.decide(
 			edit(DEVICE_A, "from aaa"),
 			local({
-				byId: taskRow(LOW, T2, { title: "from bbb" }),
+				byId: projectRow(LOW, T2, { title: "from bbb" }),
 				localDeviceId: DEVICE_B,
 			}),
 		);
@@ -524,7 +276,7 @@ describe("Resolve.decide — same-id clock tie", () => {
 		expect(onB).toEqual({
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T2, { title: "from aaa" }),
+			row: projectRow(LOW, T2, { title: "from aaa" }),
 			dropRowId: undefined,
 		});
 		// Both machines end up holding aaa's title — the divergence is closed.
@@ -538,7 +290,7 @@ describe("Resolve.decide — same-id clock tie", () => {
 		const decision = Resolve.decide(
 			edit(DEVICE_B, "three edits on bbb"),
 			local({
-				byId: taskRow(LOW, T2, { title: "one edit on aaa", version: 1 }),
+				byId: projectRow(LOW, T2, { title: "one edit on aaa", version: 1 }),
 				localDeviceId: DEVICE_A,
 			}),
 		);
@@ -546,19 +298,19 @@ describe("Resolve.decide — same-id clock tie", () => {
 
 		const versioned = Resolve.decide(
 			makeOp({
-				tbl: "tasks",
+				tbl: "projects",
 				rowId: LOW,
 				op: "update",
 				deviceId: DEVICE_B,
 				rowUpdatedAt: T2,
-				payload: taskRow(LOW, T2, {
+				payload: projectRow(LOW, T2, {
 					title: "three edits on bbb",
 					version: 3,
 					updated_by: "kabane://actor/human/zed",
 				}),
 			}),
 			local({
-				byId: taskRow(LOW, T2, {
+				byId: projectRow(LOW, T2, {
 					title: "one edit on aaa",
 					version: 1,
 					updated_by: "kabane://actor/human/amy",
@@ -575,15 +327,15 @@ describe("Resolve.decide — same-id clock tie", () => {
 	it("breaks an equal-version tie on the lower actor URI, from both directions", () => {
 		const authored = (deviceId: string, actor: string, title: string): SyncOp =>
 			makeOp({
-				tbl: "tasks",
+				tbl: "projects",
 				rowId: LOW,
 				op: "update",
 				deviceId,
 				rowUpdatedAt: T2,
-				payload: taskRow(LOW, T2, { title, version: 2, updated_by: actor }),
+				payload: projectRow(LOW, T2, { title, version: 2, updated_by: actor }),
 			});
 		const held = (actor: string, title: string): Row =>
-			taskRow(LOW, T2, { title, version: 2, updated_by: actor });
+			projectRow(LOW, T2, { title, version: 2, updated_by: actor });
 
 		// Device order says bbb loses; actor order says bbb's author (amy) wins.
 		// Actor is consulted first, so amy's content lands on both machines.
@@ -611,7 +363,7 @@ describe("Resolve.decide — same-id clock tie", () => {
 		const decision = Resolve.decide(
 			edit(DEVICE_A, "from aaa"),
 			local({
-				byId: taskRow(LOW, T2, { title: "from aaa" }),
+				byId: projectRow(LOW, T2, { title: "from aaa" }),
 				localDeviceId: DEVICE_A,
 			}),
 		);
@@ -623,15 +375,15 @@ describe("Resolve.decide — same-id clock tie", () => {
 		// bbb sorts after aaa, so only the clock can be carrying this.
 		const decision = Resolve.decide(
 			makeOp({
-				tbl: "tasks",
+				tbl: "projects",
 				rowId: LOW,
 				op: "update",
 				deviceId: DEVICE_B,
 				rowUpdatedAt: T3,
-				payload: taskRow(LOW, T3, { title: "from bbb" }),
+				payload: projectRow(LOW, T3, { title: "from bbb" }),
 			}),
 			local({
-				byId: taskRow(LOW, T2, { title: "from aaa" }),
+				byId: projectRow(LOW, T2, { title: "from aaa" }),
 				localDeviceId: DEVICE_A,
 			}),
 		);
@@ -639,43 +391,9 @@ describe("Resolve.decide — same-id clock tie", () => {
 		expect(decision).toEqual({
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T3, { title: "from bbb" }),
+			row: projectRow(LOW, T3, { title: "from bbb" }),
 			dropRowId: undefined,
 		});
-	});
-
-	it("converges a task_context_refs tie from both directions", () => {
-		// Same ref row on both machines, same added_at, different labels — the
-		// natural-key family reaches the same tie as row LWW once ids match.
-		const promote = (deviceId: string, label: string): SyncOp =>
-			makeOp({
-				tbl: "task_context_refs",
-				rowId: LOW,
-				op: "insert",
-				deviceId,
-				payload: contextRefRow(LOW, T2, label),
-			});
-
-		const onA = Resolve.decide(
-			promote(DEVICE_B, "from bbb"),
-			local({
-				byId: contextRefRow(LOW, T2, "from aaa"),
-				parentPresent: true,
-				localDeviceId: DEVICE_A,
-			}),
-		);
-		const onB = Resolve.decide(
-			promote(DEVICE_A, "from aaa"),
-			local({
-				byId: contextRefRow(LOW, T2, "from bbb"),
-				parentPresent: true,
-				localDeviceId: DEVICE_B,
-			}),
-		);
-
-		expect(onA).toEqual({ kind: "skip", reason: "not-newer" });
-		if (onB.kind !== "apply") throw new Error("expected an apply");
-		expect(onB.row.label).toBe("from aaa");
 	});
 });
 
@@ -686,23 +404,23 @@ describe("Resolve.decide — same-id clock tie", () => {
 describe("Resolve.decide — short_id collision", () => {
 	const incoming = (rowId: string): SyncOp =>
 		makeOp({
-			tbl: "tasks",
+			tbl: "projects",
 			rowId,
 			op: "insert",
 			rowUpdatedAt: T2,
-			payload: taskRow(rowId, T2),
+			payload: projectRow(rowId, T2),
 		});
 
 	it("reassigns the local row when the incoming ULID is earlier", () => {
 		const decision = Resolve.decide(
 			incoming(LOW),
-			local({ byShortId: taskRow(HIGH, T2) }),
+			local({ byShortId: projectRow(HIGH, T2) }),
 		);
 
 		expect(decision).toEqual({
 			kind: "rename",
 			rowId: LOW,
-			row: taskRow(LOW, T2),
+			row: projectRow(LOW, T2),
 			loserId: HIGH,
 			shortId: "JMIL-5",
 		});
@@ -711,13 +429,13 @@ describe("Resolve.decide — short_id collision", () => {
 	it("reassigns the incoming row when the local ULID is earlier", () => {
 		const decision = Resolve.decide(
 			incoming(HIGH),
-			local({ byShortId: taskRow(LOW, T2) }),
+			local({ byShortId: projectRow(LOW, T2) }),
 		);
 
 		expect(decision).toEqual({
 			kind: "rename",
 			rowId: HIGH,
-			row: taskRow(HIGH, T2),
+			row: projectRow(HIGH, T2),
 			loserId: HIGH,
 			shortId: "JMIL-5",
 		});
@@ -726,13 +444,13 @@ describe("Resolve.decide — short_id collision", () => {
 	it("does not rename when the label is held by the same row", () => {
 		const decision = Resolve.decide(
 			incoming(LOW),
-			local({ byId: taskRow(LOW, T1), byShortId: taskRow(LOW, T1) }),
+			local({ byId: projectRow(LOW, T1), byShortId: projectRow(LOW, T1) }),
 		);
 
 		expect(decision).toEqual({
 			kind: "apply",
 			rowId: LOW,
-			row: taskRow(LOW, T2),
+			row: projectRow(LOW, T2),
 			dropRowId: undefined,
 		});
 	});
@@ -740,13 +458,13 @@ describe("Resolve.decide — short_id collision", () => {
 	it("does not rename when the incoming row lost LWW anyway", () => {
 		const decision = Resolve.decide(
 			makeOp({
-				tbl: "tasks",
+				tbl: "projects",
 				rowId: HIGH,
 				op: "update",
 				rowUpdatedAt: T1,
-				payload: taskRow(HIGH, T1),
+				payload: projectRow(HIGH, T1),
 			}),
-			local({ byId: taskRow(HIGH, T3), byShortId: taskRow(LOW, T2) }),
+			local({ byId: projectRow(HIGH, T3), byShortId: projectRow(LOW, T2) }),
 		);
 
 		expect(decision).toEqual({ kind: "skip", reason: "not-newer" });

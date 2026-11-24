@@ -73,11 +73,12 @@ describe("Oplog — storage-layer capture", () => {
 		const deleted = await Planner.deleteTask(base, id);
 		expect(deleted.ok).toBe(true);
 
-		const ops = await drainOps();
-		expect(ops.map((op) => op.op)).toEqual(["insert", "update", "delete"]);
-		expect(ops.every((op) => op.tbl === "tasks")).toBe(true);
+		// A thread is never hard-deleted: its delete is a tombstone, an update.
+		const ops = (await drainOps()).filter((op) => op.tbl === "threads");
+		expect(ops.map((op) => op.op)).toEqual(["insert", "update", "update"]);
 		expect(ops.every((op) => op.rowId === id)).toBe(true);
 		expect(ops.every((op) => op.deviceId === DEVICE)).toBe(true);
+		expect(ops[2]?.payload?.deleted_at).toBeString();
 		// op_id is the remote idempotency key — must be unique per op
 		expect(new Set(ops.map((op) => op.opId)).size).toBe(3);
 	});
@@ -89,18 +90,20 @@ describe("Oplog — storage-layer capture", () => {
 		await Planner.updateTask(base, id, { title: "snapshot me twice" });
 		await Planner.deleteTask(base, id);
 
-		const [insert, update, remove] = await drainOps();
+		const [insert, update, remove] = (await drainOps()).filter(
+			(op) => op.tbl === "threads",
+		);
 
 		expect(insert?.payload?.id).toBe(id);
 		expect(insert?.payload?.title).toBe("snapshot me");
 		// payload is keyed by DB column name, not the camelCase domain field
-		expect(insert?.payload).toHaveProperty("scope_uri");
+		expect(insert?.payload).toHaveProperty("state_updated_at");
 		expect(insert?.rowUpdatedAt).toBeString();
 
 		expect(update?.payload?.title).toBe("snapshot me twice");
 
-		expect(remove?.payload).toBeUndefined();
-		expect(remove?.rowUpdatedAt).toBeUndefined();
+		expect(remove?.payload?.title).toBe("snapshot me twice");
+		expect(remove?.payload?.deleted_at).toBeString();
 	});
 
 	it("omits rowUpdatedAt for a table with no updated_at column", async () => {
@@ -114,11 +117,12 @@ describe("Oplog — storage-layer capture", () => {
 		expect(logged.ok).toBe(true);
 
 		const ops = await drainOps();
-		const workLog = ops.find((op) => op.tbl === "task_work_log");
+		const workLog = ops.find((op) => op.tbl === "entries");
 		expect(workLog).toBeDefined();
 		expect(workLog?.rowUpdatedAt).toBeUndefined();
 		// the snapshot is still captured — only the LWW clock is absent
-		expect(workLog?.payload?.task_id).toBe(taskId);
+		expect(workLog?.payload?.thread_id).toBe(taskId);
+		expect(workLog?.payload?.kind).toBe("log");
 	});
 
 	it("captures nothing when the local sync_state row is absent", async () => {
@@ -136,7 +140,7 @@ describe("Oplog — storage-layer capture", () => {
 		await createTask("second");
 		await createTask("third");
 
-		const ops = await drainOps();
+		const ops = (await drainOps()).filter((op) => op.tbl === "threads");
 		expect(ops).toHaveLength(3);
 		expect(ops.map((op) => op.seq)).toEqual(
 			ops.map((op) => op.seq).sort((a, b) => a - b),
@@ -160,7 +164,7 @@ describe("Oplog — storage-layer capture", () => {
 		expect(state.ok).toBe(true);
 		if (state.ok) expect(state.value?.lastPushedSeq).toBe(throughSeq);
 
-		const remaining = await drainOps();
+		const remaining = (await drainOps()).filter((op) => op.tbl === "threads");
 		expect(remaining).toHaveLength(1);
 		expect(remaining[0]?.payload?.title).toBe("third");
 	});
@@ -227,10 +231,10 @@ describe("Oplog — storage-layer capture", () => {
 		expect(rows.some((row) => row.tbl.includes("fts"))).toBe(false);
 		// nothing but the storage layer writes ops now, so there is no trigger
 		// left for the FTS shadow tables to fire
-		expect(rows.map((row) => row.tbl).sort()).toEqual([
-			"task_comments",
-			"tasks",
-			"tasks",
+		expect([...new Set(rows.map((row) => row.tbl))].sort()).toEqual([
+			"attributes",
+			"entries",
+			"threads",
 		]);
 	});
 
@@ -274,11 +278,12 @@ describe("Oplog — storage-layer capture", () => {
 		});
 		await Planner.deleteUpstreamLink(base, linked.value.id);
 
+		// An unlink is a removal written as an update.
 		const rows = await allOplogRows();
-		expect(rows.filter((row) => row.tbl === "upstream_links")).toEqual([
-			{ tbl: "upstream_links", op: "insert" },
-			{ tbl: "upstream_links", op: "update" },
-			{ tbl: "upstream_links", op: "delete" },
+		expect(rows.filter((row) => row.tbl === "refs")).toEqual([
+			{ tbl: "refs", op: "insert" },
+			{ tbl: "refs", op: "update" },
+			{ tbl: "refs", op: "update" },
 		]);
 	});
 
@@ -290,7 +295,7 @@ describe("Oplog — storage-layer capture", () => {
 		await Planner.updateTask(base, id, { title: "v2" });
 		await Planner.updateTask(base, id, { title: "v3" });
 
-		const ops = await drainOps();
+		const ops = (await drainOps()).filter((op) => op.tbl === "threads");
 		expect(ops.map((op) => op.version)).toEqual([1, 2, 3]);
 		expect(
 			ops.every((op) => op.updatedBy === "kabane://actor/human/tester"),
@@ -302,21 +307,22 @@ describe("Oplog — storage-layer capture", () => {
 	it("keeps a private row out of the log through insert, update and delete", async () => {
 		await armCapture();
 		const id = await createTask("shared then private");
-		expect(await drainOps()).toHaveLength(1);
+		const created = (await allOplogRows()).length;
 
 		await withDb((db) =>
-			db.run(`UPDATE ${TABLES.tasks} SET visibility = 'private' WHERE id = ?`, [
-				id,
-			]),
+			db.run(
+				`UPDATE ${TABLES.threads} SET visibility = 'private' WHERE id = ?`,
+				[id],
+			),
 		);
 		await Planner.updateTask(base, id, { title: "edited while private" });
 		await Planner.deleteTask(base, id);
 
-		// the insert from before the row went private is all there is
-		expect(await allOplogRows()).toEqual([{ tbl: "tasks", op: "insert" }]);
+		// the ops from before the row went private are all there is
+		expect(await allOplogRows()).toHaveLength(created);
 	});
 
-	it("captures a task delete as its cascade, children first, task last", async () => {
+	it("captures a task delete as one tombstone: what sits under it reads as gone", async () => {
 		await armCapture();
 		const parent = await createTask("parent");
 		const child = await Planner.addTask(base, {
@@ -324,38 +330,24 @@ describe("Oplog — storage-layer capture", () => {
 			parentTaskId: parent,
 		});
 		if (!child.ok) throw child.error;
-		const sibling = await createTask("sibling");
-		await Planner.addComment(base, {
-			taskId: parent,
-			author: "me",
-			authorType: "human",
-			content: "on parent",
-		});
 		await Planner.addComment(base, {
 			taskId: child.value.id,
 			author: "me",
 			authorType: "human",
 			content: "on subtask",
 		});
-		await Planner.addLink(base, {
-			sourceId: sibling,
-			targetId: parent,
-			type: "blocks",
-		});
 		const before = (await allOplogRows()).length;
 
 		const deleted = await Planner.deleteTask(base, parent);
 		expect(deleted.ok).toBe(true);
 
-		const deletes = (await allOplogRows()).slice(before);
-		expect(deletes.every((row) => row.op === "delete")).toBe(true);
-		expect(deletes.map((row) => row.tbl)).toEqual([
-			"task_comments", // the subtask's comment
-			"tasks", // the subtask
-			"task_comments", // the parent's comment
-			"task_links", // the link pointing at the parent
-			"tasks", // the parent
+		expect((await allOplogRows()).slice(before)).toEqual([
+			{ tbl: "threads", op: "update" },
 		]);
+		const gone = await Planner.getTask(base, child.value.id);
+		expect(gone.ok && gone.value).toBeNull();
+		const comments = await Planner.getComments(base, child.value.id);
+		expect(comments.ok && comments.value).toEqual([]);
 	});
 
 	it("captures the project_id clear on every task a deleted project owned", async () => {
@@ -374,10 +366,12 @@ describe("Oplog — storage-layer capture", () => {
 
 		const ops = (await drainOps()).slice(before);
 		expect(ops.map((op) => `${op.tbl}:${op.op}`)).toEqual([
-			"tasks:update",
+			"attributes:update",
 			"projects:delete",
 		]);
-		expect(ops[0]?.payload?.project_id).toBeNull();
-		expect(ops[0]?.version).toBe(2);
+		expect(ops[0]?.payload?.key).toBe("project_id");
+		expect(ops[0]?.payload?.removed_at).toBeString();
+		// Written with its task at counter 0, so the clear is its first write.
+		expect(ops[0]?.version).toBe(1);
 	});
 });

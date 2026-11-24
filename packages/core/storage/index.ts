@@ -69,8 +69,8 @@ export const Planner = {
 	getComments: Comments.getComments,
 	// Work Logs
 	addWorkLog: WorkLogs.addWorkLog,
-	getWorkLogs: WorkLogs.getWorkLogs,
 	deleteWorkLog: WorkLogs.deleteWorkLog,
+	getWorkLogs: WorkLogs.getWorkLogs,
 	// Context Refs
 	addContextRef: ContextRefs.addContextRef,
 	getContextRefs: ContextRefs.getContextRefs,

@@ -1,17 +1,16 @@
 /**
  * Planner Storage — an issue's timeline of entries.
  *
- * The table keeps its name, `task_comments`, because rows and synced logs
- * store it. A comment is an entry of kind `comment`, and the comment functions
- * read and write that kind only. Entries are append-only: nothing here edits
- * or deletes one, matching the table's `append-only` sync family, which never
- * applies a second op for a row it holds. Deleting a task removes its entries
- * through the cascade.
+ * Entries live in the record's `entries` table (migration 14). A comment is an
+ * entry of kind `comment`, and the comment functions read and write that kind
+ * only; a work log is an entry of kind `log` (`work-logs.ts`), a kind the
+ * timeline neither takes nor shows. Entries are append-only: nothing here edits or deletes
+ * one. A deleted task's entries read as gone with it (`RecordRead`).
  */
 
 import { monotonicFactory } from "ulid";
-import { err, quoted, type Result } from "../result";
-import { Runtime, withDb } from "../runtime";
+import { err, ok, quoted, type Result } from "../result";
+import { atomic, withDb } from "../runtime";
 
 import {
 	DEFAULT_ENTRY_KIND,
@@ -21,8 +20,10 @@ import {
 	type TaskEntry,
 	type TaskEntryDraft,
 } from "../schemas";
-import { rowToEntry, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import { isWorkLog, WORK_LOG_KIND } from "./families";
+import { rowToEntry } from "./helpers";
+import { RecordRead } from "./record";
+import { RecordWrite } from "./record-write";
 
 /**
  * Entry ids rise strictly within this process, even inside one millisecond,
@@ -42,32 +43,31 @@ export namespace Planner {
 		basePath: string,
 		draft: TaskEntryDraft,
 	): Promise<Result<TaskEntry>> => {
+		if (draft.kind === WORK_LOG_KIND)
+			return err(
+				new Error(
+					`Entry kind ${quoted(draft.kind)} is the work log's: record work with kabane_log.`,
+				),
+			);
 		if (!ENTRY_KIND_PATTERN.test(draft.kind))
 			return err(
 				new Error(
 					`Entry kind ${quoted(draft.kind)} is not valid: use lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "review", "handoff.summary").`,
 				),
 			);
-		return withDb(basePath, (db) => {
+		return atomic(basePath, (db) => {
 			const now = new Date().toISOString();
 			const id = entryId();
 
-			db.run(
-				`INSERT INTO ${TABLES.comments}
-           (id, task_id, kind, author, author_type, content, updated_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				[
-					id,
-					draft.taskId,
-					draft.kind,
-					draft.author,
-					draft.authorType,
-					draft.content,
-					Runtime.actor(),
-					now,
-				],
-			);
-			Oplog.afterWrite(db, "task_comments", "insert", id);
+			RecordWrite.addEntry(db, {
+				id,
+				threadId: draft.taskId,
+				kind: draft.kind,
+				author: draft.author,
+				body: draft.content,
+				data: { author_type: draft.authorType },
+				createdAt: now,
+			});
 
 			return {
 				id,
@@ -82,30 +82,23 @@ export namespace Planner {
 		});
 	};
 
-	/** A task's entries in time order, only those of `kind` when it is given. */
+	/**
+	 * A task's entries in time order, only those of `kind` when it is given.
+	 * The work log's entries are never among them.
+	 */
 	export const getEntries = async (
 		basePath: string,
 		taskId: string,
 		{ kind }: { kind?: string } = {},
 	): Promise<Result<TaskEntry[]>> => {
 		return withDb(basePath, (db) => {
-			const rows = (
-				kind === undefined
-					? db
-							.query(
-								`SELECT * FROM ${TABLES.comments} WHERE task_id = ?
-								  ORDER BY created_at ASC, id ASC`,
-							)
-							.all(taskId)
-					: db
-							.query(
-								`SELECT * FROM ${TABLES.comments} WHERE task_id = ? AND kind = ?
-								  ORDER BY created_at ASC, id ASC`,
-							)
-							.all(taskId, kind)
-			) as Record<string, unknown>[];
-
-			return rows.map(rowToEntry);
+			const rows = RecordRead.entries(db, taskId);
+			if (!rows.ok) throw rows.error;
+			return rows.value
+				.filter(
+					(row) => !isWorkLog(row) && (kind === undefined || row.kind === kind),
+				)
+				.map(rowToEntry);
 		});
 	};
 
@@ -119,16 +112,8 @@ export namespace Planner {
 		taskId: string,
 		kind: string,
 	): Promise<Result<TaskEntry | null>> => {
-		return withDb(basePath, (db) => {
-			const row = db
-				.query(
-					`SELECT * FROM ${TABLES.comments} WHERE task_id = ? AND kind = ?
-					  ORDER BY created_at DESC, id DESC LIMIT 1`,
-				)
-				.get(taskId, kind) as Record<string, unknown> | null;
-
-			return row ? rowToEntry(row) : null;
-		});
+		const entries = await getEntries(basePath, taskId, { kind });
+		return entries.ok ? ok(entries.value.at(-1) ?? null) : entries;
 	};
 
 	/** Add a comment: an entry of the default kind. */

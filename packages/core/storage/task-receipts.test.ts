@@ -82,7 +82,8 @@ describe("prospective scope labels", () => {
 			});
 			if (!receipt.ok) throw receipt.error;
 			expect(receipt.value.shortId).toBe(added.value.shortId);
-			expect(receipt.value.version).toBe(2);
+			// The scope did not move, so nothing was written.
+			expect(receipt.value.version).toBe(1);
 			expect(
 				await withDb(base, (db) =>
 					db.query(`SELECT * FROM ${TABLES.sequences}`).all(),
@@ -116,7 +117,7 @@ describe("prospective scope labels", () => {
 			(
 				await withDb(base, (db) => {
 					db.run(
-						`UPDATE ${TABLES.tasks} SET id = ?, short_id = NULL WHERE id = ?`,
+						`UPDATE ${TABLES.threads} SET id = ?, short_id = NULL WHERE id = ?`,
 						[importedId, added.value.id],
 					);
 					db.run(

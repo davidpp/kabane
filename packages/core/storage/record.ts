@@ -126,6 +126,20 @@ const TARGETS = `SELECT substr(uri, ${PREFIX.length + 1}) FROM ${TABLES.refs}
   WHERE substr(uri, 1, ${PREFIX.length}) = '${PREFIX}'`;
 
 export namespace RecordRead {
+	/** Whether thread `id` shows: arrived, and nothing on its stored ancestry deleted. */
+	export const isVisible = (db: Db, id: string): boolean =>
+		db
+			.query<{ id: string }, [string]>(
+				`${visibleAmong("SELECT ?")} SELECT id FROM visible_threads`,
+			)
+			.get(id) !== null;
+
+	/**
+	 * The `visible_threads(id)` clause for the threads `seed` names, each by its
+	 * own ancestry: a read of a few threads that must not walk the whole record.
+	 */
+	export const visibleAmongSql = visibleAmong;
+
 	/** Visible threads, `parent_id` as it is read: null at the root or where a cycle breaks. */
 	export const threads = (db: Db): Result<ThreadRow[]> =>
 		rowsOf(ThreadRowSchema, () =>

@@ -1173,15 +1173,28 @@ describe("Planner", () => {
 			await Planner.addLink(TEST_BASE, {
 				sourceId: taskAId,
 				targetId: taskBId,
-				type: "parent",
+				type: "related",
 			});
 
 			const result = await Planner.getLinksForTask(TEST_BASE, taskAId);
 			expect(result.ok).toBe(true);
 			if (result.ok) {
 				expect(result.value.length).toBe(1);
-				expect(result.value[0]?.type).toBe("parent");
+				expect(result.value[0]?.type).toBe("related");
 			}
+		});
+
+		it("folds a parent link into the child's parent", async () => {
+			await Planner.addLink(TEST_BASE, {
+				sourceId: taskAId,
+				targetId: taskBId,
+				type: "parent",
+			});
+
+			const links = await Planner.getLinksForTask(TEST_BASE, taskAId);
+			expect(links.ok && links.value).toEqual([]);
+			const child = await Planner.getTask(TEST_BASE, taskBId);
+			expect(child.ok && child.value?.parentTaskId).toBe(taskAId);
 		});
 
 		it("should delete a link", async () => {

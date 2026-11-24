@@ -4,8 +4,8 @@
  * Two independent planner DBs in separate temp dirs, wired to ONE shared
  * in-process relay: two machines, zero cloud. Everything subtle about
  * replication is provable here — ordering, the capture guard, the resolution
- * rules, the rename protocol, FK safety — with no Worker, no D1, no wrangler and
- * no network.
+ * rules, and the storage layer as the record's real writer — with no Worker, no
+ * D1, no wrangler and no network.
  */
 
 import "../testing";
@@ -16,7 +16,8 @@ import { join } from "node:path";
 import type { Db } from "../db/port";
 import { withDb as runWithDb } from "../runtime";
 
-import { SYNC_TABLES } from "../schemas";
+import { Replicated } from "../replicated";
+import { isRecordTable, RECORD_KEYS } from "../schemas";
 import { TABLES } from "../storage/helpers";
 import { Planner } from "../storage/index";
 import { Oplog } from "../storage/oplog";
@@ -102,7 +103,11 @@ const converge = async (a: Device, b: Device) => {
 
 const rowsOf = (base: string, physical: string): Promise<Row[]> =>
 	withDb(base, (db) =>
-		db.query<Row, []>(`SELECT * FROM ${physical} ORDER BY id`).all(),
+		db
+			.query<Row, []>(
+				`SELECT * FROM ${physical} ORDER BY ${isRecordTable(physical) ? RECORD_KEYS[physical].join(", ") : "id"}`,
+			)
+			.all(),
 	);
 
 const countOf = async (base: string, physical: string): Promise<number> =>
@@ -261,7 +266,7 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		await converge(a, b);
 
 		// Every replicated table, row for row, both directions.
-		for (const table of SYNC_TABLES) {
+		for (const { table } of await withDb(a.base, Replicated.tables)) {
 			const onA = await rowsOf(a.base, table);
 			const onB = await rowsOf(b.base, table);
 			expect(
@@ -317,107 +322,62 @@ describe("Sync — two devices, one relay, no cloud", () => {
 				].sort(),
 			);
 		}
-		expect(await rowsOf(b.base, TABLES.comments)).toEqual(
-			await rowsOf(a.base, TABLES.comments),
+		expect(await rowsOf(b.base, TABLES.entries)).toEqual(
+			await rowsOf(a.base, TABLES.entries),
 		);
 	});
 
-	it("keeps both tasks when two devices mint the same short_id offline", async () => {
+	it("keeps both threads when two devices mint the same short_id offline, under that one label", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");
 
 		// Same scope on both machines, and both counters start at 1, so both mint
-		// the identical label. 2ms apart so the ULID order is not a coin flip.
-		const winner = await addTask(a, "A collides", { scopeUri: SHARED });
-		await Bun.sleep(2);
-		const loser = await addTask(b, "B collides", { scopeUri: SHARED });
-
-		expect(winner.shortId).toBe(loser.shortId);
-		expect(winner.id < loser.id).toBe(true);
+		// the identical label.
+		const first = await addTask(a, "A collides", { scopeUri: SHARED });
+		const second = await addTask(b, "B collides", { scopeUri: SHARED });
+		expect(first.shortId).toBe(second.shortId);
 
 		await converge(a, b);
 
+		// No rename on the record yet (JCAB-660): both threads keep the label,
+		// and the two devices store the same rows.
 		for (const device of [a, b]) {
 			const tasks = await rowsOf(device.base, TABLES.tasks);
 			expect(tasks, `${device.deviceId} lost a task`).toHaveLength(2);
-
-			const kept = tasks.find((task) => task.id === winner.id);
-			const renamed = tasks.find((task) => task.id === loser.id);
-			// The ULID-earlier row keeps the label; both devices pick the same one.
-			expect(kept?.short_id).toBe(winner.shortId);
-			expect(renamed?.short_id).not.toBe(winner.shortId);
-			expect(renamed?.short_id).toBeString();
-
-			const history = await withDb(device.base, (db) =>
-				db
-					.query<{ old_short_id: string; task_id: string }, []>(
-						`SELECT old_short_id, task_id FROM ${TABLES.short_id_history}`,
-					)
-					.all(),
-			);
-			expect(history).toEqual([
-				{ old_short_id: winner.shortId ?? "", task_id: loser.id },
+			expect(tasks.map((task) => task.short_id)).toEqual([
+				first.shortId,
+				first.shortId,
 			]);
 		}
-
-		// Both devices minted the SAME replacement label: the mint is derived from
-		// the labels in the batch plus the local table, not from a machine-local
-		// counter, so the two sides agree without exchanging the rename.
-		expect((await taskByTitle(b.base, "B collides")).short_id).toBe(
-			(await taskByTitle(a.base, "B collides")).short_id,
+		expect(await rowsOf(b.base, TABLES.threads)).toEqual(
+			await rowsOf(a.base, TABLES.threads),
 		);
 	});
 
-	it("heals a rename the two devices minted differently from partial logs", async () => {
+	it("raises a device's counter past the labels its pulled threads hold", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");
-
-		const winner = await addTask(a, "A wins", { scopeUri: SHARED });
-		// Three more labels in the same family that A has NOT shipped yet, so the
-		// two devices are looking at different halves of the log when they rename.
-		for (const title of ["a2", "a3", "a4"]) {
+		for (const title of ["one", "two", "three"])
 			await addTask(a, title, { scopeUri: SHARED });
-		}
-		await Bun.sleep(2);
-		const loser = await addTask(b, "B loses", { scopeUri: SHARED });
-
-		// A ships only the colliding op.
-		const partial = await Sync.push(a.base, a.transport, {
-			limit: 1,
-			maxBatches: 1,
-		});
-		if (!partial.ok) throw partial.error;
-		await push(b);
-		await pull(a);
-		await pull(b);
-
-		const labelOf = async (device: Device) =>
-			(await taskByTitle(device.base, "B loses")).short_id;
-
-		// They disagree: each minted past the labels IT could see.
-		expect(await labelOf(a)).not.toBe(await labelOf(b));
-
-		// A full pass delivers the withheld labels, which collide with B's guess and
-		// rename it again — this time off the complete label set, so both devices
-		// land on the same label. The divergence is transient, not permanent. The
-		// second pass asserts it settles instead of oscillating.
-		await converge(a, b);
 		await converge(a, b);
 
-		expect(await labelOf(b)).toBe(await labelOf(a));
-		expect(await rowsOf(b.base, TABLES.tasks)).toEqual(
-			await rowsOf(a.base, TABLES.tasks),
-		);
-		expect((await taskByTitle(a.base, "A wins")).short_id).toBe(winner.shortId);
-		expect((await taskByTitle(a.base, "B loses")).id).toBe(loser.id);
+		// B has minted nothing in this scope; its next label follows A's.
+		const minted = await addTask(b, "four", { scopeUri: SHARED });
+		const held = (await rowsOf(b.base, TABLES.threads)).map((t) => t.short_id);
+		expect(held.filter((label) => label === minted.shortId)).toHaveLength(1);
+		expect(minted.shortId).toBe("JCOL-4");
 	});
 
-	it("captures a cascade as children-before-parent and replays it FK-safely", async () => {
+	it("replicates a delete as one tombstone that hides the thread and what it holds", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");
 
 		const parent = await addTask(a, "doomed", { scopeUri: ALPHA });
 		const sibling = await addTask(a, "survivor", { scopeUri: ALPHA });
+		const child = await addTask(a, "doomed child", {
+			scopeUri: ALPHA,
+			parentTaskId: parent.id,
+		});
 		for (const content of ["first", "second"]) {
 			const comment = await Planner.addComment(a.base, {
 				taskId: parent.id,
@@ -427,66 +387,43 @@ describe("Sync — two devices, one relay, no cloud", () => {
 			});
 			if (!comment.ok) throw comment.error;
 		}
-		const log = await Planner.addWorkLog(a.base, {
-			taskId: parent.id,
-			refs: [{ uri: "commit:ccc333" }],
-		});
-		if (!log.ok) throw log.error;
-		const ref = await Planner.addContextRef(a.base, {
-			taskId: parent.id,
-			uri: "obsidian://doomed",
-			kind: "PRD",
-		});
-		if (!ref.ok) throw ref.error;
 		const link = await Planner.addLink(a.base, {
-			sourceId: parent.id,
-			targetId: sibling.id,
+			sourceId: sibling.id,
+			targetId: parent.id,
 			type: "blocks",
 		});
 		if (!link.ok) throw link.error;
 
 		await converge(a, b);
-		expect(await countOf(b.base, TABLES.comments)).toBe(2);
+		const comments = await Planner.getComments(b.base, parent.id);
+		expect(comments.ok && comments.value).toHaveLength(2);
 
 		const removed = await Planner.deleteTask(a.base, parent.id);
 		if (!removed.ok) throw removed.error;
-
-		// The storage layer snapshots the cascade before the DELETE and captures
-		// it children first: 1 + N ops.
-		const deletes = await deleteOps(a.base);
-		expect(deletes).toHaveLength(6);
-		expect(deletes[deletes.length - 1]?.tbl).toBe("tasks");
-		expect(
-			deletes
-				.slice(0, -1)
-				.map((op) => op.tbl)
-				.sort(),
-		).toEqual([
-			"task_comments",
-			"task_comments",
-			"task_context_refs",
-			"task_links",
-			"task_work_log",
-		]);
+		expect(await deleteOps(a.base)).toEqual([]);
 
 		await push(a);
 		const report = await pull(b);
-
-		// Applying in seq order deletes children first, so the FK holds at every
-		// step and nothing had to be skipped as already-absent.
-		expect(report.applied).toBe(6);
-		expect(report.skipped["already-absent"]).toBe(0);
+		expect(report.applied).toBe(1);
 
 		for (const device of [a, b]) {
-			expect(await countOf(device.base, TABLES.comments)).toBe(0);
-			expect(await countOf(device.base, TABLES.work_log)).toBe(0);
-			expect(await countOf(device.base, TABLES.context_refs)).toBe(0);
-			expect(await countOf(device.base, TABLES.task_links)).toBe(0);
-			expect(await countOf(device.base, TABLES.tasks)).toBe(1);
+			const tasks = await rowsOf(device.base, TABLES.tasks);
+			expect(tasks.map((task) => task.title)).toEqual(["survivor"]);
+			const gone = await Planner.getComments(device.base, parent.id);
+			expect(gone.ok && gone.value).toEqual([]);
+			const links = await Planner.getLinksForTask(device.base, sibling.id);
+			expect(links.ok && links.value).toEqual([]);
+			const under = await Planner.getTask(device.base, child.id);
+			expect(under.ok && under.value).toBeNull();
+			// Stored, never shown: a delete is final and nothing is dropped.
+			expect(await countOf(device.base, TABLES.entries)).toBe(2);
 		}
+		expect(await rowsOf(b.base, TABLES.threads)).toEqual(
+			await rowsOf(a.base, TABLES.threads),
+		);
 	});
 
-	it("pre-filters an FK orphan without taking its batch down", async () => {
+	it("stores an entry written on a thread another device deleted, and shows it nowhere", async () => {
 		const a = await createDevice("device-a");
 		const b = await createDevice("device-b");
 
@@ -494,21 +431,18 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		const survivor = await addTask(a, "edited on B", { scopeUri: ALPHA });
 		await converge(a, b);
 
-		// A deletes the parent and pushes FIRST, so the delete sits earlier in the
-		// log than B's insert.
 		const removed = await Planner.deleteTask(a.base, doomed.id);
 		if (!removed.ok) throw removed.error;
 		await push(a);
 
-		// B, not yet aware, comments on the doomed task and makes one legitimate
-		// edit that MUST survive the same batch.
-		const orphan = await Planner.addComment(b.base, {
+		// B, not yet aware, comments on the doomed task and makes one edit.
+		const late = await Planner.addComment(b.base, {
 			taskId: doomed.id,
 			author: "david",
 			authorType: "human",
 			content: "written on a task A already deleted",
 		});
-		if (!orphan.ok) throw orphan.error;
+		if (!late.ok) throw late.error;
 		const edited = await Planner.updateTask(b.base, survivor.id, {
 			title: "edited on B, must land",
 		});
@@ -516,21 +450,21 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		await push(b);
 
 		const report = await pull(a);
-
-		// Pre-filtered, not caught: an issued INSERT would have rolled the whole
-		// transaction back, sibling UPDATE included.
-		expect(report.skipped["orphan-parent"]).toBe(1);
-		expect(report.applied).toBe(1);
-		expect(await countOf(a.base, TABLES.comments)).toBe(0);
+		expect(report.skipped["orphan-parent"]).toBe(0);
+		expect(report.applied).toBe(2);
 		expect((await taskByTitle(a.base, "edited on B, must land")).id).toBe(
 			survivor.id,
 		);
 
-		// And B converges the other way: applying A's delete cascades its own
-		// comment away, so neither device keeps the orphan.
 		await pull(b);
-		expect(await countOf(b.base, TABLES.comments)).toBe(0);
-		expect(await countOf(b.base, TABLES.tasks)).toBe(1);
+		for (const device of [a, b]) {
+			const comments = await Planner.getComments(device.base, doomed.id);
+			expect(comments.ok && comments.value).toEqual([]);
+			expect(await countOf(device.base, TABLES.tasks)).toBe(1);
+		}
+		expect(await rowsOf(b.base, TABLES.entries)).toEqual(
+			await rowsOf(a.base, TABLES.entries),
+		);
 	});
 
 	it("converges three devices on one winner when two authors edit at the same millisecond", async () => {
@@ -550,29 +484,30 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		await convergeAll();
 		for (const d of all) expect(await countOf(d.base, TABLES.tasks)).toBe(1);
 
-		// Same millisecond, same version bump, two different authors. Written
-		// through raw SQL so the clock is byte-identical (and later than the
-		// creation clock), then captured through the same step the storage layer
-		// uses.
+		// Same millisecond, same counter, two different devices. Written through
+		// raw SQL so the clock is byte-identical (and later than the creation
+		// clock), stamped as a writer stamps, then captured through the same step
+		// the storage layer uses.
 		const TIE = "2099-01-01T00:00:00.000Z";
 		const edit = (device: Device, actor: string, title: string) =>
 			withDb(device.base, (db) => {
 				db.run(
-					`UPDATE ${TABLES.tasks}
-              SET title = ?, updated_at = ?, version = version + 1, updated_by = ?
+					`UPDATE ${TABLES.threads}
+              SET title = ?, updated_at = ?, version = version + 1, updated_by = ?,
+                  updated_device = ?
             WHERE id = ?`,
-					[title, TIE, actor, task.id],
+					[title, TIE, actor, device.deviceId, task.id],
 				);
-				Oplog.afterWrite(db, "tasks", "update", task.id);
+				Oplog.afterWrite(db, TABLES.threads, "update", task.id);
 			});
 		await edit(a, "kabane://actor/agent/hermes", "written by hermes");
 		await edit(b, "kabane://actor/agent/claude", "written by claude");
 
 		await convergeAll();
 
-		// Equal clock, equal version: the lower actor URI wins everywhere —
-		// including on C, which authored nothing and would previously have
-		// compared both rows as if it had written the one it held.
+		// Equal clock, equal counter: the greater writing device wins everywhere —
+		// including on C, which authored nothing (`sync/resolve.ts`, "The 2.0
+		// record").
 		for (const d of all) {
 			const row = await taskByTitle(d.base, "written by claude");
 			expect(row.id).toBe(task.id);
@@ -599,7 +534,8 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		await addTask(b, "B local, unpushed", { scopeUri: BETA });
 		const before = await Sync.status(b.base);
 		if (!before.ok) throw before.error;
-		expect(before.value.pendingOps).toBe(1);
+		const pending = before.value.pendingOps;
+		expect(pending).toBeGreaterThan(0);
 
 		const page = await b.transport.pull(0, 500);
 		if (!page.ok) throw page.error;
@@ -609,22 +545,22 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		const first = await Apply.applyBatch(b.base, batch);
 		if (!first.ok) throw first.error;
 		const afterFirst = {
-			tasks: await rowsOf(b.base, TABLES.tasks),
-			comments: await rowsOf(b.base, TABLES.comments),
+			threads: await rowsOf(b.base, TABLES.threads),
+			entries: await rowsOf(b.base, TABLES.entries),
 		};
 
 		const second = await Apply.applyBatch(b.base, batch);
 		if (!second.ok) throw second.error;
 
-		expect(await rowsOf(b.base, TABLES.tasks)).toEqual(afterFirst.tasks);
-		expect(await rowsOf(b.base, TABLES.comments)).toEqual(afterFirst.comments);
-		// Append-only rows are recognized rather than re-inserted.
-		expect(second.value.skipped["already-present"]).toBeGreaterThan(0);
+		expect(await rowsOf(b.base, TABLES.threads)).toEqual(afterFirst.threads);
+		expect(await rowsOf(b.base, TABLES.entries)).toEqual(afterFirst.entries);
+		// A record row already held wins every register: nothing is written again.
+		expect(second.value.applied).toBe(0);
 
 		// Apply writes below the capture step: not a single op was recorded.
 		const after = await Sync.status(b.base);
 		if (!after.ok) throw after.error;
-		expect(after.value.pendingOps).toBe(1);
+		expect(after.value.pendingOps).toBe(pending);
 		expect(after.value.lastAppliedSeq).toBe(batch.throughSeq);
 	});
 
@@ -636,9 +572,9 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		const task = await addTask(a, "linked twice", { scopeUri: ALPHA });
 		await converge(a, b);
 
-		// Then, offline, each device links it to the SAME external issue. Two
-		// ULIDs are minted for one logical row; UNIQUE(task_id, provider,
-		// external_id) is what lets the resolver see they are the same link.
+		// Then, offline, each device links it to the SAME external issue. The
+		// ref's key is the thread, the provider's id and the kind, so both write
+		// one row.
 		const onA = await Planner.upsertUpstreamLink(a.base, {
 			taskId: task.id,
 			provider: "linear",
@@ -661,13 +597,10 @@ describe("Sync — two devices, one relay, no cloud", () => {
 		await converge(a, b);
 		await converge(a, b);
 
-		const rowsA = await rowsOf(a.base, TABLES.upstream_links);
-		const rowsB = await rowsOf(b.base, TABLES.upstream_links);
+		const rowsA = await rowsOf(a.base, TABLES.refs);
+		const rowsB = await rowsOf(b.base, TABLES.refs);
 		expect(rowsA).toHaveLength(1);
 		expect(rowsB).toEqual(rowsA);
-
-		// The lower ULID owns the surviving row on both devices.
-		const winner = onA.value.id < onB.value.id ? onA.value.id : onB.value.id;
-		expect(rowsA[0]?.id).toBe(winner);
+		expect(onA.value.id).toBe(onB.value.id);
 	});
 });

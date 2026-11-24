@@ -66,26 +66,13 @@ import {
 // ============================================================
 
 /**
- * The LWW clock column per core table. `task_links` and `task_work_log` rows
- * are immutable once written (no update path exists), so they have no clock and
- * fall back to the op's own capture time. A module table declares its own.
+ * The LWW clock column per core table: `projects` is the one left beside the
+ * record since migration 14 (the record resolves under "The 2.0 record"
+ * below). A module table declares its own.
  */
 const CLOCK_COLUMN: Partial<Record<SyncTable, string>> = {
-	tasks: "updated_at",
 	projects: "updated_at",
-	task_comments: "updated_at",
-	task_context_refs: "added_at",
-	upstream_links: "updated_at",
 };
-
-/** Tables whose rows carry an FK to `tasks`. Orphan candidates. */
-const CHILD_TABLES: readonly SyncTable[] = [
-	"task_comments",
-	"task_work_log",
-	"task_links",
-	"task_context_refs",
-	"upstream_links",
-];
 
 /** How a table resolves. One family per distinct rule, not one per table. */
 export type SyncFamily =
@@ -99,13 +86,7 @@ export type SyncFamily =
 	| "natural-key-lww";
 
 const FAMILY: Record<SyncTable, SyncFamily> = {
-	tasks: "row-lww",
 	projects: "row-lww",
-	task_comments: "append-only",
-	task_work_log: "append-only",
-	task_links: "natural-key-dedupe",
-	task_context_refs: "natural-key-lww",
-	upstream_links: "natural-key-lww",
 };
 
 // ============================================================
@@ -262,7 +243,7 @@ const ruleFor = (tbl: string): TableRule | undefined => {
 		return {
 			family: FAMILY[tbl],
 			clock: CLOCK_COLUMN[tbl],
-			childOfTasks: CHILD_TABLES.includes(tbl),
+			childOfTasks: false,
 		};
 	const spec = Modules.table(tbl)?.spec;
 	return spec === undefined

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Db } from "../db/port";
 import { TABLES } from "../db/tables";
 import { Modules } from "../module";
+import { isRecordTable, RECORD_KEYS, RecordKey } from "../schemas/record";
 import { Migrations } from "../storage/migrations";
 
 const cell = z.union([
@@ -57,3 +58,13 @@ export const readHeader = (db: Db) => ({
 });
 
 export const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+
+/** A table's identity columns: a record table's key (`RECORD_KEYS`), any other's `id`. */
+export const keyColumns = (table: string): readonly string[] =>
+	isRecordTable(table) ? RECORD_KEYS[table] : ["id"];
+
+/** A document's `id`: the row id sync gives the row (`RecordKey`), or its `id`. */
+export const idOf = (
+	table: string,
+	row: Readonly<Record<string, unknown>>,
+): unknown => (isRecordTable(table) ? RecordKey.rowIdOf(table, row) : row.id);

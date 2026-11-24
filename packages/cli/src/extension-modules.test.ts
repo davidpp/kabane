@@ -128,49 +128,32 @@ it("writes a row through host.store, converges it, parks it on a device with the
 	);
 	expect(unwrap(await Sync.status(beta.home)).parkedOps).toEqual({});
 
-	// Alpha disables the extension: its rows stay, and a task delete still captures their deletes.
+	// Alpha disables the extension: its rows stay, and a task delete is its
+	// thread's tombstone alone; the note stays stored on both devices and the
+	// task reads as gone.
 	alpha.enable(false);
 	await alpha.open();
 	expect(await alpha.notes()).toHaveLength(1);
-	const [note] = await alpha.notes();
-	if (!note) throw new Error("alpha has no note");
 	unwrap(await Planner.deleteTask(alpha.home, task.id));
-	// What alpha captured: the note's delete, tagged from the recorded declaration, before the task's.
 	expect(
 		unwrap(
 			await withDb(alpha.home, (db) =>
 				db
-					.query<
-						{
-							tbl: string;
-							row_id: string;
-							module: string | null;
-							module_schema: number | null;
-						},
-						[]
-					>(
-						"SELECT tbl, row_id, module, module_schema FROM sync_oplog WHERE op = 'delete' ORDER BY seq",
+					.query<{ n: number }, []>(
+						"SELECT COUNT(*) AS n FROM sync_oplog WHERE op = 'delete'",
 					)
-					.all(),
+					.get(),
 			),
 		),
-	).toEqual([
-		{
-			tbl: NotesExtension.TABLE_NAME,
-			row_id: note.id,
-			module: "notes",
-			module_schema: 1,
-		},
-		{ tbl: "tasks", row_id: task.id, module: null, module_schema: null },
-	]);
+	).toEqual({ n: 0 });
 	await alpha.push();
-	// Beta applies both deletes; without the note's, it would apply only the task's.
 	const pulled = await beta.pull();
 	expect({ applied: pulled.applied, parked: pulled.parked }).toEqual({
-		applied: 2,
+		applied: 1,
 		parked: 0,
 	});
-	expect(await beta.notes()).toEqual([]);
+	expect(await beta.notes()).toHaveLength(1);
+	expect(unwrap(await Planner.getTask(beta.home, task.id))).toBeNull();
 });
 
 const stops = [

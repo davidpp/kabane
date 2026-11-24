@@ -354,9 +354,11 @@ describe("quarantine", () => {
 		const next = await Planner.addTask(base, { title: "after the poison" });
 		if (!next.ok) throw next.error;
 
+		// Each task is a thread and its attributes.
 		const before = await Sync.status(base);
 		if (!before.ok) throw before.error;
-		expect(before.value.pendingOps).toBe(2);
+		const ops = before.value.pendingOps;
+		expect(ops).toBeGreaterThan(2);
 
 		const pushed = await Sync.push(base, transportFor());
 		if (!pushed.ok) throw pushed.error;
@@ -367,8 +369,8 @@ describe("quarantine", () => {
 		if (!after.ok) throw after.error;
 		expect(after.value.pendingOps).toBe(0);
 		expect(after.value.quarantinedOps).toBe(1);
-		expect(after.value.quarantined[0]?.tbl).toBe("tasks");
-		expect(pushed.value.pushed).toBe(1);
+		expect(after.value.quarantined[0]?.tbl).toBe("threads");
+		expect(pushed.value.pushed).toBe(ops - 1);
 	});
 
 	it("records a repeat refusal of the same op once", async () => {
@@ -396,7 +398,12 @@ describe("quarantine", () => {
 		if (!pushed.ok) throw pushed.error;
 
 		// A local write after the pass: pending and quarantined are independent.
-		const later = await Planner.addTask(base, { title: "unpushed" });
+		const later = await Planner.addComment(base, {
+			taskId: huge.value.id,
+			author: "me",
+			authorType: "human",
+			content: "unpushed",
+		});
 		if (!later.ok) throw later.error;
 
 		const status = await Sync.status(base);
@@ -505,10 +512,20 @@ describe("log reset", () => {
 		const caughtUp = await Sync.status(base);
 		if (!caughtUp.ok) throw caughtUp.error;
 		expect(caughtUp.value.lastAppliedSeq).toBe(3);
+		// A task is a thread and its attributes, several ops: pushed before the wipe.
+		const task = await Planner.addTask(base, { title: "before the wipe" });
+		if (!task.ok) throw task.error;
+		const early = await Sync.push(base, transport);
+		if (!early.ok) throw early.error;
 
 		// The log is wiped. Alpha pushes one op; head comes back as 1.
 		relay = LocalRelay.create();
-		await Planner.addTask(base, { title: "after the wipe" });
+		await Planner.addComment(base, {
+			taskId: task.value.id,
+			author: "me",
+			authorType: "human",
+			content: "after the wipe",
+		});
 		const pushed = await Sync.push(base, transport);
 		if (!pushed.ok) throw pushed.error;
 

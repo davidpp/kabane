@@ -71,29 +71,41 @@ const watermark = async (device: Device): Promise<number> => {
 	return state.value.value.lastAppliedSeq;
 };
 
-/** A task insert from a device on schema `schema`, appended straight to the relay. */
+/** A thread insert from a device on schema `schema`, appended straight to the relay. */
 const appendFromSchema = (schema: number | undefined, title: string): void => {
 	const now = new Date().toISOString();
 	const rowId = `01FUTURE${crypto.randomUUID().replaceAll("-", "").slice(0, 18).toUpperCase()}`;
 	relay.log.push({
 		opId: crypto.randomUUID(),
 		deviceId: "future-device",
-		tbl: "tasks",
+		tbl: "threads",
 		rowId,
 		op: "insert",
 		rowUpdatedAt: now,
 		payload: {
 			id: rowId,
-			title,
+			short_id: null,
 			kind: "task",
-			state: "inbox",
-			priority: "normal",
-			source: "human",
-			discovered_at: now,
-			version: 1,
-			visibility: "shared",
+			kind_version: null,
+			title,
+			body: null,
+			scope: null,
+			parent_id: null,
+			created_by: null,
 			created_at: now,
+			visibility: "shared",
 			updated_at: now,
+			updated_by: null,
+			updated_device: "future-device",
+			version: 1,
+			state: "inbox",
+			assignee: null,
+			state_updated_at: now,
+			state_updated_by: null,
+			state_updated_device: "future-device",
+			state_version: 1,
+			deleted_at: null,
+			deleted_device: null,
 			a_column_from_the_future: "kept by the newer device only",
 		},
 		version: 1,

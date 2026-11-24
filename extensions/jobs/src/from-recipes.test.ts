@@ -78,7 +78,7 @@ const RECIPES: KabaneModule[] = [
 					db.run(
 						`CREATE TABLE recipes_jobs (
 						   id TEXT PRIMARY KEY,
-						   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+						   task_id TEXT NOT NULL,
 						   schedule TEXT NOT NULL, recipe TEXT NOT NULL, inputs TEXT NOT NULL,
 						   harness TEXT, last_fired_at TEXT, created_at TEXT NOT NULL,
 						   updated_at TEXT NOT NULL, updated_by TEXT,
@@ -213,7 +213,8 @@ it("moves a recipes device's tables, versions, ops and declarations to the jobs 
 		expect(
 			await read<{ n: number }>(`SELECT count(*) AS n FROM ${table}`),
 		).toEqual([{ n: 1 }]);
-	// The history the old names recorded carries on: nothing re-ran, nothing is newer.
+	// The history the old names recorded carries on: nothing re-ran; the jobs
+	// module's one later migration (detach-from-tasks, JCAB-660) runs after it.
 	expect(
 		await read<{ v: number }>(
 			"SELECT max(version) AS v FROM schema_migrations_jobs_runs",
@@ -223,13 +224,13 @@ it("moves a recipes device's tables, versions, ops and declarations to the jobs 
 		await read<{ v: number }>(
 			"SELECT max(version) AS v FROM schema_migrations_jobs",
 		),
-	).toEqual([{ v: 5 }]);
+	).toEqual([{ v: 6 }]);
 	expect(
 		await read(
-			"SELECT tbl, module, module_schema FROM sync_oplog ORDER BY seq",
+			"SELECT tbl, module, module_schema FROM sync_oplog WHERE tbl != 'attributes' ORDER BY seq",
 		),
 	).toEqual([
-		{ tbl: "tasks", module: null, module_schema: null },
+		{ tbl: "threads", module: null, module_schema: null },
 		{ tbl: "jobs_runs", module: "jobs-runs", module_schema: 3 },
 		{ tbl: "jobs_jobs", module: "jobs", module_schema: 5 },
 	]);
@@ -253,7 +254,7 @@ it("moves a recipes device's tables, versions, ops and declarations to the jobs 
 			"SELECT tbl, module, module_schema FROM module_declarations ORDER BY tbl",
 		),
 	).toEqual([
-		{ tbl: "jobs_jobs", module: "jobs", module_schema: 5 },
+		{ tbl: "jobs_jobs", module: "jobs", module_schema: 6 },
 		{ tbl: "jobs_runs", module: "jobs-runs", module_schema: 3 },
 	]);
 

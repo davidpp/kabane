@@ -28,6 +28,7 @@ import {
 	ULID_PREFIX_PATTERN,
 } from "./helpers";
 import { Oplog } from "./oplog";
+import { RecordWrite } from "./record-write";
 
 export namespace Planner {
 	// ----------------------------------------------------------
@@ -237,18 +238,10 @@ export namespace Planner {
 				.map((row) => row.id);
 
 			db.transaction(() => {
-				// Clearing project_id is a task write like any other: clocked,
-				// versioned, and captured per task, so the other devices see the
-				// same clear instead of an FK they cannot satisfy.
-				db.run(
-					`UPDATE ${TABLES.tasks}
-              SET project_id = NULL, updated_at = ?, version = version + 1, updated_by = ?
-            WHERE project_id = ?`,
-					[new Date().toISOString(), Runtime.actor(), id],
-				);
-				for (const taskId of orphaned) {
-					Oplog.afterWrite(db, "tasks", "update", taskId);
-				}
+				// Clearing project_id is a task write like any other: stamped and
+				// captured per task, so the other devices see the same clear.
+				for (const taskId of orphaned)
+					RecordWrite.setAttribute(db, taskId, "project_id", null);
 				db.run(`DELETE FROM ${TABLES.projects} WHERE id = ?`, [id]);
 				if (project.value !== undefined) {
 					Oplog.afterDelete(db, [{ tbl: "projects", row: project.value }]);

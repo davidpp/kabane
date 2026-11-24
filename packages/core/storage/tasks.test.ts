@@ -283,7 +283,8 @@ describe("updateTaskIn", () => {
 					title: "After",
 					state: "waiting",
 					scopeUri: "kabane://scope/after",
-					version: 2,
+					// One write to each of the text and claim registers.
+					version: 3,
 				});
 				return changed.value;
 			})(),

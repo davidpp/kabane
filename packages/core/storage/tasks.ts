@@ -28,7 +28,9 @@ import {
 	ULID_LENGTH,
 	ULID_PREFIX_PATTERN,
 } from "./helpers";
-import { Oplog } from "./oplog";
+import { RecordRead } from "./record";
+import { RecordWrite, type ThreadClaim, type ThreadText } from "./record-write";
+import { TaskRows } from "./task-rows";
 import {
 	selectTaskQuery,
 	selectTaskSearch,
@@ -41,31 +43,113 @@ export const taskScopeChanged = (
 	currentScopeUri: string | null | undefined,
 ): boolean => (scopeUri ?? null) !== (currentScopeUri ?? null);
 
-const taskFieldUpdates = (updates: TaskUpdate) =>
+/** Each `TaskUpdate` field that is an attribute now, under its old column's name. */
+const attributeUpdates = (updates: TaskUpdate) =>
 	[
-		["title", updates.title],
-		["description", updates.description],
-		["kind", updates.kind],
 		["priority", updates.priority],
 		["deadline", updates.deadline],
 		["defer_until", updates.deferUntil],
 		["context", updates.context],
 		["confidence", updates.confidence],
-		["assignee", updates.assignee],
-		["parent_task_id", updates.parentTaskId],
 		["project_id", updates.projectId],
 		["source", updates.provenance?.source],
 		["source_id", updates.provenance?.sourceId],
 		["source_url", updates.provenance?.sourceUrl],
+		[
+			"scope_refs",
+			updates.scopeRefs === undefined
+				? undefined
+				: JSON.stringify(updates.scopeRefs),
+		],
+		[
+			"tags",
+			updates.tags === undefined ? undefined : JSON.stringify(updates.tags),
+		],
+		[
+			"needs_review",
+			updates.needsReview === undefined
+				? undefined
+				: updates.needsReview
+					? 1
+					: 0,
+		],
+		[
+			"verification",
+			updates.verification === undefined
+				? undefined
+				: JSON.stringify(updates.verification),
+		],
 	] as const;
 
-const provenanceValues = (provenance: TaskDraft["provenance"], now: string) => [
-	provenance?.source ?? "human",
-	provenance?.sourceId ?? null,
-	provenance?.sourceUrl ?? null,
-	provenance?.discoveredAt ?? now,
-	provenance?.discoveredBy ?? null,
-];
+/** The thread's text register, as far as `updates` names it; the scope is the caller's. */
+const textUpdates = (updates: TaskUpdate): ThreadText => {
+	const text: ThreadText = {};
+	if (updates.title !== undefined) text.title = updates.title;
+	if (updates.description !== undefined) text.body = updates.description;
+	if (updates.kind !== undefined) text.kind = updates.kind;
+	if (updates.parentTaskId !== undefined) text.parent_id = updates.parentTaskId;
+	return text;
+};
+
+/** The thread's claim register, as far as `updates` names it. */
+const claimUpdates = (updates: TaskUpdate): ThreadClaim => {
+	const claim: ThreadClaim = {};
+	if (updates.state !== undefined) claim.state = updates.state;
+	if (updates.assignee !== undefined) claim.assignee = updates.assignee;
+	return claim;
+};
+
+/** A new task's attributes: every field the old row stored, absent ones left out. */
+const draftAttributes = (
+	draft: TaskDraft,
+	now: string,
+	completedAt: string | null,
+) =>
+	[
+		["priority", draft.priority ?? "normal"],
+		["scope_refs", draft.scopeRefs ? JSON.stringify(draft.scopeRefs) : null],
+		["deadline", draft.deadline ?? null],
+		["defer_until", draft.deferUntil ?? null],
+		["completed_at", completedAt],
+		["source", draft.provenance?.source ?? "human"],
+		["source_id", draft.provenance?.sourceId ?? null],
+		["source_url", draft.provenance?.sourceUrl ?? null],
+		["discovered_at", draft.provenance?.discoveredAt ?? now],
+		["confidence", draft.confidence ?? null],
+		["project_id", draft.projectId ?? null],
+		["needs_review", draft.needsReview ? 1 : 0],
+		[
+			"verification",
+			draft.verification ? JSON.stringify(draft.verification) : null,
+		],
+		["tags", JSON.stringify(draft.tags ?? [])],
+		["context", draft.context ?? null],
+	] as const;
+
+const CLOSED = ["done", "cancelled"];
+
+/**
+ * `completed_at` after a state change: kept when a closed task closes again,
+ * set when it closes, removed when it opens.
+ */
+const completedAtAfter = (
+	db: Db,
+	id: string,
+	from: string | null,
+	to: string,
+): string | null | undefined => {
+	if (!CLOSED.includes(to)) return null;
+	if (from !== null && CLOSED.includes(from)) {
+		const held = db
+			.query<{ value: string | null }, [string]>(
+				`SELECT value FROM ${TABLES.attributes}
+				  WHERE thread_id = ? AND key = 'completed_at' AND removed_at IS NULL`,
+			)
+			.get(id)?.value;
+		if (held) return undefined;
+	}
+	return new Date().toISOString();
+};
 
 const taskFromDraft = (
 	draft: TaskDraft,
@@ -142,12 +226,12 @@ export namespace Planner {
 		// Short ID format (e.g., JDES-123) + legacy formats
 		if (SHORT_ID_PATTERN.test(input)) {
 			const result = await withDb(basePath, (db) => {
-				const row = db
-					.query(
-						`SELECT id FROM ${TABLES.tasks} WHERE short_id = ? COLLATE NOCASE`,
-					)
-					.get(input.toUpperCase()) as { id: string } | null;
-				return row;
+				const [row] = TaskRows.where(
+					db,
+					`SELECT id FROM ${TABLES.threads} WHERE short_id = ? COLLATE NOCASE`,
+					[input.toUpperCase()],
+				);
+				return row ? { id: row.id as string } : null;
 			});
 
 			if (!result.ok) return result;
@@ -164,11 +248,11 @@ export namespace Planner {
 
 		// ULID prefix match (fallback for legacy/debugging)
 		const result = await withDb(basePath, (db) => {
-			const rows = db
-				.query(
-					`SELECT id, short_id, title FROM ${TABLES.tasks} WHERE id LIKE ?`,
-				)
-				.all(`${input}%`) as {
+			const rows = TaskRows.where(
+				db,
+				`SELECT id FROM ${TABLES.threads} WHERE id LIKE ?`,
+				[`${input}%`],
+			) as {
 				id: string;
 				short_id: string | null;
 				title: string;
@@ -223,56 +307,29 @@ export namespace Planner {
 		const prefixResult = derivePrefix(scopeUri);
 		if (!prefixResult.ok) return prefixResult;
 
-		const result = await withDb(basePath, (db) => {
+		// One transaction: the thread and its attributes land together.
+		const result = await atomic(basePath, (db) => {
 			const now = new Date().toISOString();
 			const completedAt =
 				draft.state === "done" || draft.state === "cancelled" ? now : null;
 			const id = generateId();
 			const shortId = generateShortId(db, prefixResult.value, scopeUri);
 
-			db.run(
-				`INSERT INTO ${TABLES.tasks} (
-          id, short_id, title, description, kind, state, priority,
-          scope_uri, scope_refs,
-          deadline, defer_until,
-          source, source_id, source_url, discovered_at, discovered_by,
-          confidence, assignee,
-          parent_task_id, project_id, needs_review, reviewed_at, reviewed_by,
-          verification,
-          tags, context,
-          updated_by,
-          created_at, updated_at, completed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				[
-					id,
-					shortId,
-					draft.title,
-					draft.description ?? null,
-					draft.kind ?? "task",
-					draft.state ?? "inbox",
-					draft.priority ?? "normal",
-					scopeUri ?? null,
-					draft.scopeRefs ? JSON.stringify(draft.scopeRefs) : null,
-					draft.deadline ?? null,
-					draft.deferUntil ?? null,
-					...provenanceValues(draft.provenance, now),
-					draft.confidence ?? null,
-					draft.assignee ?? null,
-					draft.parentTaskId ?? null,
-					draft.projectId ?? null,
-					draft.needsReview ? 1 : 0,
-					null, // reviewedAt
-					null, // reviewedBy
-					draft.verification ? JSON.stringify(draft.verification) : null,
-					JSON.stringify(draft.tags ?? []),
-					draft.context ?? null,
-					Runtime.actor(),
-					now,
-					now,
-					completedAt,
-				],
-			);
-			Oplog.afterWrite(db, "tasks", "insert", id);
+			RecordWrite.createThread(db, {
+				id,
+				shortId,
+				kind: draft.kind ?? "task",
+				title: draft.title,
+				body: draft.description ?? null,
+				scope: scopeUri ?? null,
+				parentId: draft.parentTaskId ?? null,
+				createdBy: draft.provenance?.discoveredBy ?? null,
+				state: draft.state ?? "inbox",
+				assignee: draft.assignee ?? null,
+				now,
+			});
+			for (const [key, value] of draftAttributes(draft, now, completedAt))
+				if (value !== null) RecordWrite.setAttribute(db, id, key, value, now);
 
 			return taskFromDraft(draft, scopeUri, { id, shortId, now, completedAt });
 		});
@@ -292,10 +349,7 @@ export namespace Planner {
 		return withDb(basePath, (db) => {
 			// Try by ULID first, then by shortId for flexibility
 			// This allows both "01ABC..." and "JDES-40" to work
-			const row = db
-				.query(`SELECT * FROM ${TABLES.tasks} WHERE id = ? OR short_id = ?`)
-				.get(id, id) as Record<string, unknown> | null;
-
+			const row = TaskRows.byIdOrShortId(db, id);
 			return row ? rowToTask(row) : null;
 		});
 	};
@@ -388,10 +442,7 @@ export namespace Planner {
 		if (ids.length === 0) return ok([]);
 
 		return withDb(basePath, (db) => {
-			const placeholders = ids.map(() => "?").join(", ");
-			const rows = db
-				.query(`SELECT * FROM ${TABLES.tasks} WHERE id IN (${placeholders})`)
-				.all(...ids) as Record<string, unknown>[];
+			const rows = TaskRows.byIds(db, ids);
 
 			// Convert rows and maintain order based on input ids
 			const taskMap = new Map<string, Task>();
@@ -435,78 +486,39 @@ export namespace Planner {
 		const prefixResult = derivePrefix(scopeUri);
 		if (!prefixResult.ok) return prefixResult;
 
-		const now = new Date().toISOString();
-		const sets: string[] = [
-			"updated_at = ?",
-			"version = version + 1",
-			"updated_by = ?",
-		];
-		const params: (string | number | null)[] = [now, Runtime.actor()];
-
-		for (const [column, value] of taskFieldUpdates(updates)) {
-			if (value !== undefined) {
-				sets.push(`${column} = ?`);
-				params.push(value);
-			}
-		}
-
-		if (updates.state !== undefined) {
-			sets.push("state = ?");
-			params.push(updates.state);
-			sets.push(
-				"completed_at = CASE WHEN ? IN ('done', 'cancelled') THEN CASE WHEN state IN ('done', 'cancelled') AND completed_at IS NOT NULL THEN completed_at ELSE ? END ELSE NULL END",
-			);
-			params.push(updates.state, now);
-		}
-
 		const current = db
-			.query<{ state: Task["state"]; scope_uri: string | null }>(
-				`SELECT state, scope_uri FROM ${TABLES.tasks} WHERE id = ?`,
+			.query<{ state: Task["state"]; scope: string | null }>(
+				`SELECT state, scope FROM ${TABLES.threads} WHERE id = ?`,
 			)
 			.get(id);
-		if (!current) return ok(null);
+		if (!current || !RecordRead.isVisible(db, id)) return ok(null);
+
+		const text = textUpdates(updates);
 		if (
 			updates.scopeUri !== undefined &&
-			taskScopeChanged(scopeUri, current.scope_uri)
+			taskScopeChanged(scopeUri, current.scope)
 		) {
-			sets.push("scope_uri = ?");
-			params.push(scopeUri ?? null);
+			text.scope = scopeUri ?? null;
 			// Regenerate shortId when scope changes (J + 3-char ID like JDES-123)
-			const newShortId = generateShortId(db, prefixResult.value, scopeUri);
-			sets.push("short_id = ?");
-			params.push(newShortId);
+			text.short_id = generateShortId(db, prefixResult.value, scopeUri);
 		}
-		if (updates.scopeRefs !== undefined) {
-			sets.push("scope_refs = ?");
-			params.push(JSON.stringify(updates.scopeRefs));
+		RecordWrite.updateText(db, id, text);
+		RecordWrite.updateClaim(db, id, claimUpdates(updates));
+
+		for (const [key, value] of attributeUpdates(updates))
+			if (value !== undefined) RecordWrite.setAttribute(db, id, key, value);
+		if (updates.state !== undefined) {
+			const completedAt = completedAtAfter(
+				db,
+				id,
+				current.state,
+				updates.state,
+			);
+			if (completedAt !== undefined)
+				RecordWrite.setAttribute(db, id, "completed_at", completedAt);
 		}
 
-		if (updates.tags !== undefined) {
-			sets.push("tags = ?");
-			params.push(JSON.stringify(updates.tags));
-		}
-
-		if (updates.needsReview !== undefined) {
-			sets.push("needs_review = ?");
-			params.push(updates.needsReview ? 1 : 0);
-		}
-		if (updates.verification !== undefined) {
-			sets.push("verification = ?");
-			params.push(JSON.stringify(updates.verification));
-		}
-
-		params.push(id);
-
-		db.run(
-			`UPDATE ${TABLES.tasks} SET ${sets.join(", ")} WHERE id = ?`,
-			params,
-		);
-		Oplog.afterWrite(db, "tasks", "update", id);
-		const row = db
-			.query<Record<string, unknown>>(
-				`SELECT * FROM ${TABLES.tasks} WHERE id = ?`,
-			)
-			.get(id);
+		const row = TaskRows.byIdOrShortId(db, id);
 		if (!row) return ok(null);
 		const task = rowToTask(row);
 		if (current.state !== task.state) {
@@ -542,15 +554,8 @@ export namespace Planner {
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
-		const result = await withDb(basePath, (db) => {
-			// Snapshot what the FK cascade is about to remove, children first, so
-			// the log replays FK-safely on every other device.
-			const cascade = Oplog.cascadeOf(db, id);
-			if (!cascade.ok) throw cascade.error;
-			db.transaction(() => {
-				db.run(`DELETE FROM ${TABLES.tasks} WHERE id = ?`, [id]);
-				Oplog.afterDelete(db, cascade.value);
-			})();
+		const result = await atomic(basePath, (db) => {
+			RecordWrite.deleteThread(db, id);
 		});
 
 		// Emit event for SSE subscribers

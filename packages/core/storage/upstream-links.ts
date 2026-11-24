@@ -5,76 +5,58 @@
  * never fetches a provider, never writes back to one, and never caches what
  * the external issue says.
  *
- * Writes are captured into the oplog like any other replicated table, so a
- * link made on one device reaches the others.
+ * A link is a ref of kind `upstream` whose URI is `<provider>:<external id>`,
+ * the provider's stable id, with the URL and identifier in `data` (migration
+ * 14): two devices that link the same item write one row. Its id is the ref's
+ * row id (`RecordKey`).
  */
 
-import { z } from "zod";
-import { err, ok, type Result } from "../result";
-import { Runtime, withDb } from "../runtime";
-import type {
-	UpsertUpstreamLinkInput,
-	UpstreamLink,
-	UpstreamSummary,
-} from "../schemas";
+import type { Db } from "../db/port";
+import { err, NotFoundError, ok, type Result } from "../result";
+import { atomic, withDb } from "../runtime";
 import {
+	type RefRow,
+	RefRowSchema,
+	type UpsertUpstreamLinkInput,
 	UpsertUpstreamLinkInputSchema,
-	UpstreamSummarySchema,
+	type UpstreamLink,
+	type UpstreamSummary,
 } from "../schemas";
-import { generateId, rowToUpstreamLink, TABLES } from "./helpers";
-import { Oplog } from "./oplog";
+import { REF_FAMILY_SQL, refFamily, UPSTREAM_KIND } from "./families";
+import { rowToUpstreamLink, TABLES } from "./helpers";
+import { RecordRead } from "./record";
+import { RecordWrite } from "./record-write";
 
-const RowSchema = z.record(z.string(), z.unknown());
+const uriOf = (provider: string, externalId: string): string =>
+	`${provider}:${externalId}`;
 
-const convertRows = (rows: readonly unknown[]): Result<UpstreamLink[]> => {
+const convertRows = (rows: readonly RefRow[]): Result<UpstreamLink[]> => {
 	const links: UpstreamLink[] = [];
 	for (const row of rows) {
 		const result = rowToUpstreamLink(row);
 		if (!result.ok) return result;
 		links.push(result.value);
 	}
-
-	return ok(links);
+	return ok(links.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
 };
 
-const convertSummaryRows = (
-	rows: readonly unknown[],
-): Result<UpstreamSummary[]> => {
-	const summaries: UpstreamSummary[] = [];
-	for (const row of rows) {
-		const recordResult = RowSchema.safeParse(row);
-		if (!recordResult.success) {
-			return err(
-				new Error(
-					`Invalid upstream-summary row: ${recordResult.error.message}`,
-				),
-			);
-		}
-
-		const record = recordResult.data;
-		const summaryResult = UpstreamSummarySchema.safeParse({
-			taskId: record.task_id,
-			provider: record.provider,
-			identifier: record.identifier ?? undefined,
-		});
-		if (!summaryResult.success) {
-			return err(
-				new Error(
-					`Invalid upstream-summary row: ${summaryResult.error.message}`,
-				),
-			);
-		}
-		summaries.push(summaryResult.data);
-	}
-
-	return ok(summaries);
+/** Live upstream refs on visible threads, narrowed by `where`. */
+const upstreamRefs = (db: Db, where: string, params: string[]): RefRow[] => {
+	const parsed = RefRowSchema.array().safeParse(
+		db
+			.query<unknown, string[]>(
+				`SELECT r.* FROM ${TABLES.refs} r JOIN ${TABLES.tasks} t ON t.id = r.thread_id
+				  WHERE r.kind = '${UPSTREAM_KIND}' AND r.removed_at IS NULL
+				    AND ${REF_FAMILY_SQL} = 'upstream' AND ${where}`,
+			)
+			.all(...params),
+	);
+	if (!parsed.success)
+		throw new Error(`Invalid upstream-link row: ${parsed.error.message}`);
+	return parsed.data;
 };
 
 export namespace Planner {
-	/**
-	 * Link a task to an external issue, or correct an existing link's
-	 * identifier, url or title. The link id and createdAt stay stable.
-	 */
 	export const upsertUpstreamLink = async (
 		basePath: string,
 		input: UpsertUpstreamLinkInput,
@@ -87,67 +69,29 @@ export namespace Planner {
 		}
 
 		const link = inputResult.data;
-		const rowResult = await withDb(basePath, (db) => {
-			const now = new Date().toISOString();
-			const id = generateId();
-
-			// Insert or update is decided by what was there, so the captured op
-			// kind matches what the row went through.
-			const existed =
-				db
-					.query<{ id: string }, [string, string, string]>(
-						`SELECT id FROM ${TABLES.upstream_links}
-						 WHERE task_id = ? AND provider = ? AND external_id = ?`,
-					)
-					.get(link.taskId, link.provider, link.externalId) !== null;
-
-			// `visibility` is written rather than defaulted: applySchema is
-			// IF NOT EXISTS and SQLite cannot ALTER a column default, so a
-			// database created before these rows replicated still carries
-			// DEFAULT 'private' and would silently keep every new link home.
-			db.run(
-				`INSERT INTO ${TABLES.upstream_links}
-				   (id, task_id, provider, external_id, identifier, url, title,
-				    created_at, updated_at, updated_by, visibility)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'shared')
-				 ON CONFLICT(task_id, provider, external_id) DO UPDATE SET
-				   identifier = excluded.identifier,
-				   url = excluded.url,
-				   title = excluded.title,
-				   updated_at = excluded.updated_at,
-				   updated_by = excluded.updated_by,
-				   visibility = 'shared',
-				   version = version + 1`,
-				[
-					id,
-					link.taskId,
-					link.provider,
-					link.externalId,
-					link.identifier ?? null,
-					link.url,
-					link.title,
-					now,
-					now,
-					Runtime.actor(),
-				],
-			);
-
-			const row = db
-				.query(
-					`SELECT * FROM ${TABLES.upstream_links}
-					 WHERE task_id = ? AND provider = ? AND external_id = ?`,
-				)
-				.get(link.taskId, link.provider, link.externalId) as Record<
-				string,
-				unknown
-			>;
-			Oplog.afterWrite(
-				db,
-				"upstream_links",
-				existed ? "update" : "insert",
-				row.id as string,
-			);
-
+		const uri = uriOf(link.provider, link.externalId);
+		const mine = "r.thread_id = ? AND r.uri = ?";
+		const rowResult = await atomic(basePath, (db) => {
+			const [held] = upstreamRefs(db, mine, [link.taskId, uri]);
+			const before = held === undefined ? undefined : rowToUpstreamLink(held);
+			RecordWrite.putRef(db, {
+				threadId: link.taskId,
+				uri,
+				kind: UPSTREAM_KIND,
+				title: link.title,
+				data: {
+					provider: link.provider,
+					external_id: link.externalId,
+					identifier: link.identifier ?? null,
+					url: link.url,
+					created_at: before?.ok
+						? before.value.createdAt
+						: new Date().toISOString(),
+				},
+			});
+			const [row] = upstreamRefs(db, mine, [link.taskId, uri]);
+			if (row === undefined)
+				throw new Error(`upstream link ${uri} on ${link.taskId} does not show`);
 			return row;
 		});
 		if (!rowResult.ok) return rowResult;
@@ -155,82 +99,62 @@ export namespace Planner {
 		return rowToUpstreamLink(rowResult.value);
 	};
 
-	/** Every external issue linked to one task. */
 	export const getUpstreamLinksForTask = async (
 		basePath: string,
 		taskId: string,
 	): Promise<Result<UpstreamLink[]>> => {
-		const rowsResult = await withDb(basePath, (db) =>
-			db
-				.query(
-					`SELECT * FROM ${TABLES.upstream_links}
-					 WHERE task_id = ? ORDER BY created_at ASC, id ASC`,
-				)
-				.all(taskId),
-		);
-		if (!rowsResult.ok) return rowsResult;
-
-		return convertRows(rowsResult.value);
+		const rows = await withDb(basePath, (db) => {
+			const read = RecordRead.refs(db, taskId);
+			if (!read.ok) throw read.error;
+			return read.value.filter((row) => refFamily(row) === "upstream");
+		});
+		return rows.ok ? convertRows(rows.value) : rows;
 	};
 
-	/** Compact link metadata for a bounded task set. One query, never N. */
 	export const getUpstreamSummariesForTasks = async (
 		basePath: string,
 		taskIds: string[],
 	): Promise<Result<UpstreamSummary[]>> => {
 		if (taskIds.length === 0) return ok([]);
 
-		const placeholders = taskIds.map(() => "?").join(", ");
-		const rowsResult = await withDb(basePath, (db) =>
-			db
-				.query(
-					`SELECT task_id, provider, identifier
-					 FROM ${TABLES.upstream_links}
-					 WHERE task_id IN (${placeholders})
-					 ORDER BY created_at ASC, id ASC`,
-				)
-				.all(...taskIds),
+		const rows = await withDb(basePath, (db) =>
+			upstreamRefs(
+				db,
+				`r.thread_id IN (${taskIds.map(() => "?").join(", ")})`,
+				taskIds,
+			),
 		);
-		if (!rowsResult.ok) return rowsResult;
-
-		return convertSummaryRows(rowsResult.value);
+		if (!rows.ok) return rows;
+		const links = convertRows(rows.value);
+		if (!links.ok) return links;
+		return ok(
+			links.value.map(({ taskId, provider, identifier }) => ({
+				taskId,
+				provider,
+				...(identifier === undefined ? {} : { identifier }),
+			})),
+		);
 	};
 
-	/**
-	 * Resolve an external issue to every task linked to it. One team item may
-	 * intentionally map to tasks in multiple scopes/repos.
-	 */
 	export const getUpstreamLinksByExternalRef = async (
 		basePath: string,
 		provider: string,
 		externalId: string,
 	): Promise<Result<UpstreamLink[]>> => {
-		const rowsResult = await withDb(basePath, (db) =>
-			db
-				.query(
-					`SELECT * FROM ${TABLES.upstream_links}
-					 WHERE provider = ? AND external_id = ?
-					 ORDER BY created_at ASC, id ASC`,
-				)
-				.all(provider, externalId),
+		const rows = await withDb(basePath, (db) =>
+			upstreamRefs(db, "r.uri = ?", [uriOf(provider, externalId)]),
 		);
-		if (!rowsResult.ok) return rowsResult;
-
-		return convertRows(rowsResult.value);
+		return rows.ok ? convertRows(rows.value) : rows;
 	};
 
-	/** Remove one link by its id. */
+	/** Remove the upstream link `id` (its row id, `RecordKey`) names. */
 	export const deleteUpstreamLink = async (
 		basePath: string,
 		id: string,
 	): Promise<Result<void>> => {
-		return withDb(basePath, (db) => {
-			const row = Oplog.snapshot(db, "upstream_links", id);
-			if (!row.ok) throw row.error;
-			db.run(`DELETE FROM ${TABLES.upstream_links} WHERE id = ?`, [id]);
-			if (row.value !== undefined) {
-				Oplog.afterDelete(db, [{ tbl: "upstream_links", row: row.value }]);
-			}
+		return atomic(basePath, (db) => {
+			if (!RecordWrite.removeRef(db, id, "upstream"))
+				throw new NotFoundError(`No upstream link ${id}`);
 		});
 	};
 }

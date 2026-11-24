@@ -143,7 +143,10 @@ export namespace Checklist {
 				new Map(
 					db
 						.query<{ task_id: string; done: number; total: number }>(
-							`SELECT task_id, COUNT(done_at) AS done, COUNT(*) AS total FROM ${ITEMS_TABLE} WHERE removed_at IS NULL GROUP BY task_id`,
+							// Only tasks that show: a deleted task's items stay stored (JCAB-660).
+							`SELECT task_id, COUNT(done_at) AS done, COUNT(*) AS total FROM ${ITEMS_TABLE}
+							  WHERE removed_at IS NULL AND task_id IN (SELECT id FROM ${TABLES.tasks})
+							  GROUP BY task_id`,
 						)
 						.all()
 						.map((row) => [row.task_id, { done: row.done, total: row.total }]),

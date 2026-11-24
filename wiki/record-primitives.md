@@ -1,8 +1,8 @@
 # The record as four tables: columns, reasons, and the four uses walked through
 
-Design record for ADR 0006 (proposed). The four tables and their sync rules are built beside
-today's tables (JCAB-658, "How the four tables converge" below); nothing reads or migrates into
-them yet, and the rest is not built. Counts come from David's tracker
+Design record for ADR 0006 (proposed). The four tables and their sync rules are built
+(JCAB-658, "How the four tables converge" below), and migration 14 moved the tracker into them
+(JCAB-660, "The migration" below); the rest is not built. Counts come from David's tracker
 database, read on 2026-11-23. They are used for cost and risk only. Low use of a field so far is
 not treated as a reason to drop it, because David plans to move work from other systems into
 kabane.
@@ -230,7 +230,21 @@ parent edges before any cycle is broken, so a cycle holding a deleted thread is 
 A writer has one duty for this to hold: a write stamps the group it changes with a clock no lower
 than the one stored, a counter one past it, and its own device id. A device that never armed sync
 has no device id and writes an empty one; its rows still converge, by counter and then content.
-Nothing writes these tables outside tests yet.
+`RecordWrite` (`packages/core/storage/record-write.ts`) is that writer for every storage path.
+
+## The migration (JCAB-660)
+
+Migration 14 (`packages/core/storage/record-migration.ts`) moves every row and drops no stored
+value. A task is a thread; each column that left the row is an attribute under its column name
+(tags stay one JSON array, so their order holds); a comment is an entry, a work-log row an entry
+of kind `log`; links, context refs and linked issues are refs, and a `parent` or `child` link
+becomes the child's parent. A ref's identity is its key, so the old ULID of a link, context ref or
+linked issue stays in its `data` as `id`. Every value comes from the source row, so two copies migrated apart write
+the same rows. The old `tasks` table is renamed `retired_tasks` rather than dropped, because a
+module table still referencing it would lose its rows to the cascade; `tasks` is then a view that
+assembles the old row over the visibility read, which is how every client keeps the `Task`
+shape. On David's tracker (1548 threads) it reconciles row for row, `kabane export --check`
+matches, and two devices through a local hub hold identical tables.
 
 The harness (`packages/core/sync/record-convergence.test.ts`) reads each device's ops in every
 interleaving that keeps a device's own order, as one pass and as one op per pass, delivers every

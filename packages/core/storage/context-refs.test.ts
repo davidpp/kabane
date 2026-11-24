@@ -76,8 +76,8 @@ describe("Planner — Context Refs", () => {
 			expect(list.value[0]?.kind).toBe("research");
 			expect(list.value[0]?.label).toBe("new");
 			expect(list.value[0]?.note).toBe("new note");
-			// id stays stable across the upsert
-			if (first.ok) expect(list.value[0]?.id).toBe(first.value.id);
+			// a ref's id is its key, kind included: the new kind's row replaced the old
+			if (second.ok) expect(list.value[0]?.id).toBe(second.value.id);
 		}
 	});
 

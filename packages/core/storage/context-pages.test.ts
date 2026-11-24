@@ -519,25 +519,19 @@ describe("bounded selected context", () => {
 			expect(stale.ok).toBe(false);
 			if (!stale.ok) expect(stale.error.message).toContain("Stale");
 		});
-	for (const source of [
-		"task_comments",
-		"task_work_log",
-		"task_context_refs",
-		"task_links",
+	// Since migration 14 the timeline and the work log are entries, and context
+	// refs and links are refs: each table feeds two sections.
+	for (const [source, selected] of [
+		["entries", "discussion"],
+		["entries", "priorWork"],
+		["refs", "context"],
+		["refs", "position"],
 	] as const)
-		it(`selected ${source} failure cannot claim completeness; excluded sources do not block`, async () => {
+		it(`selected ${selected} failure (${source}) cannot claim completeness; excluded sources do not block`, async () => {
 			expect(
 				(await withDb(tracker.home, (db) => db.exec(`DROP TABLE ${source}`)))
 					.ok,
 			).toBe(true);
-			const selected =
-				source === "task_comments"
-					? "discussion"
-					: source === "task_work_log"
-						? "priorWork"
-						: source === "task_context_refs"
-							? "context"
-							: "position";
 			const failed = await Planner.getContextPage(tracker.home, id, {
 				sections: [selected],
 			});
@@ -653,7 +647,7 @@ describe("bounded selected context", () => {
 		expect(
 			(
 				await withDb(tracker.home, (db) =>
-					db.run(`UPDATE ${TABLES.tasks} SET id = ? WHERE id = ?`, [
+					db.run(`UPDATE ${TABLES.threads} SET id = ? WHERE id = ?`, [
 						huge,
 						task.value.id,
 					]),

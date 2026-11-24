@@ -108,8 +108,10 @@ is a package in the data module layer, registered by the host (`MODULES` in
 `packages/cli/src/context.ts`). An extension's own table is a `KabaneModule` it contributes from the modules
 entry its manifest names (below), with its own migrations and `syncTables`; its rows then
 replicate through the oplog like a first-party module's. A change to the task row itself stays a
-core migration, and so does the staged 2.0 record (proposed ADR 0006): its four tables are created
-by core's migration 13, empty beside the task row they are to replace. `packages/core/AGENTS.md` ("Data modules") holds the module seam's rules.
+core migration, and so does the 2.0 record (proposed ADR 0006): its four tables (`threads`,
+`entries`, `attributes`, `refs`) are created by core's migration 13, and migration 14 moves the
+task tables into them and makes `tasks` a view that reads the old task row back. A data module
+table names its thread by `task_id` with no foreign key: no key can name a view. `packages/core/AGENTS.md` ("Data modules") holds the module seam's rules.
 
 The verdicts for what core holds that is not obviously the record:
 
@@ -557,10 +559,10 @@ type Extension = {
 The CLI imports an extension's main entry only when a command, the board or `kabane mcp` needs
 it, so `kabane list` loads none of it (`resolveCommand` in `packages/cli/src/main.ts`). An
 extension's modules cannot wait like that.
-`Oplog.cascadeOf` finds the module tables a task delete cascades into through the registered
-modules, so a process without the module would delete a task without capturing those rows'
-deletes; it would also change a task's state without the module's `onTaskStateChange`, and park
-on a pull the ops it could apply. So every process that opens the database, `kabane list`
+A process without the module would change a task's state without the module's
+`onTaskStateChange`, refuse a write to the module's table, and park on a pull the ops it could
+apply. (A task delete is the thread's tombstone since migration 14: module rows stay stored and
+reads that join `tasks` hide them, whoever registered what.) So every process that opens the database, `kabane list`
 included, registers every enabled extension's modules with `Runtime.configure`.
 
 To keep the rest of the extension off that path, the manifest names the modules as an entry of
@@ -611,11 +613,12 @@ consistent only while the module is registered. The rule has two parts:
 
 - **What capture needs from a module is persisted.** When a module first registers, and whenever
   its migrations move, the host records its declaration (name, schema version, each `syncTables`
-  entry with `family`, `clock` and `childOfTasks`) in a device-local table. `Oplog.cascadeOf`
-  and capture read the registered modules and then the recorded declarations of modules that are
-  not registered, so a task delete captures the deletes of every module row the cascade removes,
-  whether that module's code is loaded, broken or disabled. What capture needs is data, so it does
-  not depend on code being present.
+  entry with `family`, `clock` and `childOfTasks`) in a device-local table. `Replicated.tables`
+  reads the registered modules and then the recorded declarations of modules that are not
+  registered, so export names an unregistered module's rows instead of skipping them silently, and
+  capture still takes the delete of such a row. A task delete removes no module row: since
+  migration 14 it is the thread's tombstone, and a module row of a deleted task stays stored and
+  reads as gone.
 - **An enabled extension whose modules entry fails stops every process that opens the database.**
   A manifest that names a modules entry the host cannot import, a factory that throws or returns
   no module list, a module set `Runtime.configure` refuses, or an `api` the host does not support
@@ -796,7 +799,7 @@ notice. The architecture lens is `.agents/skills/dispatch/references/lenses/arch
 | An extension imports types only, apart from the harness client it bundles | `scripts/layers.ts`, which permits production type-only imports from an extension's development dependencies and refuses value imports |
 | A modules entry imports only what its module objects need | `scripts/modules-entry.test.ts` on the fixture extension and every in-repo manifest naming `modules`; an extension outside the repo, review |
 | An extension writes only its own tables and changes tasks only through `tx.updateTask` | partly the kit (`host-store.ts`): capture refuses an undeclared table, and any `err` from a `tx` call rolls the write back; raw SQL on `tx.db` is review |
-| A failed module stops database access; a disabled one's deletes are captured | `registerModules` and `Extensions.modules` (`extension-modules.test.ts`); `module_declarations` read by `Oplog.cascadeOf` and capture (`packages/core/sync/modules.test.ts`) |
+| A failed module stops database access; a disabled one's rows stay, and re-enabling it makes them eligible for the next `kabane sync backfill` (it queues nothing by itself) | `registerModules` and `Extensions.modules` (`extension-modules.test.ts`); `module_declarations` read by `Replicated.tables` and capture (`packages/core/sync/modules.test.ts`) |
 | Manifest, `api` check before import, per-extension refusal | `packages/cli/src/extensions.ts` and its tests |
 | `host` and its typed record wrappers | `host-record.test.ts`, the CLI host and directory-extension tests, and the isolated declaration typecheck |
 | Headers are data, laid out and clipped by the board | `card-header.tsx`, `card-header.test.tsx` |

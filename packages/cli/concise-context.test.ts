@@ -285,7 +285,7 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 			const db = new Database(join(tracker.home, "kabane.db"));
 			try {
 				db.run(
-					`UPDATE task_comments SET content = content || ' CHANGED' WHERE task_id = ?`,
+					`UPDATE entries SET body = body || ' CHANGED' WHERE thread_id = ?`,
 					[id],
 				);
 			} finally {
@@ -318,7 +318,7 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 			expect(help.out).toContain("--sections");
 			const broken = new Database(join(tracker.home, "kabane.db"));
 			try {
-				broken.exec("DROP TABLE task_comments");
+				broken.exec("DROP TABLE entries");
 			} finally {
 				broken.close();
 			}

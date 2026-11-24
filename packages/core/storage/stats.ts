@@ -112,9 +112,7 @@ export namespace Planner {
 						     SELECT MAX(ts) FROM (
 						       SELECT t.updated_at AS ts
 						       UNION ALL
-						       SELECT c.created_at FROM ${TABLES.comments} c WHERE c.task_id = t.id
-						       UNION ALL
-						       SELECT w.created_at FROM ${TABLES.work_log} w WHERE w.task_id = t.id
+						       SELECT e.created_at FROM ${TABLES.entries} e WHERE e.thread_id = t.id
 						     )
 						   ) < ?`,
 					)
@@ -132,17 +130,17 @@ export namespace Planner {
 					.get(thirtyDaysAgo) as { count: number }
 			).count;
 
-			// Open tasks that already carry a commit: work-log ref. refs is a
-			// JSON array serialized without spaces, so match the raw uri prefix.
+			// Open tasks that already carry a commit: work-log ref. A log entry's data holds
+			// its refs serialized without spaces, so match the raw uri prefix.
 			const probablyDoneCount = (
 				db
 					.query(
 						`SELECT COUNT(*) as count FROM ${TABLES.tasks} t
 						 WHERE t.state NOT IN ('done', 'cancelled')
 						   AND EXISTS (
-						     SELECT 1 FROM ${TABLES.work_log} w
-						     WHERE w.task_id = t.id
-						       AND w.refs LIKE '%"uri":"commit:%'
+						     SELECT 1 FROM ${TABLES.entries} w
+						     WHERE w.thread_id = t.id AND w.kind = 'log'
+						       AND w.data LIKE '%"uri":"commit:%'
 						   )`,
 					)
 					.get() as { count: number }

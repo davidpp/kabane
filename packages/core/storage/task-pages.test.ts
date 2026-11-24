@@ -30,7 +30,7 @@ const tie = async () => {
 		(
 			await withDb(base, (db) =>
 				db.run(
-					`UPDATE ${TABLES.tasks} SET created_at = '2025-01-01T00:00:00.000Z'`,
+					`UPDATE ${TABLES.threads} SET created_at = '2025-01-01T00:00:00.000Z'`,
 				),
 			)
 		).ok,
@@ -348,7 +348,7 @@ describe("concise task pages", () => {
 			withDb: (path, fn) =>
 				provider.withDb(path, (db) => {
 					if (++reads === 2)
-						db.run(`UPDATE ${TABLES.tasks} SET short_id = ? WHERE id = ?`, [
+						db.run(`UPDATE ${TABLES.threads} SET short_id = ? WHERE id = ?`, [
 							"X".repeat(20000),
 							task.id,
 						]);
@@ -410,7 +410,7 @@ describe("concise task pages", () => {
 			(
 				await withDb(base, (db) =>
 					db.run(
-						`UPDATE ${TABLES.tasks} SET short_id = 'JPAG-99' WHERE id = ?`,
+						`UPDATE ${TABLES.threads} SET short_id = 'JPAG-99' WHERE id = ?`,
 						[first.id],
 					),
 				)
@@ -447,7 +447,7 @@ describe("concise task pages", () => {
 			const armed = await withDb(base, (db) => {
 				const result = Oplog.initDevice(db, "fixture-device");
 				expect(result.ok).toBe(true);
-				db.run(`UPDATE ${TABLES.tasks} SET ${field} = ? WHERE id = ?`, [
+				db.run(`UPDATE ${TABLES.threads} SET ${field} = ? WHERE id = ?`, [
 					giant,
 					task.id,
 				]);

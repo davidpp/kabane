@@ -89,7 +89,7 @@ it("adds at the end or a position, hands out creation-order handles and captures
 			(op) =>
 				op.op === "insert" &&
 				op.module === "checklist" &&
-				op.module_schema === 2,
+				op.module_schema === 3,
 		),
 	).toBe(true);
 });
@@ -219,7 +219,9 @@ it("inherits private visibility and never captures private items", async () => {
 	const task = await issue();
 	unwrap(
 		await withDb(base, (db) =>
-			db.run("UPDATE tasks SET visibility = 'private' WHERE id = ?", [task.id]),
+			db.run("UPDATE threads SET visibility = 'private' WHERE id = ?", [
+				task.id,
+			]),
 		),
 	);
 	const [item] = unwrap(
@@ -230,11 +232,12 @@ it("inherits private visibility and never captures private items", async () => {
 	expect(await ops()).toHaveLength(0);
 });
 
-it("goes with its task: a delete captures the items' deletes first", async () => {
+it("goes with its task: a deleted task's items stay stored and read as gone", async () => {
 	const task = await issue();
 	unwrap(await Checklist.add(base, { id: task.id, items: ["Gone"] }));
 	unwrap(await Planner.deleteTask(base, task.id));
-	expect((await ops()).map((op) => op.op)).toEqual(["insert", "delete"]);
+	// The task's delete is its thread's tombstone; the items are not touched.
+	expect((await ops()).map((op) => op.op)).toEqual(["insert"]);
 	expect(unwrap(await Checklist.progress(base)).size).toBe(0);
 });
 
