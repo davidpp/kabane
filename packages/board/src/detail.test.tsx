@@ -1136,7 +1136,7 @@ test("Detail with no tab picked draws the tab the keys read, not one of its own 
 	}
 });
 
-test("Detail's now lists the checklist, the subtasks, the handoff whole, then the links, so no list sits under a long entry", async () => {
+test("Detail's now lists the checklist, the subtasks, the handoff whole, then the links: the lists a glance wants stay above a long entry", async () => {
 	const task = await seed({ title: "In order" });
 	const items = await Checklist.add(TEST_BASE, {
 		id: task.id,

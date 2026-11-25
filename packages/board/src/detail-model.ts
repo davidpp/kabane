@@ -441,9 +441,9 @@ export namespace DetailModel {
 	/**
 	 * What is in force now, in the order it is read: the checklist, the decisions made, the subtasks,
 	 * the newest entry of each lifted kind, and last the links (every issue it relates to, and the
-	 * external ones it points at). The bounded lists lead, where a glance sees them, and a lifted
-	 * entry, whole and as long as its author wrote it, comes after them, so no list is stranded
-	 * under it. A block with nothing in it is left out. The checklist's lines are not here: the board
+	 * external ones it points at). The checklist, the decisions and the subtasks lead, where a
+	 * glance sees them, so they stay above a lifted entry however long its author made it; the links
+	 * follow its end. A block with nothing in it is left out. The checklist's lines are not here: the board
 	 * draws them with its own presses (BoardChecklist.shown).
 	 */
 	export const now = (records: BoardData.DetailRecords): NowBlock[] => {

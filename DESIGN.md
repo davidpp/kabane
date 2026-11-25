@@ -422,7 +422,8 @@ against every glyph already here.
   by`), never a key on each row; each issue drawn as a subtask is, one missing from the tracker
   faint; the external issues last behind a muted `◆`.
 - **Handoff:** a lifted entry (the newest handoff) as a block on `now`, after the subtasks and
-  before the links, so no list sits under it: `kind · author · age`, the kind's title in Label
+  before the links, so the checklist, the decisions and the subtasks stay above it however long
+  it is: `kind · author · age`, the kind's title in Label
   weight and the rest muted, the name cut before the age; the kind's framing line muted; then the
   whole body rendered as a comment's is, never folded or cut. A long one is read by scrolling
   `now`. `n earlier in comments` muted under it.

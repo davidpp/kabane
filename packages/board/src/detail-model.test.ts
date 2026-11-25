@@ -857,7 +857,7 @@ describe("the now tab", () => {
 				subtasks: [task({ id: "c1", parentTaskId: "t1" })],
 			}),
 		);
-		// The bounded lists first, so the lifted entry, as long as its author wrote it, strands none.
+		// The checklist and the subtasks first, so they stay above the lifted entry however long it is.
 		expect(blocks.map((b) => b.name)).toEqual([
 			"checklist",
 			"subtasks",
