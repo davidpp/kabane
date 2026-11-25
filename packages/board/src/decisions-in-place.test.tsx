@@ -145,22 +145,21 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 		expect(back).not.toContain("Cache the session tokens");
 		mockInput.pressEnter();
 		await read((f) => f.includes("What should the scope be called?"));
-		expect(captureCharFrame()).toContain("enter to answer");
 
-		// Started over, what was typed goes with it.
-		// The input takes the keys once a render has focused it.
-		mockInput.pressEnter();
-		await until((f) => f.includes("esc start over"));
-		await mockInput.typeText("draft name");
-		await until((f) => f.includes("draft name"));
+		// Its input has the keys at once: a word of shortcut letters is text, not `d` on the issue.
+		await until((f) => f.includes("esc back"));
+		await mockInput.typeText("dumb");
+		const typed = await until((f) => f.includes("dumb"));
+		expect(typed).toContain("What should the scope be called?");
+		expect(typed).toContain("waiting · issue");
 		mockInput.pressEscape();
-		const over = await until((f) => f.includes("enter to answer"));
-		expect(over).not.toContain("draft name");
+		await until((f) => !f.includes("[copy]"));
+		mockInput.pressEnter();
+		await read((f) => f.includes("What should the scope be called?"));
 
 		// The question went away under the board (another device): the write fails, and the
 		// decision is asked again.
-		mockInput.pressEnter();
-		await until((f) => f.includes("esc start over"));
+		await until((f) => f.includes("esc back"));
 		await mockInput.typeText("kabane");
 		mockInput.pressEnter();
 		await read((f) => f.includes("Reasoning · 2 of 2"));
@@ -173,7 +172,7 @@ it("u finds the issue, its detail asks both decisions, and the last answer moves
 		mockInput.pressEnter();
 		const failed = await until((f) => f.includes("No question found"));
 		expect(failed).toContain("What should the scope be called?");
-		expect(failed).toContain("enter to answer");
+		expect(failed).toContain("enter send · esc back");
 	} finally {
 		destroy();
 	}

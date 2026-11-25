@@ -32,6 +32,8 @@ export namespace Keymap {
 		decisions?: boolean;
 		/** A decision on the detail view has the keys its form names, the digits among them. */
 		deciding?: boolean;
+		/** What `esc` does on that decision: `start over` once it is under way, else `back`. */
+		decisionEsc?: string;
 		/** The detail view's `now` tab has rows under a cursor: checklist items, subtasks, links. */
 		cursor?: boolean;
 		/** `now`'s cursor is on a checklist item, which `space` toggles. */
@@ -574,7 +576,13 @@ export namespace Keymap {
 					keys: [],
 					routed: "textarea",
 				},
-				{ key: "esc", label: "start over", tier: "footer", keys: ["escape"] },
+				{
+					key: "esc",
+					label: "start over",
+					tier: "footer",
+					keys: ["escape"],
+					labelOf: (s) => s.decisionEsc ?? "start over",
+				},
 				{ key: "tab", label: "next pane", tier: "footer", keys: ["tab"] },
 			],
 		},

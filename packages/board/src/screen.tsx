@@ -398,9 +398,8 @@ const DecisionSlot = ({
 	}
 	return (
 		<DecisionPanel
-			// One block per decision, and a fresh one once `esc` starts it over: a new one opens on its
-			// first field, its input empty.
-			key={`${asked.decision.id}#${String(asked.started)}`}
+			// One block per decision: the next one opens on its first field, its input empty.
+			key={asked.decision.id}
 			asked={asked}
 			inHand={BoardDecisions.keysInHand(state)}
 			reach={BoardDecisions.reach(state)}
