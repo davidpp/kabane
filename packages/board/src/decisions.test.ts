@@ -237,21 +237,30 @@ describe("a decision on the detail view", () => {
 		expect(footer(detail([STORE]))).toContain("h/l");
 	});
 
-	it("leaves a typed first field the view's keys until enter asks for it, then keeps them", () => {
-		const s = detail([NAME]);
-		expect(BoardDecisions.reach(s)).toEqual({ key: "enter" });
-		// `l` still walks the sections, `q` still leaves.
-		expect(BoardNav.detailTab(press(s, "l").state.view)).toBe("description");
-		const typing = press(s, "return").state;
-		expect(BoardDecisions.keysInHand(typing)).toBe(true);
-		for (const name of ["l", "q", "?", "u"])
-			expect(press(typing, name)).toEqual({
-				state: BoardNav.sight(typing, 0),
-				effect: { type: "none" },
-			});
-		expect(BoardDecisions.keysInHand(press(typing, "escape").state)).toBe(
-			false,
-		);
+	it("gives a typed field every key as text, a shortcut letter or an alt chord included", () => {
+		// A typed first field, and the reasoning line after a choice.
+		const name = detail([NAME]);
+		const reasoning = press(detail([STORE]), "1").state;
+		for (const typing of [name, reasoning]) {
+			expect(BoardDecisions.keysInHand(typing)).toBe(true);
+			expect(BoardNav.keyContext(typing)).toBe("decisionText");
+			for (const key of [
+				{ name: "d", sequence: "d" },
+				{ name: "m", sequence: "m" },
+				{ name: "q", sequence: "q" },
+				{ name: "l", sequence: "l" },
+				{ name: "d", sequence: "\x1bd", meta: true },
+				{ name: "z", sequence: "\x1a", ctrl: true },
+			])
+				expect(
+					BoardNav.reduceKey(BoardNav.sight(typing, 0), key, BoardNav.ARM_MS),
+				).toEqual({
+					state: BoardNav.sight(typing, 0),
+					effect: { type: "none" },
+				});
+		}
+		// Untouched, `esc` is still the view's.
+		expect(press(name, "escape").state.view.type).toBe("board");
 	});
 
 	it("outranks the copilot's ask, whose keys tab reaches; the decision then names who has them", () => {

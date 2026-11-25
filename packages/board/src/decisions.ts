@@ -9,10 +9,10 @@
 //   pinned over the view does, and outranks the copilot's own ask, whose row then says how to reach
 //   it. The answer goes to `Questions.answer`; the next decision, or the brief, takes its place.
 //
-// A decision whose first field is typed (it offers no choices) waits for `enter` before its input
-// takes the keys, so opening such an issue does not swallow `h/l`, `j/k` and `q`. Once a decision is
-// under way its typed fields have the keys at once. `esc` clears a decision under way back to its
-// first field, and on one not yet touched goes on to the view's own `esc`.
+// A typed field has the keys the moment it is on screen, as the copilot's input does: every key but
+// `esc`, `tab` and `enter` is text, ctrl and alt chords included, so typing never acts on the issue
+// under it. `esc` clears a decision under way back to its first field, and on one not yet touched
+// goes on to the view's own `esc`.
 import type { QuestionView } from "@kabane/questions";
 import { DecisionForm } from "./decision-form";
 import { ElicitationForm } from "./elicitation-form";
@@ -23,11 +23,10 @@ export namespace BoardDecisions {
 	type Step = { state: State; effect: BoardNav.Effect };
 	type Decision = DecisionForm.Decision;
 
-	/** The human's draft of one decision, and whether its typed field was asked for with `enter`. */
+	/** The human's draft of one decision. */
 	type Draft = {
 		questionId: string;
 		draft: ElicitationForm.Draft;
-		started: boolean;
 	};
 
 	export type Decisions = {
@@ -126,7 +125,6 @@ export namespace BoardDecisions {
 	export type Shown = {
 		decision: Decision;
 		draft: ElicitationForm.Draft;
-		started: boolean;
 		// How many more wait behind it.
 		waiting: number;
 	};
@@ -147,7 +145,6 @@ export namespace BoardDecisions {
 		return {
 			decision,
 			draft: own?.draft ?? ElicitationForm.start(),
-			started: own?.started ?? false,
 			waiting: waiting.length - 1,
 		};
 	};
@@ -161,12 +158,8 @@ export namespace BoardDecisions {
 			ElicitationForm.field(shown.decision.request, shown.draft),
 		);
 
-	// A typed field takes the keys once the decision is under way, or `enter` asked for it.
-	const live = (shown: Shown): boolean => shown.started || shown.draft.at > 0;
-
 	// Nothing to clear: the view's own `esc` applies.
-	const untouched = ({ draft, started }: Shown): boolean =>
-		!started &&
+	const untouched = ({ draft }: Shown): boolean =>
 		draft.at === 0 &&
 		draft.picked.length === 0 &&
 		draft.error === undefined &&
@@ -175,6 +168,12 @@ export namespace BoardDecisions {
 	/** What `esc` does on the decision on screen: clears one under way, else leaves the view. */
 	export const escapes = (asked: Shown): string =>
 		untouched(asked) ? "back" : "start over";
+
+	/** The decision in hand's `esc`, for the footer to name as its block does. */
+	export const situation = (state: State): { decisionEsc?: string } => {
+		const asked = inHand(state);
+		return asked ? { decisionEsc: escapes(asked) } : {};
+	};
 
 	/**
 	 * How many open decisions the detail view's task has that this board has not just answered,
@@ -188,15 +187,13 @@ export namespace BoardDecisions {
 	};
 
 	/** Whether the decision on screen has the keys its block names: the form's, or its input's. */
-	export const keysInHand = (state: State): boolean => {
-		const asked = inHand(state);
-		return asked !== undefined && (!typed(asked) || live(asked));
-	};
+	export const keysInHand = (state: State): boolean =>
+		inHand(state) !== undefined;
 
 	/** Whether the decision on screen's text field has the keys, every one but `esc` and `tab`. */
 	export const typing = (state: State): boolean => {
 		const asked = inHand(state);
-		return asked !== undefined && typed(asked) && live(asked);
+		return asked !== undefined && typed(asked);
 	};
 
 	/**
@@ -206,9 +203,9 @@ export namespace BoardDecisions {
 	export const reach = (state: State): BoardNav.AskReach | undefined => {
 		const asked = shown(state);
 		if (!asked || keysInHand(state)) return undefined;
-		if (state.prompt.open) return { key: "esc", holder: "the prompt" };
-		if (state.focus === "copilot") return { key: "esc", holder: "the copilot" };
-		return { key: "enter" };
+		return state.prompt.open
+			? { key: "esc", holder: "the prompt" }
+			: { key: "esc", holder: "the copilot" };
 	};
 
 	/** What a digit answers on it, for BoardNav.sight: a field of its own, as on the copilot's form. */
@@ -234,11 +231,7 @@ export namespace BoardDecisions {
 		state: State,
 		asked: Shown,
 		draft: ElicitationForm.Draft,
-		started: boolean,
-	): State =>
-		patch(state, {
-			draft: { questionId: asked.decision.id, draft, started },
-		});
+	): State => patch(state, { draft: { questionId: asked.decision.id, draft } });
 
 	// A step of the form: the draft moved on, or its answer sent, or refused and asked again from its
 	// first field with why.
@@ -250,7 +243,7 @@ export namespace BoardDecisions {
 		if (!step) return null;
 		if ("draft" in step)
 			return {
-				state: withDraft(state, asked, step.draft, asked.started),
+				state: withDraft(state, asked, step.draft),
 				effect: NOTHING,
 			};
 		if (step.answer.action !== "accept")
@@ -259,12 +252,10 @@ export namespace BoardDecisions {
 		const answer = DecisionForm.answerOf(decision, step.answer.content);
 		if (!answer.ok)
 			return {
-				state: withDraft(
-					state,
-					asked,
-					{ ...ElicitationForm.start(), error: answer.error.message },
-					false,
-				),
+				state: withDraft(state, asked, {
+					...ElicitationForm.start(),
+					error: answer.error.message,
+				}),
 				effect: NOTHING,
 			};
 		return {
@@ -281,31 +272,25 @@ export namespace BoardDecisions {
 		};
 	};
 
-	const isEnter = (key: BoardNav.KeyInput): boolean =>
-		key.name === "return" || key.name === "enter";
-
 	/**
 	 * A key on the decision in hand, ahead of every view key. Null for a key it does not answer,
 	 * which then routes as it would without one. While its input has the keys, every key but `tab`
-	 * stops here, so typing never moves the board under it.
+	 * stops here, a ctrl or alt chord too (alt-d is a word delete there, `d` on the issue), so typing
+	 * never acts on the board under it.
 	 */
 	export const reduceKey = (
 		state: State,
 		key: BoardNav.KeyInput,
 	): Step | null => {
 		const asked = inHand(state);
-		if (!asked || key.ctrl || key.meta) return null;
+		if (!asked) return null;
 		if (key.name === "escape")
 			return untouched(asked)
 				? null
 				: { state: patch(state, { draft: null }), effect: NOTHING };
-		if (typed(asked)) {
-			if (live(asked))
-				return key.name === "tab" ? null : { state, effect: NOTHING };
-			return isEnter(key)
-				? { state: withDraft(state, asked, asked.draft, true), effect: NOTHING }
-				: null;
-		}
+		if (typed(asked))
+			return key.name === "tab" ? null : { state, effect: NOTHING };
+		if (key.ctrl || key.meta) return null;
 		return advance(
 			state,
 			asked,
@@ -333,8 +318,8 @@ export namespace BoardDecisions {
 
 	/**
 	 * A click on the decision's block, through the reducers its keys take: an answer is its digit, a
-	 * hint its key, and the row that says how to reach it asks for its input. The board already has
-	 * the keys by then (BoardNav.reduceMouse), and a pointer aims at what is drawn, so nothing is held.
+	 * hint its key, and the row that says how to reach it needs nothing more: the board already has
+	 * the keys by then (BoardNav.reduceMouse). A pointer aims at what is drawn, so nothing is held.
 	 * Null for a hint whose key the decision hands on, as the key router would (`esc back` on an
 	 * untouched one goes to the view's own `esc`).
 	 */
@@ -358,12 +343,7 @@ export namespace BoardDecisions {
 			case "decisionKey":
 				return reduceKey(state, { name: action.name });
 			case "decisionReach":
-				return typed(asked) && !live(asked)
-					? {
-							state: withDraft(state, asked, asked.draft, true),
-							effect: NOTHING,
-						}
-					: none;
+				return none;
 		}
 	};
 }

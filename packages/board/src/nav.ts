@@ -2096,6 +2096,7 @@ export namespace BoardNav {
 				state.scoped,
 			decisions: BoardDecisions.listed(state),
 			deciding: BoardDecisions.keysInHand(state),
+			...BoardDecisions.situation(state),
 			...BoardChecklist.situation(state),
 			history: recallable(state.prompt.open ? state.prompt : state.copilot),
 			reaimable: (state.prompt.open?.aims?.length ?? 0) > 1,

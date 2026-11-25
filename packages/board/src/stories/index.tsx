@@ -601,7 +601,6 @@ const asking = (
 ): BoardDecisions.Shown => ({
 	decision: DecisionForm.of(row),
 	draft: { ...ElicitationForm.start(), ...draft },
-	started: false,
 	waiting,
 });
 

@@ -634,9 +634,9 @@ read (nothing picked, nothing typed) is refused with why and asked again from it
 
 While a decision is on screen it has the keys it names, ahead of the view's: the digits answer it
 rather than switching sections, and `↑↓` move its cursor. Every other key works as before (`h/l`,
-`j/k`, `v`, `q`). A decision that opens on a text field waits for `enter` before its input takes
-the keys, so opening such an issue does not type into it; once a decision is under way, its text
-fields take every key but `tab`. `esc` starts a decision under way over, and on an untouched one
+`j/k`, `v`, `q`). A text field has the keys as soon as it is on screen, the first field included:
+it takes every key but `esc` and `tab` as text, ctrl and alt chords too, so typing never acts on
+the issue under it. `esc` starts a decision under way over, and on an untouched one
 goes back to the board. It outranks the copilot's own ask the way a pinned session question does:
 the copilot's row says `tab to answer`, and while the copilot has the keys the decision says `esc
 to answer · the copilot has the keys`. A session question pinned over the view comes first, with
