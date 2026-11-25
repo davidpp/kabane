@@ -1,6 +1,6 @@
 ---
 name: kabane
-description: Base kabane's own how-to. Use it to link a kabane task to a Linear or GitHub issue in either direction, to answer a "how do I…" about kabane's commands or settings, to change a kabane setting or enable an installed extension, and to check with kabane doctor that what kabane wrote is current and act on its findings.
+description: Base kabane's own how-to. Use it to decide how to record work in kabane (a request, a finding, a design discussion, a plan two agents share) as a thread, an entry, an attribute or a ref, and what a retry does; to link a kabane task to a Linear or GitHub issue in either direction; to answer a "how do I…" about kabane's commands or settings; to change a kabane setting or enable an installed extension; and to check with kabane doctor that what kabane wrote is current and act on its findings.
 ---
 
 # kabane
@@ -9,6 +9,7 @@ Read the reference for the task in front of you, and only that one: fetch it wit
 
 | Task | Reference |
 |---|---|
+| Decide how to record work: a thread, an entry, an attribute or a ref; a plan two agents share; what a retry does | `references/record.md` |
 | Link a kabane task to an external issue: pull one in, or push one out | `references/linking.md` |
 | Answer a "how do I…" about kabane, change a setting, enable an installed extension | `references/config.md` |
 | Check that what kabane wrote is current, and act on each finding | `references/doctor.md` |

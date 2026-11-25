@@ -23,6 +23,7 @@ import BASE_ENTRY from "../skills/kabane/SKILL.md" with { type: "text" };
 import BASE_CONFIG from "../skills/kabane/references/config.md" with { type: "text" };
 import BASE_DOCTOR from "../skills/kabane/references/doctor.md" with { type: "text" };
 import BASE_LINKING from "../skills/kabane/references/linking.md" with { type: "text" };
+import BASE_RECORD from "../skills/kabane/references/record.md" with { type: "text" };
 import { CopilotFiles } from "./copilot-files";
 import type { Extensions } from "./extensions";
 
@@ -63,6 +64,7 @@ const BASE_FILES: Readonly<Record<string, string>> = {
 	"references/config.md": BASE_CONFIG,
 	"references/doctor.md": BASE_DOCTOR,
 	"references/linking.md": BASE_LINKING,
+	"references/record.md": BASE_RECORD,
 };
 const BASE = "kabane";
 
@@ -321,5 +323,5 @@ export namespace Skills {
 
 	/** The server instructions' line naming the tools. */
 	export const INSTRUCTIONS =
-		"kabane and its enabled extensions ship skills, how-to for kabane tasks: setting up or configuring kabane or one of its extensions in a project, linking an issue to Linear or GitHub, changing kabane's settings, checking it with doctor, or going through an issue's open questions. When the human asks for a kabane task or names a kabane command or extension, call kabane_skillList before running kabane's help or reading its files, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
+		"kabane and its enabled extensions ship skills, how-to for kabane tasks: deciding how to record work as threads, entries, attributes and refs, setting up or configuring kabane or one of its extensions in a project, linking an issue to Linear or GitHub, changing kabane's settings, checking it with doctor, or going through an issue's open questions. When the human asks for a kabane task or names a kabane command or extension, call kabane_skillList before running kabane's help or reading its files, and when a skill's description matches, follow what kabane_skillGet returns instead of improvising.";
 }
