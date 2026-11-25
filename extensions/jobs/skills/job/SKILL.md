@@ -93,12 +93,15 @@ skill's `references/record.md` says what a thread, an entry, an attribute and a 
 
 | Command | What it writes |
 |---|---|
+| `kabane job list`, `kabane job show <id>` | Read the existing jobs or one job’s details |
 | `kabane job add` | A thread of kind `job` in `next`, whose description is the request. The schedule, harness, session, check and inputs go to the extension's own tables, not the thread |
 | `kabane job edit` | `--title` and `--request` change the thread's title and description; every other flag changes only the extension's tables |
 | `kabane job pause`, `resume` | The thread's state: `someday`, then `next` again |
 | `kabane job run`, `tick` | Each fire logs `run:<id>` on the job's work log. The session is told to read the job with `kabane_context` (earlier runs' results are its comments) and to write its result as one comment on it |
 | `kabane run <recipe> --target <id>` | The same `run:<id>` log line on the issue; the session comments its result there and files a decision with `kabane_ask` |
-| `kabane runs` | Nothing: it lists, reads, attaches to and stops runs, which live in the extension's tables |
+| `kabane runs`, `runs read`, `runs attach` | List runs, read the terminal or attach to it |
+| `kabane runs send <id> <text>` | Types text into the running session. The command adds no entry on its target thread |
+| `kabane runs stop <id>` | Stops the session and updates its run in the extension’s tables |
 | `kabane done <id>` | The job's state, `done`, which ends it |
 
 What a job keeps up to date (a page, a note) is a ref of kind `artifact` on the job:

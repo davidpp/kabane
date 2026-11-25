@@ -170,10 +170,10 @@ sync has delivered it.
 
 ## What an enabled extension adds
 
-An extension that ships a skill is listed by `kabane_skillList`. Its skill's "On the record"
-section lists the MCP tools and commands the extension exposes and what each writes, as a
-thread, an entry, an attribute or a ref. What it writes lands in the same four shapes, so the
-rules above still hold:
+Use `kabane_skillList` to find the skills your enabled extensions ship. Fetch the matching
+skill with `kabane_skillGet`. For runs and scheduled work, its "On the record" section maps
+commands and tools to the records they write. Setup skills can also describe changes to files
+in the project. For example:
 
 - An extension that drives a parent's subtasks through harnesses claims them as in step 2, and
   skips a thread someone has taken (`in_progress`) or parked (`waiting`, `someday`).

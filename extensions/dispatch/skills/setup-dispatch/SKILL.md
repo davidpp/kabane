@@ -10,6 +10,12 @@ A dispatch skill is how a coding session in this project turns an ask into issue
 
 The project root is your working directory. Every kabane command below is `{{kabane}}`, written as it stands: it is the kabane, and the home, that the MCP server serving this skill runs, which a `kabane` on PATH may not be.
 
+## On the record
+
+`{{kabane}} dispatch stamp` prints the template fingerprint. It leaves the work record unchanged.
+Setup writes the generated skill and its references in this project. Dispatch adds no MCP tool
+of its own. Its grill skill reads and answers decisions through the existing question tools.
+
 ## Options
 
 | Option | What it does | Reference |

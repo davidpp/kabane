@@ -37,6 +37,7 @@ What the loop exposes, and what a run writes in kabane's shapes (the base `kaban
 |---|---|---|
 | Advise a run's settings and tags; changes nothing | `kabane_loop_advise` | `{{kabane}} loop advise <id>` |
 | Start, follow, pause, resume or stop a run | none | `{{kabane}} loop start\|status\|pause\|resume\|stop` |
+| Drive an existing run in the runner process launched by `loop start` | none | `{{kabane}} loop run <runId>` (internal runner entry point, performs the writes below) |
 | Keep a run from claiming a subtask, or let it again | none | `{{kabane}} loop skip\|next <id>` |
 | Answer a question a run's session asked | none | `{{kabane}} loop answer <questionId> <option>` |
 | Land, roll back or prune a run's branch | none | `{{kabane}} loop land\|rollback\|prune` |
