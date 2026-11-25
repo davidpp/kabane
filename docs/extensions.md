@@ -48,6 +48,14 @@ prints `Extension dispatch: <home>/extensions/dispatch links to <old path>, whic
 `kabane doctor` reports it as `dispatch/extension-refused` under `auto`. `kabane doctor --fix`
 links it to the running install's copy.
 
+A link into another install's copy still loads, which is worse: an older Homebrew install left
+beside the installer's, say, so the new binary runs the old release's extension, migrations
+included. Enabling the extension again re-points it, and `kabane doctor` reports it as
+`jobs/extension-elsewhere` under `auto`, naming the copy it links to; `kabane doctor --fix`
+links it to the running install's copy. A link counts as another install's when it resolves to
+an `extensions/` directory with a `kabane` executable beside it, which is how every release lays
+them out; a link to a checkout's `extensions/<name>` is yours and stays.
+
 `kabane update` on an extracted archive or an installer install replaces the binary,
 `templates/` and `extensions/` together, at the same paths, so the links follow it to the new
 version as well.

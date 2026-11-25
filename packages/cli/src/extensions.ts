@@ -11,7 +11,7 @@ import {
 	statSync,
 	symlinkSync,
 } from "node:fs";
-import { join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
 	err,
@@ -232,10 +232,40 @@ export namespace Extensions {
 			: [];
 	};
 	/**
+	 * Where `$KABANE_HOME/extensions/<name>` resolves when it is a link into another kabane
+	 * release's copy of an extension this install ships: an `extensions/` with a `kabane` beside
+	 * it, as every release lays them out, that is not this install's. An earlier install leaves one
+	 * (Homebrew's 1.x after a move to the installer), and through it this kabane runs that
+	 * release's extension, its migrations included. Undefined for a directory, a link to this
+	 * install's copy, to a checkout, or to nothing.
+	 */
+	export const elsewhere = (
+		home: string,
+		name: string,
+		root = shippedRoot(),
+	): string | undefined => {
+		if (root === undefined || !shipped(root).includes(name)) return undefined;
+		const path = directory(home, name);
+		if (!lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink())
+			return undefined;
+		const actual = trySync(() => realpathSync(path));
+		const ours = trySync(() => realpathSync(join(root, name)));
+		if (!actual.ok || (ours.ok && ours.value === actual.value))
+			return undefined;
+		const shelf = dirname(actual.value);
+		const release = trySync(() => statSync(join(dirname(shelf), "kabane")));
+		return basename(shelf) === "extensions" &&
+			release.ok &&
+			release.value.isFile()
+			? actual.value
+			: undefined;
+	};
+	/**
 	 * Links `$KABANE_HOME/extensions/<name>` to `<root>/<name>` for each of `names` this install
-	 * ships and the home lacks, a link that resolves nowhere included. What is there otherwise, a
-	 * directory or a link that resolves, is the user's own install and stays. Returns the names
-	 * linked; the link names `root` as `Self.extensions` does, so an upgrade keeps it resolving.
+	 * ships and the home lacks, a link that resolves nowhere or into another release's copy
+	 * (`elsewhere`) included. What is there otherwise, a directory or a link that resolves, is the
+	 * user's own install and stays. Returns the names linked; the link names `root` as
+	 * `Self.extensions` does, so an upgrade keeps it resolving.
 	 */
 	export const link = (
 		home: string,
@@ -246,7 +276,11 @@ export namespace Extensions {
 			const ships = new Set(shipped(root));
 			const linked: string[] = [];
 			for (const name of names) {
-				if (root === undefined || !ships.has(name) || installed(home, name))
+				if (
+					root === undefined ||
+					!ships.has(name) ||
+					(installed(home, name) && elsewhere(home, name, root) === undefined)
+				)
 					continue;
 				const target = directory(home, name);
 				const there = lstatSync(target, { throwIfNoEntry: false });
