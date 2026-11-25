@@ -26,7 +26,8 @@ Two rules settle most cases:
 | File a thread | `kabane_add` | `{{kabane}} add` | Duplicates, unless you pass `key` (`<plan>/<name>`, lowercase): then it returns the first one with `existed: true` and changes nothing |
 | File a plan of threads and links | `kabane_apply` | `{{kabane}} apply <file> --key <plan>` | Creates only what is missing. A thread already there keeps its fields even if the file changed them; edit it instead |
 | Change state, assignee, priority, due, tags, parent | `kabane_edit` | `{{kabane}} edit` | Same value, same result. `tags` replaces the whole list |
-| Claim a thread | `kabane_edit` state `in_progress` | `{{kabane}} edit <id> --state in_progress` | Still yours. Read `claimedBy` and `claimHeld` in the result |
+| Claim a thread | `kabane_edit` state `in_progress` | `{{kabane}} edit <id> --state in_progress` | Still yours, but it also sets the state again: a thread you claimed and then put in `waiting` goes back to `in_progress` |
+| See who holds a claim | the result of a claiming edit only | `{{kabane}} wait state <id> in_progress waiting --timeout 1s` prints `claimedBy` | |
 | Comment, or record a finding, decision or review | `kabane_comment` with `kind` | `{{kabane}} comment <id> "…" --kind <kind>` | Duplicates |
 | Record work done (commits, PRs, branches, files) | `kabane_log` | `{{kabane}} log` | Duplicates: each call is one occurrence |
 | Ask the human a decision | `kabane_ask` | none | Duplicates the question |
@@ -54,8 +55,8 @@ Not exposed in 2.0.0-beta.0, so do not try to reach them through another call:
   read the thread and check whether the first one landed.
 - Finding a thread by a ref's URI. `kabane_search` reads titles and descriptions only, so put
   the words someone will search for in the title or body.
-- The brief does not show tags or `related` links. Read tags with `kabane_get` and every link
-  with `kabane_linkList`.
+- The brief does not show tags, `related` links or who holds the claim. Read tags with
+  `kabane_get`, every link with `kabane_linkList`, and the claim with `{{kabane}} wait state`.
 
 ## A client request
 
@@ -95,7 +96,8 @@ person cancels old findings with an entry saying why.
 You and the human are deciding how the CSV export pages through large logs, around a design
 file.
 
-- **A thread** whose body is the question and the constraints, with **a ref** of kind `design`
+- **A thread** whose body is the question and the constraints, under the request it serves
+  (`parentTaskId`), with **a ref** of kind `design`
   to the file (`file:docs/export.md`, or a URL). The discussion is about the file but is not
   the file.
 - Each turn of the discussion is **an entry**. A conclusion is an `outcome.decision` entry: the
@@ -116,21 +118,25 @@ This is the coding use, but the steps are the same for any work two agents share
    ```json
    {
      "threads": [
-       { "key": "spec", "title": "Write the CSV export spec", "state": "next", "assignee": "claude" },
-       { "key": "build", "title": "Build the CSV export", "state": "next", "assignee": "codex" }
+       { "key": "spec", "title": "Write the CSV export spec", "state": "next", "assignee": "claude", "parent": "acme/sso-audit-csv" },
+       { "key": "build", "title": "Build the CSV export", "state": "next", "assignee": "codex", "parent": "acme/sso-audit-csv" }
      ],
      "links": [{ "from": "spec", "to": "build", "type": "blocks" }]
    }
    ```
 
-   The threads are `sso-csv/spec` and `sso-csv/build`. If the lead crashes and applies the file
+   The threads are `sso-csv/spec` and `sso-csv/build`, under the client request they serve, so
+   the request's brief lists them as its subtasks. If the lead crashes and applies the file
    again, it prints `0 created, 2 already there`. Adding a thread to the file and applying again
    creates only that one.
 
 2. **Each worker claims before touching anything.** `kabane_edit` on `sso-csv/spec` with state
    `in_progress`. The thread already names its assignee, so set only the state. The result says
    `claimedBy` and `claimHeld`. If `claimHeld` is false, another agent holds it: leave it. The
-   first claim wins on every device once they sync.
+   first claim wins on every device once they sync. A claim lasts while the thread is
+   `in_progress` or `waiting`; any other state releases it. After a crash, read the state before
+   claiming again: if the thread is `waiting` and `{{kabane}} wait state` names you in `claimedBy`,
+   it is still yours, and claiming again would pull it out of `waiting`.
 
 3. **A decision goes to the human.** `kabane_ask` on `sso-csv/spec`. The thread moves to
    `waiting`. A worker with a shell can block on the answer:

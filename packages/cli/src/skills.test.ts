@@ -458,10 +458,11 @@ describe("base kabane's kabane skill", () => {
 			"`tags` replaces the whole list",
 			"If `claimHeld` is false, another agent holds it: leave it.",
 			"so set only the state",
+			"claiming again would pull it out of `waiting`",
 			"`KABANE wait ready sso-csv/build`",
 			"Not exposed in 2.0.0-beta.0",
 			"`kabane_search` reads titles and descriptions only",
-			"The brief does not show tags or `related` links.",
+			"The brief does not show tags, `related` links or who holds the claim.",
 		])
 			expect(record).toContain(line);
 	});
