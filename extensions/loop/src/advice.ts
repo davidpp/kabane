@@ -185,13 +185,15 @@ claim runs on the run's settings.`;
 
 	const checkSetup = (project: Project): Recommendation[] => {
 		const install = installer(project);
-		return project.config.isolation === "worktree" && install
+		return project.config.worktree && install
 			? [
 					{
 						path: "setup",
 						value: install.command,
 						reason:
-							"install dependencies in each worktree using the project's lockfile",
+							project.config.isolation === "shared"
+								? "install dependencies in the shared run worktree using the project's lockfile"
+								: "install dependencies in each worktree using the project's lockfile",
 					},
 				]
 			: [];

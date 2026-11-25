@@ -1,7 +1,7 @@
 // Starting a loop from the board: `a` on an issue, or on a parent of issue subtasks, offers "start loop", whose form
 // holds the run's settings (LoopSettings) beside the plan it would start on (Briefing), and whose
 // `enter` is `kabane loop start` from the board's directory, with the same checks.
-import { type Result } from "@kabane/core";
+import type { Result } from "@kabane/core";
 import type {
 	Dispatcher,
 	TriggerDescriptor,
@@ -106,9 +106,8 @@ export namespace LoopDispatcher {
 		edited: readonly string[],
 		advice: readonly LoopAdvice.Recommendation[],
 	): Promise<Result<string>> => {
-		// Setup and a width above one were advised for worktrees. A shared submission keeps only
-		// configured setup; one sharing a tree also drops the width, and "sessions at once" the human
-		// never moved is that advised default, not their choice.
+		// Drop the advised parallel width when the submitted form shares one tree, unless
+		// the human explicitly chose the width.
 		const sharedTree =
 			values.isolation === "shared" || values.worktree === false;
 		const width = advice.find(
@@ -125,7 +124,7 @@ export namespace LoopDispatcher {
 				: values,
 			advice.filter(
 				(r) =>
-					(r.path !== "setup" || values.isolation !== "shared") &&
+					(r.path !== "setup" || values.worktree !== false) &&
 					(r !== width || !sharedTree),
 			),
 		);

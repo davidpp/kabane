@@ -171,11 +171,23 @@ test("gates and setup use only project scripts and the lockfile's package manage
 	).toBe(false);
 	expect(
 		recommendation([node("A")], [], {
-			...project({ gates: { custom: "verify" }, isolation: "shared" }),
+			...project({ gates: { custom: "verify" }, worktree: false }),
 			lockfiles: ["bun.lock"],
 			scripts: { test: "test" },
 		}).map((r) => r.path),
 	).toEqual(["budget.concurrency"]);
+});
+
+test("shared isolation advises setup only with a run worktree", () => {
+	for (const worktree of [true, false]) {
+		const advice = recommendation([node("A")], [], {
+			...project({ isolation: "shared", worktree }),
+			lockfiles: ["bun.lock"],
+		});
+		expect(advice.find((r) => r.path === "setup")?.value).toBe(
+			worktree ? "bun install" : undefined,
+		);
+	}
 });
 
 test("past thrash advises two stalls by risk type, regardless of message wording", () => {
