@@ -762,12 +762,12 @@ test("a job add whose schedule fails to store cancels its item, so a retry leave
 	const { kabane, home } = setup();
 	const add = ["job", "add", "--title", "Steward", "--schedule", "0 9 * * *"];
 	expect(kabane([...add, "--request", "warm up"]).code).toBe(0);
-	// The write that failed on the 2.0 beta (a foreign key the extension's old copy kept), as any
-	// failure of the row's insert: the item is filed by then.
+	// Any failure of the row's insert, such as the foreign key the 2.0 beta kept when it loaded an
+	// older jobs: the item is filed by then.
 	const db = new Database(join(home, "kabane.db"));
 	const refuse = () =>
 		db.run(
-			"CREATE TRIGGER refuse BEFORE INSERT ON jobs_jobs BEGIN SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed'); END",
+			"CREATE TRIGGER refuse BEFORE INSERT ON jobs_jobs BEGIN SELECT RAISE(ABORT, 'the row is refused'); END",
 		);
 	try {
 		refuse();
@@ -778,7 +778,7 @@ test("a job add whose schedule fails to store cancels its item, so a retry leave
 	expect(failed.code).toBe(1);
 	const short = /job (\S+): /.exec(failed.stderr)?.[1] ?? "";
 	expect(failed.stderr).toBe(
-		`Error: Could not store the schedule of job ${short}: FOREIGN KEY constraint failed. ${short} is cancelled, so nothing is left half-added.`,
+		`Error: Could not store the schedule of job ${short}: the row is refused. ${short} is cancelled, so nothing is left half-added.`,
 	);
 	expect(
 		JSON.parse(kabane(["show", short, "--json"]).stdout).task,
@@ -786,6 +786,10 @@ test("a job add whose schedule fails to store cancels its item, so a retry leave
 		kind: "job",
 		state: "cancelled",
 	});
+	// Cancelled, it asks for no repair.
+	expect(kabane(["job", "show", short]).stderr).toBe(
+		`Error: ${short} is not a job`,
+	);
 
 	const fixed = new Database(join(home, "kabane.db"));
 	try {
@@ -821,6 +825,10 @@ test("job show names the repair of a job item with no schedule, and the repair l
 		stderr: `Error: ${orphan} is an item of kind job with no schedule, as a \`kabane job add\` that failed after filing it leaves one: cancel it with \`kabane edit ${orphan} --state cancelled\`, then add the job again`,
 	});
 	expect(kabane(["edit", orphan, "--state", "cancelled"]).code).toBe(0);
+	expect(kabane(["job", "show", orphan])).toMatchObject({
+		code: 1,
+		stderr: `Error: ${orphan} is not a job`,
+	});
 	const added = kabane([
 		"job",
 		"add",

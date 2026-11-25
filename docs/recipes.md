@@ -325,10 +325,10 @@ do](#fire-only-when-there-is-something-to-do)).
 
 A job is two writes: its item, then its schedule. When the schedule fails to store, `job add`
 cancels the item it filed and says so (`Could not store the schedule of job JPRJ-12: …
-JPRJ-12 is cancelled`), so running it again once the cause is fixed adds one job. The `job add`
-of an earlier kabane left the item open instead: it lists as kind `job` with
-`kabane list --kind job`, has no schedule, so it never fires, and `kabane job show` on it says
-so and names the repair. Cancel it, then add the job again:
+JPRJ-12 is cancelled`), so running it again once the cause is fixed adds one job. A `job add`
+stopped between the two writes, or one from an earlier kabane that failed, leaves the item
+open: it lists as kind `job` with `kabane list --kind job`, has no schedule, so it never fires,
+and `kabane job show` on it says so and names the repair. Cancel it, then add the job again:
 
 ```bash
 kabane edit JPRJ-12 --state cancelled

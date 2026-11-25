@@ -99,7 +99,8 @@ const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
 	const short = shortOf(task.value);
 	return err(
 		new Error(
-			task.value.kind === "job"
+			task.value.kind === "job" &&
+				!["done", "cancelled"].includes(task.value.state)
 				? `${short} is an item of kind job with no schedule, as a \`kabane job add\` that failed after filing it leaves one: ${orphanRepair(short)}`
 				: `${short} is not a job`,
 		),
