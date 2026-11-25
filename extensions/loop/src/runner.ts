@@ -413,6 +413,19 @@ export namespace Runner {
 					: {}),
 			};
 		}
+		if (ctx.run.worktree && ctx.run.config.setup && !ctx.runTreeReady) {
+			const ready = await hearingStop(ctx, () => ClaimTrees.readyRunTree(ctx));
+			if (ctx.stopRequested)
+				return { status: "stopped", reason: "stop-requested" };
+			if (!ready.ok)
+				return {
+					status: "stopped",
+					reason: "worktree-not-readied",
+					detail: ready.error.message,
+				};
+			// Setup can change the tree. Check the gates against its new fingerprint next tick.
+			return undefined;
+		}
 		if (!lensesDone) {
 			if (!gatesGreen) return finalGates(ctx, plan);
 			const failed = reviewed.failed[0];

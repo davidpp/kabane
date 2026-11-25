@@ -15,7 +15,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Planner, type Task, trySync } from "@kabane/core";
 import { GitFixture } from "@kabane/core/git-fixture";
 import { LoopConfig } from "./config";
@@ -201,6 +201,17 @@ const drive = async (
 		pid: process.pid,
 		git,
 		overrides: TestHarnesses.overrides({
+			...(harness === "scripted" && {
+				claude: {
+					command: process.execPath,
+					args: [
+						join(
+							import.meta.dir,
+							"../../../packages/acp/scripts/scripted-agent.ts",
+						),
+					],
+				},
+			}),
 			gemini:
 				harness === "scripted"
 					? { command: process.execPath, args: [agent, home, script] }
@@ -529,7 +540,7 @@ describe("Subtasks in worktrees of their own", () => {
 				// One at a time, an explicit concurrency over the default of 2, so the second subtask's
 				// claim comes after the first's work merged.
 				await runOn(parent, {
-					setup: SETUP.replaceAll("$LOG", log),
+					setup: SETUP.replaceAll("$LOG", log + '."${PWD##*/}"'),
 					reuse,
 					budget: { concurrency: 1 },
 				});
@@ -541,10 +552,12 @@ describe("Subtasks in worktrees of their own", () => {
 					"plan-done",
 				]);
 				expect(mostLive(subtasks)).toBe(1);
-				expect(lines(log)).toEqual(reuse ? ["cold", "warm"] : ["cold", "cold"]);
 				// The same worktree each time, reset to the run's HEAD: the first's file was there, merged.
 				const [one, two] = ended.claims.map((c) => c.worktree);
 				expect(one).toBe(two);
+				expect(lines(`${log}.${basename(one ?? "")}`)).toEqual(
+					reuse ? ["cold", "warm"] : ["cold", "cold"],
+				);
 				const worktree = ended.worktree ?? "";
 				expect(gitIn(worktree, "show", "HEAD:a.txt")).toBe("a");
 				expect(gitIn(worktree, "show", "HEAD:b.txt")).toBe("b");
@@ -904,6 +917,33 @@ else await Planner.deleteTask(home, id);
 			expect(ended.claims).toHaveLength(2);
 			expect(whereSetUp()).toEqual([ended.worktree ?? ""]);
 			expect(beforeFirstClaim()).toBe(true);
+		},
+		SLOW_MS,
+	);
+
+	it(
+		"sets up the run's worktree before its first lens after isolated subtasks",
+		async () => {
+			const { parent } = await plan({ "a.txt": "a\n" }, { "b.txt": "b\n" });
+			const run = await runOn(parent, {
+				isolation: "worktree",
+				setup: noteWhere(),
+				lenses: ["functional"],
+				verifier: "claude",
+			});
+
+			const ended = await drive();
+
+			expect(ended.exit?.reason).toBe("plan-done");
+			expect(whereSetUp().filter((dir) => dir === run.worktree)).toHaveLength(
+				1,
+			);
+			const setups = events("setup").filter((e) => e.task === undefined);
+			expect(setups.map((e) => e.summary)).toEqual([
+				`setup \`${noteWhere()}\` ran in ${run.worktree}`,
+			]);
+			const lens = events("claim").find((e) => e.lane === "functional-lens");
+			expect(lens?.seq).toBeGreaterThan(setups[0]?.seq ?? Infinity);
 		},
 		SLOW_MS,
 	);
