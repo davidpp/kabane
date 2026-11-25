@@ -7,13 +7,30 @@ const run = (source: string, ms = 1000, bytes = 1000) =>
 		process.cwd(),
 		process.env,
 		ms,
-		bytes,
+		{ maxBytes: bytes },
 	);
 test("bounded process captures only stdout and never forwards credential-bearing diagnostics", async () => {
 	const result = await run(
 		'console.log("ok"); console.error("https://user:secret@registry.invalid _authToken=secret"); process.exit(7)',
 	);
 	expect(result).toEqual({ ok: true, value: { code: 7, stdout: "ok\n" } });
+});
+test("a caller that asks for stderr gets the child's own error", async () => {
+	const result = await runUpdateProcess(
+		[
+			process.execPath,
+			"-e",
+			'console.error("HTTP 422: Validation Failed"); process.exit(1)',
+		],
+		process.cwd(),
+		process.env,
+		1000,
+		{ captureStderr: true },
+	);
+	expect(result).toEqual({
+		ok: true,
+		value: { code: 1, stdout: "", stderr: "HTTP 422: Validation Failed\n" },
+	});
 });
 test("bounded process stops excess stdout and stderr", async () => {
 	for (const stream of ["stdout", "stderr"]) {

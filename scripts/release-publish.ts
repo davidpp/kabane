@@ -41,6 +41,18 @@ export type PublishOperations = {
 // A draft can upload all four archives; retain bounded process cleanup for slow transfers.
 const ASSET_TIMEOUT_MS = 600_000;
 const failure = (message: string): Result<never> => err(new Error(message));
+/** A step's failure with what caused it below, so the job log names the cause. */
+const failedBecause = (message: string, cause: Error): Result<never> =>
+	failure(`${message}\n${cause.message}`);
+/** A failed gh call as gh reported it: its exit code and its own error, or why it was stopped. */
+const ghError = (argv: string[], result: Result<ProcessReply>): Error => {
+	const step = argv.slice(0, 3).join(" ");
+	return new Error(
+		result.ok
+			? `${step} exited ${result.value.code}: ${result.value.stderr?.trim() || "(no stderr)"}`
+			: `${step}: ${result.error.message}`,
+	);
+};
 
 /** A beta is a GitHub prerelease and never the latest release; a stable release is the latest. */
 const marked = (version: string, state: NonNullable<ReleaseState>): boolean =>
@@ -51,12 +63,17 @@ const prepareVerifiedDraft = async (
 ): Promise<Result<void>> => {
 	const draft = await ops.prepareDraft();
 	if (!draft.ok)
-		return failure(
+		return failedBecause(
 			"Draft preparation failed; nothing was published. Retain original assets for recovery.",
+			draft.error,
 		);
 	const prepared = await ops.release();
+	if (!prepared.ok)
+		return failedBecause(
+			"Draft assets are not fully verified; nothing was published.",
+			prepared.error,
+		);
 	if (
-		!prepared.ok ||
 		!prepared.value?.draft ||
 		!prepared.value.assetsMatch ||
 		!prepared.value.assetsComplete
@@ -96,11 +113,17 @@ const finalizeVerifiedDraft = async (
 		);
 	const finalized = await ops.finalizeDraft();
 	if (!finalized.ok)
-		return failure(
+		return failedBecause(
 			"GitHub finalization failed. Inspect the draft; resume from the original matching bytes, never rebuild.",
+			finalized.error,
 		);
 	const final = await ops.release();
-	const state = final.ok ? final.value : null;
+	if (!final.ok)
+		return failedBecause(
+			"Final GitHub immutability/assets remain unverified. Inspect partial state manually.",
+			final.error,
+		);
+	const state = final.value;
 	return state &&
 		!state.draft &&
 		state.immutable &&
@@ -135,7 +158,10 @@ export const completeRelease = async (
 	if (!tag.ok) return tag;
 	const release = await ops.release();
 	if (!release.ok)
-		return failure("Cannot establish GitHub release state; nothing published.");
+		return failedBecause(
+			"Cannot establish GitHub release state; nothing published.",
+			release.error,
+		);
 	const existing = existingRelease(record.version, release.value);
 	if (!existing.ok) return existing;
 	if (existing.value !== null) return ok(existing.value);
@@ -261,7 +287,8 @@ const prepareReleaseDraft = async (
 	let argv: string[];
 	if (existing.value) {
 		const matches = await releaseAssetsMatch(publication, existing.value);
-		if (!matches.ok || !matches.value || !existing.value.draft)
+		if (!matches.ok) return matches;
+		if (!matches.value || !existing.value.draft)
 			return failure("Conflicting existing draft.");
 		const names = new Set(existing.value.assets.map((asset) => asset.name));
 		const missing = assets.filter((name) => !names.has(name));
@@ -297,9 +324,7 @@ const prepareReleaseDraft = async (
 	const prepared = await call(argv, undefined, ASSET_TIMEOUT_MS);
 	return prepared.ok && prepared.value.code === 0
 		? ok(undefined)
-		: failure(
-				"Draft preparation failed; no overwrite/clobber or tag creation allowed.",
-			);
+		: err(ghError(argv, prepared));
 };
 
 /** What publishes the draft: a stable release as GitHub's latest, a beta as a prerelease that is not. */
@@ -320,10 +345,11 @@ const finalizeReleaseDraft = async (
 	publication: Publication,
 ): Promise<Result<void>> => {
 	const { record, call } = publication;
-	const result = await call(finalizeArguments(record));
+	const argv = finalizeArguments(record);
+	const result = await call(argv);
 	return result.ok && result.value.code === 0
 		? ok(undefined)
-		: failure("GitHub finalization failed.");
+		: err(ghError(argv, result));
 };
 
 const releaseAssetsMatch = async (
@@ -339,25 +365,25 @@ const releaseAssetsMatch = async (
 	)
 		return ok(false);
 	for (const asset of state.assets) {
-		const downloaded = await call(
-			[
-				"gh",
-				"release",
-				"download",
-				record.tag ?? "",
-				"--repo",
-				"davidpp/kabane",
-				"--pattern",
-				asset.name,
-				"--dir",
-				work,
-				"--clobber",
-			],
-			undefined,
-			ASSET_TIMEOUT_MS,
-		);
+		const argv = [
+			"gh",
+			"release",
+			"download",
+			record.tag ?? "",
+			"--repo",
+			"davidpp/kabane",
+			"--pattern",
+			asset.name,
+			"--dir",
+			work,
+			"--clobber",
+		];
+		const downloaded = await call(argv, undefined, ASSET_TIMEOUT_MS);
 		if (!downloaded.ok || downloaded.value.code !== 0)
-			return failure("Could not verify existing release asset bytes.");
+			return failedBecause(
+				"Could not verify existing release asset bytes.",
+				ghError(argv, downloaded),
+			);
 		const bytes = readArtifactFile(join(work, asset.name), 268_435_456);
 		if (!bytes.ok) return bytes;
 		if (sha256(bytes.value) !== expected.get(asset.name)) return ok(false);
@@ -380,7 +406,7 @@ export const publishRelease = async (
 	try {
 		work = mkdtempSync(join(tmpdir(), "kabane-publication-"));
 		const call = (argv: string[], cwd = sourceRoot, timeout = 120_000) =>
-			runUpdateProcess(argv, cwd, env, timeout);
+			runUpdateProcess(argv, cwd, env, timeout, { captureStderr: true });
 		const assets = [
 			...(record.binaries ?? []).map((binary) => binary.filename),
 			INSTALLER,

@@ -99,6 +99,37 @@ test("a beta completes as a prerelease that never becomes latest", async () => {
 	expect((await completeRelease(beta, unmarked.ops)).ok).toBe(false);
 });
 
+test("a failed gh write reaches the job log with gh's own error", async () => {
+	const finalize = github();
+	finalize.ops.finalizeDraft = async () =>
+		err(new Error("gh release edit exited 1: HTTP 422: Validation Failed"));
+	const finalized = await completeRelease(record, finalize.ops);
+	expect(finalized.ok).toBe(false);
+	if (!finalized.ok)
+		expect(finalized.error.message).toBe(
+			"GitHub finalization failed. Inspect the draft; resume from the original matching bytes, never rebuild.\ngh release edit exited 1: HTTP 422: Validation Failed",
+		);
+	const draft = github();
+	draft.ops.prepareDraft = async () =>
+		err(new Error("gh release create: Bun operation timed out."));
+	const prepared = await completeRelease(record, draft.ops);
+	expect(prepared.ok).toBe(false);
+	if (!prepared.ok)
+		expect(prepared.error.message).toContain(
+			"\ngh release create: Bun operation timed out.",
+		);
+	// A gh release download that fails while reading a release back is named too.
+	const read = github();
+	read.ops.release = async () =>
+		err(new Error("gh release download exited 1: HTTP 502"));
+	const unread = await completeRelease(record, read.ops);
+	expect(unread.ok).toBe(false);
+	if (!unread.ok)
+		expect(unread.error.message).toBe(
+			"Cannot establish GitHub release state; nothing published.\ngh release download exited 1: HTTP 502",
+		);
+});
+
 test("the first stable release needs no published one before it", async () => {
 	const fixture = github(record, null);
 	expect((await completeRelease(record, fixture.ops)).ok).toBe(true);
