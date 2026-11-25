@@ -658,8 +658,8 @@ the done hue once every item is ticked (`· 3/3`). The counts come from one quer
 
 The `now` section lists the items first, headed `checklist · 2/5`: `✓` for a ticked
 one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
-resumes. Opening `now` scrolls the cursor's row into view; a scroll after that leaves the cursor
-where it is. `J/K` move it, on past the items to the subtasks and the linked issues (with no
+resumes. `now` opens at its top, wherever the cursor is, and a scroll leaves the cursor where it
+is. `J/K` move it, on past the items to the subtasks and the linked issues (with no
 checklist it starts on the first of those), and `enter` opens the issue under it, `esc` coming
 back; a click on a subtask or a linked issue opens it too. `space` ticks or unticks the item under it, as `kabane_checklistTick`
 does, bringing it into view in the same press when it is off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
