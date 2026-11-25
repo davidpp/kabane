@@ -191,9 +191,7 @@ claim runs on the run's settings.`;
 						path: "setup",
 						value: install.command,
 						reason:
-							project.config.isolation === "shared"
-								? "install dependencies in the shared run worktree using the project's lockfile"
-								: "install dependencies in each worktree using the project's lockfile",
+							"install dependencies in each worktree using the project's lockfile",
 					},
 				]
 			: [];
