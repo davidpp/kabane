@@ -80,12 +80,13 @@ export const entries = async (host: Host): Promise<Result<Entry[]>> => {
 };
 
 /**
- * What repairs a job item whose schedule row was never stored. `job add` files the item, then
- * the row, in two writes the extension contract cannot join; the item alone schedules nothing,
- * so cancelling it and adding the job again leaves one schedule.
+ * What repairs a job item with no schedule row: one `job add` filed and failed to store the row
+ * of (two writes the extension contract cannot join), or one `kabane add --kind job` or
+ * `kabane_add` made. The item alone schedules nothing, so cancelling it and adding the job leaves
+ * one schedule.
  */
 const orphanRepair = (short: string): string =>
-	`cancel it with \`kabane edit ${short} --state cancelled\`, then add the job again`;
+	`cancel it with \`kabane edit ${short} --state cancelled\`, then add it with \`kabane job add\``;
 
 /** The job `key` names, open or not. */
 const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
@@ -101,7 +102,7 @@ const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
 		new Error(
 			task.value.kind === "job" &&
 				!["done", "cancelled"].includes(task.value.state)
-				? `${short} is an item of kind job with no schedule, as a \`kabane job add\` that failed after filing it leaves one: ${orphanRepair(short)}`
+				? `${short} is an item of kind job with no schedule, so it never fires: ${orphanRepair(short)}`
 				: `${short} is not a job`,
 		),
 	);

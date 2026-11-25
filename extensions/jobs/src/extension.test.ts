@@ -815,14 +815,15 @@ test("a job add whose schedule fails to store cancels its item, so a retry leave
 
 test("job show names the repair of a job item with no schedule, and the repair leaves one job", () => {
 	const { kabane } = setup();
-	// What a `job add` that failed after filing its item left before it cancelled one.
+	// What `kabane add --kind job` makes, and a `job add` that failed after filing its item left
+	// before it cancelled one.
 	const orphan = JSON.parse(
 		kabane(["add", "Steward", "--kind", "job", "--state", "next", "--json"])
 			.stdout,
 	).shortId as string;
 	expect(kabane(["job", "show", orphan])).toMatchObject({
 		code: 1,
-		stderr: `Error: ${orphan} is an item of kind job with no schedule, as a \`kabane job add\` that failed after filing it leaves one: cancel it with \`kabane edit ${orphan} --state cancelled\`, then add the job again`,
+		stderr: `Error: ${orphan} is an item of kind job with no schedule, so it never fires: cancel it with \`kabane edit ${orphan} --state cancelled\`, then add it with \`kabane job add\``,
 	});
 	expect(kabane(["edit", orphan, "--state", "cancelled"]).code).toBe(0);
 	expect(kabane(["job", "show", orphan])).toMatchObject({
