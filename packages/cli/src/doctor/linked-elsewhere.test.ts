@@ -3,6 +3,7 @@
 // running kabane's own copy is passed as `root`, since a source checkout ships none.
 import { afterAll, expect, it } from "bun:test";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	realpathSync,
@@ -63,4 +64,21 @@ it("reports an enabled extension linked into another release's copy, and --fix l
 	]);
 	expect(realpathSync(join(home, "extensions/jobs"))).toBe(join(root, "jobs"));
 	expect(linkedElsewhere(home, ["jobs"], root)).toEqual([]);
+});
+
+// Doctor builds this list before any check runs, so a throw here would cost the whole report.
+it("finds nothing, and throws nothing, when the home's extensions is a file or unreadable", () => {
+	const root = release("current");
+	const broken = realpathSync(mkdtempSync(join(tmpdir(), "kabane-broken-")));
+	try {
+		writeFileSync(join(broken, "extensions"), "");
+		expect(linkedElsewhere(broken, ["jobs"], root)).toEqual([]);
+		rmSync(join(broken, "extensions"));
+		mkdirSync(join(broken, "extensions"));
+		chmodSync(join(broken, "extensions"), 0o000);
+		expect(linkedElsewhere(broken, ["jobs"], root)).toEqual([]);
+	} finally {
+		chmodSync(join(broken, "extensions"), 0o700);
+		rmSync(broken, { recursive: true, force: true });
+	}
 });

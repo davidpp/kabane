@@ -246,8 +246,9 @@ export namespace Extensions {
 	): string | undefined => {
 		if (root === undefined || !shipped(root).includes(name)) return undefined;
 		const path = directory(home, name);
-		if (!lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink())
-			return undefined;
+		// Doctor calls this outside any check, so an unreadable home is "not linked", never a throw.
+		const entry = trySync(() => lstatSync(path, { throwIfNoEntry: false }));
+		if (!entry.ok || !entry.value?.isSymbolicLink()) return undefined;
 		const actual = trySync(() => realpathSync(path));
 		const ours = trySync(() => realpathSync(join(root, name)));
 		if (!actual.ok || (ours.ok && ours.value === actual.value))
