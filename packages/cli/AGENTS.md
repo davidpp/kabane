@@ -63,7 +63,8 @@ The extension API is implemented here:
   factories runs and until one has returned. Doctor activates them only after it opens the
   store.
 - `src/scope/` owns scope detection, `src/self.ts` owns executable discovery, and
-  `src/mcp-stdio.ts` owns `serveStdio`. `configureRuntime` wires core's bounded file reader.
+  `src/mcp-stdio.ts` owns `serveStdio`, which `commands/mcp.ts` imports lazily: `main.ts`
+  imports every command, and only `kabane mcp` should load the MCP SDK. `configureRuntime` wires core's bounded file reader.
 
 Read before writing: `src/main.ts`, `src/context.ts`, and one command with its test
 (`src/commands/checklist.ts`, `src/commands/checklist.test.ts`).

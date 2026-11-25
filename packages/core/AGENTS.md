@@ -149,7 +149,10 @@ Streamable HTTP, fresh server per request). The CLI adds device config tools fro
 and module surface. Each host registers
 `modules` once through `Runtime.configure`; module `instructions` paragraphs are
 appended to `SERVER_INSTRUCTIONS`. `createMcpServer` returns `Result<Server>` and
-refuses duplicate tool names before serving. The shared list exposes only replicated data, so
+refuses duplicate tool names before serving. `mcp/server.ts` is core's only import of the MCP
+SDK and is exported as `@kabane/core/mcp-server`, never from the barrel, so a process that
+serves no MCP loads neither the SDK nor its ajv; `callTool` and `registeredTools`
+(`mcp/call.ts`) stay on the barrel because `host.record` calls tools in every process. The shared list exposes only replicated data, so
 the hub answers every tool a device does. A `ToolContext` carries `basePath`, the `actor`, an optional
 `defaultScope`, and `scopeRequired`: a device defaults scope from its directory, the
 hub demands it and points at `kabane_scopeList`. It may also carry `humanActor`, the human
