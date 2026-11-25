@@ -917,8 +917,9 @@ Resolve it before retrying.
   links in `~/.kabane/extensions/` still point at Homebrew's copies, and the beta runs those:
   `kabane job add` then fails with `FOREIGN KEY constraint failed` and `kabane export --check`
   with `foreign key mismatch`. `kabane doctor` reports each such link as
-  `<name>/extension-elsewhere`; `kabane doctor --fix` points it at the beta's copy, and the next
-  command runs that extension's update.
+  `<name>/extension-elsewhere` from the release after 2.0.0-beta.0 on (update to it first);
+  `kabane doctor --fix` points it at the beta's copy, and the next command runs that extension's
+  update.
 - **No going back.** The old version refuses a database this one has opened. Going back takes a
   backup made before the first open.
 

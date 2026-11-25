@@ -37,7 +37,9 @@ The extension API is implemented here:
   template, and `project/skill-unchecked` only says when none is loaded) and each loaded
   extension's through `Extensions.doctors`, which turns a
   malformed report into that extension's `check-failed` finding; a refused extension is an
-  `extension-refused` finding.
+  `extension-refused` finding, and an enabled one linked into another release's copy
+  (`Extensions.elsewhere`, `src/doctor/linked-elsewhere.ts`) an `extension-elsewhere` finding
+  whose fix re-points the link, as `Extensions.link` does on enable.
 - `src/extensions.ts` loads enabled directories from `$KABANE_HOME/extensions`. `loadAll(names, home)` returns `loaded`, `refused` and `directories` (each
   extension loaded from a directory, with that directory); callers must consume `loaded` and
   `refused`. Help, commands and MCP report refusals on stderr; the board uses its announcer.

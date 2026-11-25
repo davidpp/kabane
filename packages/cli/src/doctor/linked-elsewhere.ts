@@ -1,6 +1,6 @@
 // An enabled extension linked into another kabane release's copy loads, so it is no refusal: this
-// kabane just runs that release's code. JCAB-669: a 2.0 binary ran Homebrew 1.2.0's jobs module,
-// whose migrations stop before the one that frees `jobs_jobs` from `tasks`.
+// kabane just runs that release's code, its migrations included. JCAB-669: a 2.0 binary ran the
+// extensions of a Homebrew 1.2.0 left beside it, whose migrations stopped short of 2.0's.
 import { join } from "node:path";
 import { ok } from "@kabane/core";
 import type { Doctor } from "@kabane/extension";
