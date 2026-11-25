@@ -813,6 +813,45 @@ test("a job add whose schedule fails to store cancels its item, so a retry leave
 	]);
 });
 
+test("a job add whose schedule and cancel both fail names the repair of the open item it leaves", () => {
+	const { kabane, home } = setup();
+	// Opens the database, so the tables exist.
+	expect(kabane(["job", "list"]).code).toBe(0);
+	const db = new Database(join(home, "kabane.db"));
+	try {
+		db.run(
+			"CREATE TRIGGER refuse BEFORE INSERT ON jobs_jobs BEGIN SELECT RAISE(ABORT, 'the row is refused'); END",
+		);
+		// The item's state lives on its thread.
+		db.run(
+			"CREATE TRIGGER stay BEFORE UPDATE OF state ON threads WHEN NEW.state = 'cancelled' BEGIN SELECT RAISE(ABORT, 'the cancel is refused'); END",
+		);
+	} finally {
+		db.close();
+	}
+	const failed = kabane([
+		"job",
+		"add",
+		"--title",
+		"Steward",
+		"--schedule",
+		"0 9 * * *",
+		"--request",
+		"tend",
+	]);
+	expect(failed.code).toBe(1);
+	const short = /job (\S+): /.exec(failed.stderr)?.[1] ?? "";
+	expect(failed.stderr).toBe(
+		`Error: Could not store the schedule of job ${short}: the row is refused. Cancelling ${short} failed too (the cancel is refused): cancel it with \`kabane edit ${short} --state cancelled\`, then add it with \`kabane job add\`.`,
+	);
+	expect(
+		JSON.parse(kabane(["show", short, "--json"]).stdout).task,
+	).toMatchObject({ kind: "job", state: "next" });
+	expect(kabane(["job", "show", short]).stderr).toBe(
+		`Error: ${short} is an item of kind job with no schedule, so it never fires: cancel it with \`kabane edit ${short} --state cancelled\`, then add it with \`kabane job add\``,
+	);
+});
+
 test("job show names the repair of a job item with no schedule, and the repair leaves one job", () => {
 	const { kabane } = setup();
 	// What `kabane add --kind job` makes, and a `job add` that failed after filing its item left
