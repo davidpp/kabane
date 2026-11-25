@@ -639,14 +639,16 @@ export namespace Claims {
 	};
 
 	// Where `task`'s claim works: in a worktree of its own for a subtask of a run whose claims are
-	// isolated, in the run's tree otherwise (a single issue is the run's whole work). Undefined while
-	// no worktree is free for it.
+	// isolated, in the run's tree otherwise (a single issue is the run's whole work), set up once.
+	// Undefined while no worktree is free for it.
 	const placeFor = async (
 		ctx: Ctx,
 		task: Task,
 	): Promise<Result<{ worktree?: ClaimTrees.Tree } | undefined>> => {
-		if (!RunStore.isolated(ctx.run) || task.id === ctx.run.parentId)
-			return ok({});
+		if (!RunStore.isolated(ctx.run) || task.id === ctx.run.parentId) {
+			const ready = await ClaimTrees.readyRunTree(ctx);
+			return ready.ok ? ok({}) : ready;
+		}
 		const tree = await ClaimTrees.acquire(ctx, task);
 		if (!tree.ok) return tree;
 		return ok(tree.value ? { worktree: tree.value } : undefined);
@@ -740,7 +742,8 @@ export namespace Claims {
 	/**
 	 * Claim one ready work node, a subtask or a single issue itself: a loop session, a dispatched
 	 * ACP session, a live entry. False when it waits for a worktree of its own (`ClaimTrees`), an
-	 * error when its worktree could not be readied (its setup failed), which stops the run; true
+	 * error when its worktree, its own or the run's, could not be readied (its setup failed), which
+	 * stops the run; true
 	 * otherwise, the node claimed or the tracker's changes having taken it out of the run's hands.
 	 */
 	export const claim = async (

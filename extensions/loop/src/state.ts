@@ -76,6 +76,8 @@ export namespace RunState {
 		stopping: AbortController;
 		/** The gate pass running or last run; the next one waits for it. */
 		gating: Promise<unknown>;
+		/** Whether this runner has run the setup in the run's own worktree (`ClaimTrees.readyRunTree`). */
+		runTreeReady?: boolean;
 	};
 
 	const git = async (cwd: string, args: string[]): Promise<string> => {

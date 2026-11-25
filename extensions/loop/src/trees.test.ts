@@ -154,7 +154,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
  if (message.method === "session/resume") reply(message.id, {});
  if (message.method !== "session/prompt") return;
  const text = message.params.prompt.map((p) => p.text ?? "").join("\\n");
- task ??= (/Your subtask is ([^.]+)\\./.exec(text) ?? /^After you called kabane_done on ([^,]+),/.exec(text))?.[1];
+ task ??= (/Your (?:subtask|issue) is ([^.]+)\\./.exec(text) ?? /^After you called kabane_done on ([^,]+),/.exec(text))?.[1];
  if (resume) console.log(JSON.stringify({ jsonrpc: "2.0", method: "session/update", params: { sessionId: message.params.sessionId, update: { sessionUpdate: "usage_update", used: 10, size: 100 } } }));
  if (!task) process.exit(2);
  const live = join(script, "live", task);
@@ -846,6 +846,86 @@ else await Planner.deleteTask(home, id);
 			expect(events("warning").map((e) => e.summary)).toContain(
 				`worktree ${tree?.dir} is left with work on branch ${branch} that never merged into kabane-loop/run-1`,
 			);
+		},
+		SLOW_MS,
+	);
+
+	// The setup notes where it ran, in a file outside the repository, so no checkpoint carries it.
+	const whereSetUp = (): string[] => lines(join(script, "setup.where"));
+	const noteWhere = (): string => `pwd >> ${join(script, "setup.where")}`;
+
+	const beforeFirstClaim = (): boolean => {
+		const read = RunStore.readEvents(home, "run-1");
+		const all = read.ok ? read.value : [];
+		const setup = all.findIndex((e) => e.type === "setup");
+		const claim = all.findIndex((e) => e.type === "claim");
+		return setup !== -1 && claim !== -1 && setup < claim;
+	};
+
+	it(
+		"sets up the run's own worktree before a single issue's session starts",
+		async () => {
+			const parent = await add("single");
+			writeFileSync(
+				join(script, `${label(parent)}.files.json`),
+				JSON.stringify({ "a.txt": "a\n" }),
+			);
+			await runOn(parent, { setup: noteWhere() });
+
+			const ended = await drive();
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"completed",
+				"plan-done",
+			]);
+			const worktree = ended.worktree ?? "";
+			expect(whereSetUp()).toEqual([RunStore.projectIn(ended, worktree)]);
+			expect(lines(join(script, `${label(parent)}.cwd`))).toEqual([worktree]);
+			expect(beforeFirstClaim()).toBe(true);
+			expect(events("setup").map((e) => e.summary)).toEqual([
+				`setup \`${noteWhere()}\` ran in ${worktree}`,
+			]);
+		},
+		SLOW_MS,
+	);
+
+	it(
+		"with isolation shared, sets up the run's worktree once for all its subtasks",
+		async () => {
+			const { parent } = await plan({ "a.txt": "a\n" }, { "b.txt": "b\n" });
+			await runOn(parent, { isolation: "shared", setup: noteWhere() });
+
+			const ended = await drive();
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"completed",
+				"plan-done",
+			]);
+			expect(ended.claims).toHaveLength(2);
+			expect(whereSetUp()).toEqual([ended.worktree ?? ""]);
+			expect(beforeFirstClaim()).toBe(true);
+		},
+		SLOW_MS,
+	);
+
+	it(
+		"stops a single issue's run when the setup in the run's worktree fails",
+		async () => {
+			const parent = await add("single");
+			await runOn(parent, { setup: "echo no network; exit 3" });
+
+			const ended = await drive();
+
+			expect([ended.status, ended.exit?.reason]).toEqual([
+				"stopped",
+				"worktree-not-readied",
+			]);
+			expect(ended.exit?.detail).toContain(
+				"the run's worktree was not readied",
+			);
+			expect(ended.exit?.detail).toContain("no network");
+			expect(ended.claims).toEqual([]);
+			expect(events("setup")).toEqual([]);
 		},
 		SLOW_MS,
 	);

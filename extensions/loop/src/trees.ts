@@ -11,7 +11,8 @@
 // free: with `reuse`, kept for the next subtask, reset to the run's HEAD with what git ignores
 // (build output) left warm; without, removed. The run keeps at most `maxWorktrees` (its concurrency
 // when unset), and a subtask waits for one. The user's `setup` command readies a worktree for a
-// subtask; nothing else is installed. When the run ends, the free ones are removed, and one still
+// subtask, and the run's own worktree once per runner for the claims that work there; nothing else
+// is installed. When the run ends, the free ones are removed, and one still
 // holding work that never landed is left, with its branch, for a human.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -91,8 +92,13 @@ export namespace ClaimTrees {
 			gitOf(ctx),
 		);
 
-	// The user's setup command in the worktree's project folder, heard by the run's stop.
-	const setUp = async (ctx: Ctx, dir: string): Promise<Result<void>> => {
+	// The user's setup command in the worktree's project folder, heard by the run's stop, and on the
+	// trace once it has run.
+	const setUp = async (
+		ctx: Ctx,
+		dir: string,
+		task?: string,
+	): Promise<Result<void>> => {
 		const command = ctx.run.config.setup;
 		if (command === undefined) return ok(undefined);
 		const [ran] = await Gates.run(
@@ -101,12 +107,36 @@ export namespace ClaimTrees {
 			{ KABANE_LOOP: "1", KABANE_LOOP_RUN: ctx.run.id },
 			ctx.stopping.signal,
 		);
-		if (ran === undefined || ran.ok) return ok(undefined);
+		if (ran === undefined || ran.ok) {
+			RunState.event(ctx, {
+				type: "setup",
+				summary: `setup \`${command}\` ran in ${dir}`,
+				...(task ? { task } : {}),
+			});
+			return ok(undefined);
+		}
 		return err(
 			new Error(
 				`${Gates.describe(ran)} in ${dir}: \`${command}\`${ran.tail ? `\n${ran.tail}` : ""}`,
 			),
 		);
+	};
+
+	/**
+	 * Ready the run's own worktree for the claims that work in it (a single issue, every subtask of a
+	 * run that shares its tree): the setup runs there once per runner, so a runner started again on a
+	 * reused worktree readies it too. An error when it fails, which stops the run.
+	 */
+	export const readyRunTree = async (ctx: Ctx): Promise<Result<void>> => {
+		const runTree = ctx.run.worktree;
+		if (runTree === undefined || ctx.runTreeReady) return ok(undefined);
+		const ready = await setUp(ctx, runTree);
+		if (!ready.ok)
+			return err(
+				new Error(`the run's worktree was not readied: ${ready.error.message}`),
+			);
+		ctx.runTreeReady = true;
+		return ready;
 	};
 
 	/**
@@ -157,7 +187,7 @@ export namespace ClaimTrees {
 						gitOf(ctx),
 					)
 				: await Worktree.add(runTree, dir, branch.value, gitOf(ctx));
-		const ready = readied.ok ? await setUp(ctx, dir) : readied;
+		const ready = readied.ok ? await setUp(ctx, dir, label(task)) : readied;
 		if (ready.ok) return ok({ dir, branch: branch.value });
 		await release(ctx, { dir, branch: branch.value }, existsSync(dir));
 		return err(

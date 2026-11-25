@@ -211,16 +211,17 @@ export namespace LoopConfig {
 					"Where each subtask's session and gates run: worktree, a git worktree and branch of its own merged into the run's branch once its gates pass, or shared, the run's one tree; defaults to worktree.",
 				),
 			/**
-			 * The user's own command for a subtask's worktree, run in it once it is made or reset for a
-			 * subtask and before its session starts: an install, say. Nothing else is installed. One that
-			 * fails stops the run.
+			 * The user's own command for a worktree: a subtask's, run in it once it is made or reset for
+			 * a subtask and before its session starts, and the run's own, once per runner before the
+			 * first claim that works there. An install, say. Nothing else is installed. One that fails
+			 * stops the run.
 			 */
 			setup: z
 				.string()
 				.min(1)
 				.optional()
 				.describe(
-					"A shell command run in each subtask's worktree as it is made or reset for a subtask, before its session starts, such as bun install; one that fails stops the run.",
+					"A shell command run in each worktree a session works in, before its session starts: a subtask's own as it is made or reset for it, and the run's once per runner for a single issue or a shared tree; such as bun install; one that fails stops the run.",
 				),
 			/**
 			 * Keep a subtask's worktree once its work merges, for the next subtask, reset to the run's
