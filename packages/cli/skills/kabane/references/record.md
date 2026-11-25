@@ -144,7 +144,9 @@ This is the coding use, but the steps are the same for any work two agents share
    after a crash read `kabane_questions` first.
 
 4. **The work is logged as it lands.** `kabane_log` with `commit:<sha>` and `pr:<owner>/<repo>#<n>`
-   refs, then `kabane_handoff`: what changed, what you saw, what you did not verify. Then
+   refs, then `kabane_handoff`: what changed, what you saw, what you did not verify. What the
+   next step must read, such as the spec file, gets a ref on that step's thread
+   (`kabane_contextAdd` on `sso-csv/build`, kind `spec`), so its brief carries it. Then
    `kabane_done`.
 
 5. **The second agent waits on the record, not on a message.** Codex, on another harness or
