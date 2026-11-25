@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import { existsSync } from "node:fs";
-import { checklistModule } from "@kabane/checklist";
 import { KABANE_TOOLS } from "@kabane/core";
 import issues from "@kabane/core/testing/fixtures/issue-corpus/issues.json";
 import manifest from "@kabane/core/testing/fixtures/issue-corpus/manifest.json";
@@ -9,8 +8,6 @@ import {
 	HUGE_COMMENT,
 	FIXTURE_TIME,
 } from "@kabane/core/testing/issue-corpus-seed";
-import { handoffModule } from "@kabane/handoff";
-import { questionsModule } from "@kabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -20,6 +17,7 @@ import {
 	payloadMetrics,
 } from "./issue-corpus-harness";
 import { configTools } from "./src/config-tools";
+import { MODULES } from "./src/context";
 import { Skills } from "./src/skills";
 
 const taskSchema = z
@@ -88,9 +86,7 @@ describe("retained issue corpus baseline", () => {
 				expect(discovery.tools).toHaveLength(
 					KABANE_TOOLS.length +
 						configTools(tracker.home, { projectDir: tracker.cwd }).length +
-						(questionsModule.tools?.length ?? 0) +
-						(handoffModule.tools?.length ?? 0) +
-						(checklistModule.tools?.length ?? 0) +
+						MODULES.flatMap((module) => module.tools ?? []).length +
 						Skills.tools([], "kabane").length,
 				);
 				let toolCalls = 0;

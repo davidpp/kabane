@@ -42,6 +42,7 @@ import {
 import { handoffModule } from "@kabane/handoff";
 import { outcomeModule } from "@kabane/outcome";
 import { questionsModule } from "@kabane/questions";
+import { registryModule } from "@kabane/registry";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
 import { handleHttpRequest } from "./mcp-http";
@@ -91,7 +92,13 @@ export class KabaneHub extends DurableObject<Cloudflare.Env> {
 		super(ctx, env);
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		const configured = Runtime.configure({
-			modules: [questionsModule, handoffModule, outcomeModule, checklistModule],
+			modules: [
+				questionsModule,
+				handoffModule,
+				outcomeModule,
+				checklistModule,
+				registryModule,
+			],
 			provider: DoDb.provider(ctx.storage),
 			actor: () => actorStore.getStore() ?? ANONYMOUS_ACTOR,
 			timezone: () => (zone.ok ? zone.value : "UTC"),

@@ -34,6 +34,7 @@ import {
 	type TaskUpdate,
 } from "../schemas";
 import { Planner } from "../storage";
+import { CustomAttributeKeySchema } from "../storage/custom-attribute";
 import { ResponseFormatSchema, taskReceipt } from "../task-output";
 import { CORE_TOOL_NAMES } from "./tool-names";
 
@@ -252,6 +253,9 @@ const integerInput = (bound: z.ZodNumber) =>
 const positiveLimit = integerInput(z.number().positive()).optional();
 
 const listInput = {
+	attribute: CustomAttributeKeySchema.optional().describe(
+		"Include this declared attribute on concise rows that have a value.",
+	),
 	state: TaskStateSchema.optional(),
 	kind: ItemKindSchema.optional(),
 	priority: TaskPrioritySchema.optional(),
@@ -288,6 +292,8 @@ Parameters:
 - cursor: Concise continuation; repeat the same filters. Relevant writes invalidate it`,
 	input: listInput,
 	handler: async (args, ctx) => {
+		if (args.attribute !== undefined && args.responseFormat !== "concise")
+			return err(new Error("attribute requires responseFormat: concise."));
 		if (args.responseFormat === "concise" && args.offset !== undefined)
 			return err(
 				new Error("concise pages with cursor; offset requires full format."),
@@ -311,6 +317,7 @@ Parameters:
 		};
 		if (args.responseFormat === "concise")
 			return Planner.queryTaskPage(ctx.basePath, query, {
+				attribute: args.attribute,
 				limit: args.limit,
 				cursor: args.cursor,
 			});

@@ -1,4 +1,5 @@
 import {
+	CustomAttributeKeySchema,
 	type ItemKind,
 	Planner,
 	type TaskPriority,
@@ -20,10 +21,20 @@ export const list: Command = {
 	name: "list",
 	summary: "List open tasks (done and cancelled hidden unless --all)",
 	usage:
-		"kabane list [--state <state>] [--kind task|issue|job] [--priority <p>] [--assignee <who>] [--scope <uri>] [--tag <tag>] [--all] [--limit <n>] [--format concise|full] [--cursor <cursor>]",
+		"kabane list [--state <state>] [--kind task|issue|job] [--priority <p>] [--assignee <who>] [--scope <uri>] [--tag <tag>] [--attribute <key>] [--all] [--limit <n>] [--format concise|full] [--cursor <cursor>]",
 	run: async (args, ctx) => {
 		const format = responseFormat(args);
 		if (!format.ok) return usage(format.error.message, list.usage);
+		const attribute = flagString(args, "attribute");
+		if (
+			args.flags.attribute !== undefined &&
+			(!CustomAttributeKeySchema.safeParse(attribute).success ||
+				format.value !== "concise")
+		)
+			return usage(
+				"--attribute requires a declared key and --format concise",
+				list.usage,
+			);
 		const query = {
 			state: flagString(args, "state") as TaskState | undefined,
 			kind: flagString(args, "kind") as ItemKind | undefined,
@@ -37,7 +48,10 @@ export const list: Command = {
 		if (format.value === "concise") {
 			const options = pageOptions(args);
 			if (!options.ok) return usage(options.error.message, list.usage);
-			const page = await Planner.queryTaskPage(ctx.store, query, options.value);
+			const page = await Planner.queryTaskPage(ctx.store, query, {
+				...options.value,
+				attribute,
+			});
 			return page.ok ? conciseSuccess(page.value) : failure(page.error);
 		}
 		const limitRaw = flagString(args, "limit");

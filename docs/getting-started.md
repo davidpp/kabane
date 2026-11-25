@@ -447,6 +447,49 @@ command's flags, `kabane --help` lists the commands, and
 date deadline's day ends, and how a time is shown. A name kabane does not know is an error, not
 a silent UTC.
 
+### Give items in a scope a classification
+
+Publish a small vocabulary once for the exact scope that owns the items. Save this as
+`classification.json`:
+
+```json
+{
+  "key": "classification",
+  "description": "Why this item is on the board.",
+  "choices": [
+    { "value": "request", "label": "Customer request", "description": "Someone explicitly asked." },
+    { "value": "finding", "label": "Observation", "description": "An agent noticed something." },
+    { "value": "idea", "label": "Idea" }
+  ]
+}
+```
+
+```bash
+kabane registry publish classification.json --scope acme --json
+kabane registry list --scope acme --json
+kabane add "Review the design" --kind issue --state next --key design/review --scope acme
+kabane registry set design/review classification request
+kabane list --scope acme --state next --format concise --attribute classification --json
+kabane registry clear design/review classification
+```
+
+The projected row includes `"attributes":{"classification":"request"}`. An item with no
+value omits `attributes`. Fetch labels once per exact scope and use the value as a fallback
+for an unfamiliar choice. Each page is bounded; repeat the attribute key when following its
+cursor. The same key may have different choices in another scope. The item's exact scope URI
+includes any branch and package qualifiers it was filed with.
+
+Over MCP, call `kabane_registryPublish` with `scopeUri` and the JSON object in `declaration`.
+`kabane_registry` takes `scopeUri`; `kabane_attributeSet` takes `id`, `key` and `value`
+(a choice string, or `null` to clear). Pass `responseFormat: "concise"` and
+`attribute: "classification"` to `kabane_list` for the same page as the CLI.
+
+Declarations travel with device sync and export. Publishing the same declaration again is
+safe. A device that already knows a key rejects a different definition. If two offline
+devices independently publish competing definitions for the same key, ordinary module row
+conflict resolution selects a definition at sync. Previously assigned values remain readable.
+Choose a new key for a changed vocabulary.
+
 ## Updating
 
 Each install updates with its own command:

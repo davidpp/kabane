@@ -26,6 +26,7 @@ it("Runtime.configure accepts the outcome module beside the first-party ones", (
 		"handoff",
 		"outcome",
 		"checklist",
+		"registry",
 	]);
 	for (const kind of Object.values(OUTCOME_KINDS))
 		expect(Runtime.entryKind(kind)?.projection).toBe("discussion");

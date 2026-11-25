@@ -16,6 +16,7 @@ import {
 	taskSummary,
 	type TaskSummary,
 } from "../task-output";
+import { customAttributeKey } from "./custom-attribute";
 import { rowToTask } from "./helpers";
 import { fingerprintText as digest } from "./read-fingerprint";
 import {
@@ -51,7 +52,7 @@ const CursorSchema = z
 	.strict();
 type Cursor = z.infer<typeof CursorSchema>;
 export type TaskPage = {
-	items: TaskSummary[];
+	items: (TaskSummary & { attributes?: Record<string, string> })[];
 	hasMore: boolean;
 	nextCursor?: string;
 	omittedFields: string[];
@@ -91,21 +92,28 @@ const packPage = (
 	total: number,
 	cursor: Omit<Cursor, "offset">,
 	offset: number,
-	budget: number,
+	{ budget, attribute }: { budget: number; attribute?: string },
 ): Result<TaskPage> => {
 	const items: TaskSummary[] = [];
 	for (const row of rows) {
 		const after = offset + items.length + 1;
 		const next =
 			after < total ? JSON.stringify({ ...cursor, offset: after }) : undefined;
+		const attributes =
+			attribute && typeof row.projected_value === "string"
+				? { [attribute]: row.projected_value }
+				: undefined;
+		const extra = attributes ? serializedBytes({ attributes }) : 0;
 		const projected = taskSummary(
 			rowToTask(row),
-			budget - serializedBytes(envelope([], next)),
+			budget - serializedBytes(envelope([], next)) - extra,
 		);
 		if (!projected.ok) return projected;
-		if (serializedBytes(envelope([...items, projected.value], next)) > budget)
-			break;
-		items.push(projected.value);
+		const item = attributes
+			? { ...projected.value, attributes }
+			: projected.value;
+		if (serializedBytes(envelope([...items, item], next)) > budget) break;
+		items.push(item);
 	}
 	if (rows.length && !items.length)
 		return err(
@@ -133,10 +141,11 @@ const packPage = (
 const readPage = async (
 	basePath: string,
 	bindingValue: unknown,
-	options: PageOptions,
+	options: PageOptions & { attribute?: string },
 	selectionFor: (db: Db, asOf: string) => TaskSelection | undefined,
 	budget = QUEUE_BYTES,
 ): Promise<Result<TaskPage>> => {
+	const { attribute } = options;
 	const parsed = PageOptionsSchema.safeParse(options);
 	if (!parsed.success)
 		return err(
@@ -159,11 +168,16 @@ const readPage = async (
 		const compactSql = `SELECT id, short_id, version, updated_at, updated_by ${selection.sql}`;
 		const candidates = db.query(compactSql).all(...selection.params);
 		const metadata = JSON.stringify(candidates);
+		const projection =
+			attribute === undefined
+				? ""
+				: ", (SELECT value FROM attributes WHERE thread_id = tasks.id AND key = ? AND removed_at IS NULL) AS projected_value";
+		const bind = attribute === undefined ? [] : [customAttributeKey(attribute)];
 		const rows = db
 			.query(
-				`SELECT ${selection.sql.includes(" JOIN ") ? "t.*" : "*"} ${selection.sql} LIMIT ? OFFSET ?`,
+				`SELECT ${selection.sql.includes(" JOIN ") ? "t.*" : "*"}${projection} ${selection.sql} LIMIT ? OFFSET ?`,
 			)
-			.all(...selection.params, parsed.data.limit, offset) as Record<
+			.all(...bind, ...selection.params, parsed.data.limit, offset) as Record<
 			string,
 			unknown
 		>[];
@@ -190,7 +204,7 @@ const readPage = async (
 		read.value.total,
 		{ v: 1, binding, fingerprint, asOf },
 		offset,
-		budget,
+		{ budget, attribute },
 	);
 };
 
@@ -198,7 +212,7 @@ export namespace Planner {
 	export const queryTaskPage = async (
 		basePath: string,
 		query: Partial<TaskQuery> = {},
-		options: PageOptions = {},
+		options: PageOptions & { attribute?: string } = {},
 	): Promise<Result<TaskPage>> => {
 		const parsed = PageQuerySchema.safeParse(query);
 		if (!parsed.success)
@@ -210,7 +224,7 @@ export namespace Planner {
 		const zone = Runtime.timezone();
 		return readPage(
 			basePath,
-			{ type: "list", query: parsed.data, zone },
+			{ type: "list", query: parsed.data, zone, attribute: options.attribute },
 			options,
 			(db, asOf) => selectTaskQuery(db, parsed.data, true, asOf),
 		);

@@ -33,7 +33,7 @@ Kabane's layers, from the bottom:
 |---|---|---|
 | core | `@kabane/core` | The record, its sync, the module seam and the MCP tool definitions. Runs in Bun and in Workers. |
 | storage adapter | `@kabane/sqlite` | The `Db` port over `bun:sqlite`, for devices. |
-| data module | `@kabane/questions`, `@kabane/checklist`, `@kabane/handoff`, `@kabane/outcome` | One feature's own record, as a `KabaneModule`. |
+| data module | `@kabane/questions`, `@kabane/checklist`, `@kabane/handoff`, `@kabane/outcome`, `@kabane/registry` | One feature's own record, as a `KabaneModule`. |
 | extension contract | `@kabane/extension` | The types an extension and the host exchange, and the argument, outcome and settings helpers every command is written with. |
 | harness client | `@kabane/acp` | Driving a coding harness over ACP: the harness registry, the session runner, tool calls, elicitation forms. |
 | client | `@kabane/board` | A UI over the record. |

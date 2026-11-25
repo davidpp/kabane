@@ -45,6 +45,7 @@
 		"@kabane/questions": "workspace:*",
 		"@kabane/extension": "workspace:*",
 		"@kabane/handoff": "workspace:*",
+		"@kabane/registry": "workspace:*",
 		"@kabane/outcome": "workspace:*",
 		"@kabane/sqlite": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.32.2",

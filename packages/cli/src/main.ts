@@ -36,6 +36,7 @@ import { log } from "./commands/log";
 import { mcp } from "./commands/mcp";
 import { open } from "./commands/open";
 import { questions } from "./commands/questions";
+import { registry } from "./commands/registry";
 import { scope } from "./commands/scope";
 import { search } from "./commands/search";
 import { show } from "./commands/show";
@@ -68,6 +69,7 @@ export const COMMANDS: Command[] = [
 	answer,
 	wait,
 	checklist,
+	registry,
 	handoff,
 	log,
 	context,
