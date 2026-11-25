@@ -317,7 +317,8 @@ file overlap and past attempts, plus the project's scripts and lockfile. It can 
   could run together name the same file. A shared tree, or a project outside git, is
   advised 1.
 - `loop.gates`: available `check`, `typecheck` and `test` scripts when no gates are set.
-- `loop.setup`: the dependency install command for each subtask's worktree.
+- `loop.setup`: the dependency install command for each worktree a session works in: the
+  run's own, for a single issue or a shared tree, and each subtask's.
 - `loop.stallAfter`: fewer attempts before stalling when past work has thrashed.
 
 Verifier lenses (`loop.lenses`) are also task-shaped choices in the form. The current
