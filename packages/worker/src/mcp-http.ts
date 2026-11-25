@@ -1,9 +1,5 @@
-import {
-	createMcpServer,
-	type ToolContext,
-	type McpServerInfo,
-	type AfterWrite,
-} from "@kabane/core";
+import type { AfterWrite, ToolContext } from "@kabane/core";
+import { createMcpServer, type McpServerInfo } from "@kabane/core/mcp-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
 /**

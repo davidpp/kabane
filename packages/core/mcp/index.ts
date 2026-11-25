@@ -1,10 +1,5 @@
-export {
-	type AfterWrite,
-	callTool,
-	createMcpServer,
-	type McpServerInfo,
-	registeredTools,
-} from "./server";
+// The SDK server (`createMcpServer`) is not here: it is `@kabane/core/mcp-server`.
+export { type AfterWrite, callTool, registeredTools } from "./call";
 export {
 	authorTypeOf,
 	define as defineTool,

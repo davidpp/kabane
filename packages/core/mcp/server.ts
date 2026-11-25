@@ -1,5 +1,6 @@
 /**
- * MCP server over the tool definitions.
+ * MCP server over the tool definitions, exported as `@kabane/core/mcp-server` and kept off the
+ * barrel: the SDK and its ajv load only in the processes that serve MCP (`kabane mcp`, the hub).
  *
  * Hosts connect their own transports to this shared tool server.
  *
@@ -24,12 +25,8 @@ import { z } from "zod";
 import { CONTEXT_SECTIONS, registeredContextSections } from "../context-output";
 import { err, ok, type Result } from "../result";
 import { Runtime } from "../runtime";
-import {
-	KABANE_TOOLS,
-	SERVER_INSTRUCTIONS,
-	type ToolContext,
-	type ToolDef,
-} from "./tools";
+import { type AfterWrite, callTool, registeredTools } from "./call";
+import { SERVER_INSTRUCTIONS, type ToolContext, type ToolDef } from "./tools";
 
 export type McpServerInfo = {
 	name?: string;
@@ -37,9 +34,6 @@ export type McpServerInfo = {
 };
 
 const DEFAULT_INFO = { name: "kabane", version: "0.1.0" };
-
-/** Called after a write tool succeeds; the hub pushes to the log here. */
-export type AfterWrite = (tool: ToolDef) => void;
 
 const toSdkTool = (
 	tool: ToolDef,
@@ -105,38 +99,6 @@ const toCallResult = (
 			: JSON.stringify(result.value, null, concise ? undefined : 2);
 	return { content: [{ type: "text", text }] };
 };
-
-const inputSchemas = new WeakMap<ToolDef, z.ZodObject<z.ZodRawShape>>();
-
-export const callTool = async (
-	tool: ToolDef,
-	rawArgs: unknown,
-	ctx: ToolContext,
-	afterWrite?: AfterWrite,
-): Promise<Result<unknown>> => {
-	let schema = inputSchemas.get(tool);
-	if (!schema) {
-		schema = z.object(tool.input);
-		inputSchemas.set(tool, schema);
-	}
-	const parsed = schema.safeParse(rawArgs ?? {});
-	if (!parsed.success) {
-		return err(
-			new Error(
-				`Invalid arguments: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
-			),
-		);
-	}
-	const result = await tool.handler(parsed.data, ctx);
-	if (result.ok && tool.kind === "write") afterWrite?.(tool);
-	return result;
-};
-
-/** Shared tracker and registered module tools, resolved after host configuration. */
-export const registeredTools = (): readonly ToolDef[] => [
-	...KABANE_TOOLS,
-	...Runtime.modules().flatMap((module) => module.tools ?? []),
-];
 
 /** A server with every tool registered against `ctx`; duplicate names are refused. */
 export const createMcpServer = (

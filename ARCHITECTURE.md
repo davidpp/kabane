@@ -119,7 +119,7 @@ The verdicts for what core holds that is not obviously the record:
 |---|---|---|---|---|---|
 | `file:` deref in `storage/assemble-context.ts` | yes: it inlines a context ref into the brief, which every reader gets | yes: every brief | yes: the host reads through `RuntimeConfig.fileReader` | yes | Assembly stays in core; the CLI wires the bounded reader. |
 | `mcp/tools.ts` | yes: the definition of every operation on the record, and `KabaneModule.tools` takes its `ToolDef` | yes: both hosts and every data module | yes | yes | Stays. |
-| `mcp/server.ts`, `createMcpServer` | yes: it composes the tool list both hosts serve | yes: the CLI and the hub | yes | yes | Stays. |
+| `mcp/server.ts`, `createMcpServer` | yes: it composes the tool list both hosts serve | yes: the CLI and the hub | yes | yes | Stays, as the subpath `@kabane/core/mcp-server` and not on the barrel: it is core's only import of the MCP SDK, so a command that serves no MCP never loads the SDK or its ajv. `callTool` and `registeredTools` (`mcp/call.ts`), which `host.record` uses in every process, stay on the barrel. |
 
 `scope/uri.ts`, which parses and formats the stored scope field, stays in core. So does
 `scope/git-fixture.ts`, test support for the CLI's and the loop's tests, which `scripts/layers.ts`

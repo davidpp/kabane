@@ -11,6 +11,7 @@
 		".": "./index.ts",
 		"./actor": "./actor.ts",
 		"./result": "./result.ts",
+		"./mcp-server": "./mcp/server.ts",
 		"./schemas": "./schemas/index.ts",
 		"./git-fixture": "./scope/git-fixture.ts",
 		"./testing": "./testing.ts",

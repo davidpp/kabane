@@ -13,7 +13,6 @@ import { ConfigSettings } from "../config-settings";
 import { configTools } from "../config-tools";
 import { type Command, openContext, resolveScopeUri } from "../context";
 import { Extensions } from "../extensions";
-import { serveStdio } from "../mcp-stdio";
 import { Self } from "../self";
 import { Skills } from "../skills";
 import { MCP_INSTALL_USAGE, mcpInstall } from "./mcp-install";
@@ -168,6 +167,9 @@ export const mcp: Command = {
 			directories,
 			Skills.command(bare.home, Self.current() ?? "kabane"),
 		);
+		// Imported here, not at the top: main.ts imports every command, and the MCP SDK and its ajv
+		// should load only in the process that serves.
+		const { serveStdio } = await import("../mcp-stdio");
 		const served = await serveStdio(
 			{
 				basePath: ctx.value.store,

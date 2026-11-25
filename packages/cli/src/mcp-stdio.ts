@@ -1,12 +1,11 @@
 import {
-	createMcpServer,
 	registeredTools,
 	ok,
 	type Result,
 	type ToolContext,
 	type ToolDef,
-	type McpServerInfo,
 } from "@kabane/core";
+import { createMcpServer, type McpServerInfo } from "@kabane/core/mcp-server";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 /**

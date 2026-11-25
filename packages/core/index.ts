@@ -45,16 +45,15 @@ export type {
 	ModuleContextSection,
 	ModuleSyncTable,
 } from "./module";
-// MCP (tool definitions + stdio / Streamable HTTP servers)
+// MCP tool definitions and calls. The SDK server is `@kabane/core/mcp-server`, so a process
+// that serves no MCP never loads the SDK or its ajv.
 export {
 	type AfterWrite,
 	authorTypeOf,
 	callTool,
-	createMcpServer,
 	defineTool,
 	humanActorOf,
 	KABANE_TOOLS,
-	type McpServerInfo,
 	registeredTools,
 	SERVER_INSTRUCTIONS,
 	type CoreToolInputShapes,

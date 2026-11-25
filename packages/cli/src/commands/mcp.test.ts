@@ -10,7 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createMcpServer, KABANE_TOOLS, ok, type ToolDef } from "@kabane/core";
+import { KABANE_TOOLS, ok, type ToolDef } from "@kabane/core";
+import { createMcpServer } from "@kabane/core/mcp-server";
 import { type Extension, Settings } from "@kabane/extension";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
