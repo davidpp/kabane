@@ -46,4 +46,3 @@ looks like.
   core for one workflow is a p2 that quotes the principle, even when the code is clean.
 - "Invariants at construction" (`CODING_PRINCIPLE.md`): for each property the change states in
   a comment or a doc, ask what enforces it and which test goes red without it.
-- One concern per commit. Internal notes are in `wiki/`, never `docs/`.

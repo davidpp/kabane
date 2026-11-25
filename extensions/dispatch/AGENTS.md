@@ -5,34 +5,11 @@ project's dispatch skill from it, the grill skill that walks the human through o
 the `/setup-dispatch` shortcut that runs the setup skill on the board, `kabane dispatch stamp`, and the `kabane doctor` checks that say a
 project's copy is behind. `README.md` is what a user reads.
 
-| Where | What it holds |
-|---|---|
-| `src/extension.ts` | the `(host) => Extension` factory: the `dispatch` command (`stamp`) and the doctor checks |
-| `src/templates.ts` | `Templates.hashDir` and `Templates.stamp`, read from this directory's `templates/` |
-| `src/doctor.ts` | `dispatch-skill-missing`, `-location`, `-unstamped`, `-behind`, `-unlinked`, `dispatch-template-unavailable` |
-| `skills/grill/SKILL.md` | the grill skill `kabane mcp` serves; it needs no filling, and nothing copies it into a project |
-| `skills/setup-dispatch/` | the router skill `kabane mcp` serves: `SKILL.md` with the options table and the menu, one `references/<option>.md` per option; `{{extension}}` and `{{kabane}}` filled by the host |
-| `copilot/shortcuts/*.md` | the board's `/setup-dispatch`, `{{extension}}` filled by the host |
-| `templates/dispatch/**` | what the setup-dispatch skill tells a session to copy into a project |
-| `evals/setup-dispatch/evals.json` | skill-creator's test prompts for the setup skill, run by hand against a real session |
-
-## It takes types from kabane and no value
-
-Its layer is `extension`; its entry in `scripts/layers.ts` (`"@kabane/dispatch"`) allows no
-runtime dependency. Scope detection, zod, outcomes and the result helpers arrive on `host`; the
-factory binds the result helpers through `src/result.ts` before anything else runs. Core and the
-contract are development dependencies for types and for the tests' own result helpers.
-
-A skill or shortcut file computes nothing: the stamp a filled skill records is
-`kabane dispatch stamp`'s output, which the setup-dispatch skill runs as `{{kabane}}`. The stamp is sha256 over the
-template's relative paths and bytes, `PLACEHOLDERS.md` excluded, so a skill base kabane stamped
-before the template moved here still compares equal. Any change to `templates/dispatch/` other
-than `PLACEHOLDERS.md` makes every filled skill behind: that is the point of the stamp.
+Any change to `templates/dispatch/` other than `PLACEHOLDERS.md` changes `kabane dispatch
+stamp`'s output and makes every filled skill behind: that is the point of the stamp.
 
 The loop keeps its own copies of the two shipped lenses (`extensions/loop/lenses/`). Each
 extension owns its copy, and the two may drift.
-
-Read before writing: `src/extension.ts`, `src/doctor.ts`, and `src/extension.test.ts`.
 
 ## Verify
 

@@ -19,10 +19,8 @@ Judge whether the resulting repository is healthier and easier for an external m
 ### Correctness
 
 - Check the specified behavior, error paths, empty and boundary inputs, concurrency, and state transitions.
-- Treat external data as `unknown` until a zod schema accepts it through `safeParse`.
-- Check that fallible functions return `Result` and that a `throw` appears only inside a transaction body to roll it back.
-- Question silent fallbacks, casts, optional fields, and assertions that hide an invariant. `as any`, non-null `!`, and `@ts-ignore` are always findings.
-- Confirm the architectural invariants in `CODING_PRINCIPLE.md` remain structurally enforced: local SQLite authoritative, the hub one more device, every replicated write captured into the append-only oplog, private rows kept out of it, the core running in Bun and Workers, migrations appended and never edited.
+- Question silent fallbacks, casts, optional fields, and assertions that hide an invariant.
+- Check the change against `CODING_PRINCIPLE.md`'s non-negotiables and architectural invariants.
 
 ### Readability and simplicity
 
@@ -34,8 +32,7 @@ Judge whether the resulting repository is healthier and easier for an external m
 ### Architecture
 
 - Keep feature-specific logic with its owner; do not turn shared modules into dumping grounds.
-- Keep dependencies flowing toward core contracts. The core receives runtime dependencies through `Runtime.configure` ports, never from the environment, and reaches storage only through the `Db` port.
-- A new class is a finding unless a framework demands the subclass; logic belongs in namespaces.
+- Keep dependencies flowing toward core contracts.
 - Treat a conditional bolted onto an unrelated flow as a design finding. Repeated conditionals over the same shape may indicate a missing model or dispatcher.
 - Test a refactor by counting concepts a reader must hold. Prefer a design that removes branches, modes, or layers over one that relocates them.
 - Prefer deleting an abstraction over polishing unnecessary indirection.

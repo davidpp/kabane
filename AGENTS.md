@@ -6,21 +6,21 @@ Local-first issue tracker and kanban for humans and AI agent runtimes.
 
 ```
 packages/
-├── core/      # @kabane/core   — schemas, storage over the Db port, sync (oplog, resolve, apply), MCP tool defs
+├── core/      # @kabane/core   — schemas, storage over the Db port, sync, MCP tool defs
 ├── sqlite/    # @kabane/sqlite — Db adapter over bun:sqlite (local devices)
-├── acp/       # @kabane/acp    — ACP client over Bun.spawn: harness registry, session runner, own Update union and form fields
-├── extension/ # @kabane/extension — extension contract (Command, Ctx, board ports, doctor checks), args, outcomes
-├── questions/ # @kabane/questions — data module: decisions agents ask humans (kabane_ask, kabane_questions, kabane_answer)
-├── checklist/ # @kabane/checklist — data module: the steps of one issue (kabane_checklist, kabane_checklistAdd, kabane_checklistTick, kabane_checklistEdit)
-├── outcome/   # @kabane/outcome — data module: decisions, findings, verifications and summaries on the issue timeline
-├── handoff/   # @kabane/handoff — data module: the handoff kind and its template, what an agent leaves the next reader on any kind of work (kabane_handoff)
-├── cli/       # kabane         — add, list, show, edit, done, search, link, sync, export, import, board, doctor, mcp (stdio)
-├── board/     # @kabane/board  — OpenTUI kanban and ACP copilot; consumes extension ports, no-op defaults
-└── worker/    # kabane-worker  — Cloudflare Worker: sync log DO + cloud device on DO SQLite serving MCP over Streamable HTTP
+├── acp/       # @kabane/acp    — ACP client that drives coding harnesses
+├── extension/ # @kabane/extension — the extension contract and its helpers
+├── questions/ # @kabane/questions — data module: decisions agents ask humans
+├── checklist/ # @kabane/checklist — data module: the steps of one issue
+├── outcome/   # @kabane/outcome — data module: session outcomes on the issue timeline
+├── handoff/   # @kabane/handoff — data module: the handoff entry kind
+├── cli/       # kabane         — the device host: commands, `kabane mcp` (stdio)
+├── board/     # @kabane/board  — OpenTUI kanban and ACP copilot
+└── worker/    # kabane-worker  — the hub: Cloudflare Worker, sync log and cloud device
 extensions/
-├── loop/      # @kabane/loop   — drives a parent issue's subtasks through ACP harnesses from a detached runner
-├── dispatch/  # @kabane/dispatch — the dispatch and grill skill templates, the setup-dispatch skill, `kabane dispatch stamp`, their doctor checks
-└── jobs/      # @kabane/jobs   — prompt recipes from .kabane/recipes/, `kabane run`, `kabane runs` and `kabane job` over hc terminals, its run and job tables
+├── loop/      # @kabane/loop   — drives an issue or its subtasks through harnesses
+├── dispatch/  # @kabane/dispatch — the dispatch skill template and its doctor checks
+└── jobs/      # @kabane/jobs   — recipes, `kabane run`, `runs` and `job` over hc terminals
 ```
 
 Two runtimes: Bun (devices) and Cloudflare Workers (the hub). The same core runs in both.
@@ -57,7 +57,7 @@ Before implementing a change, whatever its size, use `.agents/skills/dispatch/SK
 ```bash
 bun run check        # layers, oxlint, its type-aware pass, oxfmt --check, knip, jscpd
 bun run typecheck    # tsc --noEmit in every workspace package
-bun test             # bun packages only (questions, checklist, handoff, outcome, core, sqlite, acp, extension, cli, board, extensions/*)
+bun run test:bun     # every bun package; a bare `bun test` also sweeps the Worker's vitest files
 bun run test         # the above plus `bun run --cwd packages/worker test` (tsc + vitest)
 ```
 
@@ -66,14 +66,8 @@ without touching your own device"). It gives kabane a throwaway `KABANE_HOME` an
 and keeps setup from registering in the real harness configs. Never run a live check
 against `~/.kabane`: on a contributor's machine it is their real tracker.
 
-Root `bun test` must name the bun packages: a bare `bun test` sweeps the Worker's
-vitest files it cannot execute. `bun run fix` applies oxlint's fixes and oxfmt.
-Lefthook runs oxfmt on staged files, both oxlint passes on staged `.ts`/`.tsx`, and
-`typecheck` when `.ts` files are staged.
-
-Both oxlint passes deny warnings, in `bun run lint` and in lefthook: a warning fails the
-commit and the gate. Fix the cause; never relax a threshold, disable a rule, or add a
-suppression to get past one.
+`bun run fix` applies oxlint's fixes and oxfmt. A lint warning fails the commit and the gate:
+fix the cause; never relax a threshold, disable a rule, or add a suppression to get past one.
 
 ## Validating a UI change
 
@@ -112,25 +106,15 @@ without one: the default server holds the human's sessions. Mouse clicks are out
 A scripted ask does not prove a real harness sends that shape, so a change to how asks
 arrive still needs a run against a real one.
 
-`--scripted` also launches every session of a loop run on the scripted agent, through the
-sandbox's `loop.harnesses` setting, so `bun run sandbox --scripted loop start <id>` drives a
-run to its end with no quota spent and the board's loop tab shows a live run
-(`extensions/loop/AGENTS.md`, "Verify"). Without the flag the next sandbox call takes the
-setting out, and `loop start` is a real run.
-
 ## Constraints for agents
 
 - One concern per commit.
 - Never deploy to Cloudflare from an agent. `wrangler dev`, `wrangler deploy --dry-run` and
-  `@cloudflare/vitest-pool-workers` only. Deploys, DNS, and Access changes are manual steps
-  written into `docs/deploy.md`.
+  the Worker's vitest tests only. Deploys, DNS, and Access changes are manual steps written
+  into `docs/deploy.md`.
 - Machine-local instructions (a maintainer's own tracker scope, issue ids, worktree habits,
-  hub) belong in a gitignored `CLAUDE.local.md`, never in this file. A clean clone has none.
-  Claude Code reads `CLAUDE.local.md` after these instructions. Codex has no per-project
-  local file: an `AGENTS.override.md` replaces `AGENTS.md` in its directory, so one at the
-  root would hide everything here. Codex's personal instructions are global, for every
-  project: `$CODEX_HOME/AGENTS.md` (default `~/.codex/AGENTS.md`), which an
-  `AGENTS.override.md` beside it replaces.
+  hub) belong in a gitignored `CLAUDE.local.md`, never in this file. Not in an
+  `AGENTS.override.md` either: Codex reads one instead of the `AGENTS.md` beside it.
 
 ## Tracker
 

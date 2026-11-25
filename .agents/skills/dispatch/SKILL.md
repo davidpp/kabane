@@ -72,12 +72,9 @@ An issue's internal steps go in its checklist, not in sub-issues: `references/is
 says how. An item has no assignee, no state beyond done, and no brief; if it needs any of those,
 it's a subtask. In a wave, each subtask is one of the wave's issues, with a territory of its own.
 
-Decisions, research and ADRs go where AGENTS.md says they go: `wiki/`, which holds plans, design
-records and research and never `docs/`. An ADR goes in `wiki/adr/`, and `wiki/adr/README.md` says
-when a decision warrants one. Some of them may land in an issue's description, and
-there they are already part of that issue's brief. For everything that lands elsewhere, attach
-it to each issue that relies on it with `kabane_contextAdd` (kind `ADR`, `research`, `doc` or
-`spec`), so that `kabane_context` puts it in the implementer's brief. A `file:` reference is
+Decisions, research and ADRs go where AGENTS.md says they go. One that lands outside an issue's
+description is attached to each issue that relies on it with `kabane_contextAdd` (kind `ADR`,
+`research`, `doc` or `spec`), so that `kabane_context` puts it in the implementer's brief. A `file:` reference is
 inlined into the brief. Any other URI shows up as a pointer for the agent to follow. A record
 that no issue links to is a record the agent never reads.
 

@@ -33,8 +33,7 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
 2. **Does each thing added to `packages/core` pass all four questions?** Is it the record,
    how the record replicates, or a definition every reader goes through? Do two packages in
    different layers, core itself not counted, use it in this diff or on main? Does it run in Workers, with no
-   Bun, Node or process call reachable from `packages/core/index.ts` beyond the ones
-   `CODING_PRINCIPLE.md` names as never called by the hub? Is kabane the only tool that keeps
+   Bun API reachable from `packages/core/index.ts`? Is kabane the only tool that keeps
    it, or should the record hold a URI to it? Name where a "no" sends it. A subpath export
    keeps a call off the barrel but is no more Workers-safe: something new on one that only a
    device runs is a finding too, and needs naming in the verdict table even when it sits beside
@@ -83,23 +82,23 @@ extension surface that differs from the one `ARCHITECTURE.md` specifies.
 10. **Is base kabane free of text that describes an extension?** Text that base kabane writes
     in the copilot's instructions, the board, the CLI's help or a shipped template and that
     names the loop or tells the reader to use it is a finding, as a new entry on the existing
-    list under "The code breaks these rules today in named places". Kabane showing text an
-    extension contributed (its commands' usage, its settings, its procedures) is not.
+    list under "The code breaks these rules in named places". Kabane showing text an
+    extension contributed (its commands' usage, its settings) is not.
 11. **Is every rule this change states held by something?** A rule added to `ARCHITECTURE.md`,
     `CODING_PRINCIPLE.md` or a package's `AGENTS.md` names its check, or says it is held by
     review. And does every package's `AGENTS.md` still describe its package after this diff,
     including one the diff made stale without editing it?
 
-Rows in the table under "The code breaks these rules today in named places" are not findings
+Rows in the table under "The code breaks these rules in named places" are not findings
 on their own. `bun run layers` fails an exception whose edge is gone, but nothing checks the
 table: a diff that removes a named exception and leaves its row there is a finding.
 
 ## Severity
 
 - **p1**: a forbidden production edge added to `scripts/layers.ts`, or an exception added
-  with no issue that removes it; a new Bun, Node or process call reachable from core's barrel
-  beyond the ones `CODING_PRINCIPLE.md` names; a new replicated table in core's migrations; a
-  contract type a second client could not use; a `host.record` operation no tool offers.
+  with no issue that removes it; a new Bun API reachable from core's barrel; a new replicated
+  table in core's migrations; a contract type a second client could not use; a `host.record`
+  operation no tool offers.
 - **p2**: something placed in a layer that should not own it but cheap to move now (a helper
   with one consumer in core, a device-only export on a core subpath, a board import that only
   the CLI could satisfy); a `host` member or `Extension` field outside what `ARCHITECTURE.md`
@@ -107,7 +106,7 @@ table: a diff that removes a named exception and leaves its row there is a findi
   first-party data module registered by one host only; a package's `AGENTS.md` that the
   change made false.
 - **p3**: a rule stated with nothing holding it and no sentence saying review holds it; a row
-  left in "The code breaks these rules today in named places" after the code stopped breaking
+  left in "The code breaks these rules in named places" after the code stopped breaking
   it.
 
 A finding names the question, the section of `ARCHITECTURE.md` that states the rule, the
