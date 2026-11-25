@@ -79,6 +79,14 @@ export const entries = async (host: Host): Promise<Result<Entry[]>> => {
 	return ok(found);
 };
 
+/**
+ * What repairs a job item whose schedule row was never stored. `job add` files the item, then
+ * the row, in two writes the extension contract cannot join; the item alone schedules nothing,
+ * so cancelling it and adding the job again leaves one schedule.
+ */
+const orphanRepair = (short: string): string =>
+	`cancel it with \`kabane edit ${short} --state cancelled\`, then add the job again`;
+
 /** The job `key` names, open or not. */
 const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
 	const task = await d.host.record.get({ id: key });
@@ -87,9 +95,15 @@ const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
 	const jobs = await Jobs.all(d.host);
 	if (!jobs.ok) return jobs;
 	const job = jobs.value.find((j) => j.taskId === task.value?.id);
-	return job
-		? ok({ job, task: task.value })
-		: err(new Error(`${shortOf(task.value)} is not a job`));
+	if (job) return ok({ job, task: task.value });
+	const short = shortOf(task.value);
+	return err(
+		new Error(
+			task.value.kind === "job"
+				? `${short} is an item of kind job with no schedule, as a \`kabane job add\` that failed after filing it leaves one: ${orphanRepair(short)}`
+				: `${short} is not a job`,
+		),
+	);
 };
 
 /** The job's runs, newest first, as their runtime reports them now. */
@@ -440,6 +454,25 @@ const offerTick = (ctx: Extension.Ctx, host: Host): string[] => {
 	return [installed.ok ? installed.value : installed.error.message];
 };
 
+/**
+ * `job add` after its item is filed and its schedule failed to store: cancel the item, so a retry
+ * adds one job and no item that never fires stays open.
+ */
+const abandon = async (
+	d: Deps,
+	id: string,
+	short: string,
+	error: Error,
+): Promise<Outcome> => {
+	const cancelled = await d.host.record.edit({ id, state: "cancelled" });
+	const failed = `Could not store the schedule of job ${short}: ${error.message}.`;
+	return d.host.outcome.failure(
+		cancelled.ok
+			? `${failed} ${short} is cancelled, so nothing is left half-added.`
+			: `${failed} Cancelling ${short} failed too (${cancelled.error.message}): ${orphanRepair(short)}.`,
+	);
+};
+
 const add = async (
 	d: Deps,
 	args: ParsedArgs,
@@ -497,8 +530,8 @@ const add = async (
 		},
 		ctx.actor,
 	);
-	if (!stored.ok) return d.host.outcome.failure(stored.error);
 	const short = task.data.shortId ?? task.data.id;
+	if (!stored.ok) return abandon(d, task.data.id, short, stored.error);
 	return d.host.outcome.success(
 		{ job: task.data.id, shortId: short, next: valid.value.toISOString() },
 		[

@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	err,
+	Migrate,
+	Migrations,
 	ok,
 	Planner,
 	type Result,
@@ -14,6 +16,7 @@ import {
 	withDb,
 } from "@kabane/core";
 import { configureTestRuntime } from "@kabane/core/testing";
+import { Legacy } from "@kabane/core/testing/legacy-rows";
 import { createHostStore } from "@kabane/extension";
 import { z } from "zod";
 import { Jobs } from "./jobs";
@@ -321,6 +324,127 @@ it("updates a job's row in place and reads the edit back", async () => {
 		});
 		value(await Jobs.update(host, edited, "test"));
 		expect(value(await Jobs.all(host))).toEqual([edited]);
+	} finally {
+		configureTestRuntime();
+		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+const hostAt = (home: string) => ({
+	store: createHostStore(
+		() => home,
+		() => ["jobs_jobs"],
+		"jobs test",
+	),
+	z,
+});
+
+/** What `jobs_jobs` says it references, from its stored DDL. */
+const referencesOf = (home: string) =>
+	withDb(
+		home,
+		(db) =>
+			db
+				.query<{ sql: string }, []>(
+					"SELECT sql FROM sqlite_master WHERE name = 'jobs_jobs'",
+				)
+				.get()
+				?.sql.match(/REFERENCES\s+\S+/)?.[0],
+	);
+
+it("adds a job and records its fire on a fresh 2.0 database", async () => {
+	const home = mkdtempSync(join(tmpdir(), "jobs-jobs-"));
+	try {
+		configureTestRuntime({ modules: [Jobs.module()] });
+		value(await Planner.init(home));
+		expect(value(await referencesOf(home))).toBeUndefined();
+		const task = value(
+			await Planner.addTask(home, { title: "Steward", kind: "job" }),
+		);
+		const host = hostAt(home);
+		value(await Jobs.insert(host, job({ taskId: task.id }), "test"));
+		const fired = at(9, 0, 5).toISOString();
+		value(await Jobs.setFired(host, task.id, fired, "test"));
+		expect(value(await Jobs.all(host))).toEqual([
+			job({ taskId: task.id, lastFiredAt: fired }),
+		]);
+	} finally {
+		configureTestRuntime();
+		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+it("keeps every row of a jobs table whose foreign key followed tasks to retired_tasks, and takes writes again", async () => {
+	const home = mkdtempSync(join(tmpdir(), "jobs-jobs-"));
+	const full = Jobs.module();
+	// The module as 1.2.0 shipped it: its migrations stop before detach-from-tasks.
+	const old = { ...full, migrations: full.migrations?.slice(0, 5) };
+	try {
+		// A 1.x device: core at schema 12, the jobs table referencing `tasks(id)`, one job in it.
+		configureTestRuntime({ modules: [old] });
+		value(
+			await withDb(home, (db) => {
+				value(Migrate.run(db, Migrations.LIST.slice(0, 12)));
+				value(Migrations.applyModules(db, [old]));
+			}),
+		);
+		const tend = value(
+			await Legacy.addTask(home, { title: "Tend", kind: "job" }),
+		);
+		const kept = job({
+			taskId: tend.id,
+			lastFiredAt: at(9, 0, 5).toISOString(),
+		});
+		value(
+			await withDb(home, (db) => {
+				db.run(
+					`INSERT INTO jobs_jobs (id, task_id, schedule, recipe, inputs, last_fired_at,
+					   created_at, updated_at)
+					 VALUES (?, ?, ?, ?, '{}', ?, ?, ?)`,
+					[
+						tend.id,
+						tend.id,
+						kept.schedule,
+						kept.recipe ?? "",
+						kept.lastFiredAt ?? null,
+						kept.createdAt,
+						kept.createdAt,
+					],
+				);
+			}),
+		);
+
+		// The 2.0 core opening it with that old module, as the live tracker did: migration 14
+		// renames tasks, the reference follows it, and a job on a thread made since fails.
+		value(await Planner.init(home));
+		expect(value(await referencesOf(home))).toBe(
+			'REFERENCES "retired_tasks"(id)',
+		);
+		const steward = value(
+			await Planner.addTask(home, { title: "Steward", kind: "job" }),
+		);
+		const host = hostAt(home);
+		const refused = await Jobs.insert(
+			host,
+			job({ taskId: steward.id }),
+			"test",
+		);
+		expect(!refused.ok && refused.error.message).toBe(
+			"FOREIGN KEY constraint failed",
+		);
+
+		// The module as this build ships it: detach-from-tasks rebuilds the table.
+		configureTestRuntime({ modules: [full] });
+		value(await Planner.init(home));
+		expect(value(await referencesOf(home))).toBeUndefined();
+		expect(value(await Jobs.all(host))).toEqual([kept]);
+		value(await Jobs.insert(host, job({ taskId: steward.id }), "test"));
+		const fired = at(10, 0).toISOString();
+		value(await Jobs.setFired(host, tend.id, fired, "test"));
+		expect(value(await Jobs.all(host))).toEqual([
+			{ ...kept, lastFiredAt: fired },
+			job({ taskId: steward.id }),
+		]);
 	} finally {
 		configureTestRuntime();
 		rmSync(home, { recursive: true, force: true });

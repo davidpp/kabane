@@ -757,3 +757,87 @@ test("a tick whose program is gone is reported, and doctor --fix points it at th
 		]);
 	expect(kabane(["doctor"], options).stdout).not.toContain("job-tick-missing");
 });
+
+test("a job add whose schedule fails to store cancels its item, so a retry leaves one job", () => {
+	const { kabane, home } = setup();
+	const add = ["job", "add", "--title", "Steward", "--schedule", "0 9 * * *"];
+	expect(kabane([...add, "--request", "warm up"]).code).toBe(0);
+	// The write that failed on the 2.0 beta (a foreign key the extension's old copy kept), as any
+	// failure of the row's insert: the item is filed by then.
+	const db = new Database(join(home, "kabane.db"));
+	const refuse = () =>
+		db.run(
+			"CREATE TRIGGER refuse BEFORE INSERT ON jobs_jobs BEGIN SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed'); END",
+		);
+	try {
+		refuse();
+	} finally {
+		db.close();
+	}
+	const failed = kabane([...add, "--request", "tend"]);
+	expect(failed.code).toBe(1);
+	const short = /job (\S+): /.exec(failed.stderr)?.[1] ?? "";
+	expect(failed.stderr).toBe(
+		`Error: Could not store the schedule of job ${short}: FOREIGN KEY constraint failed. ${short} is cancelled, so nothing is left half-added.`,
+	);
+	expect(
+		JSON.parse(kabane(["show", short, "--json"]).stdout).task,
+	).toMatchObject({
+		kind: "job",
+		state: "cancelled",
+	});
+
+	const fixed = new Database(join(home, "kabane.db"));
+	try {
+		fixed.run("DROP TRIGGER refuse");
+	} finally {
+		fixed.close();
+	}
+	expect(kabane([...add, "--request", "tend"]).code).toBe(0);
+	const listed = JSON.parse(kabane(["job", "list", "--json"]).stdout).jobs as {
+		title: string;
+	}[];
+	expect(listed.map(({ title }) => title)).toEqual(["Steward", "Steward"]);
+	// The tracker holds the same two open, and the cancelled item beside them.
+	const items = JSON.parse(
+		kabane(["list", "--kind", "job", "--all", "--json"]).stdout,
+	) as { state: string }[];
+	expect(items.map(({ state }) => state).toSorted()).toEqual([
+		"cancelled",
+		"next",
+		"next",
+	]);
+});
+
+test("job show names the repair of a job item with no schedule, and the repair leaves one job", () => {
+	const { kabane } = setup();
+	// What a `job add` that failed after filing its item left before it cancelled one.
+	const orphan = JSON.parse(
+		kabane(["add", "Steward", "--kind", "job", "--state", "next", "--json"])
+			.stdout,
+	).shortId as string;
+	expect(kabane(["job", "show", orphan])).toMatchObject({
+		code: 1,
+		stderr: `Error: ${orphan} is an item of kind job with no schedule, as a \`kabane job add\` that failed after filing it leaves one: cancel it with \`kabane edit ${orphan} --state cancelled\`, then add the job again`,
+	});
+	expect(kabane(["edit", orphan, "--state", "cancelled"]).code).toBe(0);
+	const added = kabane([
+		"job",
+		"add",
+		"--title",
+		"Steward",
+		"--schedule",
+		"0 9 * * *",
+		"--request",
+		"tend",
+		"--json",
+	]);
+	expect(added.code).toBe(0);
+	const listed = JSON.parse(kabane(["job", "list", "--json"]).stdout).jobs as {
+		id: string;
+	}[];
+	expect(listed).toHaveLength(1);
+	expect(kabane(["job", "show", JSON.parse(added.stdout).shortId]).code).toBe(
+		0,
+	);
+});
