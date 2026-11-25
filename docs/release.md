@@ -35,13 +35,14 @@ Before it writes anything, the command checks:
   without protection and without the tap's deploy key.
 
 Then it sets the version in `packages/cli/package.json`, refreshes `bun.lock`, runs
-`bun run check`, `typecheck` and `test` on that tree, commits both files as
+`bun run check` and `bun run typecheck` on that tree, commits both files as
 `chore: release kabane <version>`, creates the annotated tag `v<version>` (honoring configured
 Git signing), pushes `main` and the tag in one atomic push, dispatches `release.yml` on the tag
 with `publish=true` and the release notes, and watches that run until it ends, printing its
 URL first. It finds the run by the tag's commit and the `workflow_dispatch` event, since the
 pushed tag also starts a [verification run](#verification-without-publishing). There is no npm
-login.
+login. The publishing workflow runs `bun run test` on the tagged commit. If the tests fail,
+the tag stays on GitHub and publication is skipped.
 
 The notes come from `--notes-file <path>` (32KiB at most), or are drafted from history: the
 `feat`, `fix` and `perf` subjects since the previous tag, at most 60, then a link to the compare
@@ -51,7 +52,7 @@ its database, or changes what it outputs gets an upgrade section under
 example
 [settings layers and scope pins](getting-started.md#upgrading-from-100-beta0-settings-layers-and-scope-pins)).
 
-A step that fails stops the command and names it; the steps before it stay done. A failed gate
+A step that fails stops the command and names it; the steps before it stay done. A failed local check
 leaves the version edit uncommitted: `git checkout -- packages/cli/package.json bun.lock` undoes
 it. A failed publishing run leaves `main` and the tag pushed: rerun its
 failed jobs from the run page, or fix the cause and release the next version. Nothing moves or
