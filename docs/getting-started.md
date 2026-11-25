@@ -177,7 +177,8 @@ scroll it when it is taller than the pane. A key that does nothing right now (no
   rest counted) and any question waiting on you, then shows one section at a time: `now` (its
   checklist, the decisions made, its subtasks, the latest handoff whole and its links,
   where `J/K` move a cursor and `enter` opens the issue under it), the description (with its curated context), the comments, and the log of work
-  and agent activity. It opens on `now` when anything is in it. `1`-`4` or `h`/`l` switch
+  and agent activity. It opens on `now` when anything besides links is in it, otherwise on the
+  description. `1`-`4` or `h`/`l` switch
   sections. `j`/`k` scroll a section, `ctrl+d`/`ctrl+u` by half a page, and `g`/`G` go to its
   top and its end; the `?` sheet and the transcript scroll the same way.
 - A long handoff on `now` is read by scrolling the section; nothing is folded. A part of `now`
