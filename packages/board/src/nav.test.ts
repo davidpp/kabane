@@ -858,16 +858,7 @@ describe("a ctrl chord is its own key, never the letter under it", () => {
 		expect(reduce(cancelled, ctrl("z")).effect.type).toBe("applyUndo");
 	});
 
-	it("ctrl+q leaves the reader and the sheet open, while ctrl+d still pages them", () => {
-		const reading = BoardNav.withReader(
-			{ ...detail, view: { type: "detail", taskId: "b", tab: "comments" } },
-			"b",
-		);
-		inert(reading, ctrl("q"));
-		expect(reduce(reading, ctrl("d")).effect).toEqual({
-			type: "readerScroll",
-			page: 0.5,
-		});
+	it("ctrl+q leaves the sheet open, while ctrl+d still pages it", () => {
 		const sheet = { ...detail, help: true };
 		inert(sheet, ctrl("q"));
 		expect(reduce(sheet, ctrl("d")).effect).toEqual({
@@ -1387,13 +1378,8 @@ describe("BoardNav.openFromDetail", () => {
 		);
 	});
 
-	it("closes the reader and a pinned banner on the issue it leaves", () => {
-		const s = onComments();
-		const reading: BoardNav.BoardState = {
-			...s,
-			view: { ...s.view, type: "detail", taskId: "a", reader: true },
-		};
-		const onB = BoardNav.openFromDetail(reading, "b");
+	it("opens the new issue on a view of its own, the one it left behind it", () => {
+		const onB = BoardNav.openFromDetail(onComments(), "b");
 		expect(onB.view).toEqual({
 			type: "detail",
 			taskId: "b",
@@ -1415,17 +1401,6 @@ describe("BoardNav.openFromDetail", () => {
 		// a, then t0…t23 behind t24: the last twenty are t4…t23.
 		expect(view.taskId).toBe("t24");
 		expect(view.back?.map((entry) => entry.taskId)).toEqual(ids.slice(4, 24));
-	});
-
-	it("esc with the reader open closes the reader only", () => {
-		const onB = BoardNav.openFromDetail(onComments(), "b");
-		const reading = BoardNav.withReader(onB, "b");
-		const closed = esc(reading).state;
-		expect(closed.view).toEqual({
-			type: "detail",
-			taskId: "b",
-			back: [{ taskId: "a", tab: "comments" }],
-		});
 	});
 
 	it("keeps the stack across the event view and back", () => {
@@ -2395,82 +2370,18 @@ describe("o key in the detail view emits openEvents effect", () => {
 	});
 });
 
-describe("the reader over the detail view (`r`)", () => {
+describe("`r` on the detail view", () => {
 	const t1 = task({ id: "t1" });
-	const detail = (over: Partial<BoardNav.BoardState> = {}) =>
-		state({
-			sections: sections({ next: [row(t1)] }),
-			selectedId: "t1",
-			view: { type: "detail", taskId: "t1", tab: "comments" },
-			...over,
-		});
-	const reading = BoardNav.withReader(detail(), "t1");
-
-	it("`r` asks app.tsx to open it, which decides whether there is anything to read", () => {
-		expect(reduce(detail(), char("r")).effect).toEqual({
-			type: "openReader",
-			taskId: "t1",
-		});
-		expect(BoardNav.readerOpen(reading)).toBe(true);
-		expect(BoardNav.keyContext(reading)).toBe("reader");
+	const detail = state({
+		sections: sections({ next: [row(t1)] }),
+		selectedId: "t1",
+		view: { type: "detail", taskId: "t1", tab: "now" },
 	});
 
-	it("opens only over the detail view on that task", () => {
-		expect(BoardNav.withReader(detail(), "t2").view).toEqual(detail().view);
-		expect(BoardNav.withReader(state(), "t1").view).toEqual({ type: "board" });
-	});
-
-	it("j/k scroll it and [ ] jump between headings, not the detail under it", () => {
-		expect(reduce(reading, char("j")).effect).toEqual({
-			type: "readerScroll",
-			delta: 2,
-		});
-		expect(reduce(reading, { name: "up" }).effect).toEqual({
-			type: "readerScroll",
-			delta: -2,
-		});
-		expect(reduce(reading, char("]")).effect).toEqual({
-			type: "readerJump",
-			delta: 1,
-		});
-		expect(reduce(reading, char("[")).effect).toEqual({
-			type: "readerJump",
-			delta: -1,
-		});
-	});
-
-	it("esc and q close it onto the detail's tab as it was", () => {
-		for (const key of [{ name: "escape" }, char("q")]) {
-			const { state: next } = reduce(reading, key);
-			expect(next.view).toEqual({
-				type: "detail",
-				taskId: "t1",
-				tab: "comments",
-			});
-		}
-	});
-
-	it("holds every other key, the detail's and the everywhere ones alike", () => {
-		for (const key of [char("2"), char("d"), char("o"), { name: "tab" }]) {
-			const { state: next, effect } = reduce(reading, key);
-			expect(effect.type).toBe("none");
-			expect(next).toBe(BoardNav.sight(reading, 0));
-		}
-	});
-
-	it("`?` lists its keys over it, and closing the sheet leaves it open", () => {
-		const sheet = reduce(reading, char("?")).state;
-		expect(sheet.help).toBe(true);
-		expect(BoardNav.sheetContext(sheet)).toBe("reader");
-		expect(BoardNav.readerOpen(reduce(sheet, { name: "escape" }).state)).toBe(
-			true,
-		);
-	});
-
-	it("a click on the detail under it does nothing", () => {
-		expect(
-			BoardNav.reduceMouse(reading, { type: "detailTab", tab: "now" }).state,
-		).toBe(reading);
+	it("does nothing: the newest handoff reads whole on `now`", () => {
+		const { state: next, effect } = reduce(detail, char("r"));
+		expect(effect).toEqual({ type: "none" });
+		expect(next.view).toEqual(detail.view);
 	});
 });
 

@@ -575,8 +575,9 @@ it ends on `…`. A click on an id opens that issue, and a click on a count or t
 An issue related to nothing has no such row.
 
 - `now`: what is in force while the work runs, the part a glance between edits wants. The
-  checklist, the newest entry of each kind the brief lifts as a digest (below), the decisions
-  made, the subtasks and the links, in that order. A part with nothing in it takes no room.
+  checklist, the decisions made, the subtasks, the newest entry of each kind the brief lifts,
+  whole (below), and the links, in that order: the lists a glance wants lead, and the one part as
+  long as its author made it comes after them. A part with nothing in it takes no room.
   `links` lists every relation, grouped: parent, subtask (by a link), blocked by, blocks,
   follows, followed by, related, duplicate of, duplicated by, then upstream. Each issue reads
   as a subtask does, `✓` or `○`, its id and title, its state at the right; one the tracker no
@@ -588,7 +589,7 @@ An issue related to nothing has no such row.
 - `log`: the host's cards, then the work logged, newest first: each `session:` ref under its
   label, the agent that ran it.
 
-The detail opens on `now` when it has anything in it but links, otherwise on `description`; a section with
+The detail opens on `now`, at its top, when it has anything in it but links, otherwise on `description`; a section with
 nothing in it is faint in the bar. The section it opened on, or the one you picked, stays when a
 change lands while it is open: a checklist added to an issue you are reading the description of
 does not move you.
@@ -687,44 +688,15 @@ A band is one row and never wraps: when it is too long for the pane, the author'
 `…` first, so the kind and the age stay whole (`claude-sonnet-4… · handoff · just now`).
 
 The `now` section shows what the brief lifts. For each kind a registered module projects as
-`latest` (the handoff), the issue's newest entry of that kind sits under the checklist as a
-digest: one line with the kind's title, its author and its age (`handoff · claude · 2h ago`), the
-kind's framing line muted, then the body read as markdown sections. The text before the first
-heading and the first section show rendered, the first heading behind `▾`, held to about eight
-rows at forty columns (more of it fits a wider pane) with `… 6 more lines` for what that leaves
-out. Every further heading at the body's top level is one line with its size, never its content.
-The fold's last line, the cut or the last heading when nothing is cut, ends on `· r read`, which
-opens the rest (below):
-
-```
-▾ Summary
-The wave is merged on local main at
-1519458, not pushed. …
-… 6 more lines · r read
-▸ Evidence · 7 lines
-▸ Not verified · 8 lines
-▸ Risk · 1 line
-```
-
-Headings are read from the text, `##` or `###` alike, never checked against the kind's template;
-a `#` line inside a code block is code. A body with no headings shows its first paragraph and how
-many lines follow. `1 earlier in comments` says when there are older entries of the kind; the
-comments section has every entry whole. The kinds come from the host's registered modules, so a
-host that registered none lifts nothing, and an issue with no such entry shows nothing for it. A
-new entry moves the open detail's stamp, so a handoff recorded in a shell shows within one poll.
-
-`r` on the detail, from any section, opens the reader: each lifted kind's newest entry in full,
-in the same order, over the detail. The footer names it after the kind (`r read handoff`), or
-says `r read` when an issue has entries of several lifted kinds, and leaves it out when there is
-nothing to read; at forty columns, while `now`'s cursor is on an item (`space toggle item`) or an issue (`enter open`), that hint has the room,
-and the digest's `r read` and `?` list `r`. In the reader, the scroll keys move it as they move the detail, `[` and `]` go
-to the previous and next heading across the entries (headings read as the digest reads them),
-one heading per press even near the end where the scroll stops, `?` lists these keys, and `esc` or
-`q` close it onto the detail at the section and scroll you left. A newer entry that lands while
-the reader is open replaces the one on screen, and the heading you were at stays where it was;
-when the newer entry has no heading of that name, the reader goes back to the top. Its first row
-stays put while the rest scrolls: once an entry's own first line has gone above the view, it says
-whose entry you are in and which heading you are at (`handoff · claude · Evidence`).
+`latest` (the handoff), the issue's newest entry of that kind sits under the subtasks, whole: one
+line with the kind's title, its author and its age (`handoff · claude · 2h ago`), the kind's
+framing line muted, then the body rendered as markdown, as the comments section renders an entry.
+Nothing is folded or cut: a long handoff is read by scrolling `now` with the keys every section
+shares (`j/k`, `ctrl+d`/`ctrl+u`, `g`/`G`), and the links follow its end. `1 earlier in comments`
+says when there are older entries of the kind; the comments section has every entry whole. The
+kinds come from the host's registered modules, so a host that registered none lifts nothing, and
+an issue with no such entry shows nothing for it. A new entry moves the open detail's stamp, so a
+handoff recorded in a shell shows within one poll, its header marked `✦` as above.
 
 ## Linked issues
 

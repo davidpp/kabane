@@ -833,13 +833,7 @@ test("the ? sheet lists the view's own keys under its name, then the ones that w
 const SHEET_ROOM_AT_FORTY = 40 - 2 - 1;
 
 test("every ? sheet row reads whole at forty columns, beside the sheet's scrollbar", () => {
-	for (const context of [
-		"board",
-		"detail",
-		"reader",
-		"transcript",
-		"cardTab",
-	] as const)
+	for (const context of ["board", "detail", "transcript", "cardTab"] as const)
 		for (const line of sheetLines(Keymap.sheet(context)))
 			expect({
 				context,

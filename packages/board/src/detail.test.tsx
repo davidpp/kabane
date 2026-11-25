@@ -857,7 +857,7 @@ test("Detail lifts the latest handoff under the checklist at forty columns, coun
 	}
 });
 
-test("Detail shows a handoff as a digest: its first section open, every further heading one line with its size", async () => {
+test("Detail shows the newest handoff whole on now: every section under its heading, nothing folded or cut", async () => {
 	const task = await seed({ title: "Handed off" });
 	const body = [
 		"### Summary",
@@ -893,32 +893,34 @@ test("Detail shows a handoff as a digest: its first section open, every further 
 	if (!added.ok) throw added.error;
 	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
 		width: 40,
-		height: 40,
+		height: 60,
 	});
 	try {
 		const frame = await pumpUntil(
 			renderOnce,
 			captureCharFrame,
-			(f) => f.includes("▸ Risk") && f.includes("four"),
+			(f) => f.includes("Risk") && f.includes("A restart under load."),
 		);
 		const lines = rows(frame);
 		const at = (text: string) => lines.findIndex((row) => row.includes(text));
-		const open = at("▾ Summary");
-		expect(open).toBeGreaterThan(at("handoff · claude"));
-		expect(lines[open + 1]).toContain("The store writes through");
-		// Eight rows: the heading, two of the paragraph, a blank, and four items; three are left out.
-		expect(at("… 3 more lines")).toBeGreaterThan(at("four"));
-		expect(frame).not.toContain("five");
-		expect(lines[at("… 3 more lines") + 1]).toContain("▸ Evidence · 2 lines");
-		expect(lines[at("… 3 more lines") + 2]).toContain(
-			"▸ Not verified · 1 line",
-		);
-		expect(lines[at("… 3 more lines") + 3]).toContain("▸ Risk · empty");
-		// The cut says where the rest is read, on its own row; the folds below it do not repeat it.
-		expect(lines[at("… 3 more lines")]?.trim()).toBe("… 3 more lines · r read");
-		expect(frame.match(/r read/g)).toHaveLength(1);
-		expect(frame).not.toContain("12 pass");
-		expect(frame).not.toContain("A restart under load.");
+		// Each heading as the markdown sets it, its text right under it, in the order written.
+		const order = [
+			"handoff · claude",
+			"Summary",
+			"The store writes through",
+			"seven",
+			"Evidence",
+			"bun test 12 pass",
+			"Not verified",
+			"A restart under load.",
+			"Risk",
+		].map(at);
+		expect(order.every((row) => row > -1)).toBe(true);
+		expect(order).toEqual([...order].sort((a, b) => a - b));
+		// No fold, no cut, and no reader to send anyone to.
+		expect(frame).not.toMatch(/[▸▾]/);
+		expect(frame).not.toContain("more line");
+		expect(frame).not.toContain("r read");
 		for (const row of lines)
 			expect(row.trimEnd().length).toBeLessThanOrEqual(40);
 	} finally {
@@ -983,10 +985,13 @@ test("Detail's lifted block spends no line on a count it does not have", async (
 		);
 		const lines = rows(frame);
 		const body = lines.findIndex((row) => row.includes("The only pass."));
-		expect(body).toBeGreaterThan(-1);
+		expect(body).toBeGreaterThan(
+			lines.findIndex((row) => row.includes("subtasks")),
+		);
 		expect(frame).not.toContain("earlier in comments");
-		expect(lines[body + 1]?.trim()).toBe("");
-		expect(lines[body + 2]).toContain("subtasks");
+		// The body is the last of `now`: the next row with anything on it is the footer's.
+		const next = lines.slice(body + 1).find((row) => row.trim() !== "");
+		expect(next).toContain("help");
 	} finally {
 		destroy();
 	}
@@ -1064,7 +1069,7 @@ test("Detail marks a fresh block seen only while nothing is drawn over it", asyn
 	});
 	if (!items.ok) throw items.error;
 	const records = await recordsOf(task);
-	// The same fresh checklist on two views, one under the reader and one in plain sight.
+	// The same fresh checklist on two views, one covered (the `?` sheet over it) and one in plain sight.
 	const view = async (covered: boolean) => {
 		const seen: string[] = [];
 		const mounted = await renderTest(
@@ -1131,37 +1136,51 @@ test("Detail with no tab picked draws the tab the keys read, not one of its own 
 	}
 });
 
-test("Detail's digest with nothing cut ends its last fold on the r hint, at forty columns", async () => {
-	const task = await seed({ title: "Short handoff" });
+test("Detail's now lists the checklist, the subtasks, the handoff whole, then the links, so no list sits under a long entry", async () => {
+	const task = await seed({ title: "In order" });
+	const items = await Checklist.add(TEST_BASE, {
+		id: task.id,
+		items: ["Read it back"],
+	});
+	if (!items.ok) throw items.error;
+	await seed({ title: "A step under it", parentTaskId: task.id });
+	const related = await seed({ title: "Related work" });
+	await linkTasks(task.id, "related", related.id);
 	const added = await Planner.addEntry(TEST_BASE, {
 		taskId: task.id,
 		kind: "handoff",
 		author: "kabane://actor/agent/claude",
 		authorType: "ai",
 		content: [
-			"### Summary",
+			"## Summary",
 			"",
-			"Done.",
-			"",
-			"### Evidence of a run that takes a long heading to name",
-			"",
-			"- it ran",
+			...Array.from({ length: 12 }, (_, n) => `- point ${n + 1}`),
 		].join("\n"),
 	});
 	if (!added.ok) throw added.error;
 	const { renderOnce, captureCharFrame, destroy } = await mount(task, {
 		width: 40,
-		height: 30,
+		height: 60,
 	});
 	try {
-		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
-			f.includes("r read"),
+		const frame = await pumpUntil(
+			renderOnce,
+			captureCharFrame,
+			(f) => f.includes("point 12") && f.includes("Related work"),
 		);
-		const fold = rows(frame).find((row) => row.includes("▸ Evidence"));
-		// The heading is cut; its size and the hint are held whole.
-		expect(fold?.trimEnd()).toMatch(/^ ▸ Evidence of a .*… · 1 line · r read$/);
-		expect(fold?.trimEnd().length).toBeLessThanOrEqual(40);
-		expect(frame).not.toContain("more line");
+		const lines = rows(frame);
+		const at = (text: string) => lines.findIndex((row) => row.includes(text));
+		const order = [
+			"checklist · 0/1",
+			"subtasks",
+			"A step under it",
+			"handoff · claude",
+			"point 12",
+			"links",
+			"Related work",
+		].map(at);
+		expect(order.every((row) => row > -1)).toBe(true);
+		expect(order).toEqual([...order].sort((a, b) => a - b));
 	} finally {
 		destroy();
 	}

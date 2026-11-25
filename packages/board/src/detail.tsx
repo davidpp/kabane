@@ -1,8 +1,8 @@
 /** @jsxImportSource @opentui/react */
 // Detail view for a single task, read as parts rather than one wall. Pinned on a raised block: the
 // title, the task at a glance, what is running on it and where it sits as one trail; under it, any
-// question waiting on the human. Then tabs: what is in force now (the checklist, the latest handoff
-// as a digest, the decisions made, the subtasks and the links), the description (the ask, with its curated context),
+// question waiting on the human. Then tabs: what is in force now (the checklist, the decisions made,
+// the subtasks, the latest handoff whole and the links), the description (the ask, with its curated context),
 // the comments and the agent log, one at a time, scrolled by screen.tsx's `scroll` effect (it owns
 // the ref, so every key stays in board-input.ts's one useKeyboard handler). DetailModel decides
 // what goes where; this file only draws it. The agent brief is not drawn here: `y` copies it, and
@@ -201,7 +201,7 @@ export type DetailProps = {
 	// The blocks of `now` a change landed on that the human has not seen (useDetailRecords), and how
 	// the view tells it they have been. Absent, nothing is marked.
 	fresh?: Fresh;
-	// Something is drawn over the view (the reader, the `?` sheet), so nothing on it is being seen.
+	// Something is drawn over the view (the `?` sheet, a picker), so nothing on it is being seen.
 	covered?: boolean;
 	// Open another issue over this one (BoardNav.openFromDetail), `esc` coming back here.
 	onOpenTask?: (taskId: string) => void;
@@ -304,7 +304,7 @@ const nestedQuotes = new WeakSet<Renderable>();
 // Markdown render is the one place a throw can reach the app; wrap it so a parse failure degrades to
 // the raw text instead of tearing down the tree. Prose keeps a column clear of the scrollbar and
 // stops at the measure.
-export const MarkdownBody = ({ content }: { content: string }): ReactNode => {
+const MarkdownBody = ({ content }: { content: string }): ReactNode => {
 	const theme = useTheme();
 	const markdownStyle = useMarkdownStyle();
 	// Stable per theme: a new renderBlock has OpenTUI rebuild every block.
@@ -808,9 +808,9 @@ const TabContent = ({
 };
 
 // The `now` tab: what is in force while the work runs, each block named as the model names it
-// (DetailModel.NowBlock), so a block can be found again by its name: the checklist, the newest entry
-// of each lifted kind as a digest, the decisions made, the subtasks and the links. The first block
-// has no blank line above it.
+// (DetailModel.NowBlock), so a block can be found again by its name: the checklist, the decisions
+// made, the subtasks, the newest entry of each lifted kind whole, and the links. The first block has
+// no blank line above it.
 const NowTab = ({
 	records,
 	room,
@@ -923,7 +923,7 @@ const NowBlockBody = ({
 }): ReactNode => {
 	const theme = useTheme();
 	if ("entry" in block)
-		return <LiftedDigest entry={block.entry} room={room} fresh={fresh} />;
+		return <LiftedBlock entry={block.entry} room={room} fresh={fresh} />;
 	switch (block.name) {
 		case "checklist": {
 			const { lines, progress, cursor } = checklist;
@@ -1044,16 +1044,12 @@ const DescriptionTab = ({
 	);
 };
 
-// An entry the brief lifts, as a digest on the `now` tab: headed like a list, with the kind's title
-// in Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
-// before it; then the kind's framing line muted. Under a blank line, the body's opening rendered
-// (DetailModel.digest), its first heading behind an open `▾`, and a muted `… n more lines` when the
-// cap left some out; then one line per further heading behind a closed `▸`, its size muted, never
-// its content. Those are the `▸ ▾` of a folded run in a transcript: a part closed, a part open. The
-// fold's last line (the cut, or the last `▸` when nothing is cut) ends on the `r` hint, in the
-// footer's two tones, since the footer gives its own room to the checklist's keys. When the kind has
+// An entry the brief lifts, whole on the `now` tab: headed like a list, with the kind's title in
+// Label weight and who wrote it and when muted after a `·`, the age held whole and a long name cut
+// before it; then the kind's framing line muted. Under a blank line, the body rendered as the
+// comments tab renders an entry (MarkdownBody), however long, since `now` scrolls. When the kind has
 // older entries, one muted line under a blank line says where they are.
-const LiftedDigest = ({
+const LiftedBlock = ({
 	entry,
 	room,
 	fresh = false,
@@ -1076,63 +1072,15 @@ const LiftedDigest = ({
 		[{ text: ` · ${relativeTime(entry.at)}`, fg: theme.muted }],
 		room,
 	);
-	// The columns the markdown wraps in: the room less its own inset, never past the measure.
-	const digest = DetailModel.digest(
-		entry.sections,
-		Math.min(room - CONTENT_INSET, PROSE_MEASURE),
-	);
-	const hasBody = digest.shown.length > 0 || digest.folded.length > 0;
-	const readHint = [
-		{ text: " · ", fg: theme.muted },
-		{ text: "r", fg: theme.defaultFg },
-		{ text: " read", fg: theme.muted },
-	];
-	const lastFold = digest.more > 0 ? -1 : digest.folded.length - 1;
 	return (
 		<box style={{ flexDirection: "column" }}>
 			<text>{Segments.spans(heading)}</text>
 			<text fg={theme.muted} style={{ maxWidth: PROSE_MEASURE }}>
 				{entry.framing}
 			</text>
-			{hasBody ? (
-				<box style={{ flexDirection: "column", marginTop: 1 }}>
-					{digest.shown.map((part) => (
-						<box
-							key={part.heading ?? "opening"}
-							style={{ flexDirection: "column" }}
-						>
-							{part.heading !== undefined ? (
-								<FoldRow glyph="▾" heading={part.heading} room={room} />
-							) : null}
-							{part.text ? <MarkdownBody content={part.text} /> : null}
-						</box>
-					))}
-					{digest.more > 0 ? (
-						<text>
-							{Segments.spans(
-								Segments.fitHolding(
-									[
-										{
-											text: `… ${digest.more} more ${digest.more === 1 ? "line" : "lines"}`,
-											fg: theme.muted,
-										},
-									],
-									readHint,
-									room,
-								),
-							)}
-						</text>
-					) : null}
-					{digest.folded.map((part, index) => (
-						<FoldRow
-							key={index}
-							glyph="▸"
-							heading={part.heading}
-							size={part.size}
-							room={room}
-							hint={index === lastFold ? readHint : undefined}
-						/>
-					))}
+			{entry.body ? (
+				<box style={{ marginTop: 1 }}>
+					<MarkdownBody content={entry.body} />
 				</box>
 			) : null}
 			{entry.earlier > 0 ? (
@@ -1142,43 +1090,6 @@ const LiftedDigest = ({
 			) : null}
 		</box>
 	);
-};
-
-// One heading of a digest: the fold glyph muted, the heading in the terminal's foreground, and, for a
-// folded one, its size muted after a `·` (`▸ Evidence · 7 lines`, `▸ Risk · empty`) and any hint after
-// it, held whole while a long heading is cut.
-const FoldRow = ({
-	glyph,
-	heading,
-	size,
-	room,
-	hint = [],
-}: {
-	glyph: string;
-	heading: string;
-	size?: number;
-	room: number;
-	hint?: readonly Segments.Segment[];
-}): ReactNode => {
-	const theme = useTheme();
-	const sized =
-		size === undefined
-			? []
-			: [
-					{
-						text: ` · ${size === 0 ? "empty" : `${size} ${size === 1 ? "line" : "lines"}`}`,
-						fg: theme.muted,
-					},
-				];
-	const segments = Segments.fitHolding(
-		[
-			{ text: `${glyph} `, fg: theme.muted },
-			{ text: heading, fg: theme.defaultFg },
-		],
-		[...sized, ...hint],
-		room,
-	);
-	return <text>{Segments.spans(segments)}</text>;
 };
 
 // A list on a tab, headed in Label weight like a bay, its count muted after a `·`; a `✦` in front
