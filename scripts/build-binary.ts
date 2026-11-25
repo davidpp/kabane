@@ -74,6 +74,10 @@ export const buildBinary = async (
 				process.execPath,
 				"build",
 				"--compile",
+				// The board, OpenTUI and React go in their own chunk, which a compiled binary parses
+				// only when the board or the setup screen imports it: `kabane mcp` and the record
+				// commands start without it.
+				"--splitting",
 				"--no-compile-autoload-bunfig",
 				"--no-compile-autoload-dotenv",
 				`--target=bun-${target}${process.arch === "x64" ? "-baseline" : ""}`,
