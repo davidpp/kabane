@@ -16,7 +16,7 @@ import type {
 import type { QuestionView } from "@kabane/questions";
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { createRef, type ReactNode, useEffect, useMemo, useRef } from "react";
+import { createRef, type ReactNode, useMemo, useRef } from "react";
 import { BoardActivity } from "../activity";
 import { Board } from "../board";
 import { CardHeader } from "../card-header";
@@ -33,7 +33,6 @@ import { ElicitationForm } from "../elicitation-form";
 import { EventView, Stream } from "../event-view";
 import { BoardJobs } from "../jobs";
 import { JobPanel, JobsView } from "../jobs-view";
-import { type LiftedReader, LiftedReaderSheet } from "../lifted-reader";
 import { BoardNav } from "../nav";
 import { NowFeed } from "../now-feed";
 import {
@@ -588,40 +587,6 @@ const TRAIL_ONLY = Fixtures.records(SITTING, {
 	],
 	neighbors: [WAVE, BLOCKER, ...DEPENDENTS],
 });
-
-// The reader over the wave's detail, moved `jumps` headings down the way `]` moves it, once the
-// markdown has laid out. Under the screen's tab bar, as the board draws it: the reader sits a row
-// down, under that bar.
-const ReaderOver = ({ jumps }: { jumps: number }): ReactNode => {
-	const handle = useRef<LiftedReader.Handle | null>(null);
-	useEffect(() => {
-		const timers = Array.from({ length: jumps }, (_, n) =>
-			setTimeout(() => handle.current?.jump(1), 60 * (n + 1)),
-		);
-		return () => {
-			for (const timer of timers) clearTimeout(timer);
-		};
-	}, [jumps]);
-	return (
-		<box style={{ flexDirection: "column", flexGrow: 1 }}>
-			<TabBar tabs={BoardTabs.NONE} cards={[]} spinnerFrame={SPINNER_IDLE} />
-			<box style={{ flexDirection: "column", flexGrow: 1 }}>
-				<Detail
-					taskId={WAVE.id}
-					task={WAVE}
-					records={ok(WAVE_RECORDS)}
-					scrollRef={createRef<ScrollBoxRenderable>()}
-					checklist={WAVE_CHECKLIST}
-					covered
-				/>
-			</box>
-			<LiftedReaderSheet
-				entries={DetailModel.lifted(WAVE_RECORDS)}
-				handleRef={handle}
-			/>
-		</box>
-	);
-};
 
 // Checklist progress on the board's rows: one under way, one complete.
 const PROGRESS = new Map([
@@ -1776,8 +1741,7 @@ export const STORIES: readonly Story[] = [
 	},
 	{
 		name: "detail-handoff",
-		about:
-			"the latest handoff under the checklist as a digest, one earlier counted",
+		about: "the latest handoff whole under the checklist, one earlier counted",
 		width: 40,
 		height: 40,
 		render: () => (
@@ -1809,7 +1773,7 @@ export const STORIES: readonly Story[] = [
 	{
 		name: "detail-now",
 		about:
-			"a wave's parent on now: its checklist, its real handoff as a digest, a decision made, five subtasks",
+			"a wave's parent on now: its checklist, a decision made, five subtasks, then the top of its real handoff",
 		width: 40,
 		height: 40,
 		render: () => (
@@ -1964,19 +1928,21 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
-		name: "reader",
+		name: "detail-now-whole",
 		about:
-			"`r` over the same issue: its real handoff in full, in the reader over the detail",
+			"the same issue's now from its top to its end: its real 37-line handoff whole at forty columns, as j/k and G scroll it",
 		width: 40,
-		height: 40,
-		render: () => <ReaderOver jumps={0} />,
-	},
-	{
-		name: "reader-heading",
-		about: "the reader moved two headings down by `]`, Evidence at its top",
-		width: 40,
-		height: 40,
-		render: () => <ReaderOver jumps={2} />,
+		height: 200,
+		render: () => (
+			<Detail
+				taskId={WAVE.id}
+				task={WAVE}
+				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+				checklist={WAVE_CHECKLIST}
+				keys={{ context: "detail", situation: { checklist: true } }}
+			/>
+		),
 	},
 	{
 		name: "detail-now-fresh",

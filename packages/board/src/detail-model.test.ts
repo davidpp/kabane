@@ -7,7 +7,6 @@ import type {
 	TaskWorkLog,
 	UpstreamLink,
 } from "@kabane/core";
-import { HANDOFF_TEMPLATE } from "@kabane/handoff";
 import type { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 
@@ -534,7 +533,6 @@ describe("lifted", () => {
 				author: "claude",
 				at: at(13),
 				body: "the newer one",
-				sections: [{ lines: ["the newer one"], size: 1 }],
 				earlier: 1,
 			},
 			{
@@ -545,7 +543,6 @@ describe("lifted", () => {
 				author: "david",
 				at: at(11),
 				body: "a comment",
-				sections: [{ lines: ["a comment"], size: 1 }],
 				earlier: 0,
 			},
 		]);
@@ -851,7 +848,7 @@ describe("the now tab", () => {
 		ordinal: 1,
 	});
 
-	it("holds the checklist, each lifted kind by name, then the subtasks, each block named and the empty ones left out", () => {
+	it("holds the checklist, the subtasks, then each lifted kind by name, each block named and the empty ones left out", () => {
 		const blocks = DetailModel.now(
 			records({
 				checklist: [item("k1")],
@@ -860,10 +857,11 @@ describe("the now tab", () => {
 				subtasks: [task({ id: "c1", parentTaskId: "t1" })],
 			}),
 		);
+		// The checklist and the subtasks first, so they stay above the lifted entry however long it is.
 		expect(blocks.map((b) => b.name)).toEqual([
 			"checklist",
-			"lifted:handoff",
 			"subtasks",
+			"lifted:handoff",
 		]);
 		expect(DetailModel.now(records())).toEqual([]);
 	});
@@ -1131,157 +1129,5 @@ describe("when a fresh block is seen", () => {
 		expect(later.seen).toEqual(["subtasks"]);
 		const away = DetailModel.dwell(later.since, both, () => false, 4000);
 		expect(away.since.size).toBe(0);
-	});
-});
-
-describe("sections of a lifted body", () => {
-	it("reads the handoff template's four headings, each with its line", () => {
-		expect(DetailModel.sections(HANDOFF_TEMPLATE)).toEqual([
-			{
-				heading: "Summary",
-				lines: ["The smallest picture of what was made or changed."],
-				size: 1,
-			},
-			expect.objectContaining({ heading: "Evidence", size: 1 }),
-			expect.objectContaining({ heading: "Not verified", size: 1 }),
-			expect.objectContaining({ heading: "Risk", size: 1 }),
-		]);
-	});
-
-	it("reads a body with no headings as one section without a heading", () => {
-		expect(DetailModel.sections("\nfirst\nsecond\n\nthird\n")).toEqual([
-			{ lines: ["first", "second", "", "third"], size: 3 },
-		]);
-	});
-
-	it("splits at the shallowest level the body uses, keeping deeper headings and the text before the first", () => {
-		const body = [
-			"Where things stand.",
-			"## Summary",
-			"Done.",
-			"### Detail",
-			"More.",
-			"## Risk",
-			"None.",
-		].join("\n");
-		expect(DetailModel.sections(body)).toEqual([
-			{ lines: ["Where things stand."], size: 1 },
-			{
-				heading: "Summary",
-				lines: ["Done.", "### Detail", "More."],
-				size: 3,
-			},
-			{ heading: "Risk", lines: ["None."], size: 1 },
-		]);
-		expect(
-			DetailModel.sections("### A\none\n### B\ntwo").map((s) => s.heading),
-		).toEqual(["A", "B"]);
-	});
-
-	it("keeps a heading with nothing under it, its size nought", () => {
-		expect(DetailModel.sections("## Summary\nDone.\n\n## Risk\n\n")).toEqual([
-			{ heading: "Summary", lines: ["Done."], size: 1 },
-			{ heading: "Risk", lines: [], size: 0 },
-		]);
-	});
-
-	it("reads a # line inside a fenced code block as code, never a heading", () => {
-		const body = [
-			"## Evidence",
-			"```sh",
-			"# run the gate",
-			"bun run check",
-			"```",
-			"~~~",
-			"## not a heading either",
-			"~~~",
-			"## Risk",
-			"None.",
-		].join("\n");
-		const read = DetailModel.sections(body);
-		expect(read.map((s) => s.heading)).toEqual(["Evidence", "Risk"]);
-		expect(read[0]?.size).toBe(7);
-	});
-
-	it("strips a closing run of #s from a heading, and needs a space after the opening run", () => {
-		expect(
-			DetailModel.sections("## Summary ##\nDone.\n#hashtag").map((s) => ({
-				heading: s.heading,
-				size: s.size,
-			})),
-		).toEqual([{ heading: "Summary", size: 2 }]);
-	});
-});
-
-describe("the digest of a lifted body", () => {
-	const digestOf = (body: string, width = 38, rows?: number) =>
-		DetailModel.digest(DetailModel.sections(body), width, rows);
-
-	it("shows the first section and folds every further one into its heading and size", () => {
-		expect(digestOf(HANDOFF_TEMPLATE)).toEqual({
-			shown: [
-				{
-					heading: "Summary",
-					text: "The smallest picture of what was made or changed.",
-				},
-			],
-			more: 0,
-			folded: [
-				{ heading: "Evidence", size: 1 },
-				{ heading: "Not verified", size: 1 },
-				{ heading: "Risk", size: 1 },
-			],
-		});
-	});
-
-	it("shows the text before the first heading too, under the same cap", () => {
-		const read = digestOf("Merged.\n\n## Summary\nDone.\n## Risk\nNone.");
-		expect(read.shown).toEqual([
-			{ text: "Merged." },
-			{ heading: "Summary", text: "Done." },
-		]);
-		expect(read.folded).toEqual([{ heading: "Risk", size: 1 }]);
-	});
-
-	it("caps the opening by the rows it wraps to, counting the lines it leaves out", () => {
-		const long = "word ".repeat(30).trim(); // 149 columns: 4 rows at 38
-		const body = ["## Summary", long, "", long, "", "- one", "- two"].join(
-			"\n",
-		);
-		const read = digestOf(body, 38, 8);
-		// The heading takes a row, the first paragraph 4, the blank 1; the second paragraph's 4 do not fit.
-		expect(read.shown).toEqual([{ heading: "Summary", text: long }]);
-		expect(read.more).toBe(3);
-		// A wider pane fits more of it in the same rows.
-		expect(digestOf(body, 78, 8).more).toBe(1);
-	});
-
-	it("cuts the first line to fit when even it is taller than the cap", () => {
-		const long = "word ".repeat(100).trim();
-		const read = digestOf(long, 38, 3);
-		expect(read.shown[0]?.text.endsWith(" …")).toBe(true);
-		expect(read.shown[0]?.text.length).toBeLessThanOrEqual(3 * 38);
-		expect(read.more).toBe(0);
-	});
-
-	it("closes a code fence the cap cut through", () => {
-		const body = ["## Evidence", "```", "a", "b", "c", "d", "```"].join("\n");
-		const read = digestOf(body, 38, 4);
-		expect(read.shown[0]?.text).toBe("```\na\nb\n```");
-		expect(read.more).toBe(3);
-	});
-
-	it("shows a body with no headings by its first paragraph and counts the rest", () => {
-		expect(digestOf("One line.\nStill the first.\n\nSecond.\nThird.")).toEqual({
-			shown: [{ text: "One line.\nStill the first." }],
-			more: 2,
-			folded: [],
-		});
-	});
-
-	it("folds a heading with nothing under it at size nought", () => {
-		expect(digestOf("## Summary\nDone.\n## Risk").folded).toEqual([
-			{ heading: "Risk", size: 0 },
-		]);
 	});
 });

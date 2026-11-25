@@ -175,14 +175,14 @@ scroll it when it is taller than the pane. A key that does nothing right now (no
 - `j`/`k` move, `enter` opens a task, `esc` goes back, `q` quits. The detail view pins the
   task at a glance, where it sits as one row (`↑` its parent, `⊘` a blocker still open, the
   rest counted) and any question waiting on you, then shows one section at a time: `now` (its
-  checklist, the latest handoff as a digest, the decisions made, its subtasks and its links,
+  checklist, the decisions made, its subtasks, the latest handoff whole and its links,
   where `J/K` move a cursor and `enter` opens the issue under it), the description (with its curated context), the comments, and the log of work
-  and agent activity. It opens on `now` when anything is in it. `1`-`4` or `h`/`l` switch
+  and agent activity. It opens on `now` when anything besides links is in it, otherwise on the
+  description. `1`-`4` or `h`/`l` switch
   sections. `j`/`k` scroll a section, `ctrl+d`/`ctrl+u` by half a page, and `g`/`G` go to its
   top and its end; the `?` sheet and the transcript scroll the same way.
-- `r` on a task's detail reads its latest handoff in full, `[`/`]` jump between its headings,
-  `esc` closes it. A part of `now` that changed while the detail was open reads `✦` until you
-  have looked at it.
+- A long handoff on `now` is read by scrolling the section; nothing is folded. A part of `now`
+  that changed while the detail was open reads `✦` until you have looked at it.
 - `[` and `]` move a task through the states (inbox, next, in progress, waiting, done).
   `d` marks it done, `n` next, `s` someday, `x` cancel.
 - `/` filters as you type, `f` cycles open, done and cancelled, and review, `i` cycles the

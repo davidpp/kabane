@@ -76,25 +76,14 @@ describe("the checklist on an issue's detail", () => {
 			type: "reveal",
 			id: BoardChecklist.rowId(DROP.id),
 		});
-		expect(press(down.state, "J").effect).toEqual({ type: "none" });
-		expect(cursorOf(keys(detail(), "K", "K").state)).toBe("Read the store");
-	});
-
-	it("names the cursor's row while `now` draws it, the same through a scroll, so the screen reveals it once per opening", () => {
-		const opened = BoardChecklist.onScreen(detail());
-		expect(opened).toEqual({
-			taskId: "w",
-			rowId: BoardChecklist.rowId(WRITE.id),
+		// At the end the cursor stays, and the press still shows its row.
+		const held = press(down.state, "J");
+		expect(cursorOf(held.state)).toBe("Drop the old one");
+		expect(held.effect).toEqual({
+			type: "reveal",
+			id: BoardChecklist.rowId(DROP.id),
 		});
-		// A page down moves the view, not the cursor: the same task, nothing to reveal again.
-		const paged = press(detail(), "G");
-		expect(paged.effect).toEqual({ type: "scroll", to: "end" });
-		expect(BoardChecklist.onScreen(paged.state)?.taskId).toBe("w");
-		expect(cursorOf(paged.state)).toBe("Write the store");
-		// Another tab draws no checklist; coming back to `now` is a new opening.
-		const away = press(detail(), "2").state;
-		expect(BoardChecklist.onScreen(away)).toBeNull();
-		expect(BoardChecklist.onScreen(press(away, "1").state)?.taskId).toBe("w");
+		expect(cursorOf(keys(detail(), "K", "K").state)).toBe("Read the store");
 	});
 
 	it("brings the cursor's row back into view on space, whatever scrolled it off", () => {
@@ -400,7 +389,10 @@ describe("the cursor past the checklist, over the subtasks and links on `now`", 
 		});
 		const onLink = press(onSub.state, "J").state;
 		expect(cursor(onLink)).toBe("link:blocked by:b");
-		expect(press(onLink, "J").effect).toEqual({ type: "none" });
+		expect(press(onLink, "J").effect).toEqual({
+			type: "reveal",
+			id: BoardChecklist.rowId("link:blocked by:b"),
+		});
 		expect(cursor(keys(onLink, "K", "K").state)).toBe(WRITE.id);
 	});
 

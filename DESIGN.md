@@ -421,14 +421,12 @@ against every glyph already here.
 - **Links:** the last block on `now`, every relation grouped under a muted sub-label (`blocked
   by`), never a key on each row; each issue drawn as a subtask is, one missing from the tracker
   faint; the external issues last behind a muted `◆`.
-- **Digest:** a lifted entry (the newest handoff) as a block on `now`: `kind · author · age`, the
-  kind's title in Label weight and the rest muted, the name cut before the age; the kind's
-  framing line muted; then the text before the first heading and the first section rendered, that
-  heading behind a muted `▾`, held to about eight rows at forty columns with a muted `… n more
-  lines`. Every further top-level heading is one line, `▸ Heading · n lines`: glyph and size
-  muted, heading in default fg, never its content. `n earlier in comments` muted under it.
-- **Reader** (`r`): the lifted entries whole, over the detail under its title row, rendered as
-  the brief is; `[`/`]` step through the headings the digest folds.
+- **Handoff:** a lifted entry (the newest handoff) as a block on `now`, after the subtasks and
+  before the links, so the checklist, the decisions and the subtasks stay above it however long
+  it is: `kind · author · age`, the kind's title in Label
+  weight and the rest muted, the name cut before the age; the kind's framing line muted; then the
+  whole body rendered as a comment's is, never folded or cut. A long one is read by scrolling
+  `now`. `n earlier in comments` muted under it.
 - **Comments:** one per timeline entry, a raised author band (the actor URI's last segment,
   never the URI, bold for a human; an entry's kind when it is not a plain comment; the time
   muted), then the entry whole, on the terminal's own

@@ -11,7 +11,6 @@ import {
 	type RefObject,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 } from "react";
 import { BoardActivity } from "./activity";
@@ -28,14 +27,12 @@ import { DecisionPanel, DecisionsWaiting } from "./decision-panel";
 import { BoardDecisions } from "./decisions";
 import { Detail } from "./detail";
 import { DetailCard } from "./detail-card";
-import { DetailModel } from "./detail-model";
 import type { Fresh } from "./detail-records";
 import { EventView } from "./event-view";
 import { FooterTrail } from "./footer";
 import { BoardJobs } from "./jobs";
 import { JobPanel, JobsView } from "./jobs-view";
 import type { Keymap } from "./keymap";
-import { type LiftedReader, LiftedReaderSheet } from "./lifted-reader";
 import { BoardNav } from "./nav";
 import { HelpSheet, type HelpSheetProps } from "./overlay";
 import { Paging } from "./paging";
@@ -53,8 +50,6 @@ export type ScreenRefs = {
 	list: RefObject<ScrollBoxRenderable | null>;
 	// The `?` sheet's scrollbox, which the scroll keys move while it is open (`helpScroll`).
 	help: RefObject<ScrollBoxRenderable | null>;
-	// The reader over the detail view, which j/k scroll and `[`/`]` move by heading.
-	reader: RefObject<LiftedReader.Handle | null>;
 	// The copilot's input. It OWNS its text; the reducer only ever pushes a whole new value at it
 	// (a shortcut expansion, a recalled prompt, the clear after a send) through `copilotSetText`.
 	input: RefObject<TextareaRenderable | null>;
@@ -66,8 +61,6 @@ const SCREEN_EFFECTS = [
 	"scroll",
 	"reveal",
 	"helpScroll",
-	"readerScroll",
-	"readerJump",
 	"copilotSetText",
 	"promptSetText",
 ] as const;
@@ -87,7 +80,6 @@ export const useScreenRefs = (
 	const scroll = useRef<ScrollBoxRenderable | null>(null);
 	const list = useRef<ScrollBoxRenderable | null>(null);
 	const help = useRef<ScrollBoxRenderable | null>(null);
-	const reader = useRef<LiftedReader.Handle | null>(null);
 	const input = useRef<TextareaRenderable | null>(null);
 	const prompt = useRef<TextareaRenderable | null>(null);
 
@@ -111,17 +103,6 @@ export const useScreenRefs = (
 			scroll.current?.scrollChildIntoView(BoardChecklist.rowId(pressed.itemId));
 	}, [pressed]);
 
-	// A task's `now` coming on screen brings the checklist cursor's row into view; after that the
-	// human's scrolls are left alone until it comes on screen again.
-	const checklist = state ? BoardChecklist.onScreen(state) : null;
-	const revealedFor = useRef<string | null>(null);
-	useEffect(() => {
-		const taskId = checklist?.taskId ?? null;
-		if (checklist && taskId !== revealedFor.current)
-			scroll.current?.scrollChildIntoView(checklist.rowId);
-		revealedFor.current = taskId;
-	});
-
 	const runEffect = useCallback((effect: ScreenEffect): void => {
 		switch (effect.type) {
 			case "scroll":
@@ -133,12 +114,6 @@ export const useScreenRefs = (
 			case "helpScroll":
 				Paging.apply(help.current, effect);
 				return;
-			case "readerScroll":
-				reader.current?.scroll(effect);
-				return;
-			case "readerJump":
-				reader.current?.jump(effect.delta);
-				return;
 			case "copilotSetText":
 				input.current?.setText(effect.text);
 				return;
@@ -146,7 +121,7 @@ export const useScreenRefs = (
 				prompt.current?.setText(effect.text);
 		}
 	}, []);
-	return { refs: { scroll, list, help, reader, input, prompt }, runEffect };
+	return { refs: { scroll, list, help, input, prompt }, runEffect };
 };
 
 export type ScreenProps = {
@@ -192,10 +167,6 @@ export const Screen = (props: ScreenProps): ReactNode => {
 	const { width } = useTerminalDimensions();
 	// Which keys are live and what they can act on, once for the footer and the `?` sheet alike.
 	const openTaskId = state.view.type === "detail" ? state.view.taskId : null;
-	const lifted = useMemo(
-		() => liftedOf(props.records, openTaskId),
-		[props.records, openTaskId],
-	);
 	const keys: Keymap.Live = {
 		context: BoardNav.keyContext(state),
 		situation: BoardNav.keySituation(state, {
@@ -208,7 +179,6 @@ export const Screen = (props: ScreenProps): ReactNode => {
 					openTaskId,
 					BoardNav.taskById(state, openTaskId)?.shortId,
 				) !== undefined,
-			lifted: lifted.map((entry) => entry.title),
 			split: Cockpit.split(width),
 		}),
 		host: [...CardTab.hints(state), ...DetailCard.hints(state)],
@@ -241,23 +211,11 @@ export const Screen = (props: ScreenProps): ReactNode => {
 						<BoardScreen {...view} />
 					)}
 				</box>
-				{BoardNav.readerOpen(state) ? (
-					<LiftedReaderSheet entries={lifted} handleRef={props.refs.reader} />
-				) : null}
 				<Overlay {...view} />
 			</box>
 		</FooterTrail.Provider>
 	);
 };
-
-// The open task's lifted entries, newest of each kind, once its records are in.
-const liftedOf = (
-	records: Result<BoardData.DetailRecords> | undefined,
-	taskId: string | null,
-): DetailModel.LiftedEntry[] =>
-	records?.ok && records.value.task.id === taskId
-		? DetailModel.lifted(records.value)
-		: [];
 
 // The facts of the card whose tab is on screen, for the `?` sheet, titled as its tab reads.
 const cardFacts = (state: BoardNav.BoardState): HelpSheetProps["facts"] => {
@@ -486,10 +444,7 @@ const DetailScreen = ({
 				records={records}
 				fresh={fresh}
 				covered={
-					BoardNav.readerOpen(state) ||
-					state.help ||
-					state.settings !== null ||
-					state.dispatch !== null
+					state.help || state.settings !== null || state.dispatch !== null
 				}
 				cards={taskCards.length > 0 ? taskCards : undefined}
 				questions={activity.questionsByTaskId.get(taskId)}

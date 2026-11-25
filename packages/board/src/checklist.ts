@@ -259,25 +259,6 @@ export namespace BoardChecklist {
 			? shown(state)
 			: undefined;
 
-	/**
-	 * The cursor's row while the `now` tab draws the checklist, and the task it is drawn for. The
-	 * screen scrolls the row into view when that task's `now` comes on screen, by a switch of tab or
-	 * when its records land, so the item `space` would toggle is in sight. A scroll or a poll leaves
-	 * the task the same and moves nothing: the cursor never pulls the view after it on its own.
-	 */
-	export const onScreen = (
-		state: State,
-	): { taskId: string; rowId: string } | null => {
-		const asked = shown(state);
-		if (
-			!asked?.cursor ||
-			state.view.type !== "detail" ||
-			(state.view.tab ?? DetailModel.DEFAULT_TAB) !== "now"
-		)
-			return null;
-		return { taskId: state.view.taskId, rowId: rowId(asked.cursor) };
-	};
-
 	const onItem = (asked: Shown): boolean =>
 		asked.lines.some((line) => line.id === asked.cursor);
 
@@ -330,14 +311,18 @@ export namespace BoardChecklist {
 	};
 
 	// `J/K`: the cursor one row down or up, items then the rows after them, stopping at either end,
-	// and its row scrolled into view.
+	// and its row scrolled into view. At an end the press still shows the row it stays on: `now`
+	// opens at its top, so the cursor's row may be below the fold until a key asks for it.
 	const move = (state: State, asked: Shown, delta: number): Step => {
 		const keys = [
 			...asked.lines.map((line) => line.id),
 			...asked.rows.map((row) => row.key),
 		];
 		const next = keys[keys.indexOf(asked.cursor ?? "") + delta];
-		if (next === undefined) return { state, effect: NOTHING };
+		if (next === undefined)
+			return asked.cursor
+				? { state, effect: { type: "reveal", id: rowId(asked.cursor) } }
+				: { state, effect: NOTHING };
 		return {
 			state: patch(state, { cursor: next }),
 			effect: { type: "reveal", id: rowId(next) },

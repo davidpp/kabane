@@ -32,8 +32,6 @@ export namespace Keymap {
 		decisions?: boolean;
 		/** A decision on the detail view has the keys its form names, the digits among them. */
 		deciding?: boolean;
-		/** The titles of the kinds the open task has a lifted entry of, which `r` reads in full. */
-		lifted?: readonly string[];
 		/** The detail view's `now` tab has rows under a cursor: checklist items, subtasks, links. */
 		cursor?: boolean;
 		/** `now`'s cursor is on a checklist item, which `space` toggles. */
@@ -127,7 +125,6 @@ export namespace Keymap {
 		| "dispatch"
 		| "dispatchForm"
 		| "help"
-		| "reader"
 		| "settings"
 		| "setupWelcome"
 		| "setupForm"
@@ -260,18 +257,6 @@ export namespace Keymap {
 		tier: "footer",
 		keys: ["return"],
 		when: (s) => s.freeform === true,
-	};
-
-	// `r` on the detail view: the lifted entries in full. Named after the kind when there is one, as
-	// the footer would otherwise promise a read of nothing in particular.
-	const READ: Binding = {
-		key: "r",
-		label: "read",
-		tier: "footer",
-		keys: ["r"],
-		when: (s) => (s.lifted?.length ?? 0) > 0,
-		labelOf: (s) =>
-			s.lifted?.length === 1 ? `read ${s.lifted[0]?.toLowerCase()}` : "read",
 	};
 
 	const ESC_BOARD: Binding = {
@@ -518,9 +503,6 @@ export namespace Keymap {
 					keys: ["return"],
 					when: openable,
 				},
-				// After `space` and `enter`: at forty columns the footer has room for one of them, and the
-				// cursor is what `now` lets you act on. The `?` sheet lists `r` either way.
-				READ,
 				OPEN_LINK,
 				{
 					key: "o",
@@ -856,22 +838,6 @@ export namespace Keymap {
 					tier: "footer",
 					keys: ["?", "escape", "q"],
 				},
-			],
-		},
-		// The reader over the detail view: the lifted entries in full, its own scrollbox and keys.
-		reader: {
-			name: "reader",
-			sheet: false,
-			bindings: [
-				{
-					key: "[ ]",
-					label: "headings",
-					tier: "footer",
-					keys: ["[", "]"],
-				},
-				{ key: "esc", label: "close", tier: "footer", keys: ["escape", "q"] },
-				{ key: "?", label: "keys", tier: "footer", keys: ["?"] },
-				SCROLL,
 			],
 		},
 		// Every setting and where its value comes from (settings-view.ts), and the editor of the one

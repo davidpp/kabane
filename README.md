@@ -177,12 +177,13 @@ logged in on this machine ([`docs/deploy.md`](docs/deploy.md) part 4.7).
 (state, priority, kind, assignee), what is running on it, its parent, how many subtasks it
 has and how many are done, what blocks it and what it blocks, the issue it links to, and any
 question an agent is waiting on. Under it, four sections, one at a time: `now`, what is in
-force while the work runs (the checklist, the newest handoff as a digest whose further headings
-fold to one line each, the decisions made, the subtasks); `description`, the ask and its curated
+force while the work runs (the checklist, the decisions made, the subtasks, the newest handoff
+whole, and the links); `description`, the ask and its curated
 context refs; `comments`, the whole timeline, newest first; and `log`, the work logged and what
-agent sessions said. It opens on `now` when that has anything in it. `1`-`4` jump to a section,
+agent sessions said. It opens on `now` when that has anything in it besides links, otherwise on
+`description`. `1`-`4` jump to a section,
 `h`/`l` step through them, a click picks one, and `j/k`, `ctrl+d`/`ctrl+u` and `g`/`G` scroll
-it. `r` reads the handoff in full, and `✦` marks what lands while the detail is open. The view
+it, a long handoff included. `✦` marks what lands while the detail is open. The view
 draws the task's records, not the agent brief; `y` still copies the brief for pasting into a
 chat.
 
