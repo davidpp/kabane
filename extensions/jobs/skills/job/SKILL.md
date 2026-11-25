@@ -97,7 +97,7 @@ skill's `references/record.md` says what a thread, an entry, an attribute and a 
 | `kabane job add` | A thread of kind `job` in `next`, whose description is the request. The schedule, harness, session, check and inputs go to the extension's own tables, not the thread |
 | `kabane job edit` | `--title` and `--request` change the thread's title and description; every other flag changes only the extension's tables |
 | `kabane job pause`, `resume` | The thread's state: `someday`, then `next` again |
-| `kabane job run`, `tick` | Each fire logs `run:<id>` on the job's work log. The session is told to read the job with `kabane_context` (earlier runs' results are its comments) and to write its result as one comment on it |
+| `kabane job run`, `tick` | Each newly started run logs `run:<id>` on the job's work log. Waking a kept session or skipping a fire adds no run log. The session is told to read the job with `kabane_context` (earlier runs' results are its comments) and to write its result as one comment on it |
 | `kabane run <recipe> --target <id>` | The same `run:<id>` log line on the issue; the session comments its result there and files a decision with `kabane_ask` |
 | `kabane runs`, `runs read`, `runs attach` | List runs, read the terminal or attach to it |
 | `kabane runs send <id> <text>` | Types text into the running session. The command adds no entry on its target thread |
