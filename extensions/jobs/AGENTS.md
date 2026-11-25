@@ -69,7 +69,10 @@ A job is an item of kind `job` (title, description as the standing request, scop
 the item's description as it reads at the fire, never rendered; the run row records recipe
 `request` and the request's hash), inputs, harness, `session`
 (`fresh` or `keep`; an appended migration added it, so a row from before reads `fresh`),
-`check` (a shell command or null; also appended), `last_fired_at`.
+`check` (a shell command or null; also appended), `last_fired_at`. The item and the row are two writes the
+contract cannot join (`Tx` creates no item, and a `host.record` write inside `store.write` is
+refused), so `job add` cancels the item when the row's insert fails, and `job show` on an open
+item of kind `job` with no row names that repair.
 Due is the schedule's first time after `last_fired_at`, or after the row's creation, so missed
 fires fold into one. A fire skips while one of the job's runs on this machine is `live`,
 `running` or `waiting`. A `fresh` job then stops the `idle` ones and calls `startRun` at the root

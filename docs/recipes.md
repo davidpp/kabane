@@ -323,6 +323,23 @@ default, `--session fresh`, starts a new one on each fire. `--check "<shell>"` m
 fire start the run only when that command exits 0 ([Fire only when there is something to
 do](#fire-only-when-there-is-something-to-do)).
 
+A job is two writes: its item, then its schedule. When the schedule fails to store, `job add`
+cancels the item it filed and says so (`Could not store the schedule of job JPRJ-12: …
+JPRJ-12 is cancelled`), so running it again once the cause is fixed adds one job. A `job add`
+stopped between the two writes, or one from an earlier kabane that failed, leaves the item
+open, and so does an item made with `kabane add --kind job` or the `kabane_add` tool. It has
+no schedule, so it never fires and `kabane job list` leaves it out. `kabane list --kind job`
+lists it when run in the job's project, or from elsewhere with `--scope <uri>`, and `kabane job
+show <id>` on it, from any folder, says so and names the repair. Cancel it, then add it with
+`kabane job add`:
+
+```bash
+kabane edit JPRJ-12 --state cancelled
+kabane job add --title "Steward" --schedule "0 9 * * 1-5" --request "…"
+```
+
+The cancelled item never had a schedule, so this leaves exactly one.
+
 `job edit <id>` changes a job from any folder, only in the fields you give, and says what it
 changed and when the job fires next: `--title` and `--request` (the item's title and
 description, as `kabane edit` would change them), `--schedule`, `--harness`, `--session`, `--check`, and the

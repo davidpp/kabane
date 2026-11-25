@@ -912,7 +912,14 @@ Resolve it before retrying.
   schema 13 stops pulling at the first op from 14, until it updates.
 - **Extensions with their own tables.** An extension table that referenced `tasks(id)` is
   rebuilt without that reference by the extension's own update. One that is not enabled keeps
-  pointing at the old table, renamed `retired_tasks`, until it is.
+  pointing at the old table, renamed `retired_tasks`, until it is. That update has to be the
+  one the beta ships. When a Homebrew install of 1.x stays beside the beta's installer, the
+  links in `~/.kabane/extensions/` still point at Homebrew's copies, and the beta runs those:
+  `kabane job add` then fails with `FOREIGN KEY constraint failed` and `kabane export --check`
+  with `foreign key mismatch`. `kabane doctor` reports each such link as
+  `<name>/extension-elsewhere` from the release after 2.0.0-beta.0 on (update to it first);
+  `kabane doctor --fix` points it at the beta's copy, and the next command runs that extension's
+  update.
 - **No going back.** The old version refuses a database this one has opened. Going back takes a
   backup made before the first open.
 

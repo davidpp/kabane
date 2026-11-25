@@ -10,6 +10,7 @@ import {
 } from "../context";
 import { copilotFiles } from "../doctor/copilot-files";
 import { kabane } from "../doctor/kabane";
+import { linkedElsewhere } from "../doctor/linked-elsewhere";
 import { uncheckedSkills } from "../doctor/project";
 import { Extensions } from "../extensions";
 import { activateHostRecord, hostHarnessMode } from "../host";
@@ -126,6 +127,7 @@ export const doctor: Command = {
 			},
 			...Extensions.doctors(loaded),
 			...copilotFiles(directories, ctx.home),
+			...linkedElsewhere(ctx.home, enabled.ok ? enabled.value : []),
 		);
 		// The modules stop is already that extension's finding (`kabane/extension-modules`).
 		for (const refusal of refused.filter(

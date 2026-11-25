@@ -664,6 +664,45 @@ it("links a shipped extension the home lacks, and leaves the user's own install 
 	expect(none.ok && none.value).toEqual([]);
 });
 
+it("re-points a link into another release's copy, and leaves a link to a checkout", () => {
+	const home = makeHome();
+	// Two releases, each its `kabane` beside `extensions/`: this one and an older one still on disk.
+	const release = (dir: string) => {
+		for (const name of ["jobs", "loop", "dispatch"])
+			mkdirSync(join(home, dir, "extensions", name), { recursive: true });
+		writeFileSync(join(home, dir, "kabane"), "");
+		return join(home, dir, "extensions");
+	};
+	const root = release("current");
+	const older = release("older");
+	// A checkout has its extensions and no `kabane` beside them.
+	mkdirSync(join(home, "checkout/extensions/loop"), { recursive: true });
+	mkdirSync(join(home, "extensions"));
+	symlinkSync(join(older, "jobs"), join(home, "extensions/jobs"));
+	symlinkSync(
+		join(home, "checkout/extensions/loop"),
+		join(home, "extensions/loop"),
+	);
+	symlinkSync(join(root, "dispatch"), join(home, "extensions/dispatch"));
+
+	expect(Extensions.elsewhere(home, "jobs", root)).toBe(
+		realpathSync(join(older, "jobs")),
+	);
+	expect(Extensions.elsewhere(home, "loop", root)).toBeUndefined();
+	expect(Extensions.elsewhere(home, "dispatch", root)).toBeUndefined();
+	expect(Extensions.elsewhere(home, "jobs", undefined)).toBeUndefined();
+
+	const linked = Extensions.link(home, ["jobs", "loop", "dispatch"], root);
+	expect(linked.ok && linked.value).toEqual(["jobs"]);
+	expect(realpathSync(join(home, "extensions/jobs"))).toBe(
+		realpathSync(join(root, "jobs")),
+	);
+	expect(realpathSync(join(home, "extensions/loop"))).toBe(
+		realpathSync(join(home, "checkout/extensions/loop")),
+	);
+	expect(Extensions.elsewhere(home, "jobs", root)).toBeUndefined();
+});
+
 it("names a link left by a removed install as the reason an extension is not installed", () => {
 	const home = makeHome();
 	mkdirSync(join(home, "extensions"));
