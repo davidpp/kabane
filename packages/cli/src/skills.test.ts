@@ -424,6 +424,7 @@ describe("base kabane's kabane skill", () => {
 			"references/config.md",
 			"references/doctor.md",
 			"references/linking.md",
+			"references/record.md",
 		]);
 		for (const reference of got.value.files) {
 			expect(got.value.text).toContain(`\`${reference}\``);
@@ -443,6 +444,28 @@ describe("base kabane's kabane skill", () => {
 		expect(linking).toContain(
 			"Never put the external issue's body on the link",
 		);
+	});
+
+	it("teaches the four shapes, what a retry of each does, and what the beta does not expose", () => {
+		const record = file("references/record.md");
+		expect(file()).toContain(
+			"Decide how to record work: a thread, an entry, an attribute or a ref",
+		);
+		for (const line of [
+			"**Work is a thread, what happened on it is an entry.**",
+			"**Store the pointer, not the content.**",
+			"`existed: true` and changes nothing",
+			"`tags` replaces the whole list",
+			"If `claimedBy` names another agent, it holds the thread: leave it.",
+			"which releases the claim, so when the wait returns, claim it again",
+			"so set only the state",
+			"claiming again would pull it out of `waiting`",
+			"`KABANE wait ready sso-csv/build`",
+			"Not exposed in 2.0.0-beta.0",
+			"`kabane_search` reads titles and descriptions only",
+			"The brief does not show tags, `related` links or who holds the claim.",
+		])
+			expect(record).toContain(line);
 	});
 
 	it("changes config through the tools, by layer, applying a named change and waiting on a suggested one", () => {

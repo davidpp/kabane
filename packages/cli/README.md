@@ -397,8 +397,9 @@ The brief opens with the latest after the description, and counts the earlier on
 Enabled extensions contribute tools named `kabane_<extension>_<verb>` and instructions after
 registered modules, in device configuration order. With the loop enabled, `kabane_loop_advise`
 returns recommended settings and per-subtask harness/model routes; see [loop advice](../../docs/loop.md#advice-over-mcp).
-Kabane's own `kabane` skill (`skills/kabane/` in this package: linking a task to a Linear or
-GitHub issue, config and help, doctor) and enabled extensions' skills (`skills/<name>/SKILL.md`,
+Kabane's own `kabane` skill (`skills/kabane/` in this package: how to record work as threads,
+entries, attributes and refs and what a retry does, linking a task to a Linear or GitHub issue,
+config and help, doctor) and enabled extensions' skills (`skills/<name>/SKILL.md`,
 [writing an extension](../../docs/writing-an-extension.md#ship-how-to-as-skills)) are served by
 `kabane_skillList`, which names them, and `kabane_skillGet { name, file? }`, which returns one
 file of a skill with `{{extension}}` and `{{kabane}}` filled and the manifest of its other files.
