@@ -9,7 +9,7 @@ it.
 | Thread | Something that can be owned, discussed and finished: a request, a bug, a design question, a job. It has a title, a body, a scope, a parent, and may have a state and an assignee. | Will someone pick this up, or will people talk about it, on its own? | A new thread each time, unless it was filed with a key |
 | Entry | Something that happened or was said, by an author at a time: a comment, a finding, a decision, a question and its answer, a handoff, a work log line. Never edited. | Is it a fact about a moment that should stay as it was said? | A new entry each time |
 | Attribute | A current fact about a thread with one value per key: priority, due date, tags. It changes. | Should a reader see only the latest value? | The last write wins; the same value twice is one row |
-| Ref | A URI the thread keeps pointing at, with a kind: what it reads, what it maintains, its twin in GitHub or Linear, another thread. | Is it a pointer someone will follow, not text to keep? | One row per thread, URI and kind; adding it again changes nothing |
+| Ref | A URI the thread keeps pointing at, with a kind: what it reads, what it maintains, its twin in GitHub or Linear, another thread. | Is it a pointer someone will follow, not text to keep? | One row, never a duplicate, but adding it again rewrites that row: see the table below for what each kind of ref keys on |
 
 Two rules settle most cases:
 
@@ -33,9 +33,9 @@ Two rules settle most cases:
 | Ask the human a decision | `kabane_ask` | none | Duplicates the question |
 | Answer or withdraw a question | `kabane_answer` | `{{kabane}} answer` | |
 | Hand off your part | `kabane_handoff` | `{{kabane}} handoff <id> --from <file>` | Duplicates; the brief shows only the latest |
-| Point at an input or a maintained output | `kabane_contextAdd` (`uri`, `kind`, `label`, `note`) | none | One row |
-| Link two threads (`blocks`, `related`, `duplicate`, `follows`) | `kabane_link` | `{{kabane}} link` | One row |
-| Record the GitHub or Linear twin | `kabane_upstream_link` (`provider`, `externalId`, `url`) | `{{kabane}} upstream link <id> <url>` | One row |
+| Point at an input or a maintained output | `kabane_contextAdd` (`uri`, `kind`, `label`, `note`) | none | One row per thread and URI. Adding it again rewrites `label`, `note`, `addedBy` and `addedAt` (a label you leave out is dropped), and a different `kind` replaces the ref: the URI loses its old kind. Read `kabane_contextList` before you re-add a URI |
+| Link two threads (`blocks`, `related`, `duplicate`, `follows`) | `kabane_link` | `{{kabane}} link` | One row per pair and type, so `blocks` and `related` between the same two threads are two links. Linking again rewrites its `note` and time |
+| Record the GitHub or Linear twin | `kabane_upstream_link` (`provider`, `externalId`, `url`) | `{{kabane}} upstream link <id> <url>` | One row per thread, provider and external id. Linking again rewrites its title and URL and keeps when it was first made |
 | Wait for an answer, a state, blockers done, or something addressed to an actor | none | `{{kabane}} wait answered\|state\|ready\|addressed` | Returns at once if already true |
 | Read the whole brief | `kabane_context` | `{{kabane}} context <id> --format concise` | |
 
