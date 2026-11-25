@@ -11,7 +11,7 @@
 // free: with `reuse`, kept for the next subtask, reset to the run's HEAD with what git ignores
 // (build output) left warm; without, removed. The run keeps at most `maxWorktrees` (its concurrency
 // when unset), and a subtask waits for one. The user's `setup` command readies a worktree for a
-// subtask, and the run's own worktree once per runner for the claims that work there; nothing else
+// subtask, and the run's own worktree once per runner for claims and closing passes; nothing else
 // is installed. When the run ends, the free ones are removed, and one still
 // holding work that never landed is left, with its branch, for a human.
 import { existsSync } from "node:fs";
@@ -123,9 +123,8 @@ export namespace ClaimTrees {
 	};
 
 	/**
-	 * Ready the run's own worktree for the claims that work in it (a single issue, every subtask of a
-	 * run that shares its tree): the setup runs there once per runner, so a runner started again on a
-	 * reused worktree readies it too. An error when it fails, which stops the run.
+	 * Ready the run's own worktree for claims and closing passes. The setup runs there once per runner,
+	 * including on a reused worktree after a restart. A setup failure stops the run.
 	 */
 	export const readyRunTree = async (ctx: Ctx): Promise<Result<void>> => {
 		const runTree = ctx.run.worktree;
