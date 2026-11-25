@@ -76,7 +76,13 @@ describe("the checklist on an issue's detail", () => {
 			type: "reveal",
 			id: BoardChecklist.rowId(DROP.id),
 		});
-		expect(press(down.state, "J").effect).toEqual({ type: "none" });
+		// At the end the cursor stays, and the press still shows its row.
+		const held = press(down.state, "J");
+		expect(cursorOf(held.state)).toBe("Drop the old one");
+		expect(held.effect).toEqual({
+			type: "reveal",
+			id: BoardChecklist.rowId(DROP.id),
+		});
 		expect(cursorOf(keys(detail(), "K", "K").state)).toBe("Read the store");
 	});
 
@@ -383,7 +389,10 @@ describe("the cursor past the checklist, over the subtasks and links on `now`", 
 		});
 		const onLink = press(onSub.state, "J").state;
 		expect(cursor(onLink)).toBe("link:blocked by:b");
-		expect(press(onLink, "J").effect).toEqual({ type: "none" });
+		expect(press(onLink, "J").effect).toEqual({
+			type: "reveal",
+			id: BoardChecklist.rowId("link:blocked by:b"),
+		});
 		expect(cursor(keys(onLink, "K", "K").state)).toBe(WRITE.id);
 	});
 

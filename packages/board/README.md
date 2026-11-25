@@ -661,7 +661,8 @@ The `now` section lists the items first, headed `checklist · 2/5`: `✓` for a 
 one, `○` for an open one, one line each. A cursor sits on the first open item, where a loop
 resumes. `now` opens at its top, wherever the cursor is, and a scroll leaves the cursor where it
 is. `J/K` move it, on past the items to the subtasks and the linked issues (with no
-checklist it starts on the first of those), and `enter` opens the issue under it, `esc` coming
+checklist it starts on the first of those), each press bringing the cursor's row into view, even at
+the last or first row where it stays put; `enter` opens the issue under it, `esc` coming
 back; a click on a subtask or a linked issue opens it too. `space` ticks or unticks the item under it, as `kabane_checklistTick`
 does, bringing it into view in the same press when it is off screen; the item shows the press at once, the footer says `JREP-8.3 ticked · 3/5`, and a write that
 fails puts the item back to the state the store last acknowledged, with why. An item's writes go one

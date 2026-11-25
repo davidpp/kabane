@@ -311,14 +311,18 @@ export namespace BoardChecklist {
 	};
 
 	// `J/K`: the cursor one row down or up, items then the rows after them, stopping at either end,
-	// and its row scrolled into view.
+	// and its row scrolled into view. At an end the press still shows the row it stays on: `now`
+	// opens at its top, so the cursor's row may be below the fold until a key asks for it.
 	const move = (state: State, asked: Shown, delta: number): Step => {
 		const keys = [
 			...asked.lines.map((line) => line.id),
 			...asked.rows.map((row) => row.key),
 		];
 		const next = keys[keys.indexOf(asked.cursor ?? "") + delta];
-		if (next === undefined) return { state, effect: NOTHING };
+		if (next === undefined)
+			return asked.cursor
+				? { state, effect: { type: "reveal", id: rowId(asked.cursor) } }
+				: { state, effect: NOTHING };
 		return {
 			state: patch(state, { cursor: next }),
 			effect: { type: "reveal", id: rowId(next) },
