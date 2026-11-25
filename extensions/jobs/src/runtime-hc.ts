@@ -39,7 +39,7 @@ export namespace HcRuntime {
 	 * A terminal's run state; null is a terminal hc no longer has. `status.state` is the program's
 	 * own word (idle, working, done, blocked or error) and is null when it never said. A program
 	 * that never said is `live`, never a guessed running or idle. Values recorded from real output
-	 * in `AGENTS.md`.
+	 * are pinned in `runtime-hc.test.ts`.
 	 */
 	export const stateOf = (terminal: Terminal | null): Runs.State => {
 		if (terminal === null || terminal.state !== "live") return "ended";
