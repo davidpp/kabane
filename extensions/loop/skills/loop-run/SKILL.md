@@ -1,6 +1,6 @@
 ---
 name: loop-run
-description: Set up, tune or start a kabane loop run, which drives an issue or a parent's subtasks to done through a coding harness in a detached runner. Use when the human asks to set up a loop for an issue ("set up a loop for JCAB-79"), to tune a run's settings or subtask tags, or to run an issue ("run JCAB-79 with codex").
+description: Set up, tune or start a kabane loop run, which drives an issue or a parent's subtasks to done through a coding harness in a detached runner. Use when the human asks to set up a loop for an issue ("set up a loop for JCAB-79"), to tune a run's settings or subtask tags, to run an issue ("run JCAB-79 with codex"), or to know what a run writes on an issue (claims, work log, summaries, findings).
 ---
 
 # Loop run
@@ -28,3 +28,25 @@ When the human tells you to run an issue ("run JCAB-79 with codex"), that is the
 If the command refuses (the loop extension is not enabled, the issue already has a run or nothing to do, this directory is not its scope), report its message as it is and do not retry with other flags.
 
 When it starts, report the run id it prints, where the run works, and how to follow and stop it: the run's tab on the board, `{{kabane}} loop status <runId>`, and `{{kabane}} loop stop <runId>`. The run's sessions change the code, not you, and a question one of them asks is the human's to answer.
+
+## On the record
+
+What the loop exposes, and what a run writes in kabane's shapes (the base `kabane` skill's `references/record.md` says what a thread, an entry, an attribute and a ref are):
+
+| To do this | MCP | CLI |
+|---|---|---|
+| Advise a run's settings and tags; changes nothing | `kabane_loop_advise` | `{{kabane}} loop advise <id>` |
+| Start, follow, pause, resume or stop a run | none | `{{kabane}} loop start\|status\|pause\|resume\|stop` |
+| Keep a run from claiming a subtask, or let it again | none | `{{kabane}} loop skip\|next <id>` |
+| Answer a question a run's session asked | none | `{{kabane}} loop answer <questionId> <option>` |
+| Land, roll back or prune a run's branch | none | `{{kabane}} loop land\|rollback\|prune` |
+
+What a run writes:
+
+- **Claims.** It claims a subtask with state `in_progress` and the harness as assignee, and stops if `claimHeld` is false. It never claims a thread that is `in_progress`, `waiting` or `someday`. A parent it runs moves to `in_progress`.
+- **Work log.** On each claim, `loop:<runId>` labelled `claim started` with the session's `session:<id>`; after the gates, `loop:<runId>` labelled `gate results` with one `gate:<name>` per gate. A red gate puts a done subtask back to `next`.
+- **Entries.** Each session's summary is an `outcome.summary` on the thread it claimed; a decision you answer for a session is an `outcome.decision`; the run's end is a comment on the parent.
+- **Findings.** A verifier lens files each as a child issue of the parent: kind `issue`, state `next`, tags `finding`, its severity (`p1`, `p2`, `p3`) and the lens's name. `kabane_list` with the tag `finding` finds them.
+- **Landing.** An unmerged branch sets `needsReview` on the issue. A `pr` landing records the pull request as the parent's GitHub upstream link and moves the parent to `waiting`; a `merge` landing moves it to `done`.
+
+The run's sessions, events and questions stay in its own directory, `$KABANE_HOME/loops/<runId>/`, not on the record: read them with `{{kabane}} loop status <runId>`.

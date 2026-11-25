@@ -170,15 +170,17 @@ sync has delivered it.
 
 ## What an enabled extension adds
 
-An extension that ships a skill is listed by `kabane_skillList`: follow that skill for its own
-commands. What it writes lands in the same four shapes, so the rules above still hold:
+An extension that ships a skill is listed by `kabane_skillList`. Its skill's "On the record"
+section lists the MCP tools and commands the extension exposes and what each writes, as a
+thread, an entry, an attribute or a ref. What it writes lands in the same four shapes, so the
+rules above still hold:
 
 - An extension that drives a parent's subtasks through harnesses claims them as in step 2, and
   skips a thread someone has taken (`in_progress`) or parked (`waiting`, `someday`).
 - A thread of kind `job` is a standing request that a schedule runs, its description being the
   request. Its schedule and runs are kept in the extension's own tables, not on the thread, so a
-  run leaves what a reader needs as entries on the job, and what the job keeps up to date is a
-  ref of kind `artifact`.
+  run leaves what a reader needs as entries on the job. What the job keeps up to date is a ref
+  of kind `artifact` on it, added with `kabane_contextAdd`.
 
 What kabane leaves to the harness or to something on top: coming back to a thread later
 (schedule it in your harness, or make it a job), a lease that expires a dead claim (a stale claim

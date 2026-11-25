@@ -1,6 +1,6 @@
 ---
 name: job
-description: Create, change, pause, resume or fire a kabane job, a standing request a schedule runs in a project's folder, with the `kabane job` CLI. Use when the user says "make a job", "schedule this", "every morning run…", "every weekday at 9…", "change job X", "pause that job", "run that job now", or asks what jobs exist, from any folder.
+description: Create, change, pause, resume or fire a kabane job, a standing request a schedule runs in a project's folder, with the `kabane job` CLI. Use when the user says "make a job", "schedule this", "every morning run…", "every weekday at 9…", "change job X", "pause that job", "run that job now", asks what jobs exist, from any folder, or asks what a job or its runs write on the record.
 ---
 
 # Job
@@ -85,6 +85,24 @@ means, ask which, with their ids and titles.
 - `kabane done <id>` ends it; there is no delete.
 
 After any of these, `kabane job show <id>`, and tell the human its state and next fire in one line.
+
+## On the record
+
+The jobs extension has no MCP tool. What each command writes in kabane's shapes (the base `kabane`
+skill's `references/record.md` says what a thread, an entry, an attribute and a ref are):
+
+| Command | What it writes |
+|---|---|
+| `kabane job add` | A thread of kind `job` in `next`, whose description is the request. The schedule, harness, session, check and inputs go to the extension's own tables, not the thread |
+| `kabane job edit` | `--title` and `--request` change the thread's title and description; every other flag changes only the extension's tables |
+| `kabane job pause`, `resume` | The thread's state: `someday`, then `next` again |
+| `kabane job run`, `tick` | Each fire logs `run:<id>` on the job's work log. The session is told to read the job with `kabane_context` (earlier runs' results are its comments) and to write its result as one comment on it |
+| `kabane run <recipe> --target <id>` | The same `run:<id>` log line on the issue; the session comments its result there and files a decision with `kabane_ask` |
+| `kabane runs` | Nothing: it lists, reads, attaches to and stops runs, which live in the extension's tables |
+| `kabane done <id>` | The job's state, `done`, which ends it |
+
+What a job keeps up to date (a page, a note) is a ref of kind `artifact` on the job:
+`kabane_contextAdd`.
 
 ## What this skill does not do
 
