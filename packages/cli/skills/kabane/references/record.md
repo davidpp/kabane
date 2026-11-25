@@ -63,9 +63,10 @@ Not exposed in 2.0.0-beta.0, so do not try to reach them through another call:
 Ana at Acme asks in Slack for the SSO audit log as a CSV.
 
 1. **A thread**, because someone will own it and finish it. Give it a key built from the
-   source, so a second agent reading the same message files the same thread:
+   message's own id (channel `C1`, message `p123`), lowercased, so a second agent reading the same
+   message files the same thread instead of a duplicate:
    `kabane_add` with title `Acme: export the SSO audit log as CSV`, kind `issue`, tags
-   `["request"]`, key `acme/sso-audit-csv`, and the ask in Ana's words in the description, with
+   `["request"]`, key `acme-requests/slack-c1-p123`, and the ask in Ana's words in the description, with
    who asked and when.
 2. **A ref** to where it was asked: `kabane_contextAdd` with uri
    `url:https://acme.slack.com/archives/C1/p123`, kind `source`. The message stays in Slack.
@@ -88,8 +89,11 @@ While working on the CSV export, you notice that a sync test times out on CI thr
   `outcome.finding` entry on it, and `kabane_link` it `related` to the export so either reader
   can get from one to the other. Do not fix it unasked.
 
-A finding can go stale where a request does not. Kabane closes nothing on its own: a job or a
-person cancels old findings with an entry saying why.
+An idea is the third case: a thread tagged `idea`, filed like a finding because nobody asked for
+it, but it grows instead of going stale. Research on it goes in child threads, and the idea
+gains one entry with each conclusion. A finding can go stale and an idea can be dropped when
+nobody acts on it; a request cannot. Kabane closes nothing on its own: a job or a person cancels
+old findings and ideas with an entry saying why.
 
 ## A design discussion
 
@@ -118,8 +122,8 @@ This is the coding use, but the steps are the same for any work two agents share
    ```json
    {
      "threads": [
-       { "key": "spec", "title": "Write the CSV export spec", "state": "next", "assignee": "claude", "parent": "acme/sso-audit-csv" },
-       { "key": "build", "title": "Build the CSV export", "state": "next", "assignee": "codex", "parent": "acme/sso-audit-csv" }
+       { "key": "spec", "title": "Write the CSV export spec", "state": "next", "assignee": "claude", "parent": "acme-requests/slack-c1-p123" },
+       { "key": "build", "title": "Build the CSV export", "state": "next", "assignee": "codex", "parent": "acme-requests/slack-c1-p123" }
      ],
      "links": [{ "from": "spec", "to": "build", "type": "blocks" }]
    }
@@ -131,8 +135,10 @@ This is the coding use, but the steps are the same for any work two agents share
    creates only that one.
 
 2. **Each worker claims before touching anything.** `kabane_edit` on `sso-csv/spec` with state
-   `in_progress`. The thread already names its assignee, so set only the state. The result says
-   `claimedBy` and `claimHeld`. If `claimHeld` is false, another agent holds it: leave it. The
+   `in_progress`. The thread already names its assignee, so set only the state; on an unassigned
+   thread, set the assignee and the state in the same edit. The result says `claimedBy` and
+   `claimHeld`. A null `claimedBy` means no claim was made, because the thread has no assignee.
+   If `claimedBy` names another agent, it holds the thread: leave it. The
    first claim wins on every device once they sync. A claim lasts while the thread is
    `in_progress` or `waiting`; any other state releases it. After a crash, read the state before
    claiming again: if the thread is `waiting` and `{{kabane}} wait state` names you in `claimedBy`,
@@ -140,8 +146,9 @@ This is the coding use, but the steps are the same for any work two agents share
 
 3. **A decision goes to the human.** `kabane_ask` on `sso-csv/spec`. The thread moves to
    `waiting`. A worker with a shell can block on the answer:
-   `{{kabane}} wait answered <handle> --timeout 2h`. Calling `kabane_ask` again would ask twice, so
-   after a crash read `kabane_questions` first.
+   `{{kabane}} wait answered <handle> --timeout 2h`. The last answer moves the thread to `next`,
+   which releases the claim, so when the wait returns, claim it again (step 2) before going on.
+   Calling `kabane_ask` again would ask twice, so after a crash read `kabane_questions` first.
 
 4. **The work is logged as it lands.** `kabane_log` with `commit:<sha>` and `pr:<owner>/<repo>#<n>`
    refs, then `kabane_handoff`: what changed, what you saw, what you did not verify. What the
