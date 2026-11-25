@@ -185,7 +185,7 @@ claim runs on the run's settings.`;
 
 	const checkSetup = (project: Project): Recommendation[] => {
 		const install = installer(project);
-		return project.config.isolation === "worktree" && install
+		return project.config.worktree && install
 			? [
 					{
 						path: "setup",

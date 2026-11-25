@@ -188,12 +188,14 @@ it("the real tracker form advises overlapping children and project gates", async
 });
 
 it.each([
-	["shared", undefined, undefined],
-	["worktree", undefined, "bun install"],
-	["shared", "echo configured", "echo configured"],
+	["shared", true, undefined, "bun install"],
+	["shared", false, undefined, undefined],
+	["worktree", true, undefined, "bun install"],
+	["worktree", false, undefined, undefined],
+	["shared", false, "echo configured", "echo configured"],
 ] as const)(
-	"submitted %s isolation preserves the right setup (%s)",
-	async (isolation, setup, expected) => {
+	"submitted %s isolation with worktree=%s and configured setup %s",
+	async (isolation, worktree, setup, expected) => {
 		const scope = testScope(repo);
 		const parent = await add("parent", { scopeUri: scope?.scopeUri });
 		writeFileSync(join(repo, "bun.lock"), "");
@@ -219,7 +221,7 @@ it.each([
 				title: parent.title,
 				brief: "",
 			},
-			{ isolation, worktree: false },
+			{ isolation, worktree },
 		);
 		expect(started.ok).toBe(false);
 		const runs = RunStore.list(home);
