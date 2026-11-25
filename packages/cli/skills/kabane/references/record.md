@@ -147,7 +147,8 @@ This is the coding use, but the steps are the same for any work two agents share
 3. **A decision goes to the human.** `kabane_ask` on `sso-csv/spec`. The thread moves to
    `waiting`. A worker with a shell can block on the answer:
    `{{kabane}} wait answered <handle> --timeout 2h`. The last answer moves the thread to `next`,
-   which releases the claim, so when the wait returns, claim it again (step 2) before going on.
+   which releases the claim, so when the wait returns, claim it again (step 2) and read the
+   answer itself with `kabane_questions` (the wait says only that it was answered).
    Calling `kabane_ask` again would ask twice, so after a crash read `kabane_questions` first.
 
 4. **The work is logged as it lands.** `kabane_log` with `commit:<sha>` and `pr:<owner>/<repo>#<n>`
@@ -162,7 +163,7 @@ This is the coding use, but the steps are the same for any work two agents share
    brief shows its parent, what blocked it and the blocker's state. For the spec itself it reads
    `kabane_context` on `sso-csv/spec`, whose brief carries the latest handoff, the answered
    decisions, the context refs and the work log. `kabane_linkList` and `kabane_get` give the
-   links and tags the brief leaves out.
+   `related` links and the tags the brief leaves out.
 
 Across two devices, each wait reads the local database: the other device's write shows once
 sync has delivered it.
