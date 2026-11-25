@@ -1,14 +1,20 @@
 import { err, ok, type Result } from "@kabane/core/result";
 
-export type ProcessReply = { code: number; stdout: string };
+export type ProcessReply = { code: number; stdout: string; stderr?: string };
 
-/** Child diagnostics may contain registry credentials; never relay their raw bytes. */
+/**
+ * Child diagnostics may contain registry credentials, so stderr is read only when a caller asks
+ * for it. Self-update never does; the release publish job does, to report gh's own error.
+ */
 export const runUpdateProcess = async (
 	argv: string[],
 	cwd: string,
 	env: NodeJS.ProcessEnv,
 	timeoutMs = 15_000,
-	maxBytes = 1_048_576,
+	{
+		maxBytes = 1_048_576,
+		captureStderr = false,
+	}: { maxBytes?: number; captureStderr?: boolean } = {},
 ): Promise<Result<ProcessReply>> => {
 	try {
 		const child = Bun.spawn(argv, {
@@ -58,12 +64,13 @@ export const runUpdateProcess = async (
 			}
 		};
 		try {
-			const [stdout, , code] = await Promise.all([
+			const [stdout, stderr, code] = await Promise.all([
 				consume(child.stdout, true),
-				consume(child.stderr, false),
+				consume(child.stderr, captureStderr),
 				child.exited,
 			]);
-			return stopped ? err(new Error(stopped)) : ok({ code, stdout });
+			if (stopped) return err(new Error(stopped));
+			return ok(captureStderr ? { code, stdout, stderr } : { code, stdout });
 		} finally {
 			clearTimeout(timer);
 			child.kill();
