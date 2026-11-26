@@ -227,8 +227,13 @@ A session whose own report works gets both, and kabane reads the same state from
 Remove the hooks once Claude Code fixes the probe.
 
 Kabane never says a run succeeded. `idle` means the agent stopped; what it did is what it
-wrote on the issue. A run started on another machine shows the state last recorded there and
-that machine's name, and `read`, `send`, `attach` and `stop` refuse it. A run in a runtime
+wrote on the issue. A run is stamped with the device id from `kabane init` (`deviceId` in
+`config.json`), not the OS hostname, which macOS changes with the network. A run started on
+another device shows the state last recorded there and that device's id, and `read`, `send`,
+`attach` and `stop` refuse it: `Run <id> runs on <device>, not on this device (<id here>);
+<verb> it there`. A run recorded before kabane stamped the device id carries the hostname; when
+this device's runtime still has its terminal, kabane restamps it with the device id and carries
+on. A run in a runtime
 this kabane does not have is treated the same way, and `read`, `send` and `attach` on a runtime
 with no terminal fail with one line naming it. A run whose start was interrupted
 stays `live` with no terminal (an empty TERMINAL column), and every verb on it fails with
@@ -247,7 +252,7 @@ of runs with these fields:
 | `recipe` | `{ name, hash }`: the recipe and a hash of its file, and of its skill's `SKILL.md` when it uses one, as the run started |
 | `target` | `{ kind, id }`: what the run works on, absent when the recipe takes none: kind `issue` or `job`, and the item's full id |
 | `scope`, `dir`, `cwd` | the scope's URI, the folder relative to its root (`""` at the root), and that folder's full path |
-| `machine` | the host name of the machine the run started on |
+| `machine` | the id of the device the run started on (`deviceId` in its `config.json`); a run recorded by an older kabane carries that machine's host name until its device restamps it |
 | `runtime` | what started the run: `hc` |
 | `session` | the runtime's own handle for it: for `hc`, the terminal's name |
 | `inputs` | the input values the run started with |
@@ -365,7 +370,7 @@ no delete.
 it was added. A tick that comes late fires a job once, however many times it was missed. A fire,
 like `job run`:
 
-1. reads the job's runs on this machine from their terminals;
+1. reads the job's runs on this device from their terminals;
 2. skips the job when one is `live`, `running` or `waiting`, and says so; the job stays due for
    the next tick;
 3. on a fire `job tick` makes, runs the job's check when it has one, and when the check fails,

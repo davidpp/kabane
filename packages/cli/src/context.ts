@@ -40,11 +40,14 @@ import {
 } from "./config";
 import { ConfigLayers } from "./config-layers";
 import { Extensions } from "./extensions";
-import { activateHostRecord, hostHarnessMode } from "./host";
+import { activateHostRecord, hostDevice, hostHarnessMode } from "./host";
 import { detectScope, mainCheckoutRoot } from "./scope/detect";
 
-/** An extension's context plus the device config, which only built-in commands read. */
-export type Ctx = Extension.Ctx & { config: Config };
+/**
+ * An extension's context plus the device config, which only built-in commands read. This host
+ * always fills `device`.
+ */
+export type Ctx = Extension.Ctx & { config: Config; device: string };
 
 /** A built-in command; an extension's command, which asks for less, fits it too. */
 export type Command = Extension.Command<Ctx> & { contextErrorExitCode?: 1 | 2 };
@@ -167,6 +170,7 @@ export const openContext = async (
 		config: config.value,
 		actor,
 		harnessMode: hostHarnessMode(home, config.value),
+		device: hostDevice(home, config.value),
 		settings: settingsPort(home),
 	};
 	activateContextRecord(ctx, args);

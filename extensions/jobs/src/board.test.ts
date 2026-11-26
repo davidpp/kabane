@@ -11,7 +11,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { hostname, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	defineTool,
@@ -37,7 +37,6 @@ import {
 	flagCsv,
 	flagList,
 	flagString,
-	type Host,
 	parseArgs,
 	Settings,
 	success,
@@ -49,6 +48,7 @@ import { RecipeDispatcher } from "./dispatcher";
 import { jobCommand } from "./job-command";
 import { RecipeJobs } from "./job-source";
 import { Jobs } from "./jobs";
+import type { JobsHost } from "./jobs-host";
 import { Kabane } from "./result";
 import { settingsSchema } from "./run-command";
 import { Runs } from "./runs";
@@ -66,9 +66,9 @@ const value = <T>(result: Result<T>): T => {
 let folder = "";
 let home = "";
 let project: ProjectScope;
-let host: Host;
+let host: JobsHost;
 
-const hostFor = (basePath: string): Host => ({
+const hostFor = (basePath: string): JobsHost => ({
 	api: 1,
 	kabane: { version: "test", executable: "/nonexistent/kabane" },
 	record: createHostRecord(registeredTools, {
@@ -83,6 +83,7 @@ const hostFor = (basePath: string): Host => ({
 	),
 	scope: { detect: async () => ok(project), idOf: ScopeUri.getScopeId },
 	harnessMode: "auto",
+	device: "test",
 	z,
 	result: { ok, err, tryCatch, trySync },
 	args: { flagBool, flagCsv, flagList, flagString },
@@ -169,7 +170,7 @@ const run = (id: string, overrides: Partial<Runs.Run> = {}): Runs.Run => ({
 	target: { kind: "issue", id: issue.id },
 	scope: project.scopeUri,
 	dir: "",
-	machine: hostname(),
+	machine: "test",
 	cwd: project.root,
 	runtime: "hc",
 	session: `research-${id.slice(-6).toLowerCase()}`,
@@ -192,10 +193,13 @@ describe("RecipeActivity", () => {
 		const statuses = (
 			["live", "running", "waiting", "idle", "ended"] as const
 		).map((state) => {
-			const card = RecipeActivity.card({
-				run: run("01M7JT0TFJB7MF38VYDWCG0001", { state }),
-				shortId: issue.shortId,
-			});
+			const card = RecipeActivity.card(
+				{
+					run: run("01M7JT0TFJB7MF38VYDWCG0001", { state }),
+					shortId: issue.shortId,
+				},
+				"test",
+			);
 			return [state, card.status, card.actions?.map((a) => a.id) ?? []];
 		});
 		expect(statuses).toEqual([
@@ -205,10 +209,13 @@ describe("RecipeActivity", () => {
 			["idle", "completed", ["stop"]],
 			["ended", "completed", []],
 		]);
-		const card = RecipeActivity.card({
-			run: run("01M7JT0TFJB7MF38VYDWCG0001", { state: "waiting" }),
-			shortId: issue.shortId,
-		});
+		const card = RecipeActivity.card(
+			{
+				run: run("01M7JT0TFJB7MF38VYDWCG0001", { state: "waiting" }),
+				shortId: issue.shortId,
+			},
+			"test",
+		);
 		expect(card).toMatchObject({
 			kind: "runs",
 			label: "research",
@@ -217,7 +224,7 @@ describe("RecipeActivity", () => {
 			detail: [
 				"waiting",
 				"depth=quick",
-				`on ${hostname()}`,
+				"on test",
 				"kabane runs attach 01M7JT0TFJB7MF38VYDWCG0001",
 			],
 		});
@@ -226,10 +233,13 @@ describe("RecipeActivity", () => {
 	});
 
 	it("offers no stop on a run of another machine", () => {
-		const other = RecipeActivity.card({
-			run: run("01M7JT0TFJB7MF38VYDWCG0001", { machine: "elsewhere" }),
-			shortId: issue.shortId,
-		});
+		const other = RecipeActivity.card(
+			{
+				run: run("01M7JT0TFJB7MF38VYDWCG0001", { machine: "elsewhere" }),
+				shortId: issue.shortId,
+			},
+			"test",
+		);
 		expect(other.actions).toBeUndefined();
 	});
 
@@ -571,6 +581,7 @@ describe("kabane runs send", () => {
 				cwd: project.root,
 				actor: "tester",
 				harnessMode: "auto",
+				device: "test",
 				settings: Settings.port(async () => ok([])),
 			},
 		);
@@ -579,6 +590,109 @@ describe("kabane runs send", () => {
 			`Sent to ${waiting.session}.`,
 		]);
 		expect(sends).toEqual(["hi there"]);
+	});
+});
+
+describe("a run's device", () => {
+	const ctx = {
+		home: "",
+		store: "",
+		cwd: "",
+		actor: "tester",
+		harnessMode: "auto" as const,
+		device: "test",
+		settings: Settings.port(async () => ok([])),
+	};
+	const send = (runtime: Runtime, id: string) =>
+		runsCommand(host, runtime).run(parseArgs(["send", id, "hi"]), {
+			...ctx,
+			home,
+			store: home,
+			cwd: project.root,
+		});
+	const machines = async () =>
+		value(await Runs.list(host, project.scopeUri)).map((r) => [
+			r.id,
+			r.machine,
+		]);
+	const restamps = async () =>
+		value(
+			await withDb(home, (db) =>
+				db
+					.query<{ n: number }, []>(
+						"SELECT count(*) AS n FROM sync_oplog WHERE tbl = 'jobs_runs' AND op = 'update'",
+					)
+					.get(),
+			),
+		)?.n;
+
+	it("reaches a run stamped with the device id, whatever the OS hostname says", async () => {
+		const hc = scripted();
+		const mine = run("01M7JT0TFJB7MF38VYDWCG0700", { machine: "test" });
+		hc.states.set(mine.session, "running");
+		value(await Runs.insert(host, mine, "t"));
+		const outcome = await send(hc.runtime, mine.id);
+		expect([outcome.exitCode, hc.sent]).toEqual([
+			0,
+			[{ session: mine.session, text: "hi" }],
+		]);
+	});
+
+	it("restamps a run recorded with a hostname when the runtime here has its session, and operates it", async () => {
+		const hc = scripted();
+		const legacy = run("01M7JT0TFJB7MF38VYDWCG0701", {
+			machine: "dpp-bp-mpro16.local",
+			state: "running",
+		});
+		hc.states.set(legacy.session, "waiting");
+		value(await Runs.insert(host, legacy, "t"));
+		const outcome = await send(hc.runtime, legacy.id);
+		expect(outcome.exitCode).toBe(0);
+		expect(hc.sent).toEqual([{ session: legacy.session, text: "hi" }]);
+		expect(await machines()).toEqual([[legacy.id, "test"]]);
+		// Both writes are recorded, so the move replicates: the machine, then the state hc reported.
+		expect(await restamps()).toBe(2);
+		expect(value(await Runs.list(host, project.scopeUri))[0]?.state).toBe(
+			"waiting",
+		);
+	});
+
+	it("refuses a run of another machine whose session the runtime here does not have, and leaves it", async () => {
+		const hc = scripted();
+		const foreign = run("01M7JT0TFJB7MF38VYDWCG0702", {
+			machine: "Mac.localdomain",
+		});
+		value(await Runs.insert(host, foreign, "t"));
+		const outcome = await send(hc.runtime, foreign.id);
+		expect([outcome.exitCode, outcome.text]).toEqual([
+			1,
+			`Error: Run ${foreign.id} runs on Mac.localdomain, not on this device (test); send it there`,
+		]);
+		expect(hc.got).toEqual([foreign.session]);
+		expect(hc.sent).toEqual([]);
+		expect(await machines()).toEqual([[foreign.id, "Mac.localdomain"]]);
+		expect(await restamps()).toBe(0);
+	});
+
+	it("on the board, claims a hostname-stamped run hc has and offers its stop; another device's stays as recorded", async () => {
+		const hc = scripted();
+		const legacy = run("01M7JT0TFJB7MF38VYDWCG0703", {
+			machine: "dpp-bp-mpro16",
+		});
+		const foreign = run("01M7JT0TFJB7MF38VYDWCG0704", { machine: "studio" });
+		hc.states.set(legacy.session, "running");
+		value(await Runs.insert(host, legacy, "t"));
+		value(await Runs.insert(host, foreign, "t"));
+		const cards = value(await sourceWith(hc.runtime).load());
+		const byId = new Map(cards.map((card) => [card.id, card]));
+		expect(byId.get(legacy.id)?.actions?.map((a) => a.id)).toEqual(["stop"]);
+		expect(byId.get(legacy.id)?.detail).toContain("on test");
+		expect(byId.get(foreign.id)?.actions).toBeUndefined();
+		expect(byId.get(foreign.id)?.detail).toContain("on studio");
+		expect(Object.fromEntries(await machines())).toEqual({
+			[legacy.id]: "test",
+			[foreign.id]: "studio",
+		});
 	});
 });
 
@@ -727,6 +841,7 @@ describe("RecipeJobs", () => {
 				cwd: project.root,
 				actor: "tester",
 				harnessMode: "auto",
+				device: "test",
 				settings: Settings.port(async () => ok([])),
 			});
 		const firedAt = async (id: string) =>

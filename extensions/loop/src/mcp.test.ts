@@ -35,6 +35,7 @@ test("MCP advice resolves tagged subtasks using the real tracker and settings re
 			cwd: home,
 			actor: "test",
 			harnessMode: "default",
+			device: "test",
 			settings: Settings.port(async (namespace, projectDir) => {
 				expect(namespace).toBe("loop");
 				expect(projectDir).toBe(home);

@@ -34,6 +34,7 @@ const kabaneLoop = (...argv: string[]) => {
 		cwd: home,
 		actor: "kabane://actor/human/test",
 		harnessMode: "auto",
+		device: "test",
 		settings: Settings.port(async () => ok([])),
 	});
 };
@@ -488,6 +489,7 @@ describe("kabane loop advise", () => {
 				cwd: home,
 				actor: "kabane://actor/human/test",
 				harnessMode: "auto",
+				device: "test",
 				settings: Settings.port(async () =>
 					ok([
 						{
@@ -575,6 +577,7 @@ describe("kabane loop advise", () => {
 					cwd: home,
 					actor: "kabane://actor/human/test",
 					harnessMode: "auto",
+					device: "test",
 					settings: Settings.port(async () =>
 						ok(layers.map((l) => ({ ...l, label: l.layer }))),
 					),

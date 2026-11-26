@@ -70,6 +70,7 @@ const setup = () => {
 		cwd: root,
 		actor: "",
 		harnessMode: "auto" as const,
+		device: "test",
 		settings: settingsPort(home),
 	};
 	const ids = async () => {

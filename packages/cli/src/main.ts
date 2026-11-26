@@ -43,7 +43,7 @@ import { sync } from "./commands/sync";
 import { update } from "./commands/update";
 import { upstream } from "./commands/upstream";
 import { wait } from "./commands/wait";
-import { configPath, resolveHome } from "./config";
+import { configPath, defaultDeviceId, resolveHome } from "./config";
 import { type Command, type Ctx, openContext, settingsPort } from "./context";
 import { Extensions } from "./extensions";
 import { print } from "./output";
@@ -169,6 +169,7 @@ const bareCtx = (home: string, cwd: string): Ctx => ({
 	},
 	actor: "",
 	harnessMode: "auto",
+	device: defaultDeviceId(),
 	settings: settingsPort(home),
 });
 

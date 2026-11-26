@@ -14,7 +14,7 @@ import {
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { hostname, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const EXTENSION = resolve(import.meta.dir, "..");
@@ -121,7 +121,7 @@ const setup = (extensions: readonly string[] = ["jobs"]) => {
 				[
 					id,
 					scope,
-					fields.machine ?? hostname(),
+					fields.machine ?? "test",
 					root,
 					fields.runtime ?? "hc",
 					fields.session ?? `kabane-test-${id.slice(-6).toLowerCase()}`,
@@ -342,7 +342,7 @@ test("runs lists the runs in flight unless --ended, and refuses another machine'
 	for (const verb of ["attach", "read", "stop"])
 		expect(kabane(["runs", verb, "aaa"])).toMatchObject({
 			code: 1,
-			stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0AAA runs on elsewhere, not on this machine (${hostname()}); ${verb} it there`,
+			stderr: `Error: Run 01M7JT0TFJB7MF38VYDWCG0AAA runs on elsewhere, not on this device (test); ${verb} it there`,
 		});
 	expect(kabane(["runs", "send", "AAA", "yes"]).stderr).toContain(
 		"runs on elsewhere",
@@ -364,7 +364,7 @@ test("a run's id, whole or its end, reaches it from any folder: this project's f
 	seed("01M7JT0TFJB7MF38VYDWCG2HHH", { machine: "elsewhere", cwd: other });
 	// The machine check is past the lookup: reaching it names the run that was found.
 	const found = (id: string) =>
-		`Error: Run ${id} runs on elsewhere, not on this machine (${hostname()}); attach it there`;
+		`Error: Run ${id} runs on elsewhere, not on this device (test); attach it there`;
 	for (const cwd of [other, home]) {
 		expect(
 			kabane(["runs", "attach", "01m7jt0tfjb7mf38vydwcg0ggg"], { cwd }),

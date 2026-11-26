@@ -3,7 +3,7 @@
 // `Jobs`. `tick`, which launchd or cron calls, fires every active job that is due; it has no
 // project, so every `kabane job` run inside one records that project's folder for it.
 import { createHash } from "node:crypto";
-import { homedir, hostname } from "node:os";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type {
 	Extension,
@@ -18,6 +18,7 @@ import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { JobTick } from "./job-tick";
 import { Jobs } from "./jobs";
+import type { JobsHost } from "./jobs-host";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
 import {
@@ -59,7 +60,7 @@ const when = (date: Date): string => {
 };
 
 export type Deps = {
-	host: Host;
+	host: JobsHost;
 	settings: ReturnType<typeof settingsSchema>;
 	runtime: Runtime;
 };
@@ -225,7 +226,7 @@ const fire = async (
 	const short = shortOf(task);
 	const runs = await runsOf(d, found, ctx.actor);
 	if (!runs.ok) return runs;
-	const here = hostname();
+	const here = d.host.device;
 	const decision = Jobs.decide(
 		job.session,
 		runs.value.filter((run) => run.machine === here),
@@ -931,8 +932,7 @@ const notify = async (
 ): Promise<Result<string | undefined>> => {
 	const runs = await runsOf(d, one, ctx.actor);
 	if (!runs.ok) return runs;
-	const here = hostname();
-	const run = runs.value.find((r) => r.machine === here);
+	const run = runs.value.find((r) => r.machine === d.host.device);
 	if (run === undefined) return ok(undefined);
 	const seen = await Jobs.seen(d.host, run.id);
 	if (!seen.ok) return seen;
@@ -995,7 +995,7 @@ const tick = async (d: Deps, ctx: Extension.Ctx): Promise<Outcome> => {
 };
 
 export const jobCommand = (
-	host: Host,
+	host: JobsHost,
 	settings: ReturnType<typeof settingsSchema>,
 	runtime: Runtime,
 ): Extension.Command => {

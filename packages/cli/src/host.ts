@@ -27,25 +27,39 @@ import {
 } from "@kabane/extension";
 import { z } from "zod";
 import { version } from "../package.json";
-import { type Config, harnessMode, loadConfig } from "./config";
+import {
+	type Config,
+	defaultDeviceId,
+	harnessMode,
+	loadConfig,
+} from "./config";
 import { detectScope } from "./scope/detect";
 import { Self } from "./self";
 
-const modes = new Map<string, Host["harnessMode"]>();
+type FromConfig = { harnessMode: Host["harnessMode"]; device: string };
+const read = new Map<string, FromConfig>();
 
-/** One mode per device invocation, shared with the command context. */
+/** What the device config gives `host`, read once per device invocation and shared with the command context. */
+const fromConfig = (home: string, config?: Config): FromConfig => {
+	const cached = read.get(home);
+	if (cached !== undefined) return cached;
+	const loaded = config ? ok(config) : loadConfig(home);
+	// A config-less standalone context (including doctor diagnosing broken config) uses auto
+	// and the id init would save.
+	const values: FromConfig = loaded.ok
+		? { harnessMode: harnessMode(loaded.value), device: loaded.value.deviceId }
+		: { harnessMode: "auto", device: defaultDeviceId() };
+	read.set(home, values);
+	return values;
+};
+
 export const hostHarnessMode = (
 	home: string,
 	config?: Config,
-): Host["harnessMode"] => {
-	const cached = modes.get(home);
-	if (cached !== undefined) return cached;
-	const loaded = config ? ok(config) : loadConfig(home);
-	// A config-less standalone context (including doctor diagnosing broken config) uses auto.
-	const mode = loaded.ok ? harnessMode(loaded.value) : "auto";
-	modes.set(home, mode);
-	return mode;
-};
+): Host["harnessMode"] => fromConfig(home, config).harnessMode;
+
+export const hostDevice = (home: string, config?: Config): string =>
+	fromConfig(home, config).device;
 
 let active: { home: string; context: () => Promise<ToolContext> } | undefined;
 
@@ -103,6 +117,9 @@ export const createHost = (home: string, name = "an extension"): StagedHost => {
 		},
 		get harnessMode() {
 			return hostHarnessMode(home);
+		},
+		get device() {
+			return hostDevice(home);
 		},
 		z,
 		result: { ok, err, tryCatch, trySync },

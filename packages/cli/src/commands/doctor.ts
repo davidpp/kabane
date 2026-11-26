@@ -13,7 +13,7 @@ import { kabane } from "../doctor/kabane";
 import { linkedElsewhere } from "../doctor/linked-elsewhere";
 import { uncheckedSkills } from "../doctor/project";
 import { Extensions } from "../extensions";
-import { activateHostRecord, hostHarnessMode } from "../host";
+import { activateHostRecord, hostDevice, hostHarnessMode } from "../host";
 
 /**
  * The repair of an enabled extension that is not installed but ships with this install: link it,
@@ -100,6 +100,7 @@ export const doctor: Command = {
 						config: { ...config.value, actor },
 						actor,
 						harnessMode: hostHarnessMode(ctx.home, config.value),
+						device: hostDevice(ctx.home, config.value),
 					};
 					activateContextRecord(ctx, args);
 				} else if (initialized)

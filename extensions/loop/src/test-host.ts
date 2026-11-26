@@ -83,6 +83,7 @@ export const testHost = (
 		idOf: ScopeUri.getScopeId,
 	},
 	harnessMode: "auto",
+	device: "test",
 	z,
 	result: { ok, err, tryCatch, trySync },
 	args: { flagBool, flagCsv, flagList, flagString },

@@ -50,6 +50,7 @@ const ctx = (loop: unknown = PINNED): Extension.Ctx => ({
 	cwd: root,
 	actor: "",
 	harnessMode: "auto",
+	device: "test",
 	settings: Settings.port(async () =>
 		ok([{ layer: "global", label: "config.json", value: loop }]),
 	),

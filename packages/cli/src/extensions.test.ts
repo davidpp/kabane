@@ -619,19 +619,22 @@ for (const openFirst of [false, true]) {
 	});
 }
 
-it("gives standalone extension commands the host's cached harness mode", async () => {
+it("gives standalone extension commands the host's cached harness mode and device id", async () => {
 	const home = makeHome({ extensions: ["mode"], harness: { mode: "default" } });
 	install(
 		home,
 		"mode",
-		`export default host => ({name: "mode", commands: [{name: "mode", summary: "Mode", usage: "mode", standalone: true, run: async (_args, ctx) => host.outcome.success({host: host.harnessMode, context: ctx.harnessMode})}]});`,
+		`export default host => ({name: "mode", commands: [{name: "mode", summary: "Mode", usage: "mode", standalone: true, run: async (_args, ctx) => host.outcome.success({host: [host.harnessMode, host.device], context: [ctx.harnessMode, ctx.device]})}]});`,
 	);
 	const outcome = await run(
 		["mode"],
 		{ KABANE_HOME: home, KABANE_HARNESSES: "" },
 		home,
 	);
-	expect(outcome.json).toEqual({ host: "default", context: "default" });
+	expect(outcome.json).toEqual({
+		host: ["default", "t"],
+		context: ["default", "t"],
+	});
 });
 
 it("links a shipped extension the home lacks, and leaves the user's own install alone", () => {

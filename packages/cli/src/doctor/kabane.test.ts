@@ -18,6 +18,7 @@ test("built-in returned and thrown failures retain distinct handles under kabane
 			cwd: "/unused",
 			actor: "",
 			harnessMode: "auto",
+			device: "test",
 			settings: settingsPort("/unused"),
 		},
 	);

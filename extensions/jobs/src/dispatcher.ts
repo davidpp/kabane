@@ -11,7 +11,6 @@ import { basename, relative } from "node:path";
 import type {
 	Dispatcher,
 	Extension,
-	Host,
 	ProjectScope,
 	Result,
 	TriggerDescriptor,
@@ -19,6 +18,7 @@ import type {
 import { Harness } from "./harness";
 import { Inputs } from "./inputs";
 import { runJob } from "./job-command";
+import type { JobsHost } from "./jobs-host";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
 import {
@@ -34,7 +34,7 @@ export namespace RecipeDispatcher {
 	const RUN_JOB = "job:run";
 
 	type Deps = {
-		host: Host;
+		host: JobsHost;
 		runtime: Runtime;
 		project: () => Promise<Result<ProjectScope | null>>;
 		settings: ReturnType<typeof settingsSchema>;
