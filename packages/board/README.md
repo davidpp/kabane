@@ -712,7 +712,10 @@ leg is what keeps the key useful over ssh, where there is no opener. With severa
 opens; the detail brief lists them all. The footer offers `O` only while the row under the cursor
 has somewhere to go.
 
-Every copy (`y`, and that last leg) goes through OpenTUI's clipboard (`src/clipboard.ts`). On a
+The board takes the mouse, so the terminal's own selection never starts. Drag over text instead:
+the board highlights it and copies it on release, and the footer flashes `copied selection`.
+
+Every copy (`y`, a selection, and that last leg) goes through OpenTUI's clipboard (`src/clipboard.ts`). On a
 local session it writes the machine's own pasteboard, and sends OSC 52 only when there is none. On
 a remote one (ssh) it sends only OSC 52, so the text lands in the human's own terminal and the
 remote machine's pasteboard is never written. The footer flashes what happened, or
