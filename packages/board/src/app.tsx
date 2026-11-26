@@ -10,12 +10,13 @@ import {
 	type Dispatcher,
 	type JobSource,
 } from "@kabane/extension";
-import { useRenderer } from "@opentui/react";
+import { useRenderer, useSelectionHandler } from "@opentui/react";
 import { type ReactNode, useCallback } from "react";
 import { useAnnouncement } from "./announcement";
 import { useBoardFeed, useOpenRequests } from "./board-feed";
 import { useBoardInput } from "./board-input";
 import { type BoardStore, useBoardStore } from "./board-store";
+import { Clipboard } from "./clipboard";
 import { isCopilotEffect, useCopilotSession } from "./copilot-session";
 import type { BoardData } from "./data";
 import { useDetailRecords } from "./detail-records";
@@ -191,6 +192,23 @@ const useEffectRunner = ({
 	);
 };
 
+// The board takes the mouse, so the terminal's own selection never sees a drag and Cmd+C copies
+// nothing. OpenTUI draws the selection instead; a drag that selected text copies it on release.
+const useCopySelection = (setNotice: SetNotice): void => {
+	const renderer = useRenderer();
+	useSelectionHandler((selection) => {
+		const text = selection.getSelectedText();
+		if (!text) return;
+		void Clipboard.write(renderer, text).then((wrote) =>
+			setNotice(
+				wrote.ok
+					? { text: "copied selection", tone: "success" }
+					: { text: wrote.error.message, tone: "error" },
+			),
+		);
+	});
+};
+
 export const App = ({
 	cwd,
 	basePath,
@@ -255,6 +273,8 @@ export const App = ({
 
 	// The terminal hears when the board waits on the human, or works.
 	ProgramStatus.useBoardStatus(store.state, activity.cards);
+
+	useCopySelection(setNotice);
 
 	const { refs, runEffect: runScreenEffect } = useScreenRefs(store.state);
 	const runTaskEffect = useTaskActions({ basePath, store, setNotice, reload });
