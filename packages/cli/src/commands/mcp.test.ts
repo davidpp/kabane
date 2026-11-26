@@ -42,6 +42,7 @@ beforeEach(() => {
 		cwd: home,
 		actor: "test",
 		harnessMode: "default",
+		device: "test",
 		settings: Settings.port(async () => ok([])),
 	};
 	configure(["loop"]);

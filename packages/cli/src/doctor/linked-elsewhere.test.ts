@@ -26,6 +26,7 @@ const ctx: Extension.Ctx = {
 	cwd: home,
 	actor: "doctor-test",
 	harnessMode: "default",
+	device: "test",
 	settings: Settings.port(async () => ok([])),
 };
 

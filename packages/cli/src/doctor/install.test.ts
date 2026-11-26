@@ -106,6 +106,7 @@ const setup = () => {
 		cwd: root,
 		actor: "",
 		harnessMode: "auto" as const,
+		device: "test",
 		settings: settingsPort(kabaneHome),
 	};
 	const deps = (extra: InstallDeps = {}): InstallDeps => ({

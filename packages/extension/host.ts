@@ -41,6 +41,8 @@ export type Host = {
 		idOf(uri: string): Result<string>;
 	};
 	readonly harnessMode: "auto" | "default";
+	/** `Extension.Ctx["device"]`: this device's configured id. Absent on a host older than it. */
+	readonly device?: string;
 	/** For the extension's own data modules (the manifest's modules entry). */
 	readonly store: Host.Store;
 	readonly z: typeof z;

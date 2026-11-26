@@ -31,7 +31,7 @@ import {
 import { z } from "zod";
 import { ConfigSchema, configPath, loadConfig } from "./config";
 import { ConfigLayers } from "./config-layers";
-import { hostFor, hostHarnessMode } from "./host";
+import { hostDevice, hostFor, hostHarnessMode } from "./host";
 import { Self } from "./self";
 
 const Manifest = z.object({
@@ -674,6 +674,7 @@ export namespace Extensions {
 						command.run(args, {
 							...ctx,
 							harnessMode: hostHarnessMode(ctx.home),
+							device: hostDevice(ctx.home),
 						}),
 					);
 					return called.ok

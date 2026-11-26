@@ -237,6 +237,8 @@ type Host = {
 	};
 	readonly record: Host.Record;
 	readonly harnessMode: "auto" | "default";
+	/** This device's id (`deviceId` in the device config); `Extension.Ctx` carries it too. */
+	readonly device?: string;
 	readonly scope: {
 		/** The project scope of a directory: marker walk, then git. */
 		detect(dir: string): Promise<Result<ProjectScope | null>>;
@@ -272,6 +274,14 @@ board's copilot (`copilot.command` and `copilot.args` in `CopilotConfigSchema`),
 to pass. An extension that needs a launch override declares it in its own settings, as the loop
 does with `loop.harnesses`. A device setting for it would reach `host` as an optional api-1
 member.
+
+`device` is the device config's `deviceId`, the id `init` saves once (the short hostname unless
+`--device` names another), and `Extension.Ctx` carries the same value. An extension that records
+where something runs, as the jobs extension stamps a run's `machine`, stamps this id: the OS
+hostname follows the network on macOS, so a row stamped with it stops matching its own device
+when the network changes (JCAB-127). A home with no config gets the id `init` would save. It
+came after api 1 shipped, so it is optional on both: the jobs extension refuses to load on a host
+without it rather than fall back to the hostname.
 
 `z` is on `host` because the host introspects the schemas an extension hands it:
 `Settings.fields` walks the schema of a settings namespace (`packages/extension/settings.ts`), and the MCP

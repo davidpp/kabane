@@ -51,6 +51,12 @@ export namespace Extension {
 		 * `auto` is the harness's own auto mode, `default` selects none.
 		 */
 		harnessMode: "auto" | "default";
+		/**
+		 * This device's id (`deviceId` in the device config): stable across network changes, unlike
+		 * the OS hostname. Without a config, the short hostname `init` would save. Absent on a host
+		 * older than it.
+		 */
+		device?: string;
 		/** Resolves a settings namespace through every layer, for the project at a directory. */
 		settings: Settings.Port;
 	};

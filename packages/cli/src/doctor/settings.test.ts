@@ -35,6 +35,7 @@ test("reports unknown device and other-project namespace keys without changing f
 			cwd: home,
 			actor: "",
 			harnessMode: "auto",
+			device: "test",
 			settings: settingsPort(home),
 		});
 		if (!report.ok) throw report.error;

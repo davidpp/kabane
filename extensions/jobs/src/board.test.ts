@@ -83,6 +83,7 @@ const hostFor = (basePath: string): Host => ({
 	),
 	scope: { detect: async () => ok(project), idOf: ScopeUri.getScopeId },
 	harnessMode: "auto",
+	device: "test",
 	z,
 	result: { ok, err, tryCatch, trySync },
 	args: { flagBool, flagCsv, flagList, flagString },
@@ -571,6 +572,7 @@ describe("kabane runs send", () => {
 				cwd: project.root,
 				actor: "tester",
 				harnessMode: "auto",
+				device: "test",
 				settings: Settings.port(async () => ok([])),
 			},
 		);
@@ -727,6 +729,7 @@ describe("RecipeJobs", () => {
 				cwd: project.root,
 				actor: "tester",
 				harnessMode: "auto",
+				device: "test",
 				settings: Settings.port(async () => ok([])),
 			});
 		const firedAt = async (id: string) =>

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Planner } from "@kabane/core";
 import { parseArgs } from "@kabane/extension";
+import { defaultDeviceId } from "./config";
 import { openContext } from "./context";
 import { activateHostRecord, createHost } from "./host";
 import * as scope from "./scope/detect";
@@ -110,18 +111,19 @@ it("opens without scope detection, then resolves it only once across record call
 	}
 });
 
-it("caches harness mode on first use and shares it with the command", async () => {
+it("caches harness mode and device id on first use and shares them with the command", async () => {
 	const home = configuredHome();
 	const { host } = createHost(home);
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
 			actor: "kabane://actor/human/test",
-			deviceId: "test",
+			deviceId: "studio",
 			harness: { mode: "default" },
 		}),
 	);
 	expect(host.harnessMode).toBe("default");
+	expect(host.device).toBe("studio");
 	writeFileSync(
 		join(home, "config.json"),
 		JSON.stringify({
@@ -131,10 +133,18 @@ it("caches harness mode on first use and shares it with the command", async () =
 		}),
 	);
 	expect(host.harnessMode).toBe("default");
+	expect(host.device).toBe("studio");
 	const ctx = await openContext(home, home, parseArgs([]));
 	if (!ctx.ok) throw ctx.error;
 	expect(ctx.value.harnessMode).toBe(host.harnessMode);
+	expect(ctx.value.device).toBe("studio");
 	expect(createHost(home).host.harnessMode).toBe("default");
+});
+
+it("gives a home with no config the device id init would save", () => {
+	const home = mkdtempSync(join(tmpdir(), "kabane-host-"));
+	homes.push(home);
+	expect(createHost(home).host.device).toBe(defaultDeviceId());
 });
 
 it("passes question cursors untouched through record.call", async () => {
