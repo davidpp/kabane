@@ -2,7 +2,6 @@
 // the prompt that names a recipe's skill or fills in its own body, record the run, start the
 // harness in a runtime terminal and return without waiting. With no recipe it lists the project's
 // recipes, the skill each uses or that it has its own prompt, and the harness each would start.
-import { hostname } from "node:os";
 import { join, relative } from "node:path";
 import type {
 	Extension,
@@ -13,6 +12,7 @@ import type {
 } from "@kabane/extension";
 import { Harness } from "./harness";
 import { Inputs } from "./inputs";
+import type { JobsHost } from "./jobs-host";
 import { Recipe } from "./recipe";
 import { err, ok } from "./result";
 import { Runs } from "./runs";
@@ -296,7 +296,7 @@ type Started = { run: Runs.Run; warnings: string[] };
  * with the form's inputs; `kabane job` calls it with a job's stored inputs and its folder.
  */
 export const startRun = async (
-	host: Host,
+	host: JobsHost,
 	runtime: Runtime,
 	{
 		scopeUri,
@@ -327,7 +327,7 @@ export const startRun = async (
 				: { target: { kind: target.kind, id: target.id } }),
 			scope: scopeUri,
 			dir,
-			machine: hostname(),
+			machine: host.device,
 			cwd,
 			runtime: runtime.name,
 			session: Runs.STARTING,
@@ -384,7 +384,7 @@ export const startRun = async (
 };
 
 export const runCommand = (
-	host: Host,
+	host: JobsHost,
 	settings: ReturnType<typeof settingsSchema>,
 	runtime: Runtime,
 ): Extension.Command => ({

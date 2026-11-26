@@ -1,19 +1,18 @@
 // The recipe runs as board activity: a run that names an issue is a card on that issue with its
 // state and the command that attaches to its terminal, and its one action stops it. The card has
 // no tab: kabane does not render a terminal, `kabane runs attach` shows it in hc. Every listing
-// reads this machine's unfinished runs from the runtime first, as `kabane runs` does. A run
+// reads this device's unfinished runs from the runtime first, as `kabane runs` does. A run
 // without a target, or whose target is a job, is not on the board.
-import { hostname } from "node:os";
 import type {
 	ActivityCard,
 	ActivitySource,
 	ActivityStatus,
 	CardAction,
-	Host,
 	ProjectScope,
 	Result,
 	StopAction,
 } from "@kabane/extension";
+import type { JobsHost } from "./jobs-host";
 import { err, ok } from "./result";
 import { shortIdOf } from "./run-command";
 import { Runs } from "./runs";
@@ -46,14 +45,15 @@ export namespace RecipeActivity {
 
 	const attach = (id: string): string => `kabane runs attach ${id}`;
 
-	/** Whether this machine may act on the run: its own, not yet ended. One with no terminal yet
+	/** Whether this device may act on the run: its own, not yet ended. One with no terminal yet
 	 * counts; the runtime answers a verb on it. */
-	const reachable = (run: Runs.Run, here: string): boolean =>
-		run.machine === here && run.state !== "ended";
+	const reachable = (run: Runs.Run, device: string): boolean =>
+		run.machine === device && run.state !== "ended";
 
+	/** The run's card; `device` is this device's id, which may stop its own runs. */
 	export const card = (
 		{ run, shortId }: Targeted,
-		here = hostname(),
+		device: string,
 	): ActivityCard => {
 		const inputs = Object.entries(run.inputs)
 			.map(([name, value]) => `${name}=${String(value)}`)
@@ -73,7 +73,7 @@ export namespace RecipeActivity {
 				`on ${run.machine}`,
 				attach(run.id),
 			],
-			...(reachable(run, here) ? { actions: [STOP] } : {}),
+			...(reachable(run, device) ? { actions: [STOP] } : {}),
 		};
 	};
 
@@ -93,7 +93,7 @@ export namespace RecipeActivity {
 	};
 
 	type Deps = {
-		host: Host;
+		host: JobsHost;
 		runtime: Runtime;
 		/** The board's project; null outside one, where there is nothing to list. */
 		project: () => Promise<Result<ProjectScope | null>>;
@@ -147,17 +147,16 @@ export namespace RecipeActivity {
 				if (!stored.ok) return stored;
 				const runs = await current(listed(stored.value));
 				if (!runs.ok) return runs;
-				const here = hostname();
 				const cards: ActivityCard[] = [];
 				for (const run of listed(runs.value))
-					cards.push(card(await targeted(run), here));
+					cards.push(card(await targeted(run), host.device));
 				return ok(cards);
 			},
 			card: async (id) => {
 				const run = await one(id);
 				if (!run.ok) return run;
 				if (run.value?.target?.kind !== "issue") return ok(null);
-				return ok(card(await targeted(run.value)));
+				return ok(card(await targeted(run.value), host.device));
 			},
 			act: async (id, actionId) => {
 				if (actionId !== STOP_ACTION)
@@ -165,10 +164,10 @@ export namespace RecipeActivity {
 				const run = await one(id);
 				if (!run.ok) return run;
 				if (run.value === null) return err(new Error(`No run ${id}`));
-				if (!reachable(run.value, hostname()))
+				if (!reachable(run.value, host.device))
 					return err(
 						new Error(
-							run.value.machine === hostname()
+							run.value.machine === host.device
 								? `run ${id} is ${run.value.state}: nothing to stop`
 								: `run ${id} runs on ${run.value.machine}: stop it there`,
 						),

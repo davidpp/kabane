@@ -1,9 +1,9 @@
 // Where a run's row lives: the extension's own replicated table (JCAB-444:1). It ships with the
 // extension and is absent when it is disabled; a device without it, the hub included, parks its
 // ops. Nothing outside this file knows the table, so moving the row elsewhere changes this file.
-import { hostname } from "node:os";
 import type { Db, Host, KabaneModule, Result } from "@kabane/extension";
 import { actorScheme } from "./actor-scheme";
+import type { JobsHost } from "./jobs-host";
 import { err, ok, trySync } from "./result";
 import type { Runtime } from "./runtime";
 
@@ -42,6 +42,8 @@ export namespace Runs {
 
 	/** What the store reads and writes with. */
 	type Store = Pick<Host, "store" | "z">;
+	/** And the device a run of this one is stamped with. */
+	type Local = Store & Pick<JobsHost, "device">;
 
 	export const module = (): KabaneModule => ({
 		name: "jobs-runs",
@@ -251,31 +253,60 @@ export namespace Runs {
 			return tx.afterWrite(TABLE, "update", id);
 		});
 
+	/** The device a run recorded before JCAB-127 moves to: it was stamped with the OS hostname. */
+	const setMachine = (
+		host: Store,
+		id: string,
+		machine: string,
+		actor: string,
+	): Promise<Result<void>> =>
+		host.store.write((tx) => {
+			tx.db.run(
+				`UPDATE ${TABLE} SET machine = ?, updated_at = ?, updated_by = ?,
+				   version = version + 1 WHERE id = ?`,
+				[machine, new Date().toISOString(), actor, id],
+			);
+			return tx.afterWrite(TABLE, "update", id);
+		});
+
 	/**
-	 * Each unfinished run of this machine, with the state its runtime reports now. A run whose
+	 * Each unfinished run of this device, with the state its runtime reports now. A run whose
 	 * start has not recorded its session yet stays as recorded: one whose start was interrupted
 	 * stays `live` with no terminal.
+	 *
+	 * A run stamped with another machine is this device's when the runtime here still has its
+	 * session: a run recorded with the OS hostname, which the network renames. It is restamped
+	 * with the device id, a recorded write that replicates. A session the runtime does not have,
+	 * or cannot read, leaves the run another device's.
 	 */
 	export const reconcile = async (
-		host: Store,
+		host: Local,
 		runtime: Runtime,
 		runs: Run[],
 		actor: string,
 	): Promise<Result<Run[]>> => {
-		const here = hostname();
 		const current: Run[] = [];
-		for (const run of runs) {
+		for (const recorded of runs) {
 			if (
-				run.machine !== here ||
-				run.state === "ended" ||
-				run.runtime !== runtime.name ||
-				run.session === STARTING
+				recorded.state === "ended" ||
+				recorded.runtime !== runtime.name ||
+				recorded.session === STARTING
 			) {
-				current.push(run);
+				current.push(recorded);
 				continue;
 			}
-			const seen = await runtime.get(run.session);
+			const foreign = recorded.machine !== host.device;
+			const seen = await runtime.get(recorded.session);
+			if (foreign && (!seen.ok || seen.value === "ended")) {
+				current.push(recorded);
+				continue;
+			}
 			if (!seen.ok) return seen;
+			if (foreign) {
+				const moved = await setMachine(host, recorded.id, host.device, actor);
+				if (!moved.ok) return moved;
+			}
+			const run = { ...recorded, machine: host.device };
 			if (seen.value === run.state) {
 				current.push(run);
 				continue;
@@ -295,7 +326,7 @@ export namespace Runs {
 
 	/** Stops the run's session in its runtime; resolves to the state the runtime reports after. */
 	export const stop = async (
-		host: Store,
+		host: Local,
 		runtime: Runtime,
 		run: Run,
 		actor: string,

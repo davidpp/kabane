@@ -10,13 +10,15 @@ import { entries, jobCommand } from "./job-command";
 import { JobSkill } from "./job-skill";
 import { RecipeJobs } from "./job-source";
 import { JobTick } from "./job-tick";
+import { jobsHost } from "./jobs-host";
 import { Kabane, ok } from "./result";
 import { runCommand, settingsSchema } from "./run-command";
 import { runsCommand } from "./runs-command";
 import { HcRuntime } from "./runtime-hc";
 
-export const jobs = (host: Host): Extension => {
-	Kabane.bind(host);
+export const jobs = (given: Host): Extension => {
+	Kabane.bind(given);
+	const host = jobsHost(given);
 	const settings = settingsSchema(host.z);
 	const runtime = HcRuntime.runtime(host.z);
 	return {

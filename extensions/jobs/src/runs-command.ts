@@ -1,11 +1,11 @@
 // `kabane runs [--all] [--ended]` and `kabane runs attach|read|send|stop <id>`. A run's state is what its
-// runtime says: every listing reads this machine's unfinished runs from the runtime first and
-// writes back the ones that moved. A run started on another machine, or in a runtime this kabane
+// runtime says: every listing reads this device's unfinished runs from the runtime first and
+// writes back the ones that moved. A run started on another device, or in a runtime this kabane
 // does not have, shows what was last recorded.
-import { hostname } from "node:os";
 import { basename } from "node:path";
 import type { Extension, Host, Outcome } from "@kabane/extension";
 import { Harness } from "./harness";
+import type { JobsHost } from "./jobs-host";
 import { ok } from "./result";
 import { projectOf, shortIdOf } from "./run-command";
 import { Runs } from "./runs";
@@ -47,12 +47,15 @@ const projectName = (host: Host, uri: string): string => {
 };
 
 /**
- * The one run `key` names, its whole id or the end of it, on this machine: looked for in the
+ * The one run `key` names, its whole id or the end of it, on this device: looked for in the
  * project of `cwd` first, then in every scope, so a command printed in one folder works in any.
+ * One stamped with another machine whose session the runtime here has is this device's, and is
+ * restamped (`Runs.reconcile`).
  */
 const resolve = async (
-	host: Host,
-	cwd: string,
+	host: JobsHost,
+	runtime: Runtime,
+	{ cwd, actor }: Pick<Extension.Ctx, "cwd" | "actor">,
 	key: string | undefined,
 	verb: string,
 ): Promise<{ ok: true; value: Runs.Run } | { ok: false; outcome: Outcome }> => {
@@ -72,8 +75,8 @@ const resolve = async (
 		if (!anywhere.ok) return fail(host.outcome.failure(anywhere.error));
 		found = anywhere.value;
 	}
-	const [run, other] = found;
-	if (run === undefined)
+	const [first, other] = found;
+	if (first === undefined)
 		return fail(
 			host.outcome.failure(
 				`No run "${key}" in any project; kabane runs --all --ended lists them all`,
@@ -85,20 +88,26 @@ const resolve = async (
 				`"${key}" names ${found.length} runs (${found.map((r) => `${r.id} in ${projectName(host, r.scope)}`).join(", ")}); give more of the id`,
 			),
 		);
-	if (run.machine !== hostname())
+	let run = first;
+	if (run.machine !== host.device && runtime.missing() === undefined) {
+		const claimed = await Runs.reconcile(host, runtime, [run], actor);
+		if (!claimed.ok) return fail(host.outcome.failure(claimed.error));
+		run = claimed.value[0] ?? run;
+	}
+	if (run.machine !== host.device)
 		return fail(
 			host.outcome.failure(
-				`Run ${run.id} runs on ${run.machine}, not on this machine (${hostname()}); ${verb} it there`,
+				`Run ${run.id} runs on ${run.machine}, not on this device (${host.device}); ${verb} it there`,
 			),
 		);
 	return { ok: true, value: run };
 };
 
-/** `attach`, `read`, `send` or `stop` on one run of this machine. */
+/** `attach`, `read`, `send` or `stop` on one run of this device. */
 type Operation = { run: Runs.Run; verb: string; words: string[] };
 
 const operate = async (
-	host: Host,
+	host: JobsHost,
 	runtime: Runtime,
 	actor: string,
 	{ run, verb, words }: Operation,
@@ -153,7 +162,7 @@ const operate = async (
 };
 
 export const runsCommand = (
-	host: Host,
+	host: JobsHost,
 	runtime: Runtime,
 ): Extension.Command => {
 	const listing = async (
@@ -187,7 +196,7 @@ export const runsCommand = (
 				`No runs${ended ? "" : " in flight"}${where}${more.length > 0 ? `; ${more.join(", ")}` : ""}.`,
 			);
 		}
-		const here = hostname();
+		const here = host.device;
 		const rows = shown.map((run) => [
 			run.id,
 			...(scope === undefined ? [projectName(host, run.scope)] : []),
@@ -239,7 +248,7 @@ export const runsCommand = (
 					`Unexpected arguments: ${words.join(" ")}`,
 					USAGE,
 				);
-			const found = await resolve(host, ctx.cwd, key, verb);
+			const found = await resolve(host, runtime, ctx, key, verb);
 			if (!found.ok) return found.outcome;
 			return operate(host, runtime, ctx.actor, {
 				run: found.value,
