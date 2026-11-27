@@ -153,6 +153,57 @@ describe("thread kinds on the record", () => {
 		expect(kept.value?.state).toBe("inbox");
 	});
 
+	it("gives a stateless thread its new kind's initial state when it becomes a workflow kind", async () => {
+		const base = await device("promote");
+		const signal = await Planner.addTask(base, {
+			title: "Error rate doubled",
+			kind: "signal",
+		});
+		if (!signal.ok) throw signal.error;
+		const promoted = await Planner.updateTask(base, signal.value.id, {
+			kind: "issue",
+		});
+		if (!promoted.ok) throw promoted.error;
+		expect(promoted.value?.state).toBe("inbox");
+		expect(await storedState(base, signal.value.id)).toEqual({
+			kind: "issue",
+			state: "inbox",
+		});
+
+		const plain = await Planner.addTask(base, {
+			title: "Scratch",
+			kind: "thread",
+		});
+		if (!plain.ok) throw plain.error;
+		const ready = await Planner.updateTask(base, plain.value.id, {
+			kind: "task",
+			state: "next",
+		});
+		if (!ready.ok) throw ready.error;
+		expect(ready.value?.state).toBe("next");
+
+		const session = await mcp(base);
+		try {
+			const other = await Planner.addTask(base, {
+				title: "Seen",
+				kind: "signal",
+			});
+			if (!other.ok) throw other.error;
+			const edited = await session.call("kabane_edit", {
+				id: other.value.id,
+				kind: "issue",
+				responseFormat: "concise",
+			});
+			expect(edited.isError).toBe(false);
+			expect(await storedState(base, other.value.id)).toEqual({
+				kind: "issue",
+				state: "inbox",
+			});
+		} finally {
+			await session.close();
+		}
+	});
+
 	it("refuses a kind that is not a name, on every write path", async () => {
 		const base = await device("malformed");
 		const added = await Planner.addTask(base, {

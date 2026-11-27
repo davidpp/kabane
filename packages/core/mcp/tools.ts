@@ -472,7 +472,7 @@ const edit = define({
 Parameters:
 - id: ${ID_HINT}
 - title, description, state, priority, kind, assignee, scopeUri, parentTaskId, tags, dueDate: as in kabane_add
-- assignee 'none' and parentTaskId 'none' clear the field; state 'none' takes the state away from a kind with no workflow of its own (a task, issue or job refuses it)
+- assignee 'none' and parentTaskId 'none' clear the field; state 'none' takes the state away from a kind with no workflow of its own (a task, issue or job refuses it); changing a stateless thread's kind to task, issue or job puts it in inbox unless state is given
 - needsReview: Flag or unflag the issue for human review
 - responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
 	input: editInput,

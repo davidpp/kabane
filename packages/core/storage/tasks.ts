@@ -232,16 +232,28 @@ const writeStateChange = (
 		RecordWrite.setAttribute(db, id, "completed_at", completedAt);
 };
 
-/** Refuses `state: null` on a kind whose workflow starts it in a state. */
-const stateKept = (updates: TaskUpdate, stored: string): Result<void> => {
-	const kind = updates.kind ?? stored;
-	return updates.state === null && initialStateOf(kind) !== undefined
-		? err(
-				new Error(
-					`A ${kind} keeps a state: only a kind with no workflow can have it taken away`,
-				),
-			)
-		: ok(undefined);
+/**
+ * The update as written: `state: null` on a kind whose workflow starts it in a
+ * state is refused, and a kind change that would leave such a kind with no
+ * state gives it that kind's initial state, so a signal promoted to an issue
+ * lands in `inbox` and a work queue picks it up.
+ */
+const stateKept = (
+	updates: TaskUpdate,
+	stored: { kind: string; state: TaskState | null },
+): Result<TaskUpdate> => {
+	const kind = updates.kind ?? stored.kind;
+	const initial = initialStateOf(kind);
+	if (initial === undefined) return ok(updates);
+	if (updates.state === null)
+		return err(
+			new Error(
+				`A ${kind} keeps a state: only a kind with no workflow can have it taken away`,
+			),
+		);
+	return updates.state === undefined && stored.state === null
+		? ok({ ...updates, state: initial })
+		: ok(updates);
 };
 
 /** A new thread's state: the draft's, else the one its kind's declaration starts it in. */
@@ -688,8 +700,9 @@ export namespace Planner {
 			)
 			.get(id);
 		if (!current || !RecordRead.isVisible(db, id)) return ok(null);
-		const kept = stateKept(updates, current.kind);
+		const kept = stateKept(updates, current);
 		if (!kept.ok) return kept;
+		updates = kept.value;
 
 		const text = textUpdates(updates);
 		if (
