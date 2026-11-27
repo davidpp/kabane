@@ -119,21 +119,6 @@ export const ItemKindSchema = z
 export type ItemKind = z.infer<typeof ItemKindSchema>;
 
 /**
- * The kinds with a work state of their own, the same states read three ways:
- * - 'task': Personal GTD workflow (inbox → next → done)
- * - 'issue': Agent/dev workflow (backlog → in_progress → review → done)
- * - 'job': A standing request a schedule runs. A listing that names no kind leaves jobs out.
- * A thread of one of them starts in `inbox`; a thread of any other kind starts
- * with no state, until a write gives it one.
- */
-export const WORKFLOW_KINDS = ["task", "issue", "job"] as const;
-export type WorkflowKind = (typeof WORKFLOW_KINDS)[number];
-
-/** Whether a new thread of `kind` starts with a work state. */
-export const hasWorkflow = (kind: string): kind is WorkflowKind =>
-	(WORKFLOW_KINDS as readonly string[]).includes(kind);
-
-/**
  * Provenance tracking - full origin information
  */
 export const ProvenanceSchema = z.object({
@@ -174,9 +159,9 @@ export const TaskSchema = z.object({
 	kind: ItemKindSchema.default("task"),
 
 	/**
-	 * Current state in GTD workflow. Absent on a thread whose kind has no
-	 * workflow (`hasWorkflow`) until a write gives it one; a new thread of a
-	 * workflow kind starts in `inbox`.
+	 * Current state in GTD workflow. A new thread starts in its kind's
+	 * declared state (`initialStateOf`: `inbox` for task, issue and job) and
+	 * any other kind with none, until a write gives it one.
 	 */
 	state: TaskStateSchema.optional(),
 

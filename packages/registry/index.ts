@@ -162,8 +162,11 @@ export namespace Registry {
 		const published = ThreadKindSchema.array().safeParse(rows.value);
 		if (!published.success) return err(new Error(published.error.message));
 		const kinds: DiscoveredKind[] = [
-			...CORE_THREAD_KINDS.map((kind) => ({
-				...kind,
+			// Identity only: what core does with its own kinds is not a declaration's.
+			...CORE_THREAD_KINDS.map(({ name, label, description }) => ({
+				name,
+				label,
+				...(description === undefined ? {} : { description }),
 				source: "core" as const,
 			})),
 			...Runtime.threadKinds().map(({ module, kind }) => ({

@@ -1,7 +1,12 @@
 /** SQL selections shared by legacy records and opt-in concise pages. */
 import type { Db, SqlValue } from "../db/port";
 import { Runtime } from "../runtime";
-import type { ItemKind, Task, TaskQuery } from "../schemas";
+import {
+	type ItemKind,
+	type Task,
+	type TaskQuery,
+	UNLISTED_KINDS,
+} from "../schemas";
 import { DeadlineSql } from "./deadline-sql";
 import { stateFilter, buildScopeFamilyMatch, TABLES } from "./helpers";
 
@@ -20,12 +25,15 @@ export type TodayOptions = {
 };
 export type TodayBucket = "overdue" | "dueToday" | "next";
 
-// A job is a standing request a schedule runs, not work to pick up: a listing that names no kind
-// leaves jobs out, and naming one returns only that kind.
+// A listing that names no kind leaves out the kinds declared unlisted (a job: a standing request,
+// not work to pick up), and naming one returns only that kind.
 const kindClause = (kind: ItemKind | undefined): TaskSelection =>
 	kind
 		? { sql: "kind = ?", params: [kind] }
-		: { sql: "kind != 'job'", params: [] };
+		: {
+				sql: `kind NOT IN (${UNLISTED_KINDS.map(() => "?").join(", ")})`,
+				params: [...UNLISTED_KINDS],
+			};
 
 export const scopeClause = (scope: string, column: string): TaskSelection => {
 	const family = buildScopeFamilyMatch(scope);

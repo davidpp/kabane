@@ -508,6 +508,29 @@ describe("Stop.evaluate", () => {
 		await add({ title: "parked", parentTaskId: parent, state: "waiting" });
 		expect(Stop.evaluate(await load(parent), GREEN).done).toBe(false);
 	});
+
+	it("leaves a signal filed under the parent out of the work, until a write gives it a state", async () => {
+		const parent = await add({ title: "parent" });
+		const a = await add({ title: "a", parentTaskId: parent });
+		const signal = await add({
+			title: "noticed",
+			kind: "signal",
+			state: undefined,
+			parentTaskId: parent,
+		});
+		await close(a);
+		const plan = await load(parent);
+		expect(LoopPlan.frontier(plan, NONE, NOW)).toEqual([]);
+		expect(LoopPlan.health(plan, NONE, NOW)).toEqual({
+			kind: "waiting",
+			on: [],
+		});
+		expect(Stop.evaluate(plan, GREEN)).toEqual({ done: true });
+
+		const given = await Planner.updateTask(base, signal, { state: "next" });
+		if (!given.ok) throw given.error;
+		expect(Stop.evaluate(await load(parent), GREEN).done).toBe(false);
+	});
 });
 
 describe("LoopPlan.load on a single issue", () => {
@@ -562,6 +585,19 @@ describe("LoopPlan.load on a single issue", () => {
 		expect(titles(plan.nodes)).toEqual(["subtask"]);
 		const task = await add({ title: "human", kind: "task" });
 		expect((await load(task)).nodes).toEqual([]);
+	});
+
+	it("stays single with only a plain thread under it", async () => {
+		const issue = await add({ title: "lone" });
+		await add({
+			title: "note",
+			kind: "thread",
+			state: undefined,
+			parentTaskId: issue,
+		});
+		const plan = await load(issue);
+		expect(LoopPlan.single(plan)).toBe(true);
+		expect(titles(plan.nodes.filter(LoopPlan.isWork))).toEqual(["lone"]);
 	});
 
 	it("counts the same work through children, which the run's card reads, as through load", async () => {

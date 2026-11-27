@@ -32,9 +32,11 @@ export {
 // Thread kind declarations (ADR 0010)
 export {
 	CORE_THREAD_KINDS,
+	initialStateOf,
 	PLAIN_THREAD_KIND,
 	type ThreadKind,
 	ThreadKindSchema,
+	UNLISTED_KINDS,
 } from "./thread-kind";
 // Config schemas
 export { type SyncConfig, SyncConfigSchema } from "./config";
@@ -130,7 +132,6 @@ export {
 } from "./sync";
 // Task schemas
 export {
-	hasWorkflow,
 	type ItemKind,
 	ItemKindSchema,
 	type Provenance,
@@ -156,8 +157,6 @@ export {
 	VerificationSchema,
 	type VerificationStatus,
 	VerificationStatusSchema,
-	WORKFLOW_KINDS,
-	type WorkflowKind,
 } from "./task";
 // Private upstream-link schemas
 export {
