@@ -438,7 +438,11 @@ const SIGNAL_RECORDS = Fixtures.records(SIGNAL, {
 	kindLabel: "Monitor signal",
 	attributes: [
 		{ key: "finding_type", value: "sql_injection", label: "SQL injection" },
-		{ key: "seen_by", value: "edge-03" },
+		{
+			key: "seen_by",
+			value:
+				"edge-03 and edge-07 in the eu-west pool, both behind the login proxy",
+		},
 	],
 	contextRefs: [
 		{

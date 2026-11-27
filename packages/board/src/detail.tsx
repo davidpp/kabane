@@ -1039,7 +1039,7 @@ const DescriptionTab = ({
 				<box style={{ marginTop: description ? 1 : 0 }}>
 					<Section title="attributes">
 						{attributes.map((line) => (
-							<AttributeRow key={line.key} line={line} room={room} />
+							<AttributeRow key={line.key} line={line} />
 						))}
 					</Section>
 				</box>
@@ -1296,20 +1296,22 @@ const DecisionRow = ({
 	);
 };
 
-// One declared attribute: its key muted, then its value, cut first.
+// One declared attribute: its key muted, then its value, wrapped whole: this is the one place the
+// value shows.
 const AttributeRow = ({
 	line,
-	room,
 }: {
 	line: DetailModel.AttributeLine;
-	room: number;
 }): ReactNode => {
 	const theme = useTheme();
-	const segments = [
-		{ text: `${line.name} `, fg: theme.muted },
-		{ text: line.value, fg: theme.defaultFg },
-	];
-	return <text>{Segments.spans(Segments.fit(segments, room))}</text>;
+	return (
+		<text>
+			{Segments.spans([
+				{ text: `${line.name} `, fg: theme.muted },
+				{ text: line.value, fg: theme.defaultFg },
+			])}
+		</text>
+	);
 };
 
 // One curated input: its kind muted, its label, then the ref it points at, muted, cut first.
