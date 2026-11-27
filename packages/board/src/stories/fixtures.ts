@@ -425,6 +425,8 @@ Mostly easy to walk back, with one exception: a database opened by this build ha
 		contextRefs: [],
 		questions: [],
 		checklist: [],
+		kindLabel: on.kind,
+		attributes: [],
 		...over,
 	});
 

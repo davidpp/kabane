@@ -3,7 +3,7 @@
 // The copilot (sibling issues) prepends `render(ctx)` to every prompt, so this is the one place that
 // decides what "the selection" means. `project` and `render` are pure; `load` is the wrapper that
 // fetches the briefs.
-import { ok, type Result, TASK_STATE_DISPLAY, type Task } from "@kabane/core";
+import { ok, type Result, type Task } from "@kabane/core";
 import { BoardData } from "./data";
 import { BoardNav } from "./nav";
 
@@ -65,7 +65,7 @@ export namespace BoardContext {
 	): string | undefined => {
 		for (const section of sections) {
 			if (section.rows.some((row) => row.task.id === id))
-				return TASK_STATE_DISPLAY[section.state].label.toLowerCase();
+				return section.label.toLowerCase();
 		}
 		return undefined;
 	};

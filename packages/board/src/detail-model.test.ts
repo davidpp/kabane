@@ -63,6 +63,8 @@ const records = (
 	contextRefs: [],
 	questions: [],
 	checklist: [],
+	kindLabel: over.task?.kind ?? "issue",
+	attributes: [],
 	...over,
 });
 
