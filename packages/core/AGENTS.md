@@ -43,6 +43,8 @@ Both share the same states with different interpretation: `inbox` = triage (task
 
 A third kind, `job`, is a standing request a schedule runs. A listing that names no kind leaves jobs out (`kabane list`, `kabane_list`, today and the board); naming `job` returns only jobs. Reads by id, search, comments and `done` treat a job like any item.
 
+**Thread kinds are declared as data** (ADR 0010, `schemas/thread-kind.ts`): a `ThreadKind` is a `name`, a `label` and an optional `description`. Core declares `thread` (`PLAIN_THREAD_KIND`, no workflow of its own), `task`, `issue` and `job` in `CORE_THREAD_KINDS`; a module adds its own in `KabaneModule.threadKinds`, under any free name (a shipped kind keeps the name its threads store), and `Runtime.configure` refuses a malformed one or a name core or another module holds. `Runtime.threadKinds()` lists the modules'. A scope publishes its own through `@kabane/registry`, which also merges the three for discovery; a scope never replaces a code declaration. A stored kind no declaration covers reads as its name.
+
 ## GTD states (canonical — 7, hard enum)
 
 `TaskStateSchema` (`schemas/task.ts`) is a closed `z.enum`, the only one in the package: `inbox`, `next`, `in_progress`, `waiting`, `someday`, `done`, `cancelled`. `needs_review` is **not** a state; use the `needsReview` flag.

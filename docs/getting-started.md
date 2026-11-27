@@ -490,6 +490,33 @@ devices independently publish competing definitions for the same key, ordinary m
 conflict resolution selects a definition at sync. Previously assigned values remain readable.
 Choose a new key for a changed vocabulary.
 
+### Declare a thread kind for a scope
+
+A thread's kind says what it is. Kabane declares `thread` (a plain thread, with no workflow of
+its own), `task`, `issue` and `job`. A scope can add its own kind with a name and a display
+label, without writing code. Save this as `signal.json`:
+
+```json
+{ "name": "signal", "label": "Monitor signal", "description": "Something a monitor noticed." }
+```
+
+```bash
+kabane registry publish signal.json --scope acme --json
+kabane registry kinds --scope acme --json
+```
+
+`kinds` lists kabane's kinds, then those an installed module declares, then the scope's own,
+each with `name`, `label` and `source` (`core`, `module:<name>` or `scope`). Over MCP, the hub
+included, publish with `kabane_registryPublish` (the same JSON in `declaration`) and list with
+`kabane_threadKinds`, both with `scopeUri`.
+
+A name is lowercase letters, digits and dashes, as `name` or `name.key`. A kind kabane or an
+installed module already declares cannot be published. A scope kind is immutable like an
+attribute declaration: publishing it again is safe, and a different label under the same name
+is refused. If a synced scope kind has the name of a module kind on this device, the module's
+wins and the scope's is listed under `shadowed`. A client that meets a kind no declaration
+covers shows its name.
+
 ## Updating
 
 Each install updates with its own command:

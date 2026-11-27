@@ -1,5 +1,6 @@
 import {
 	atomic,
+	CORE_THREAD_KINDS,
 	CustomAttributeKeySchema,
 	defineTool,
 	err,
@@ -7,8 +8,11 @@ import {
 	normalizeScopeUri,
 	Oplog,
 	Planner,
+	type Result,
 	Runtime,
 	setCustomAttribute,
+	type ThreadKind,
+	ThreadKindSchema,
 	withDb,
 	type KabaneModule,
 } from "@kabane/core";
@@ -40,11 +44,61 @@ const declaration = z
 	})
 	.strict();
 const table = "registry_declarations";
+const kindTable = "registry_thread_kinds";
+
+/** Where a discovered thread kind is declared: core, a registered module, or the scope's published vocabulary. */
+type KindSource = "core" | `module:${string}` | "scope";
+type DiscoveredKind = ThreadKind & { source: KindSource };
+
+/** The declaration in code that holds `name`, if any: a scope never replaces one. */
+const declaredInCode = (name: string): KindSource | undefined => {
+	if (CORE_THREAD_KINDS.some((kind) => kind.name === name)) return "core";
+	const declared = Runtime.threadKinds().find(({ kind }) => kind.name === name);
+	return declared && `module:${declared.module}`;
+};
+
+const publishKind = (basePath: string, scope: string, kind: ThreadKind) =>
+	atomic(basePath, (db) => {
+		const owner = declaredInCode(kind.name);
+		if (owner !== undefined)
+			throw new Error(
+				`Thread kind "${kind.name}" is already declared by ${owner}; pick another name.`,
+			);
+		const id = JSON.stringify([scope, kind.name]);
+		const document = JSON.stringify(kind);
+		const prior = db
+			.query<{ document: string }>(
+				`SELECT document FROM ${kindTable} WHERE id = ?`,
+			)
+			.get(id);
+		if (prior && prior.document !== document)
+			throw new Error(
+				`Scope ${scope} already declares thread kind "${kind.name}" differently; choose a new name.`,
+			);
+		if (!prior) {
+			db.run(
+				`INSERT INTO ${kindTable} (id, scope, document, publication, updated_by) VALUES (?, ?, ?, ?, ?)`,
+				[id, scope, document, ulid(), Runtime.actor()],
+			);
+			Oplog.afterWrite(db, kindTable, "insert", id);
+		}
+		return kind;
+	});
 
 export namespace Registry {
-	export const publish = (basePath: string, scope: string, input: unknown) => {
+	export const publish = (
+		basePath: string,
+		scope: string,
+		input: unknown,
+	): Promise<Result<ThreadKind | z.infer<typeof declaration>>> => {
 		const normalized = normalizeScopeUri(scope);
 		if (!normalized.ok) return Promise.resolve(normalized);
+		if (typeof input === "object" && input !== null && "name" in input) {
+			const kind = ThreadKindSchema.safeParse(input);
+			return kind.success
+				? publishKind(basePath, normalized.value, kind.data)
+				: Promise.resolve(err(new Error(kind.error.message)));
+		}
 		const parsed = declaration.safeParse(input);
 		if (!parsed.success)
 			return Promise.resolve(err(new Error(parsed.error.message)));
@@ -86,6 +140,44 @@ export namespace Registry {
 		return parsed.success
 			? ok(parsed.data)
 			: err(new Error(parsed.error.message));
+	};
+	/**
+	 * The thread kinds a reader can file in `scope`: core's, the registered
+	 * modules', then the scope's own. A scope kind whose name code also
+	 * declares (it arrived by sync, or the module registered after it was
+	 * published) is listed under `shadowed`, never in place of the code's.
+	 */
+	export const kinds = async (basePath: string, scope: string) => {
+		const normalized = normalizeScopeUri(scope);
+		if (!normalized.ok) return normalized;
+		const rows = await withDb(basePath, (db) =>
+			db
+				.query<{ document: string }>(
+					`SELECT document FROM ${kindTable} WHERE scope = ? ORDER BY id`,
+				)
+				.all(normalized.value)
+				.map((row): unknown => JSON.parse(row.document)),
+		);
+		if (!rows.ok) return rows;
+		const published = ThreadKindSchema.array().safeParse(rows.value);
+		if (!published.success) return err(new Error(published.error.message));
+		const kinds: DiscoveredKind[] = [
+			...CORE_THREAD_KINDS.map((kind) => ({
+				...kind,
+				source: "core" as const,
+			})),
+			...Runtime.threadKinds().map(({ module, kind }) => ({
+				...kind,
+				source: `module:${module}` as const,
+			})),
+		];
+		const shadowed: (DiscoveredKind & { by: KindSource })[] = [];
+		for (const kind of published.data) {
+			const by = declaredInCode(kind.name);
+			if (by === undefined) kinds.push({ ...kind, source: "scope" });
+			else shadowed.push({ ...kind, source: "scope", by });
+		}
+		return ok(shadowed.length ? { kinds, shadowed } : { kinds });
 	};
 	export const set = async (
 		basePath: string,
@@ -137,18 +229,36 @@ export const registryModule: KabaneModule = {
 				db.run(`CREATE INDEX registry_by_scope ON ${table}(scope)`);
 			},
 		},
+		{
+			name: "create-scope-thread-kinds",
+			up(db) {
+				db.run(
+					`CREATE TABLE ${kindTable} (id TEXT PRIMARY KEY, scope TEXT NOT NULL, document TEXT NOT NULL, publication TEXT NOT NULL, updated_by TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, visibility TEXT NOT NULL DEFAULT 'shared')`,
+				);
+				db.run(`CREATE INDEX registry_kinds_by_scope ON ${kindTable}(scope)`);
+			},
+		},
 	],
 	// A publication ULID orders competing first writes even for one actor in the same millisecond.
 	syncTables: [
 		{ table, family: "row-lww", childOfTasks: false, clock: "publication" },
+		{
+			table: kindTable,
+			family: "row-lww",
+			childOfTasks: false,
+			clock: "publication",
+		},
 	],
 	tools: [
 		defineTool({
 			name: "kabane_registryPublish",
 			kind: "write",
 			description:
-				"Publish an immutable vocabulary of named choices for one exact scope. Repeating the same declaration is safe.",
-			input: { scopeUri: z.string(), declaration },
+				"Publish one declaration for one exact scope: an attribute ({ key, description, choices }) or a thread kind ({ name, label, description? }). Declarations are immutable; repeating the same one is safe. A kind core or a module declares cannot be published.",
+			input: {
+				scopeUri: z.string(),
+				declaration: z.union([declaration, ThreadKindSchema]),
+			},
 			handler: (args, ctx) =>
 				Registry.publish(ctx.basePath, args.scopeUri, args.declaration),
 		}),
@@ -159,6 +269,14 @@ export const registryModule: KabaneModule = {
 				"Read the declared attribute keys, choice values and labels for this exact scope.",
 			input: { scopeUri: z.string() },
 			handler: (args, ctx) => Registry.list(ctx.basePath, args.scopeUri),
+		}),
+		defineTool({
+			name: "kabane_threadKinds",
+			kind: "read",
+			description:
+				"List the thread kinds that can be filed in this exact scope, each with its name, display label and source (core, module:<name> or scope). A stored kind no declaration covers reads as its name.",
+			input: { scopeUri: z.string() },
+			handler: (args, ctx) => Registry.kinds(ctx.basePath, args.scopeUri),
 		}),
 		defineTool({
 			name: "kabane_attributeSet",

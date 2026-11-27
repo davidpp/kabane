@@ -246,6 +246,30 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(next.value).toContain("Stale cursor");
 	});
 
+	it("publishes a scope's thread kind and lists it with core's for a hub-only agent", async () => {
+		const scopeUri = "kinds-acme";
+		const signal = { name: "signal", label: "Monitor signal" };
+		const publish = (declaration: unknown) =>
+			callTool(HUMAN, "kabane_registryPublish", { scopeUri, declaration });
+		expect(await publish(signal)).toEqual({ isError: false, value: signal });
+		expect((await publish(signal)).isError).toBe(false);
+		expect((await publish({ ...signal, label: "Signal" })).isError).toBe(true);
+		expect((await publish({ name: "issue", label: "Bug" })).isError).toBe(true);
+		const kinds = async (scope: string) =>
+			(
+				(await callTool(HERMES, "kabane_threadKinds", { scopeUri: scope }))
+					.value as { kinds: { name: string; source: string }[] }
+			).kinds.map((kind) => `${kind.source}:${kind.name}`);
+		expect(await kinds(scopeUri)).toEqual([
+			"core:thread",
+			"core:task",
+			"core:issue",
+			"core:job",
+			"scope:signal",
+		]);
+		expect(await kinds("kinds-other")).not.toContain("scope:signal");
+	});
+
 	it("answers the last question and resumes the issue through the DO transaction", async () => {
 		const created = await callTool(HERMES, "kabane_add", {
 			title: "Hub decision",

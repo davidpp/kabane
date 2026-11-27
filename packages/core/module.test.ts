@@ -10,6 +10,12 @@ import { ok, type Result } from "./result";
 import { Runtime, withDb } from "./runtime";
 import { CONTEXT_SECTIONS } from "./schemas/assemble-context";
 import { type EntryKind, EntryKindSchema } from "./schemas/comment";
+import { ItemKindSchema } from "./schemas/task";
+import {
+	CORE_THREAD_KINDS,
+	PLAIN_THREAD_KIND,
+	ThreadKindSchema,
+} from "./schemas/thread-kind";
 import { configureTestRuntime } from "./testing";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -179,6 +185,41 @@ const refusals: { name: string; modules: KabaneModule[]; message: string }[] = [
 		message: "projection.latest.framing must be one non-blank line",
 	},
 	{
+		name: "thread kind with core's plain name",
+		modules: [{ name: "alpha", threadKinds: [{ name: "thread", label: "T" }] }],
+		message: 'thread kind "thread": the name is already a core thread kind',
+	},
+	{
+		name: "thread kind with a core item kind's name",
+		modules: [{ name: "alpha", threadKinds: [{ name: "job", label: "Job" }] }],
+		message: "already a core thread kind",
+	},
+	{
+		name: "thread kind another module declares",
+		modules: [
+			{ name: "alpha", threadKinds: [{ name: "signal", label: "Signal" }] },
+			{ name: "beta", threadKinds: [{ name: "signal", label: "Alert" }] },
+		],
+		message: 'already a thread kind of module "alpha"',
+	},
+	{
+		name: "thread kind with no label",
+		modules: [{ name: "alpha", threadKinds: [{ name: "signal", label: "" }] }],
+		message: 'thread kind "signal": label',
+	},
+	{
+		name: "thread kind carrying code",
+		modules: [
+			{
+				name: "alpha",
+				threadKinds: [
+					{ name: "signal", label: "Signal", render: () => "x" } as never,
+				],
+			},
+		],
+		message: 'thread kind "signal"',
+	},
+	{
 		name: "tool claimed by another module",
 		modules: [
 			{ name: "alpha", tools: [tool("shared_read")] },
@@ -238,6 +279,28 @@ it("finds a registered kind by name, and nothing for one no module declares", ()
 	expect(Runtime.entryKind("kept.verdict")).toEqual(kept.kinds?.[0]);
 	expect(Runtime.entryKind("review")).toBeUndefined();
 	expect(Runtime.entryKind("comment")).toBeUndefined();
+});
+
+it("declares a plain kind and every item kind core stores, under the same contract", () => {
+	expect(
+		CORE_THREAD_KINDS.map((declared): string => declared.name).sort(),
+	).toEqual([PLAIN_THREAD_KIND, ...ItemKindSchema.options].sort());
+	for (const declared of CORE_THREAD_KINDS)
+		expect(ThreadKindSchema.safeParse(declared).success).toBe(true);
+});
+
+it("lists a module's thread kind, whose name need not carry the module's", () => {
+	unwrap(
+		Runtime.configure({
+			provider: SqliteDb.provider({ dbName: "kinds.db" }),
+			modules: [
+				{ name: "monitor", threadKinds: [{ name: "signal", label: "Signal" }] },
+			],
+		}),
+	);
+	expect(Runtime.threadKinds()).toEqual([
+		{ module: "monitor", kind: { name: "signal", label: "Signal" } },
+	]);
 });
 
 it("reads a kind as data only, anchored after a core section", () => {

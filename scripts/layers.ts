@@ -48,7 +48,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 	"@kabane/registry": {
 		layer: "data module",
 		dependencies: ["@kabane/core"],
-		devDependencies: [],
+		devDependencies: ["@kabane/sqlite"],
 	},
 	"@kabane/outcome": {
 		layer: "data module",
