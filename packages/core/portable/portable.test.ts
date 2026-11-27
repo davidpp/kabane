@@ -6,6 +6,7 @@ import type { Db } from "../db/port";
 import type { Result } from "../result";
 import { withDb } from "../runtime";
 import { Planner } from "../storage";
+import { setCustomAttribute } from "../storage/custom-attribute";
 import { Oplog } from "../storage/oplog";
 import { configureTestRuntime } from "../testing";
 import { Portable } from "./index";
@@ -71,6 +72,42 @@ it("restores an unminted thread label verbatim", async () => {
 		),
 	);
 	expect(value(await Planner.getTask(rebuilt, task.id))?.shortId).toBe(label);
+});
+
+it("rebuilds a thread of a kind nothing declares with no state and its attribute", async () => {
+	const signal = value(
+		await Planner.addTask(source, {
+			title: "Vendor page",
+			kind: "vendor.alert",
+			scopeUri,
+		}),
+	);
+	value(
+		await withDb(source, (db) =>
+			setCustomAttribute(db, signal.id, "classification", "noise"),
+		),
+	);
+	const jsonl = Portable.encode(value(await withDb(source, completeSnapshot)));
+	value(await withDb(rebuilt, (db) => value(Portable.restore(db, jsonl))));
+	const read = value(await Planner.getTask(rebuilt, signal.id));
+	expect(read?.kind).toBe("vendor.alert");
+	expect(read?.state).toBeUndefined();
+	expect(
+		value(
+			await withDb(rebuilt, (db) =>
+				db
+					.query<{ state: string | null }, [string]>(
+						"SELECT state FROM threads WHERE id = ?",
+					)
+					.get(signal.id),
+			),
+		),
+	).toEqual({ state: null });
+	expect(value(await Planner.getCustomAttributes(rebuilt, signal.id))).toEqual({
+		classification: "noise",
+	});
+	const open = value(await Planner.queryTasks(rebuilt, { state: "inbox" }));
+	expect(open.map((task) => task.id)).not.toContain(signal.id);
 });
 
 it("rebuilds every declared table, including private module rows, and detects a same-count change", async () => {

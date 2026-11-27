@@ -7,6 +7,7 @@ import {
 	LocalRelay,
 	Oplog,
 	Planner,
+	Portable,
 	type Result,
 	Runtime,
 	Sync,
@@ -212,4 +213,44 @@ it("leaves out a stored declaration it cannot read and lists the rest", async ()
 	expect(await names(base, "acme")).toContain("scope:signal");
 	expect(await names(base, "acme")).not.toContain("scope:pager");
 	expect(unwrap(await Registry.list(base, "acme"))).toEqual([classification]);
+});
+
+it("rebuilds a scope's kind declaration and attribute choices from an export", async () => {
+	const source = await device("alpha");
+	const classification = {
+		key: "classification",
+		description: "What sort of signal",
+		choices: [{ value: "noise", label: "Noise" }],
+	};
+	unwrap(await Registry.publish(source, "acme", signal));
+	unwrap(await Registry.publish(source, "acme", classification));
+	const thread = unwrap(
+		await Planner.addTask(source, {
+			title: "Error rate doubled",
+			kind: "signal",
+			scopeUri: "acme",
+		}),
+	);
+	unwrap(await Registry.set(source, thread.id, "classification", "noise"));
+	const snapshot = unwrap(unwrap(await withDb(source, Portable.snapshot)));
+	if ("omitted" in snapshot) throw new Error("Incomplete snapshot");
+	const jsonl = Portable.encode(snapshot);
+	const rebuilt = mkdtempSync(join(tmpdir(), "registry-rebuilt-"));
+	bases.push(rebuilt);
+	unwrap(await Planner.init(rebuilt));
+	unwrap(unwrap(await withDb(rebuilt, (db) => Portable.restore(db, jsonl))));
+	expect(
+		unwrap(await Registry.kinds(rebuilt, "acme")).kinds.filter(
+			(kind) => kind.source === "scope",
+		),
+	).toEqual([{ ...signal, source: "scope" }]);
+	expect(unwrap(await Registry.list(rebuilt, "acme"))).toEqual([
+		classification,
+	]);
+	const read = unwrap(await Planner.getTask(rebuilt, thread.id));
+	expect(read?.kind).toBe("signal");
+	expect(read?.state).toBeUndefined();
+	expect(unwrap(await Planner.getCustomAttributes(rebuilt, thread.id))).toEqual(
+		{ classification: "noise" },
+	);
 });
