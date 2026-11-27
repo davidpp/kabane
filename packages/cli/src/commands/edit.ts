@@ -47,7 +47,7 @@ export const edit: Command = {
 	name: "edit",
 	summary: "Update fields on a task",
 	usage:
-		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind <kind>] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]",
+		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>|none] [--priority <p>] [--kind <kind>] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]",
 	run: async (args, ctx) => {
 		const format = responseFormat(args);
 		if (!format.ok) return usage(format.error.message, edit.usage);
@@ -64,6 +64,7 @@ export const edit: Command = {
 			parentTaskId = parent.value;
 		}
 		const assignee = flagString(args, "assignee");
+		const state = flagString(args, "state");
 		const deadline = Deadline.fromInput(
 			flagString(args, "due"),
 			Runtime.timezone(),
@@ -73,7 +74,7 @@ export const edit: Command = {
 		const update: TaskUpdate = {
 			title: flagString(args, "title"),
 			description: flagString(args, "description"),
-			state: flagString(args, "state") as TaskState | undefined,
+			state: state === "none" ? null : (state as TaskState | undefined),
 			priority: flagString(args, "priority") as TaskPriority | undefined,
 			kind: flagString(args, "kind") as ItemKind | undefined,
 			assignee: assignee === "none" ? "" : assignee,

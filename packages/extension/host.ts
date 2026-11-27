@@ -89,7 +89,8 @@ export namespace Host {
 		id: string;
 		title?: string;
 		description?: string;
-		state?: TaskState;
+		/** `none` takes a stateless kind's state away. */
+		state?: TaskState | "none";
 		needsReview?: boolean;
 		priority?: TaskPriority;
 		kind?: ItemKind;
