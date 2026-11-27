@@ -99,7 +99,8 @@ When the run row says `waiting on`, each subtask it names says why, for example
 The run never claims a subtask you parked (`someday`, `waiting`) or took (`in_progress`),
 and it does not finish while one is open: set it back to `next` for the run to take it, or
 close it. `kabane loop skip` only keeps the run from claiming a subtask; a skipped subtask
-that stays open still holds the run.
+that stays open still holds the run. A thread with no state under the parent, such as a
+signal or a plain thread, is not part of the run until someone gives it a state.
 
 By default, `loop.land` is `none`: the finished branch stays in its worktree, and the
 completed run flags the issue it ran on `Needs review`, because its work is not merged yet.

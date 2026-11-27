@@ -41,7 +41,7 @@ job is created in `next`. With the jobs extension disabled on a device, or on th
 never registers it, a job whose exclusion lived in the extension would appear in every default
 listing and in `state: next`, a work queue. The sandbox shows the rule holding with the
 extension off: `list` and `list --state next` leave the job out, `list --kind job` and `show`
-read it. A module or scope declaration still carries identity only (`ThreadKindSchema` is
+read it, and over MCP `kabane_list` and `kabane_today` leave it out. A module or scope declaration still carries identity only (`ThreadKindSchema` is
 strict); `kabane_threadKinds` strips these fields from core's entries.
 
 The default creation kind (`task`, in `kabane_add` and the draft schema) and `kabane_apply`'s
@@ -53,9 +53,11 @@ default (`issue`) are record defaults, not workflow behavior, and stay.
   production caller; its doc says personal tasks never count. Widening it would change a
   count nobody reads yet.
 - A job's schedule is readable only where the jobs extension runs: it lives in `jobs_jobs`,
-  not in the thread's attributes. The thread, its request (description), state and entries
-  read everywhere. Moving the schedule into attributes is a data migration, which ADR 0010
-  leaves to the separate packaging and migration decision.
+  not in the thread's attributes. ADR 0010 gives the extension "schedule a job and show its
+  next run" and asks every client for "the job's request and history". With the extension
+  off, the sandbox reads the request (description), state, and the history a fired run left:
+  the `run:` ref in the work log, which `show` lists and the brief's Prior work names. What a
+  run did (its state, terminal, harness) stays in `jobs_runs`, the extension's.
 - The board's Jobs tab reads `kind: "job"` itself (`packages/board/src/data.ts`). It shows
   stored jobs without the extension's source, which ADR 0010 asks for; the specialized panel
   comes from the extension's job source.
