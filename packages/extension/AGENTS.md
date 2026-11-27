@@ -3,6 +3,10 @@
 The extension contract: the types an extension and the host exchange, and the helpers every
 command, built-in or extension, is written with. It has no runtime of its own.
 
+When contributing a thread kind, keep its record readable with the extension
+disabled. Its commands and specialized views may depend on the extension.
+See [ADR 0010](../../wiki/adr/0010-thread-kinds-remain-readable-without-extensions.md).
+
 ## What lands here is extension API v1
 
 `ARCHITECTURE.md`, "Extension API v1" and "An extension contributes through six optional

@@ -1,6 +1,8 @@
 # 0006: Core's record is four tables with open kinds and keys, so a new need adds data and leaves core's schema alone
 
 - Status: proposed (draft for David's review).
+- Related decision: [ADR 0010](0010-thread-kinds-remain-readable-without-extensions.md)
+  settles generic reads and extension ownership for thread kinds.
 - Implementation: 2.0.0-beta.0 stores tasks in the four record tables and syncs them. It shipped
   addressed questions, claims, keyed plans and whole-device export and rebuild.
 - Date: 2026-11-23

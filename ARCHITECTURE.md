@@ -56,6 +56,11 @@ layer, with four narrowings:
 
 A client may use the harness client as a library.
 
+The thread-kind contract adopted for JCAB-706 keeps the ordinary read path
+available without a kind's extension. Core exposes the record, the default
+client presents its content and attributes, and the extension contributes
+specialized behavior and views. See [ADR 0010](wiki/adr/0010-thread-kinds-remain-readable-without-extensions.md).
+
 A client uses only what another client could: the exports of core, the data modules, the contract
 and the harness client. It never reaches into a host or another client, and it never reads a
 table or a file another package owns except through that package's exports. No check holds this

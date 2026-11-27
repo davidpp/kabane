@@ -32,7 +32,7 @@ reference), which puts the ADR in the implementer's brief.
 ## Index
 
 - [0001](0001-job-is-a-core-kind-scheduled-by-recipes.md): A job is a core item kind; its
-  schedule and commands live in the recipes extension. Accepted.
+  schedule and commands live in the recipes extension. Superseded by 0010.
 - [0002](0002-what-kabane-owns-for-long-running-agents.md): For long-running agents, kabane
   owns the record and the schedule, and points to other tools for the rest. Accepted.
 - [0003](0003-an-artifact-is-a-context-ref-of-kind-artifact.md): An output artifact is a
@@ -51,3 +51,5 @@ reference), which puts the ADR in the implementer's brief.
 - [0008](0008-sqlite-stays-the-source-and-a-folder-carries-ops.md): SQLite stays each device's
   source of truth; a shared folder may carry sync ops, one append-only file per device, once sync
   converges without the hub's order. Accepted (David, 2026-11-24).
+- [0010](0010-thread-kinds-remain-readable-without-extensions.md): Every thread kind is
+  readable without its extension. Accepted (David, 2026-11-27).

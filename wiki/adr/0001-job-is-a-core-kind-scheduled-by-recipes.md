@@ -1,6 +1,6 @@
 # 0001: A job is a core item kind; its schedule and commands live in the recipes extension
 
-- Status: accepted
+- Status: superseded by [0010](0010-thread-kinds-remain-readable-without-extensions.md)
 - Date: 2026-11-16
 - Issue: JCAB-426 (question :36 and the decision comment on slice 2), built in JCAB-522 and
   JCAB-523

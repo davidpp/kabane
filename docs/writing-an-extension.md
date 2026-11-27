@@ -17,6 +17,11 @@ serves to any connected session, markdown files under `copilot/shortcuts/` give 
 copilot `/` shortcuts, and a second entry, `modules`, declares tables the extension keeps
 in the tracker's database.
 
+Keep the thread's content and attributes in the shared record so readers can
+inspect them when your extension is disabled. Use the extension for commands
+and specialized views, such as a job's schedule. The boundary for custom
+thread kinds is described in [ADR 0010](../wiki/adr/0010-thread-kinds-remain-readable-without-extensions.md).
+
 The walkthrough below builds the `notes` extension that kabane's own tests install
 (`packages/cli/src/extension-fixture.ts`): a `kabane notes` command that keeps notes on a task in
 a table of its own. It leaves out the two verbs that exist only to test transactions, and keeps
