@@ -75,6 +75,7 @@
         "@kabane/core": "workspace:*",
         "@kabane/extension": "workspace:*",
         "@kabane/questions": "workspace:*",
+        "@kabane/registry": "workspace:*",
         "@opentui/core": "0.9.0",
         "@opentui/react": "0.9.0",
         "diff": "9.0.0",
@@ -119,6 +120,7 @@
         "@kabane/handoff": "workspace:*",
         "@kabane/outcome": "workspace:*",
         "@kabane/questions": "workspace:*",
+        "@kabane/registry": "workspace:*",
         "@kabane/sqlite": "workspace:*",
         "@modelcontextprotocol/sdk": "1.32.2",
         "zod": "4.6.7",
@@ -196,6 +198,20 @@
         "tsgo": "npm:typescript@7.0.2",
       },
     },
+    "packages/registry": {
+      "name": "@kabane/registry",
+      "version": "0.1.0",
+      "dependencies": {
+        "@kabane/core": "workspace:*",
+        "ulid": "3.0.2",
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@kabane/sqlite": "workspace:*",
+        "@types/bun": "1.4.4",
+        "tsgo": "npm:typescript@7.0.2",
+      },
+    },
     "packages/sqlite": {
       "name": "@kabane/sqlite",
       "version": "0.1.0",
@@ -216,6 +232,7 @@
         "@kabane/handoff": "workspace:*",
         "@kabane/outcome": "workspace:*",
         "@kabane/questions": "workspace:*",
+        "@kabane/registry": "workspace:*",
         "@modelcontextprotocol/sdk": "1.32.2",
         "jose": "6.2.17",
         "zod": "4.6.7",
@@ -394,6 +411,8 @@
     "@kabane/outcome": ["@kabane/outcome@workspace:packages/outcome"],
 
     "@kabane/questions": ["@kabane/questions@workspace:packages/questions"],
+
+    "@kabane/registry": ["@kabane/registry@workspace:packages/registry"],
 
     "@kabane/sqlite": ["@kabane/sqlite@workspace:packages/sqlite"],
 

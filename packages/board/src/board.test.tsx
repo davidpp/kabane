@@ -81,6 +81,50 @@ test("Board renders a section header and a row's shortId, title, and kind", asyn
 	}
 });
 
+test("Board names a thread's kind on its row by the declared label, and by the stored name without one", async () => {
+	const rows = [
+		{
+			task: task({
+				id: "s",
+				shortId: "MILL-7",
+				title: "Error rate doubled",
+				kind: "signal",
+				state: undefined,
+			}),
+			children: [],
+			kindLabel: "Monitor signal",
+		},
+		{
+			task: task({
+				id: "v",
+				shortId: "MILL-8",
+				title: "Vendor page",
+				kind: "vendor.alert",
+				state: undefined,
+			}),
+			children: [],
+		},
+	];
+	const { renderOnce, captureCharFrame, destroy } = await renderTest(
+		<Board
+			sections={[{ state: "stateless", label: "Threads", rows }]}
+			expanded={new Set()}
+			selectedId={null}
+			scopeLabel="acme"
+		/>,
+		{ width: 80, height: 10 },
+	);
+	try {
+		const frame = await pumpUntil(renderOnce, captureCharFrame, (f) =>
+			f.includes("MILL-8"),
+		);
+		expect(frame).toContain("Error rate doubled · monitor signal");
+		expect(frame).toContain("Vendor page · vendor.alert");
+	} finally {
+		destroy();
+	}
+});
+
 // A list that asks for every row it has must not squeeze the header out: OpenTUI's later releases
 // stop drawing a node shrunk to no rows.
 test("Board keeps its header line when the list outgrows the screen", async () => {
@@ -1102,6 +1146,13 @@ test("rowMeta marks an orphaned subtask with its parent id, and a root row witho
 	expect(rowMeta(orphan, "JCAB-1")).toBe(" · issue · in JCAB-1");
 	// The two must not be confusable — that is the whole point of the marker.
 	expect(rowMeta(orphan, "JCAB-1")).not.toBe(rowMeta(root));
+});
+
+test("rowMeta cuts a long kind label so the title keeps its room", () => {
+	const row = visibleRow(task({ id: "r", kind: "signal" }), {
+		kindLabel: "A very long declared kind label",
+	});
+	expect(rowMeta(row)).toBe(" · a very long declare…");
 });
 
 test("rowMeta falls back to a bare marker when the parent is not loaded, never guessing why", () => {

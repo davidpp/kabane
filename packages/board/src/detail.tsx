@@ -555,7 +555,10 @@ const DetailHeader = ({
 				</text>
 			</box>
 			{task ? (
-				<SummaryLine parts={DetailModel.summary(task)} room={headerRoom} />
+				<SummaryLine
+					parts={DetailModel.summary(task, loaded?.kindLabel)}
+					room={headerRoom}
+				/>
 			) : null}
 			{/* Boxed, not a bare <text>: a bare text sibling after the header row-box paints over row 0. */}
 			{headline ? (
@@ -1010,8 +1013,8 @@ const NowBlockBody = ({
 	}
 };
 
-// The description tab: the ask, read when the issue is picked up. The description, then the curated
-// context headed like a bay.
+// The description tab: the ask, read when the issue is picked up. The description, the declared
+// attributes, then the curated context, each headed like a bay.
 const DescriptionTab = ({
 	records,
 	room,
@@ -1022,7 +1025,8 @@ const DescriptionTab = ({
 	const theme = useTheme();
 	const description = records.task.description?.trim();
 	const context = DetailModel.contextRefs(records);
-	if (!description && context.length === 0)
+	const attributes = DetailModel.attributes(records);
+	if (!description && attributes.length === 0 && context.length === 0)
 		return (
 			<text fg={theme.faint} style={{ marginLeft: CONTENT_INSET }}>
 				no description
@@ -1031,8 +1035,19 @@ const DescriptionTab = ({
 	return (
 		<box style={{ flexDirection: "column", paddingLeft: CONTENT_INSET }}>
 			{description ? <MarkdownBody content={description} /> : null}
-			{context.length > 0 ? (
+			{attributes.length > 0 ? (
 				<box style={{ marginTop: description ? 1 : 0 }}>
+					<Section title="attributes">
+						{attributes.map((line) => (
+							<AttributeRow key={line.key} line={line} />
+						))}
+					</Section>
+				</box>
+			) : null}
+			{context.length > 0 ? (
+				<box
+					style={{ marginTop: description || attributes.length > 0 ? 1 : 0 }}
+				>
 					<Section title="context">
 						{context.map((line) => (
 							<ContextRow key={line.id} line={line} room={room} />
@@ -1278,6 +1293,24 @@ const DecisionRow = ({
 				<span fg={theme.muted}>{` (${line.by}${why})`}</span>
 			</text>
 		</box>
+	);
+};
+
+// One declared attribute: its key muted, then its value, wrapped whole: this is the one place the
+// value shows.
+const AttributeRow = ({
+	line,
+}: {
+	line: DetailModel.AttributeLine;
+}): ReactNode => {
+	const theme = useTheme();
+	return (
+		<text>
+			{Segments.spans([
+				{ text: `${line.name} `, fg: theme.muted },
+				{ text: line.value, fg: theme.defaultFg },
+			])}
+		</text>
 	);
 };
 

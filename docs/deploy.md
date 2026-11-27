@@ -414,8 +414,8 @@ The pollers themselves live outside this repo.
 ## 4. Clients
 
 Two ways in: a device's own CLI over stdio (full local tracker, no network), or the hub
-over HTTP (the replicated surface, fifteen `kabane_*` tools, `scopeUri` required on
-writes). Header-capable clients use a service token; browser connectors use Managed OAuth.
+over HTTP (the replicated surface: the core tools and the data modules' tools, `scopeUri`
+required on writes). Header-capable clients use a service token; browser connectors use Managed OAuth.
 
 ### 4.1 Claude Code
 
@@ -513,7 +513,8 @@ npx -y @modelcontextprotocol/inspector https://<your-domain>/mcp
 ```
 
 In the UI, transport Streamable HTTP, no headers, Connect. Expected: a browser tab opens on
-the Access login, you authenticate as `HUMAN_EMAIL`, the inspector lists fifteen tools, and
+the Access login, you authenticate as `HUMAN_EMAIL`, the inspector lists the `kabane_*` tools, `kabane_threadKinds`
+among them, and
 `kabane_scopeList` returns your scopes. Writes are stamped `kabane://actor/human/<local
 part>`.
 

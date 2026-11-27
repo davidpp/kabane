@@ -75,7 +75,7 @@ export namespace Planner {
 		states: readonly TaskState[],
 	): Promise<Result<TaskState | null>> =>
 		map(await requireTask(basePath, id), ({ state }) =>
-			states.includes(state) ? state : null,
+			state !== undefined && states.includes(state) ? state : null,
 		);
 
 	export const isReady = async (

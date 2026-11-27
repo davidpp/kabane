@@ -25,6 +25,7 @@
 		"@kabane/checklist": "workspace:*",
 		"@kabane/core": "workspace:*",
 		"@kabane/handoff": "workspace:*",
+		"@kabane/registry": "workspace:*",
 		"@kabane/outcome": "workspace:*",
 		"@kabane/questions": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.32.2",

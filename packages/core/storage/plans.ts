@@ -155,7 +155,7 @@ export namespace Planner {
 					title: thread.title,
 					description: thread.description,
 					kind: thread.kind ?? "issue",
-					state: thread.state ?? "inbox",
+					state: thread.state,
 					priority: thread.priority ?? "normal",
 					assignee: thread.assignee,
 					tags: thread.tags ?? [],

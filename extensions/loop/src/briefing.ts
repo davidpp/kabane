@@ -79,13 +79,14 @@ export namespace Briefing {
 		tasks: Map<string, Task>,
 	): PanelPart => {
 		const { task } = node;
-		if (LoopPlan.isClosed(task)) return { text: task.state, tone: "done" };
+		if (LoopPlan.isClosed(task) && task.state)
+			return { text: task.state, tone: "done" };
 		if (ready.has(task.id)) return { text: "ready", tone: "working" };
 		const waitingOn = node.blockedBy.flatMap((id) => {
 			const blocker = tasks.get(id);
 			return blocker && !LoopPlan.isClosed(blocker) ? [label(blocker)] : [];
 		});
-		const state = task.state.replace("_", " ");
+		const state = (task.state ?? task.kind).replace("_", " ");
 		const status = waitingOn.length > 0 ? `← ${waitingOn.join(",")}` : state;
 		return {
 			text: task.kind === "task" ? `human · ${status}` : status,

@@ -203,7 +203,7 @@ type Input<K extends keyof CoreToolInputShapes> = Omit<
 >;
 type NamedInputs = {
 	get: Input<"get">;
-	list: Input<"list">;
+	list: Omit<Input<"list">, "attribute">; // Column projection belongs to concise pages.
 	edit: Input<"edit">;
 	done: Input<"done">;
 	// The wrapper requires body because it removes the two alternative spellings.

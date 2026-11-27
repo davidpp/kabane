@@ -28,6 +28,13 @@ const STATE_ICONS: Record<TaskState, string> = {
 	cancelled: "❌",
 };
 
+/** A kind with no icon shows its name: a scope's own kind reads as it is stored. */
+const KIND_ICONS: Readonly<Record<string, string>> = {
+	task: "",
+	issue: "🔧",
+	job: "⏱",
+};
+
 const PRIORITY_ICONS: Record<TaskPriority, string> = {
 	urgent: "🔴",
 	high: "🟠",
@@ -46,8 +53,9 @@ export const formatTaskLine = (task: Task): string => {
 	const assignee = task.assignee ? ` @${task.assignee}` : "";
 	const review = task.needsReview ? " 👀" : "";
 	const subtask = task.parentTaskId ? " ↳" : "";
-	const kind = { task: "", issue: "🔧", job: "⏱" }[task.kind];
-	return `${subtask}${STATE_ICONS[task.state]} ${PRIORITY_ICONS[task.priority]} ${kind}${displayId(task)}  ${task.title}${assignee}${review}${deadline}${tags}`;
+	const kind = KIND_ICONS[task.kind] ?? `${task.kind} `;
+	const state = task.state ? STATE_ICONS[task.state] : "·";
+	return `${subtask}${state} ${PRIORITY_ICONS[task.priority]} ${kind}${displayId(task)}  ${task.title}${assignee}${review}${deadline}${tags}`;
 };
 
 export const formatTaskList = (
@@ -65,11 +73,9 @@ export const formatTaskDetail = (task: Task): string => {
 	}
 	lines.push(`Title: ${task.title}`);
 	if (task.description) lines.push(`Description: ${task.description}`);
-	lines.push(
-		`Kind: ${task.kind}`,
-		`State: ${task.state}`,
-		`Priority: ${task.priority}`,
-	);
+	lines.push(`Kind: ${task.kind}`);
+	if (task.state) lines.push(`State: ${task.state}`);
+	lines.push(`Priority: ${task.priority}`);
 	if (task.scopeUri) lines.push(`Scope: ${task.scopeUri}`);
 	if (task.parentTaskId) lines.push(`Parent: ${task.parentTaskId}`);
 	if (task.projectId) lines.push(`Project: ${task.projectId}`);

@@ -132,3 +132,7 @@ export type {
 	RelayOp,
 	SyncTransport,
 } from "./sync/transport";
+export {
+	CustomAttributeKeySchema,
+	setCustomAttribute,
+} from "./storage/custom-attribute";

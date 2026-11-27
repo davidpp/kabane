@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { ENTRY_KIND_PATTERN } from "./comment";
 import { DeadlineSchema } from "./deadline";
 
 // ============================================================
@@ -104,18 +105,17 @@ export const TaskSourceSchema = z.enum([
 export type TaskSource = z.infer<typeof TaskSourceSchema>;
 
 /**
- * Item kind - discriminates between personal tasks, agent issues and scheduled jobs
- *
- * All use the same states but with different mental models:
- * - 'task': Personal GTD workflow (inbox → next → done)
- * - 'issue': Agent/dev workflow (backlog → in_progress → review → done)
- * - 'job': A standing request a schedule runs. A listing that names no kind leaves jobs out.
+ * A thread's kind (ADR 0010): any lowercase `name` or `name.key`, stored as
+ * it comes and never a closed list, so a scope or a module can file a kind
+ * core has never heard of. A declaration (`thread-kind.ts`) gives a kind its
+ * label; a kind none declares reads as its name.
  */
-export const ItemKindSchema = z.enum([
-	"task", // Personal GTD task (focus management, energy levels)
-	"issue", // Agent work item (evidence, verification, review)
-	"job", // Standing request a schedule runs
-]);
+export const ItemKindSchema = z
+	.string()
+	.regex(
+		ENTRY_KIND_PATTERN,
+		'must be lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "thread", "signal")',
+	);
 export type ItemKind = z.infer<typeof ItemKindSchema>;
 
 /**
@@ -155,11 +155,16 @@ export const TaskSchema = z.object({
 	/** Detailed description/notes (Markdown) */
 	description: z.string().optional(),
 
-	/** Item kind - 'task' (personal GTD), 'issue' (agent work) or 'job' (scheduled) */
+	/** Thread kind: 'task' (personal GTD), 'issue' (agent work), 'job' (scheduled), 'thread' (plain) or any declared kind */
 	kind: ItemKindSchema.default("task"),
 
-	/** Current state in GTD workflow */
-	state: TaskStateSchema.default("inbox"),
+	/**
+	 * Current state in GTD workflow. A new thread starts in its kind's
+	 * declared state (`initialStateOf`: `inbox` for task, issue and job) and
+	 * any other kind with none, until a write gives it one; an update with
+	 * `state: null` takes it away again.
+	 */
+	state: TaskStateSchema.optional(),
 
 	/** Priority level */
 	priority: TaskPrioritySchema.default("normal"),
@@ -287,11 +292,12 @@ export const TaskDraftSchema = TaskSchema.omit({
 export type TaskDraft = z.input<typeof TaskDraftSchema>;
 
 /**
- * Partial update for existing task
+ * Partial update for existing task. `state: null` takes a thread's state
+ * away, which only a kind with no workflow of its own may do (`initialStateOf`).
  */
 export const TaskUpdateSchema = TaskDraftSchema.extend({
 	kind: TaskDraftSchema.shape.kind.unwrap(),
-	state: TaskDraftSchema.shape.state.unwrap(),
+	state: TaskDraftSchema.shape.state.unwrap().nullable(),
 	priority: TaskDraftSchema.shape.priority.unwrap(),
 	needsReview: TaskDraftSchema.shape.needsReview.unwrap(),
 	tags: TaskDraftSchema.shape.tags.unwrap(),
@@ -307,6 +313,9 @@ export const TaskQuerySchema = z.object({
 
 	/** Filter by single state */
 	state: TaskStateSchema.optional(),
+
+	/** Only threads with no work state: a plain thread or a kind with no workflow */
+	stateless: z.boolean().optional(),
 
 	/** Filter by item kind. Omitted, every kind but 'job' */
 	kind: ItemKindSchema.optional(),

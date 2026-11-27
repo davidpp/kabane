@@ -16,6 +16,7 @@ import { Runtime } from "../runtime";
 import type { Task, TaskComment, TaskWorkLog } from "../schemas";
 import { Planner } from "../storage";
 import { configureTestRuntime } from "../testing";
+import { callTool } from "./call";
 import { createMcpServer } from "./server";
 import {
 	humanActorOf,
@@ -578,6 +579,40 @@ describe("kabane tools", () => {
 			),
 		) as Task;
 		expect(edited.parentTaskId).toBe(parent.id);
+	});
+
+	it("takes a stateless kind's state away with state none, and refuses it on a task", async () => {
+		const signal = unwrap(
+			await Planner.addTask(base, { title: "Signal", kind: "signal" }),
+		);
+		for (const responseFormat of ["full", "concise"]) {
+			unwrap(
+				await callTool(
+					tool("kabane_edit"),
+					{ id: signal.id, state: "done", responseFormat },
+					ctx,
+				),
+			);
+			unwrap(
+				await callTool(
+					tool("kabane_edit"),
+					{ id: signal.id, state: "none", responseFormat },
+					ctx,
+				),
+			);
+			expect(
+				unwrap(await Planner.getTask(base, signal.id))?.state,
+			).toBeUndefined();
+		}
+
+		const task = unwrap(await Planner.addTask(base, { title: "Task" }));
+		const refused = await callTool(
+			tool("kabane_edit"),
+			{ id: task.id, state: "none" },
+			ctx,
+		);
+		expect(refused.ok).toBe(false);
+		expect(unwrap(await Planner.getTask(base, task.id))?.state).toBe("inbox");
 	});
 
 	it("gets lowercase short ids and unique prefixes, and distinguishes ambiguity from absence", async () => {

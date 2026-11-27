@@ -3,12 +3,7 @@
 // over key-injection frame tests). app.tsx owns the single useKeyboard handler and runs the Effects
 // these return; it never mutates board state directly.
 import type { CopilotElicitationAnswer } from "@kabane/acp/form-field";
-import {
-	type ItemKind,
-	TASK_STATE_DISPLAY,
-	type Task,
-	type TaskState,
-} from "@kabane/core";
+import { type ItemKind, type Task, type TaskState } from "@kabane/core";
 import type { CopilotShortcut, TriggerDescriptor } from "@kabane/extension";
 import { CardTab } from "./card-tab";
 import { BoardChecklist } from "./checklist";
@@ -241,9 +236,10 @@ export namespace BoardNav {
 
 	// Reverse patch — the subset of task fields any board mutation can change. Applied verbatim through
 	// Planner.updateTask to walk a task back to its pre-mutation values.
-	type UndoPatch = Partial<
-		Pick<Task, "state" | "needsReview" | "verification">
-	>;
+	// `state: null` walks a thread that had none back to none.
+	type UndoPatch = Partial<Pick<Task, "needsReview" | "verification">> & {
+		state?: TaskState | null;
+	};
 	// One entry on the undo stack: the reverse patch plus the copy the footer flashes on undo.
 	export type UndoEntry = {
 		id: string;
@@ -308,6 +304,8 @@ export namespace BoardNav {
 		parentId: string | null;
 		hasChildren: boolean;
 		expanded: boolean;
+		// A top-level row's kind label (BoardData.BoardRow).
+		kindLabel?: string;
 	};
 
 	// What app.tsx must do after an action. Pure nav produces `none`; filter/scope changes need a reload
@@ -1137,8 +1135,8 @@ export namespace BoardNav {
 		return {
 			id: task.id,
 			shortId: sid,
-			patch: { state: task.state },
-			label: `${sid} → ${task.state}`,
+			patch: { state: task.state ?? null },
+			label: `${sid} → ${task.state ?? "no state"}`,
 		};
 	};
 
@@ -1171,7 +1169,7 @@ export namespace BoardNav {
 	// The one exception is the search reach-through: a `/` query from `open` still reaches the
 	// archive, so "did X land?" needs no filter change.
 	const sectionInStatus = (
-		sectionState: BoardData.SectionState,
+		sectionState: BoardData.SectionKey,
 		status: StatusFilter,
 		query: string,
 	): boolean =>
@@ -1232,26 +1230,23 @@ export namespace BoardNav {
 	// One top-level task's rows, as visibleSections describes: unfiltered, its subtasks while it is
 	// expanded; narrowed, nothing when neither it nor a subtask matches.
 	const treeRows = (
-		{ task, children }: BoardData.BoardRow,
+		row: BoardData.BoardRow,
 		expanded: ReadonlySet<string>,
 		matches: ((task: Task) => boolean) | null,
 	): VisibleRow[] => {
-		if (!matches)
-			return parentRows(task, children, expanded.has(task.id) ? children : []);
+		const { task, children } = row;
+		if (!matches) return parentRows(row, expanded.has(task.id) ? children : []);
 		const parentMatch = matches(task);
 		const shown =
 			parentMatch && expanded.has(task.id)
 				? children
 				: children.filter(matches);
-		return parentMatch || shown.length > 0
-			? parentRows(task, children, shown)
-			: [];
+		return parentMatch || shown.length > 0 ? parentRows(row, shown) : [];
 	};
 
 	// A top-level row and the subtasks `shown` under it, its caret open while any are.
 	const parentRows = (
-		task: Task,
-		children: readonly Task[],
+		{ task, children, kindLabel }: BoardData.BoardRow,
 		shown: readonly Task[],
 	): VisibleRow[] => [
 		{
@@ -1260,6 +1255,7 @@ export namespace BoardNav {
 			parentId: null,
 			hasChildren: children.length > 0,
 			expanded: shown.length > 0,
+			...(kindLabel === undefined ? {} : { kindLabel }),
 		},
 		...shown.map((child): VisibleRow => ({
 			task: child,
@@ -1428,7 +1424,7 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (!task) return { state, effect: NONE };
 		const progression: readonly TaskState[] = BoardData.STATE_PROGRESSION;
-		const current = progression.indexOf(task.state);
+		const current = task.state ? progression.indexOf(task.state) : -1;
 		const target = BoardData.STATE_PROGRESSION[current + delta];
 		if (current < 0 || !target) return { state, effect: NONE };
 		return {
@@ -1554,7 +1550,7 @@ export namespace BoardNav {
 	const rowPlace = (
 		state: BoardState,
 		id: string,
-	): { section: BoardData.SectionState; parentId?: string } | undefined => {
+	): { section: BoardData.SectionKey; parentId?: string } | undefined => {
 		for (const section of state.sections) {
 			for (const { task, children } of section.rows) {
 				if (task.id === id) return { section: section.state };
@@ -1709,27 +1705,25 @@ export namespace BoardNav {
 			}
 		}
 
-		// Group new tasks by state for section placement.
-		const newByState = new Map<TaskState, Task[]>();
+		// Group new tasks by section for placement: their state's, or the stateless one.
+		const newByState = new Map<BoardData.SectionKey, Task[]>();
 		for (const task of tasks) {
 			if (existingIds.has(task.id)) continue;
-			const list = newByState.get(task.state) ?? [];
+			const key = BoardData.sectionOf(task);
+			const list = newByState.get(key) ?? [];
 			list.push(task);
-			newByState.set(task.state, list);
+			newByState.set(key, list);
 		}
 		if (newByState.size === 0) return state;
 
-		// Merge into existing sections or create new ones. Preserve display order from SECTION_STATES.
-		const sectionMap = new Map<
-			BoardData.SectionState,
-			BoardData.BoardSection
-		>();
+		// Merge into existing sections or create new ones. Preserve display order from SECTIONS.
+		const sectionMap = new Map<BoardData.SectionKey, BoardData.BoardSection>();
 		for (const section of state.sections) {
 			sectionMap.set(section.state, section);
 		}
 
 		const merged: BoardData.BoardSection[] = [];
-		for (const sectionState of BoardData.SECTION_STATES) {
+		for (const sectionState of BoardData.SECTIONS) {
 			const existing = sectionMap.get(sectionState);
 			const additions = newByState.get(sectionState);
 			if (!existing && !additions) continue;
@@ -1741,11 +1735,11 @@ export namespace BoardNav {
 			}
 			merged.push({
 				state: sectionState,
-				label: existing?.label ?? TASK_STATE_DISPLAY[sectionState].label,
+				label: existing?.label ?? BoardData.sectionLabel(sectionState),
 				rows,
 			});
 		}
-		// No fallback pass for states outside SECTION_STATES: it now lists all seven, so the loop
+		// No fallback pass for states outside SECTIONS: it lists all seven and the stateless one, so the loop
 		// above reaches every key `newByState` can hold. The pass that used to sit here fabricated a
 		// section with an unchecked cast and labelled it with the raw state string — which is what a
 		// someday or cancelled FTS hit used to render as.

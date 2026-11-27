@@ -582,8 +582,8 @@ An issue related to nothing has no such row.
   follows, followed by, related, duplicate of, duplicated by, then upstream. Each issue reads
   as a subtask does, `✓` or `○`, its id and title, its state at the right; one the tracker no
   longer has reads as its id and `unknown`. `O` opens an upstream issue.
-- `description`: the ask, read when the issue is picked up. The description and the curated
-  context.
+- `description`: the ask, read when the issue is picked up. The description, the attributes its
+  scope declares (`finding type  SQL injection`), and the curated context.
 - `comments`: the whole timeline, newest first, an agent's outcomes (`outcome.summary`,
   `outcome.decision` and the rest) among them.
 - `log`: the host's cards, then the work logged, newest first: each `session:` ref under its
@@ -593,6 +593,18 @@ The detail opens on `now`, at its top, when it has anything in it but links, oth
 nothing in it is faint in the bar. The section it opened on, or the one you picked, stays when a
 change lands while it is open: a checklist added to an issue you are reading the description of
 does not move you.
+
+### Threads of any kind
+
+A thread with no state, a plain `thread` or a kind a scope or an extension declares (`signal`),
+lists under `threads`, after `someday` and before the archive. Its row ends on its kind's
+declared label, lowercased and cut at twenty columns (`monitor signal`), read once per scope on
+each load. Its detail names the kind by that label under the title, where
+an issue's summary names `issue`, and the description lists its declared attributes, each value
+by the label its exact scope gives that choice. A kind or a value the device has no declaration
+for, as when the extension that declared it is disabled, reads as stored; the content, entries
+and refs read the same either way. `d`, `n`, `s` and `x` give such a thread that state, which
+moves it out of `threads`, and `⌃z` takes the state away again.
 
 An issue opened from the detail opens over it, and `esc` comes back to the one before on the
 section you left it on; `esc` on the first one goes back to the board.

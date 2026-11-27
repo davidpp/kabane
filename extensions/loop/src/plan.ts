@@ -46,8 +46,13 @@ export namespace LoopPlan {
 	const hasTag = (task: Task, tag: string): boolean =>
 		task.tags.some((t) => t.toLowerCase() === tag);
 
-	/** What the scheduler claims and the plan needs closed: every child but the findings. */
-	export const isWork = (node: Node): boolean => !node.finding;
+	/**
+	 * What the scheduler claims and the plan needs closed: every child but the findings and the
+	 * threads with no work state (a signal or a plain thread filed under the parent is not work
+	 * until a write gives it a state).
+	 */
+	export const isWork = (node: Node): boolean =>
+		!node.finding && node.task.state !== undefined;
 
 	export const severityOf = (task: Task): Severity | undefined =>
 		SEVERITIES.find((s) => hasTag(task, s));
@@ -172,12 +177,14 @@ export namespace LoopPlan {
 
 	/**
 	 * Whether `task`, as the tracker holds it now, is still work of `plan`: a child that is not a
-	 * finding, or the target of a single-issue plan.
+	 * finding and has a work state, or the target of a single-issue plan.
 	 */
 	export const isWorkOf = (plan: Plan, task: Task): boolean =>
 		task.id === plan.parent.id
 			? single(plan)
-			: task.parentTaskId === plan.parent.id && !hasTag(task, FINDING_TAG);
+			: task.parentTaskId === plan.parent.id &&
+				!hasTag(task, FINDING_TAG) &&
+				task.state !== undefined;
 
 	const byId = (plan: Plan): Map<string, Task> => {
 		const map = new Map(plan.outside);
@@ -204,7 +211,10 @@ export namespace LoopPlan {
 
 	/** Task-local eligibility; human work stays in the plan but is never dispatched. */
 	export const canClaim = (task: Task, now: Date): boolean =>
-		task.kind === "issue" && CLAIMABLE.has(task.state) && !deferred(task, now);
+		task.kind === "issue" &&
+		task.state !== undefined &&
+		CLAIMABLE.has(task.state) &&
+		!deferred(task, now);
 
 	/**
 	 * The ready frontier: open agent work in a claimable state (`inbox`, `next`), not deferred, not

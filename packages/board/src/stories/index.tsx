@@ -424,6 +424,37 @@ const MARKDOWN = task({
 		"After the rule and the table.",
 	].join("\n"),
 });
+// A monitor's signal: a scope's kind with no state, a declared attribute, a comment and a ref.
+const SIGNAL = task({
+	id: "01HZZSIGNAL000000000000000",
+	shortId: "MON-3",
+	kind: "signal",
+	state: undefined,
+	priority: "normal",
+	title: "Login form takes raw SQL",
+	description: "Seen on `/login` from two clients.",
+});
+const SIGNAL_RECORDS = Fixtures.records(SIGNAL, {
+	kindLabel: "Monitor signal",
+	attributes: [
+		{ key: "finding_type", value: "sql_injection", label: "SQL injection" },
+		{
+			key: "seen_by",
+			value:
+				"edge-03 and edge-07 in the eu-west pool, both behind the login proxy",
+		},
+	],
+	contextRefs: [
+		{
+			id: "r1",
+			taskId: SIGNAL.id,
+			uri: "url:https://logs.example/login",
+			kind: "log",
+			label: "request log",
+			addedAt: "2026-10-10T00:00:00.000Z",
+		},
+	],
+});
 const MARKDOWN_RECORDS = Fixtures.records(MARKDOWN);
 // The blocks OpenTUI builds inside another and never hands the renderer: a quote and a rule inside
 // a quote, and a quote inside a list item.
@@ -1700,6 +1731,50 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "board-threads",
+		about:
+			"the threads section: a scope's signal by its declared label beside a plain thread and a kind nothing here declares, by stored name",
+		width: 40,
+		height: 8,
+		render: () => (
+			<Board
+				sections={[
+					{
+						state: "stateless",
+						label: "Threads",
+						rows: [
+							{ task: SIGNAL, children: [], kindLabel: "Monitor signal" },
+							{
+								task: task({
+									id: "01HZZPLAIN0000000000000000",
+									shortId: "MON-2",
+									kind: "thread",
+									state: undefined,
+									title: "Release notes scratch",
+								}),
+								children: [],
+								kindLabel: "Thread",
+							},
+							{
+								task: task({
+									id: "01HZZVENDOR000000000000000",
+									shortId: "MON-1",
+									kind: "vendor.alert",
+									state: undefined,
+									title: "Vendor page",
+								}),
+								children: [],
+							},
+						],
+					},
+				]}
+				expanded={new Set()}
+				selectedId={SIGNAL.id}
+				scopeLabel="acme"
+			/>
+		),
+	},
+	{
 		name: "board-badge-narrow",
 		about:
 			"a paused run's badge cut with … at forty columns, the title at its floor",
@@ -1890,6 +1965,22 @@ export const STORIES: readonly Story[] = [
 				task={WAVE}
 				tab="description"
 				records={ok(WAVE_RECORDS)}
+				scrollRef={createRef<ScrollBoxRenderable>()}
+			/>
+		),
+	},
+	{
+		name: "detail-signal",
+		about:
+			"a scope's signal with no state: its kind by label, its attributes by their choices' labels, then its context",
+		width: 40,
+		height: 16,
+		render: () => (
+			<Detail
+				taskId={SIGNAL.id}
+				task={SIGNAL}
+				tab="description"
+				records={ok(SIGNAL_RECORDS)}
 				scrollRef={createRef<ScrollBoxRenderable>()}
 			/>
 		),

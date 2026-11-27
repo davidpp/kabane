@@ -464,6 +464,9 @@ describe("base kabane's kabane skill", () => {
 			"Not exposed in 2.0.0-beta.0",
 			"`kabane_search` reads titles and descriptions only",
 			"The brief does not show tags, `related` links or who holds the claim.",
+			"| See which kinds a scope files | `kabane_threadKinds`",
+			"| Set or clear a declared attribute | `kabane_attributeSet`",
+			"start with no state, so no work queue picks them up",
 		])
 			expect(record).toContain(line);
 	});

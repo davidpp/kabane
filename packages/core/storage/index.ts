@@ -35,6 +35,7 @@ export const Planner = {
 	addTask: Tasks.addTask,
 	applyPlan: Plans.applyPlan,
 	getTask: Tasks.getTask,
+	getCustomAttributes: Tasks.getCustomAttributes,
 	findBySourceId: Tasks.findBySourceId,
 	findByExternalRef: Tasks.findByExternalRef,
 	getTasks: Tasks.getTasks,

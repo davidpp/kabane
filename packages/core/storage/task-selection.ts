@@ -1,7 +1,12 @@
 /** SQL selections shared by legacy records and opt-in concise pages. */
 import type { Db, SqlValue } from "../db/port";
 import { Runtime } from "../runtime";
-import type { ItemKind, Task, TaskQuery } from "../schemas";
+import {
+	type ItemKind,
+	type Task,
+	type TaskQuery,
+	UNLISTED_KINDS,
+} from "../schemas";
 import { DeadlineSql } from "./deadline-sql";
 import { stateFilter, buildScopeFamilyMatch, TABLES } from "./helpers";
 
@@ -20,12 +25,15 @@ export type TodayOptions = {
 };
 export type TodayBucket = "overdue" | "dueToday" | "next";
 
-// A job is a standing request a schedule runs, not work to pick up: a listing that names no kind
-// leaves jobs out, and naming one returns only that kind.
+// A listing that names no kind leaves out the kinds declared unlisted (a job: a standing request,
+// not work to pick up), and naming one returns only that kind.
 const kindClause = (kind: ItemKind | undefined): TaskSelection =>
 	kind
 		? { sql: "kind = ?", params: [kind] }
-		: { sql: "kind != 'job'", params: [] };
+		: {
+				sql: `kind NOT IN (${UNLISTED_KINDS.map(() => "?").join(", ")})`,
+				params: [...UNLISTED_KINDS],
+			};
 
 export const scopeClause = (scope: string, column: string): TaskSelection => {
 	const family = buildScopeFamilyMatch(scope);
@@ -69,8 +77,9 @@ export const selectTaskQuery = (
 		conditions.push(state.sql);
 		params.push(...state.params);
 	}
+	if (query.stateless) conditions.push("state IS NULL");
 	if (!query.includeClosed)
-		conditions.push("state NOT IN ('done', 'cancelled')");
+		conditions.push("(state IS NULL OR state NOT IN ('done', 'cancelled'))");
 	if (!query.includeDeferred) {
 		conditions.push("(defer_until IS NULL OR defer_until <= ?)");
 		params.push(now);
@@ -170,7 +179,8 @@ export const selectTodayBucket = (
 		due.sql,
 	];
 	const params: SqlValue[] = [...due.params];
-	if (!opts.includeDone) conditions.push("state NOT IN ('done', 'cancelled')");
+	if (!opts.includeDone)
+		conditions.push("(state IS NULL OR state NOT IN ('done', 'cancelled'))");
 	if (opts.scopeUri) {
 		const scope = scopeClause(opts.scopeUri, "scope_uri");
 		conditions.push(scope.sql);

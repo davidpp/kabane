@@ -1,10 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { checklistModule } from "@kabane/checklist";
 import { ContextPageSchema, KABANE_TOOLS } from "@kabane/core";
-import { handoffModule } from "@kabane/handoff";
-import { questionsModule } from "@kabane/questions";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -14,6 +11,7 @@ import {
 	payloadMetrics,
 } from "./issue-corpus-harness";
 import { configTools } from "./src/config-tools";
+import { MODULES } from "./src/context";
 import { Skills } from "./src/skills";
 
 const toolResult = z.object({
@@ -51,9 +49,7 @@ describe.concurrent("bounded context through actual CLI/stdio", () => {
 			expect(tools.tools).toHaveLength(
 				KABANE_TOOLS.length +
 					configTools(tracker.home, { projectDir: tracker.cwd }).length +
-					(questionsModule.tools?.length ?? 0) +
-					(handoffModule.tools?.length ?? 0) +
-					(checklistModule.tools?.length ?? 0) +
+					MODULES.flatMap((module) => module.tools ?? []).length +
 					Skills.tools([], "kabane").length,
 			);
 			for (const field of ["responseFormat", "sections", "cursor"])

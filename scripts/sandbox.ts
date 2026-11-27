@@ -33,10 +33,12 @@
  * KABANE_BUNDLED=1, because a run from a checkout never shows one.
  */
 
+import { createHash } from "node:crypto";
 import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -47,7 +49,13 @@ import { GitFixture } from "../packages/core/scope/git-fixture";
 import { checkoutExtensions, linkExtensions } from "./link-extensions";
 
 const ROOT = resolve(import.meta.dir, "..");
-const SANDBOX = join(tmpdir(), "kabane-sandbox", basename(ROOT));
+// Keyed on the checkout's real path, not only its name: every loop worktree is `trees/<n>`, and
+// runs sharing `trees/1` would share, or wipe with --fresh, one sandbox.
+const SANDBOX = join(
+	tmpdir(),
+	"kabane-sandbox",
+	`${basename(ROOT)}-${createHash("sha256").update(realpathSync(ROOT)).digest("hex").slice(0, 8)}`,
+);
 const REPO = join(SANDBOX, "repo");
 const CLI = join(ROOT, "packages/cli/index.ts");
 const KABANE_HOME = join(SANDBOX, ".kabane");

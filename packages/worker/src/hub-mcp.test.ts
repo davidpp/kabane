@@ -174,6 +174,102 @@ describe("hub MCP over Streamable HTTP", () => {
 		}
 	});
 
+	it("publishes an exact-scope vocabulary and reads classified threads on concise pages", async () => {
+		const declaration = {
+			key: "classification",
+			description: "Why a thread exists",
+			choices: [
+				{ value: "request", label: "Request" },
+				{ value: "finding", label: "Finding" },
+			],
+		};
+		const scopeUri = "registry-acme";
+		const publish = (spec: typeof declaration) =>
+			callTool(HUMAN, "kabane_registryPublish", {
+				scopeUri,
+				declaration: spec,
+			});
+		expect(await publish(declaration)).toEqual({
+			isError: false,
+			value: declaration,
+		});
+		expect((await publish(declaration)).isError).toBe(false);
+		expect(
+			(await publish({ ...declaration, description: "Changed" })).isError,
+		).toBe(true);
+		expect(
+			(await callTool(HUMAN, "kabane_registry", { scopeUri: "registry-other" }))
+				.value,
+		).toEqual([]);
+		const add = async (scope: string) =>
+			(
+				await callTool(HUMAN, "kabane_add", {
+					title: "Read the design",
+					scopeUri: scope,
+				})
+			).value as TaskLike;
+		const customer = await add(scopeUri);
+		const untouched = await add(scopeUri);
+		const other = await add("registry-other");
+		const set = (id: string, value: string | null) =>
+			callTool(HUMAN, "kabane_attributeSet", {
+				id,
+				key: "classification",
+				value,
+			});
+		expect((await set(other.id, "request")).isError).toBe(true);
+		expect((await set(customer.id, "typo")).isError).toBe(true);
+		expect((await set(customer.id, "request")).isError).toBe(false);
+		const query = {
+			scopeUri,
+			responseFormat: "concise",
+			attribute: "classification",
+		};
+		const list = await callTool(HUMAN, "kabane_list", query);
+		const { items } = list.value as {
+			items: { id: string; attributes?: Record<string, string> }[];
+		};
+		expect(items.find((item) => item.id === customer.id)?.attributes).toEqual({
+			classification: "request",
+		});
+		expect(items.find((item) => item.id === untouched.id)).not.toHaveProperty(
+			"attributes",
+		);
+		const first = await callTool(HUMAN, "kabane_list", { ...query, limit: 1 });
+		const { nextCursor } = first.value as { nextCursor: string };
+		expect((await set(customer.id, null)).isError).toBe(false);
+		const next = await callTool(HUMAN, "kabane_list", {
+			...query,
+			limit: 1,
+			cursor: nextCursor,
+		});
+		expect(next.value).toContain("Stale cursor");
+	});
+
+	it("publishes a scope's thread kind and lists it with core's for a hub-only agent", async () => {
+		const scopeUri = "kinds-acme";
+		const signal = { name: "signal", label: "Monitor signal" };
+		const publish = (declaration: unknown) =>
+			callTool(HUMAN, "kabane_registryPublish", { scopeUri, declaration });
+		expect(await publish(signal)).toEqual({ isError: false, value: signal });
+		expect((await publish(signal)).isError).toBe(false);
+		expect((await publish({ ...signal, label: "Signal" })).isError).toBe(true);
+		expect((await publish({ name: "issue", label: "Bug" })).isError).toBe(true);
+		const kinds = async (scope: string) =>
+			(
+				(await callTool(HERMES, "kabane_threadKinds", { scopeUri: scope }))
+					.value as { kinds: { name: string; source: string }[] }
+			).kinds.map((kind) => `${kind.source}:${kind.name}`);
+		expect(await kinds(scopeUri)).toEqual([
+			"core:thread",
+			"core:task",
+			"core:issue",
+			"core:job",
+			"scope:signal",
+		]);
+		expect(await kinds("kinds-other")).not.toContain("scope:signal");
+	});
+
 	it("answers the last question and resumes the issue through the DO transaction", async () => {
 		const created = await callTool(HERMES, "kabane_add", {
 			title: "Hub decision",

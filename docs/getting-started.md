@@ -447,6 +447,94 @@ command's flags, `kabane --help` lists the commands, and
 date deadline's day ends, and how a time is shown. A name kabane does not know is an error, not
 a silent UTC.
 
+### Give items in a scope a classification
+
+Publish a small vocabulary once for the exact scope that owns the items. Save this as
+`classification.json`:
+
+```json
+{
+  "key": "classification",
+  "description": "Why this item is on the board.",
+  "choices": [
+    { "value": "request", "label": "Customer request", "description": "Someone explicitly asked." },
+    { "value": "finding", "label": "Observation", "description": "An agent noticed something." },
+    { "value": "idea", "label": "Idea" }
+  ]
+}
+```
+
+```bash
+kabane registry publish classification.json --scope acme --json
+kabane registry list --scope acme --json
+kabane add "Review the design" --kind issue --state next --key design/review --scope acme
+kabane registry set design/review classification request
+kabane list --scope acme --state next --format concise --attribute classification --json
+kabane registry clear design/review classification
+```
+
+The projected row includes `"attributes":{"classification":"request"}`. An item with no
+value omits `attributes`. Fetch labels once per exact scope and use the value as a fallback
+for an unfamiliar choice. Each page is bounded; repeat the attribute key when following its
+cursor. The same key may have different choices in another scope. The item's exact scope URI
+includes any branch and package qualifiers it was filed with.
+
+Over MCP, call `kabane_registryPublish` with `scopeUri` and the JSON object in `declaration`.
+`kabane_registry` takes `scopeUri`; `kabane_attributeSet` takes `id`, `key` and `value`
+(a choice string, or `null` to clear). Pass `responseFormat: "concise"` and
+`attribute: "classification"` to `kabane_list` for the same page as the CLI.
+
+Declarations travel with device sync and export. Publishing the same declaration again is
+safe. A device that already knows a key rejects a different definition. If two offline
+devices independently publish competing definitions for the same key, ordinary module row
+conflict resolution selects a definition at sync. Previously assigned values remain readable.
+Choose a new key for a changed vocabulary.
+
+### Declare a thread kind for a scope
+
+A thread's kind says what it is. Kabane declares `thread` (a plain thread, with no workflow of
+its own), `task`, `issue` and `job`. A scope can add its own kind with a name and a display
+label, without writing code. Save this as `signal.json`:
+
+```json
+{ "name": "signal", "label": "Monitor signal", "description": "Something a monitor noticed." }
+```
+
+```bash
+kabane registry publish signal.json --scope acme --json
+kabane registry kinds --scope acme --json
+```
+
+`kinds` lists kabane's kinds, then those an installed module declares, then the scope's own,
+each with `name`, `label` and `source` (`core`, `module:<name>` or `scope`). Over MCP, the hub
+included, publish with `kabane_registryPublish` (the same JSON in `declaration`) and list with
+`kabane_threadKinds`, both with `scopeUri`.
+
+A name is lowercase letters, digits and dashes, as `name` or `name.key`. A kind kabane or an
+installed module already declares cannot be published. A scope kind is immutable like an
+attribute declaration: publishing it again is safe, and a different label under the same name
+is refused. If a synced scope kind has the name of a module kind on this device, the module's
+wins and the scope's is listed under `shadowed`. A client that meets a kind no declaration
+covers shows its name.
+
+File a thread of any kind with `--kind`, and read threads of one kind back with the same flag:
+
+```bash
+kabane add "Error rate doubled on checkout" --kind signal --scope acme
+kabane add "Notes from the incident call" --kind thread --scope acme
+kabane list --kind signal --scope acme
+```
+
+A `task`, `issue` or `job` starts in `inbox`. A thread of any other kind, a plain `thread` or
+a scope's `signal`, starts with no state, so it never shows in a `--state next` work queue;
+`--state` gives it one, and `kabane edit <id> --state none` (`kabane_edit` state `none`) takes
+it away again; a task, issue or job refuses that. Editing its kind to `task`, `issue` or `job`
+puts it in `inbox` unless the edit gives a state. `kabane list` with no `--kind` shows every
+kind but `job`. Over MCP,
+`kabane_add`, `kabane_edit`, `kabane_list`, `kabane_today` and the threads of `kabane_apply`
+take the same `kind`. Kabane stores the kind as it is written: a well-formed name nobody
+declares is filed, read, synced and exported like any other, and shows as its name.
+
 ## Updating
 
 Each install updates with its own command:
@@ -922,6 +1010,26 @@ Resolve it before retrying.
   update.
 - **No going back.** The old version refuses a database this one has opened. Going back takes a
   backup made before the first open.
+
+### Upgrading from 2.0.0-beta.2: thread kinds and threads with no state
+
+Update every device, board and `kabane mcp` that shares a database or a hub before anyone files
+a thread of a new kind.
+
+- **Migrations.** The first open runs the registry module's two migrations, which create
+  `registry_declarations` and `registry_thread_kinds` (versioned in
+  `schema_migrations_registry`). Core's schema stays at 14, so a device on 2.0.0-beta.2 keeps
+  syncing with no warning. It can still open a database this release migrated.
+- **Threads with no state.** A thread of a kind other than `task`, `issue` or `job` starts with
+  no state ([Declare a thread kind for a scope](#declare-a-thread-kind-for-a-scope)). Its
+  `--json` and `--format concise` rows, and those of the MCP tools, have no `state` key, so a
+  script that reads `state` sees it missing. A thread whose kind is edited to `task`, `issue` or
+  `job` gets `inbox` unless the edit gives it a state.
+- **What an older device does with them.** 2.0.0-beta.2 leaves a thread with no state out of
+  `kabane list` and the board without saying so. `kabane list --kind signal` prints
+  `No tasks found.`, `show` prints `State: null`, and `edit` and `done` print `undefined` where
+  the state goes. The rows are stored and synced intact, and read correctly again once that
+  device updates.
 
 ### Subsequent updates
 

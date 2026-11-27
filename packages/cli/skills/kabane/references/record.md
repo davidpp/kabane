@@ -6,9 +6,9 @@ it.
 
 | Shape | What it is | Ask yourself | Retry or a second device |
 |---|---|---|---|
-| Thread | Something that can be owned, discussed and finished: a request, a bug, a design question, a job. It has a title, a body, a scope, a parent, and may have a state and an assignee. | Will someone pick this up, or will people talk about it, on its own? | A new thread each time, unless it was filed with a key |
+| Thread | Something that can be owned, discussed and finished: a request, a bug, a design question, a job, a signal. It has a kind that says what it is, a title, a body, a scope, a parent, and may have a state and an assignee. | Will someone pick this up, or will people talk about it, on its own? | A new thread each time, unless it was filed with a key |
 | Entry | Something that happened or was said, by an author at a time: a comment, a finding, a decision, a question and its answer, a handoff, a work log line. Never edited. | Is it a fact about a moment that should stay as it was said? | A new entry each time |
-| Attribute | A current fact about a thread with one value per key: priority, due date, tags. It changes. | Should a reader see only the latest value? | The last write wins; the same value twice is one row |
+| Attribute | A current fact about a thread with one value per key: priority, due date, tags, and the classifications its scope declares. It changes. | Should a reader see only the latest value? | The last write wins; the same value twice is one row |
 | Ref | A URI the thread keeps pointing at, with a kind: what it reads, what it maintains, its twin in GitHub or Linear, another thread. | Is it a pointer someone will follow, not text to keep? | One row, never a duplicate, but adding it again rewrites that row: see the table below for what each kind of ref keys on |
 
 Two rules settle most cases:
@@ -23,11 +23,14 @@ Two rules settle most cases:
 
 | To do this | MCP | CLI | A retry |
 |---|---|---|---|
-| File a thread | `kabane_add` | `{{kabane}} add` | Duplicates, unless you pass `key` (`<plan>/<name>`, lowercase): then it returns the first one with `existed: true` and changes nothing |
+| See which kinds a scope files | `kabane_threadKinds` (`scopeUri`) | `{{kabane}} registry kinds --scope <s>` | |
+| File a thread | `kabane_add` with `kind` | `{{kabane}} add --kind <kind>` | Duplicates, unless you pass `key` (`<plan>/<name>`, lowercase): then it returns the first one with `existed: true` and changes nothing |
 | File a plan of threads and links | `kabane_apply` | `{{kabane}} apply <file> --key <plan>` | Creates only what is missing. A thread already there keeps its fields even if the file changed them; edit it instead |
 | Change state, assignee, priority, due, tags, parent | `kabane_edit` | `{{kabane}} edit` | Same value, same result. `tags` replaces the whole list |
 | Claim a thread | `kabane_edit` state `in_progress` | `{{kabane}} edit <id> --state in_progress` | Still yours, but it also sets the state again: a thread you claimed and then put in `waiting` goes back to `in_progress` |
 | See who holds a claim | the result of a claiming edit only | `{{kabane}} wait state <id> in_progress waiting --timeout 1s` prints `claimedBy` | |
+| Read a scope's declared attributes and their choices | `kabane_registry` (`scopeUri`) | `{{kabane}} registry list --scope <s>` | |
+| Set or clear a declared attribute | `kabane_attributeSet` (`id`, `key`, `value` or `null`) | `{{kabane}} registry set <id> <key> <value>`, `registry clear <id> <key>` | The last write wins |
 | Comment, or record a finding, decision or review | `kabane_comment` with `kind` | `{{kabane}} comment <id> "…" --kind <kind>` | Duplicates |
 | Record work done (commits, PRs, branches, files) | `kabane_log` | `{{kabane}} log` | Duplicates: each call is one occurrence |
 | Ask the human a decision | `kabane_ask` | none | Duplicates the question |
@@ -44,11 +47,17 @@ An entry kind is a free string. The shipped ones are `outcome.finding`, `outcome
 `handoff`, which it shows under the description. Prefer those over a kind of your own, so the
 next reader's tools recognise them.
 
+A thread's kind is a free name too. `task`, `issue` and `job` start in `inbox`; a plain
+`thread` and any kind a scope or an extension declares (`kabane_threadKinds` lists what this
+scope offers, with labels) start with no state, so no work queue picks them up until an edit
+gives them one. File with a kind the scope lists rather than one of your own.
+
 Not exposed in 2.0.0-beta.0, so do not try to reach them through another call:
 
-- An attribute under a key of your own. Use a tag (`request`, `finding`, `idea`), and remember
-  `tags` is one list that an edit replaces whole, so read it first and write it back with yours
-  added.
+- An attribute under a key the scope has not declared. A key is declared once per scope with
+  `kabane_registryPublish`; where none fits, use a tag (`request`, `finding`, `idea`), and
+  remember `tags` is one list that an edit replaces whole, so read it first and write it back
+  with yours added.
 - Addressing an entry to an actor of your choosing, or replying to one entry. Only `kabane_ask`
   addresses an entry, to the human, and only `kabane_answer` replies.
 - A retry-safe comment, log line, question or handoff. Before writing one again after a crash,
@@ -84,12 +93,17 @@ While working on the CSV export, you notice that a sync test times out on CI thr
 
 - If it blocks or changes the export, it is **an entry** on the export's thread:
   `kabane_comment` with kind `outcome.finding` and where you saw it.
-- If it is separate work, it is **a new thread** with tag `finding`, left in `inbox` with no
-  assignee, since nobody asked for it: `kabane_add`. Put the evidence in a first
+- If it is separate work, it is **a new thread**, since nobody asked for it: `kabane_add` with
+  no assignee. Read `kabane_threadKinds` and `kabane_registry` for its scope first. When the
+  scope offers a kind for it (a `signal`, say), file it as that kind, which leaves it with no
+  state, and set what sort it is with `kabane_attributeSet` when the scope declares that
+  (`classification` `finding`). Otherwise it is an `issue` in `inbox` with tag `finding`. Put
+  the evidence in a first
   `outcome.finding` entry on it, and `kabane_link` it `related` to the export so either reader
   can get from one to the other. Do not fix it unasked.
 
-An idea is the third case: a thread tagged `idea`, filed like a finding because nobody asked for
+An idea is the third case: a thread filed like a finding, of the kind the scope offers and with
+its declared classification set to `idea` (otherwise tagged `idea`), because nobody asked for
 it, but it grows instead of going stale. Research on it goes in child threads, and the idea
 gains one entry with each conclusion. A finding can go stale and an idea can be dropped when
 nobody acts on it; a request cannot. Kabane closes nothing on its own: a job or a person cancels

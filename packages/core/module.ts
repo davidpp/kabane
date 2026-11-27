@@ -41,6 +41,11 @@ import {
 	EntryKindSchema,
 } from "./schemas/comment";
 import type { Task, TaskState } from "./schemas/task";
+import {
+	CORE_THREAD_KINDS,
+	type ThreadKind,
+	ThreadKindSchema,
+} from "./schemas/thread-kind";
 import type { SyncFamily } from "./sync/resolve";
 
 /**
@@ -121,6 +126,12 @@ export type KabaneModule = {
 	 * it, never how to render it.
 	 */
 	kinds?: readonly EntryKind[];
+	/**
+	 * Thread kinds, as data (`ThreadKind`). Unlike entry kinds a name need not
+	 * carry the module's: a shipped kind keeps the name its threads already
+	 * store (`job`). Core's own names and another module's are refused.
+	 */
+	threadKinds?: readonly ThreadKind[];
 	tools?: readonly ToolDef[];
 	/** Appended to the MCP server instructions, one paragraph. */
 	instructions?: string;
@@ -135,7 +146,8 @@ export type KabaneModule = {
 	onTaskStateChange?: (
 		db: Db,
 		task: Task,
-		from: TaskState,
+		/** Undefined when the thread had no state (a kind with no workflow). */
+		from: TaskState | undefined,
 		to: TaskState,
 	) => Result<void>;
 };
@@ -215,6 +227,25 @@ const kindProblem = (
 	return undefined;
 };
 
+const threadKindProblem = (
+	module: KabaneModule,
+	claimed: Claims,
+): string | undefined => {
+	for (const kind of module.threadKinds ?? []) {
+		const where = `module "${module.name}" thread kind ${quoted(kind.name)}`;
+		const parsed = ThreadKindSchema.safeParse(kind);
+		if (!parsed.success) {
+			const issue = parsed.error.issues[0];
+			return `${where}: ${issue?.path.join(".") || "the declaration"} ${issue?.message ?? "is invalid"}`;
+		}
+		const owner = claimed.get(kind.name);
+		if (owner !== undefined)
+			return `${where}: the name is already ${owner}; pick another`;
+		claimed.set(kind.name, `a thread kind of module "${module.name}"`);
+	}
+	return undefined;
+};
+
 const readSurfaceProblem = (
 	modules: readonly KabaneModule[],
 ): string | undefined => {
@@ -225,7 +256,12 @@ const readSurfaceProblem = (
 		Object.values(CORE_TOOL_NAMES).map((name) => [name, "a core tool"]),
 	);
 	const kinds: Claims = new Map();
+	const threadKinds: Claims = new Map(
+		CORE_THREAD_KINDS.map((kind) => [kind.name, "a core thread kind"]),
+	);
 	for (const module of modules) {
+		const problem = threadKindProblem(module, threadKinds);
+		if (problem !== undefined) return problem;
 		for (const section of module.contextSections ?? []) {
 			const owner = sections.get(section.name);
 			if (owner !== undefined)
@@ -286,7 +322,8 @@ const problemWith = (modules: readonly KabaneModule[]): string | undefined => {
  * clock. Also refuses section namespace/uniqueness violations, tool-name
  * collisions, and a kind that is malformed, outside its module's namespace,
  * core's own `comment`, already declared, or projected into a section name
- * already taken. Registers nothing when it refuses.
+ * already taken, and a thread kind that is malformed or whose name core or
+ * another module already declares. Registers nothing when it refuses.
  */
 export const setModules = (modules: readonly KabaneModule[]): Result<void> => {
 	const problem = problemWith(modules);
@@ -325,6 +362,12 @@ export namespace Modules {
 			.flatMap((module) => module.kinds ?? [])
 			.find((declared) => declared.name === name);
 
+	/** Every registered module's thread kinds, with the module declaring each. */
+	export const threadKinds = (): { module: string; kind: ThreadKind }[] =>
+		registered.flatMap((module) =>
+			(module.threadKinds ?? []).map((kind) => ({ module: module.name, kind })),
+		);
+
 	/** The schema version this build of `module` writes: its migration count. */
 	export const schemaOf = (module: KabaneModule): number =>
 		module.migrations?.length ?? 0;
@@ -343,7 +386,7 @@ export namespace Modules {
 	export const taskStateChanged = (
 		db: Db,
 		task: Task,
-		from: TaskState,
+		from: TaskState | undefined,
 		to: TaskState,
 	): Result<void> => {
 		for (const module of registered) {

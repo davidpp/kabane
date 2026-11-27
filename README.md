@@ -15,6 +15,7 @@ complete setup; the hub is optional and you host it yourself.
 | `packages/extension` | `@kabane/extension` | Bun | the extension contract, and the argument parsing and outcomes every command is written with |
 | `packages/questions` | `@kabane/questions` | Bun + Workers | data module: the decisions agents ask a human on an issue (`kabane_ask`, `kabane_questions`, `kabane_answer`), replicated like tasks |
 | `packages/checklist` | `@kabane/checklist` | Bun + Workers | data module: the steps of one issue, ticked as they land (`kabane_checklist`, `kabane_checklistAdd`, `kabane_checklistTick`, `kabane_checklistEdit`), replicated like tasks |
+| `packages/registry` | `@kabane/registry` | Bun + Workers | scope-specific vocabularies and thread kinds, published without code; [CLI and MCP example](docs/getting-started.md#give-items-in-a-scope-a-classification) |
 | `packages/outcome` | `@kabane/outcome` | Bun + Workers | data module: decisions, findings, verifications and summaries projected into the issue's Discussion timeline |
 | `packages/handoff` | `@kabane/handoff` | Bun + Workers | data module: what whoever did the work on an issue, code, research or a design, leaves for the next reader, written from a template (summary, evidence, what is not verified, risk) with `kabane_handoff`; an entry on the issue's timeline, and the brief opens with the latest |
 | `packages/cli` | `kabane` | Bun | the device command line and MCP over stdio |

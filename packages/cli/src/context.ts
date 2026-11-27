@@ -30,6 +30,7 @@ import {
 import { handoffModule } from "@kabane/handoff";
 import { outcomeModule } from "@kabane/outcome";
 import { questionsModule } from "@kabane/questions";
+import { registryModule } from "@kabane/registry";
 import { SqliteDb } from "@kabane/sqlite";
 import {
 	type Config,
@@ -62,6 +63,7 @@ export const MODULES = [
 	handoffModule,
 	outcomeModule,
 	checklistModule,
+	registryModule,
 ];
 
 /** Wire the runtime with the first-party modules, then `extensions` (enabled extensions' modules). */

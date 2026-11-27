@@ -252,7 +252,7 @@ it("refuses a host.record write inside a write at once; a record read sees what 
 		scopeRequired: false,
 	});
 	let comment: [Result<unknown>, number] | undefined;
-	let seen: Result<{ state: string } | null> | undefined;
+	let seen: Result<{ state?: string } | null> | undefined;
 	value(
 		await store().write(async (tx) => {
 			tx.updateTask(task.id, { state: "next" });

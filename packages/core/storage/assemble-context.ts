@@ -50,7 +50,10 @@ import { Planner as PlannerWorkLogs } from "./work-logs";
 // ── Section helpers (pure, string | null — null omits the section) ──────────
 
 const metadataLine = (task: Task): string => {
-	const parts = [`**State:** ${task.state}`, `**Priority:** ${task.priority}`];
+	const parts = [
+		task.state ? `**State:** ${task.state}` : `**Kind:** ${task.kind}`,
+		`**Priority:** ${task.priority}`,
+	];
 	if (task.assignee) parts.push(`**Assignee:** ${task.assignee}`);
 	return parts.join(" · ");
 };
@@ -73,7 +76,7 @@ const upstreamSection = (links: UpstreamLink[]): string | null => {
 const neighborRef = (id: string, neighbors: Map<string, Task>): string => {
 	const t = neighbors.get(id);
 	if (!t) return id;
-	return `${t.shortId ?? id.slice(0, 8)} (${t.state}) — ${t.title}`;
+	return `${t.shortId ?? id.slice(0, 8)} (${t.state ?? t.kind}) — ${t.title}`;
 };
 
 /**
@@ -152,7 +155,7 @@ const positionSection = async (
 		lines.push(`- Subtasks (${subtasks.length}):`);
 		for (const s of subtasks) {
 			lines.push(
-				`  - ${s.shortId ?? s.id.slice(0, 8)} (${s.state}) — ${s.title}`,
+				`  - ${s.shortId ?? s.id.slice(0, 8)} (${s.state ?? s.kind}) — ${s.title}`,
 			);
 		}
 	}
