@@ -8,7 +8,7 @@ import { Modules } from "../module";
 import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
-	hasWorkflow,
+	initialStateOf,
 	type ItemKind,
 	KEYED_ID_PATTERN,
 	type Task,
@@ -217,9 +217,9 @@ const completedAtAfter = (
 	return new Date().toISOString();
 };
 
-/** A new thread's state: the draft's, else `inbox` for a kind with a workflow and none for any other. */
+/** A new thread's state: the draft's, else the one its kind's declaration starts it in. */
 const initialState = (draft: TaskDraft): TaskState | undefined =>
-	draft.state ?? (hasWorkflow(draft.kind ?? "task") ? "inbox" : undefined);
+	draft.state ?? initialStateOf(draft.kind ?? "task");
 
 const taskFromDraft = (
 	draft: TaskDraft,

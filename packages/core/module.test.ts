@@ -10,7 +10,6 @@ import { ok, type Result } from "./result";
 import { Runtime, withDb } from "./runtime";
 import { CONTEXT_SECTIONS } from "./schemas/assemble-context";
 import { type EntryKind, EntryKindSchema } from "./schemas/comment";
-import { WORKFLOW_KINDS } from "./schemas/task";
 import {
 	CORE_THREAD_KINDS,
 	PLAIN_THREAD_KIND,
@@ -281,12 +280,14 @@ it("finds a registered kind by name, and nothing for one no module declares", ()
 	expect(Runtime.entryKind("comment")).toBeUndefined();
 });
 
-it("declares a plain kind and every item kind core stores, under the same contract", () => {
+it("declares a plain kind and every shipped kind core stores, their identity under the same contract", () => {
 	expect(
 		CORE_THREAD_KINDS.map((declared): string => declared.name).sort(),
-	).toEqual([PLAIN_THREAD_KIND, ...WORKFLOW_KINDS].sort());
-	for (const declared of CORE_THREAD_KINDS)
-		expect(ThreadKindSchema.safeParse(declared).success).toBe(true);
+	).toEqual([PLAIN_THREAD_KIND, "task", "issue", "job"].sort());
+	for (const { name, label, description } of CORE_THREAD_KINDS)
+		expect(
+			ThreadKindSchema.safeParse({ name, label, description }).success,
+		).toBe(true);
 });
 
 it("lists a module's thread kind, whose name need not carry the module's", () => {
