@@ -43,6 +43,21 @@ const declaration = z
 			),
 	})
 	.strict();
+/**
+ * The stored documents `schema` accepts. A row it refuses (a peer on a later
+ * build added a field, say) is left out rather than failing the read: a
+ * declaration only decorates a record that reads without it (ADR 0010).
+ */
+const readable = <T>(schema: z.ZodType<T>, documents: string[]): T[] =>
+	documents.flatMap((document) => {
+		try {
+			const parsed = schema.safeParse(JSON.parse(document));
+			return parsed.success ? [parsed.data] : [];
+		} catch {
+			return [];
+		}
+	});
+
 const table = "registry_declarations";
 const kindTable = "registry_thread_kinds";
 
@@ -133,13 +148,10 @@ export namespace Registry {
 					`SELECT document FROM ${table} WHERE scope = ? ORDER BY id`,
 				)
 				.all(normalized.value)
-				.map((row): unknown => JSON.parse(row.document)),
+				.map((row) => row.document),
 		);
 		if (!rows.ok) return rows;
-		const parsed = declaration.array().safeParse(rows.value);
-		return parsed.success
-			? ok(parsed.data)
-			: err(new Error(parsed.error.message));
+		return ok(readable(declaration, rows.value));
 	};
 	/**
 	 * The thread kinds a reader can file in `scope`: core's, the registered
@@ -156,11 +168,10 @@ export namespace Registry {
 					`SELECT document FROM ${kindTable} WHERE scope = ? ORDER BY id`,
 				)
 				.all(normalized.value)
-				.map((row): unknown => JSON.parse(row.document)),
+				.map((row) => row.document),
 		);
 		if (!rows.ok) return rows;
-		const published = ThreadKindSchema.array().safeParse(rows.value);
-		if (!published.success) return err(new Error(published.error.message));
+		const published = readable(ThreadKindSchema, rows.value);
 		const kinds: DiscoveredKind[] = [
 			// Identity only: what core does with its own kinds is not a declaration's.
 			...CORE_THREAD_KINDS.map(({ name, label, description }) => ({
@@ -175,7 +186,7 @@ export namespace Registry {
 			})),
 		];
 		const shadowed: (DiscoveredKind & { by: KindSource })[] = [];
-		for (const kind of published.data) {
+		for (const kind of published) {
 			const by = declaredInCode(kind.name);
 			if (by === undefined) kinds.push({ ...kind, source: "scope" });
 			else shadowed.push({ ...kind, source: "scope", by });

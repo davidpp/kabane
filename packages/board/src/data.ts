@@ -364,6 +364,7 @@ export namespace BoardData {
 	 * otherwise from core and the registered modules; the stored name when nothing declares it, as
 	 * when the extension that declared it is disabled (ADR 0010).
 	 */
+	/** The kind's declared label, else its stored name: a label never fails a detail. */
 	const kindLabelOf = async (
 		basePath: string,
 		task: Task,
@@ -377,7 +378,7 @@ export namespace BoardData {
 							...Runtime.threadKinds().map(({ kind }) => kind),
 						],
 					});
-		if (!declared.ok) return declared;
+		if (!declared.ok) return ok(task.kind);
 		return ok(
 			declared.value.kinds.find((kind) => kind.name === task.kind)?.label ??
 				task.kind,
@@ -397,10 +398,10 @@ export namespace BoardData {
 			keepsRegistry() && task.scopeUri
 				? await Registry.list(basePath, task.scopeUri)
 				: ok([]);
-		if (!declared.ok) return declared;
+		const declarations = declared.ok ? declared.value : [];
 		return ok(
 			entries.map(([key, value]): AttributeValue => {
-				const label = declared.value
+				const label = declarations
 					.find((declaration) => declaration.key === key)
 					?.choices.find((choice) => choice.value === value)?.label;
 				return label ? { key, value, label } : { key, value };

@@ -178,3 +178,38 @@ it("converges two offline publications of one name to the same declaration every
 	expect(onAlpha).toHaveLength(1);
 	expect(await scopeKind(beta)).toEqual(onAlpha);
 });
+
+it("leaves out a stored declaration it cannot read and lists the rest", async () => {
+	const base = await device("alpha");
+	const classification = {
+		key: "signal",
+		description: "What sort of signal",
+		choices: [{ value: "finding", label: "Finding" }],
+	};
+	unwrap(await Registry.publish(base, "acme", signal));
+	unwrap(await Registry.publish(base, "acme", classification));
+	// What a peer on a later build could sync in: a field this build does not know.
+	unwrap(
+		await withDb(base, (db) => {
+			for (const [tbl, id, document] of <[string, string, string][]>[
+				[
+					"registry_thread_kinds",
+					'["kabane://scope/acme","pager"]',
+					'{"name":"pager","label":"Pager","icon":"!"}',
+				],
+				[
+					"registry_declarations",
+					'["kabane://scope/acme","urgency"]',
+					'{"key":"urgency","description":"How soon","choices":[{"value":"now","label":"Now"}],"colour":"red"}',
+				],
+			])
+				db.run(
+					`INSERT INTO ${tbl} (id, scope, document, publication, updated_by) VALUES (?, 'kabane://scope/acme', ?, '01', 'x')`,
+					[id, document],
+				);
+		}),
+	);
+	expect(await names(base, "acme")).toContain("scope:signal");
+	expect(await names(base, "acme")).not.toContain("scope:pager");
+	expect(unwrap(await Registry.list(base, "acme"))).toEqual([classification]);
+});

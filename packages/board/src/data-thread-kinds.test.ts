@@ -12,6 +12,7 @@ import {
 	type Result,
 	Runtime,
 	ScopeUri,
+	withDb,
 } from "@kabane/core";
 import { handoffModule } from "@kabane/handoff";
 import { questionsModule } from "@kabane/questions";
@@ -155,4 +156,34 @@ it("reads the same threads by their stored names without the module or the regis
 	} finally {
 		configure([registryModule, monitor]);
 	}
+});
+
+// Last: it leaves a row behind in the shared scope that no later test should see.
+it("opens a thread's detail when its scope holds a declaration this build cannot read", async () => {
+	unwrap(
+		await withDb(BASE, (db) => {
+			db.run(
+				"INSERT INTO registry_thread_kinds (id, scope, document, publication, updated_by) VALUES (?, ?, ?, '01', 'x')",
+				[
+					JSON.stringify([SCOPE, "pager"]),
+					SCOPE,
+					'{"name":"pager","label":"Pager","icon":"!"}',
+				],
+			);
+			db.run(
+				"INSERT INTO registry_declarations (id, scope, document, publication, updated_by) VALUES (?, ?, ?, '01', 'x')",
+				[
+					JSON.stringify([SCOPE, "urgency"]),
+					SCOPE,
+					'{"key":"urgency","description":"How soon","choices":[],"colour":"red"}',
+				],
+			);
+		}),
+	);
+	const detail = unwrap(await BoardData.taskDetail(BASE, signal));
+	expect(detail.kindLabel).toBe("Monitor signal");
+	expect(detail.task.description).toBe("Seen on /login.");
+	expect(DetailModel.attributes(detail)).toEqual([
+		{ key: "finding_type", name: "finding type", value: "SQL injection" },
+	]);
 });
