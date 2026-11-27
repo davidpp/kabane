@@ -517,6 +517,21 @@ is refused. If a synced scope kind has the name of a module kind on this device,
 wins and the scope's is listed under `shadowed`. A client that meets a kind no declaration
 covers shows its name.
 
+File a thread of any kind with `--kind`, and read threads of one kind back with the same flag:
+
+```bash
+kabane add "Error rate doubled on checkout" --kind signal --scope acme
+kabane add "Notes from the incident call" --kind thread --scope acme
+kabane list --kind signal --scope acme
+```
+
+A `task`, `issue` or `job` starts in `inbox`. A thread of any other kind, a plain `thread` or
+a scope's `signal`, starts with no state, so it never shows in a `--state next` work queue;
+`--state` gives it one. `kabane list` with no `--kind` shows every kind but `job`. Over MCP,
+`kabane_add`, `kabane_edit`, `kabane_list`, `kabane_today` and the threads of `kabane_apply`
+take the same `kind`. Kabane stores the kind as it is written: a well-formed name nobody
+declares is filed, read, synced and exported like any other, and shows as its name.
+
 ## Updating
 
 Each install updates with its own command:
