@@ -9,6 +9,7 @@ import {
 // Planner.* functions over the configured Db provider (same path as the CLI — no server required),
 // so a future swap to a remote client touches this file only.
 import {
+	CORE_THREAD_KINDS,
 	type EntryKind,
 	err,
 	type ItemKind,
@@ -32,6 +33,7 @@ import {
 	type QuestionView,
 	questionsModule,
 } from "@kabane/questions";
+import { Registry, registryModule } from "@kabane/registry";
 
 export namespace BoardData {
 	// Sections rendered top-to-bottom (linear-tui grouped-list order) — every one of the seven states,
@@ -61,14 +63,40 @@ export namespace BoardData {
 
 	export type SectionState = (typeof SECTION_STATES)[number];
 
+	// The section of threads with no work state: a plain thread, or a kind with no workflow such as
+	// a scope's `signal`. It is open (nothing closes a thread without a state), so it sits with the
+	// unresolved sections, after the parked backlog and before the archive.
+	export const STATELESS = "stateless";
+	export type SectionKey = SectionState | typeof STATELESS;
+
+	/** Every section in display order: the states, and the stateless one among them. */
+	export const SECTIONS = [
+		"in_progress",
+		"next",
+		"inbox",
+		"waiting",
+		"someday",
+		STATELESS,
+		"done",
+		"cancelled",
+	] as const satisfies readonly SectionKey[];
+
+	/** The section a task's row goes in: its state's, or the stateless one. */
+	export const sectionOf = (task: Pick<Task, "state">): SectionKey =>
+		task.state ?? STATELESS;
+
+	/** A section's heading: its state's label, or `Threads` for the threads with none. */
+	export const sectionLabel = (key: SectionKey): string =>
+		key === STATELESS ? "Threads" : TASK_STATE_DISPLAY[key].label;
+
 	// The two lifecycle buckets. `closed` is exactly what core's `includeClosed: false` excludes
 	// (storage/tasks.ts: `state NOT IN ('done', 'cancelled')`), so the board's split and the query
 	// layer's agree by construction rather than by coincidence. Everything else — someday included —
 	// is unresolved: parked is not finished.
 	const CLOSED_STATES: readonly TaskState[] = ["done", "cancelled"];
 
-	export const isClosed = (state: TaskState): boolean =>
-		CLOSED_STATES.includes(state);
+	export const isClosed = (state: SectionKey): boolean =>
+		state !== STATELESS && CLOSED_STATES.includes(state);
 
 	// The archive window for instant client-side tier-1 search, shared by done and cancelled. FTS
 	// (tier 2) owns the deep archive; the loaded window is just the instant tier — 50 recent each is
@@ -84,7 +112,7 @@ export namespace BoardData {
 	};
 
 	export type BoardSection = {
-		state: SectionState;
+		state: SectionKey;
 		label: string;
 		rows: BoardRow[];
 	};
@@ -116,11 +144,11 @@ export namespace BoardData {
 	// `subtasks` are the children of the visible top-level tasks (fetched separately so done children
 	// under an open parent still show).
 	export const assembleSections = (
-		tasksByState: Partial<Record<SectionState, Task[]>>,
+		tasksByState: Partial<Record<SectionKey, Task[]>>,
 		subtasks: Task[],
 	): BoardSection[] => {
 		const visibleIds = new Set<string>();
-		for (const state of SECTION_STATES) {
+		for (const state of SECTIONS) {
 			for (const task of tasksByState[state] ?? []) visibleIds.add(task.id);
 		}
 
@@ -138,7 +166,7 @@ export namespace BoardData {
 		}
 
 		const sections: BoardSection[] = [];
-		for (const state of SECTION_STATES) {
+		for (const state of SECTIONS) {
 			const rows: BoardRow[] = [];
 			for (const task of tasksByState[state] ?? []) {
 				// Deduped: a child that is rendering under its parent doesn't render twice. Keyed on the
@@ -149,11 +177,7 @@ export namespace BoardData {
 				rows.push({ task, children: childrenByParent.get(task.id) ?? [] });
 			}
 			if (rows.length > 0) {
-				sections.push({
-					state,
-					label: TASK_STATE_DISPLAY[state].label,
-					rows,
-				});
+				sections.push({ state, label: sectionLabel(state), rows });
 			}
 		}
 		return sections;
@@ -168,12 +192,12 @@ export namespace BoardData {
 		basePath: string,
 		filters: BoardFilters = {},
 	): Promise<Result<BoardSection[]>> => {
-		const tasksByState: Partial<Record<SectionState, Task[]>> = {};
+		const tasksByState: Partial<Record<SectionKey, Task[]>> = {};
 		const parentIds: string[] = [];
-		for (const state of SECTION_STATES) {
+		for (const state of SECTIONS) {
 			const closed = isClosed(state);
 			const query: Partial<TaskQuery> = {
-				state,
+				...(state === STATELESS ? { stateless: true } : { state }),
 				kind: filters.kind,
 				scopeUri: filters.scopeUri,
 				includeClosed: closed,
@@ -198,10 +222,10 @@ export namespace BoardData {
 		const held = await heldTask(basePath, filters, tasksByState);
 		if (!held.ok) return held;
 		const extra = held.value;
-		if (extra?.state) {
-			tasksByState[extra.state] = [...(tasksByState[extra.state] ?? []), extra];
-			if (!extra.parentTaskId && !isClosed(extra.state))
-				parentIds.push(extra.id);
+		if (extra) {
+			const section = sectionOf(extra);
+			tasksByState[section] = [...(tasksByState[section] ?? []), extra];
+			if (!extra.parentTaskId && !isClosed(section)) parentIds.push(extra.id);
 		}
 
 		const subtasks = await loadSubtasks(basePath, parentIds, filters.kind);
@@ -244,7 +268,7 @@ export namespace BoardData {
 	const heldTask = async (
 		basePath: string,
 		{ held, scopeUri, kind }: BoardFilters,
-		tasksByState: Partial<Record<SectionState, Task[]>>,
+		tasksByState: Partial<Record<SectionKey, Task[]>>,
 	): Promise<Result<Task | undefined>> => {
 		if (held === undefined) return ok(undefined);
 		const loaded = Object.values(tasksByState).some((tasks) =>
@@ -318,7 +342,14 @@ export namespace BoardData {
 		questions: QuestionView[];
 		// Its checklist's live items, in list order.
 		checklist: ChecklistItemView[];
+		// Its kind's label where core, a module or its exact scope declares the kind; else its name.
+		kindLabel: string;
+		// The declared attributes set on it, by key: the value as stored, and the label its scope's
+		// declaration gives that value. A key or value the device has no declaration for has none.
+		attributes: AttributeValue[];
 	};
+
+	export type AttributeValue = { key: string; value: string; label?: string };
 
 	// A module's table exists only where the host registered the module (the CLI registers both). A
 	// host that did not has no decisions or checklist to show, which is not a failed read.
@@ -326,6 +357,56 @@ export namespace BoardData {
 		Runtime.modules().some((module) => module.name === name);
 	const asksQuestions = (): boolean => registered(questionsModule.name);
 	const keepsChecklists = (): boolean => registered(checklistModule.name);
+	const keepsRegistry = (): boolean => registered(registryModule.name);
+
+	/**
+	 * The label of `task`'s kind: from its exact scope's published kinds when the registry is here,
+	 * otherwise from core and the registered modules; the stored name when nothing declares it, as
+	 * when the extension that declared it is disabled (ADR 0010).
+	 */
+	const kindLabelOf = async (
+		basePath: string,
+		task: Task,
+	): Promise<Result<string>> => {
+		const declared =
+			keepsRegistry() && task.scopeUri
+				? await Registry.kinds(basePath, task.scopeUri)
+				: ok({
+						kinds: [
+							...CORE_THREAD_KINDS,
+							...Runtime.threadKinds().map(({ kind }) => kind),
+						],
+					});
+		if (!declared.ok) return declared;
+		return ok(
+			declared.value.kinds.find((kind) => kind.name === task.kind)?.label ??
+				task.kind,
+		);
+	};
+
+	/** The declared attributes on `task`, each value with its choice's label in the task's scope. */
+	const attributesOf = async (
+		basePath: string,
+		task: Task,
+	): Promise<Result<AttributeValue[]>> => {
+		const stored = await Planner.getCustomAttributes(basePath, task.id);
+		if (!stored.ok) return stored;
+		const entries = Object.entries(stored.value);
+		if (entries.length === 0) return ok([]);
+		const declared =
+			keepsRegistry() && task.scopeUri
+				? await Registry.list(basePath, task.scopeUri)
+				: ok([]);
+		if (!declared.ok) return declared;
+		return ok(
+			entries.map(([key, value]): AttributeValue => {
+				const label = declared.value
+					.find((declaration) => declaration.key === key)
+					?.choices.find((choice) => choice.value === value)?.label;
+				return label ? { key, value, label } : { key, value };
+			}),
+		);
+	};
 
 	const taskQuestions = async (
 		basePath: string,
@@ -412,6 +493,8 @@ export namespace BoardData {
 			contextRefs,
 			questions,
 			checklist,
+			kindLabel,
+			attributes,
 		] = await Promise.all([
 			Planner.getEntries(basePath, id),
 			Planner.getWorkLogs(basePath, id),
@@ -428,6 +511,8 @@ export namespace BoardData {
 			Planner.getContextRefs(basePath, task.value.id),
 			taskQuestions(basePath, task.value.id),
 			taskChecklist(basePath, task.value.id),
+			kindLabelOf(basePath, task.value),
+			attributesOf(basePath, task.value),
 		]);
 		if (!entries.ok) return entries;
 		if (!workLogs.ok) return workLogs;
@@ -437,6 +522,8 @@ export namespace BoardData {
 		if (!contextRefs.ok) return contextRefs;
 		if (!questions.ok) return questions;
 		if (!checklist.ok) return checklist;
+		if (!kindLabel.ok) return kindLabel;
+		if (!attributes.ok) return attributes;
 		const neighbors = await Planner.getTasks(
 			basePath,
 			neighborIds(task.value, links.value),
@@ -454,6 +541,8 @@ export namespace BoardData {
 			contextRefs: contextRefs.value,
 			questions: questions.value,
 			checklist: checklist.value,
+			kindLabel: kindLabel.value,
+			attributes: attributes.value,
 		});
 	};
 

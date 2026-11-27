@@ -310,6 +310,27 @@ describe("BoardNav.reduceKey", () => {
 			});
 		});
 
+		it("leaves a thread with no state as it is under d, n, s and x, and says so", () => {
+			const withThread = state({
+				sections: [
+					{
+						state: BoardData.STATELESS,
+						label: "Threads",
+						rows: [row(task({ id: "sg", kind: "signal", state: undefined }))],
+					},
+				],
+				selectedId: "sg",
+			});
+			for (const name of ["d", "n", "s", "x"]) {
+				const next = reduce(withThread, { name });
+				expect(next.effect).toEqual({
+					type: "notice",
+					notice: { text: "MILL-1 has no state to move", tone: "info" },
+				});
+				expect(next.state.undo).toEqual([]);
+			}
+		});
+
 		it("mutation keys are no-ops when nothing is selected", () => {
 			const s = state();
 			expect(reduce(s, { name: "]" }).effect.type).toBe("none");
@@ -1803,6 +1824,24 @@ describe("withSearchResults (FTS tier-2 merge)", () => {
 		const section = merged.sections.find((sec) => sec.state === "cancelled");
 		expect(section?.rows.map((r) => r.task.id)).toEqual(["cx1"]);
 		expect(section?.label).toBe(TASK_STATE_DISPLAY.cancelled.label);
+	});
+
+	it("places a hit with no state in the Threads section, between someday and done", () => {
+		const s = withQuery("x");
+		const merged = BoardNav.withSearchResults(s, "x", [
+			task({ id: "dn3", title: "x done", state: "done" }),
+			task({ id: "sg1", title: "x signal", kind: "signal", state: undefined }),
+		]);
+		const section = merged.sections.find(
+			(sec) => sec.state === BoardData.STATELESS,
+		);
+		expect(section?.rows.map((r) => r.task.id)).toEqual(["sg1"]);
+		expect(section?.label).toBe("Threads");
+		expect(merged.sections.map((sec) => sec.state)).toEqual([
+			"next",
+			BoardData.STATELESS,
+			"done",
+		]);
 	});
 
 	it("keeps every merged section in SECTION_STATES display order", () => {

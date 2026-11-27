@@ -25,6 +25,7 @@
 		"@kabane/core": "workspace:*",
 		"@kabane/extension": "workspace:*",
 		"@kabane/questions": "workspace:*",
+		"@kabane/registry": "workspace:*",
 		"@opentui/core": "0.9.0",
 		"@opentui/react": "0.9.0",
 		"diff": "9.0.0",

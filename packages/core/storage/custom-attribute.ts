@@ -9,6 +9,10 @@ export const CustomAttributeKeySchema = z
 /** Keep declared keys separate from the built-in attributes and tags. */
 export const customAttributeKey = (key: string): string => `custom.${key}`;
 
+/** The declared key an attribute stores, or undefined when it is not a declared one. */
+export const declaredKeyOf = (stored: string): string | undefined =>
+	stored.startsWith("custom.") ? stored.slice("custom.".length) : undefined;
+
 export const setCustomAttribute = (
 	db: Db,
 	threadId: string,

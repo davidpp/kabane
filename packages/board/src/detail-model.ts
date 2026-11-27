@@ -136,8 +136,14 @@ export namespace DetailModel {
 			)
 			.map((q) => ({ id: q.id, question: q.question }));
 
-	/** The task at a glance: state, a priority other than normal, kind, assignee, review. */
-	export const summary = (task: Task): SummaryPart[] => {
+	/**
+	 * The task at a glance: state, a priority other than normal, kind, assignee, review. The kind
+	 * reads by its declared label (`kindLabel`, BoardData.DetailRecords), lowercased as the state is.
+	 */
+	export const summary = (
+		task: Task,
+		kindLabel: string = task.kind,
+	): SummaryPart[] => {
 		const parts: SummaryPart[] = task.state
 			? [
 					{
@@ -148,7 +154,7 @@ export namespace DetailModel {
 			: [];
 		if (task.priority !== "normal")
 			parts.push({ text: task.priority, request: false });
-		parts.push({ text: task.kind, request: false });
+		parts.push({ text: kindLabel.toLowerCase(), request: false });
 		if (task.assignee)
 			parts.push({ text: `@${task.assignee}`, request: false });
 		if (task.needsReview) parts.push({ text: "needs review", request: true });
@@ -646,6 +652,23 @@ export namespace DetailModel {
 			uri: ref.uri,
 		}));
 
+	/** One declared attribute on the thread: its key as words, and its value by its choice's label. */
+	export type AttributeLine = { key: string; name: string; value: string };
+
+	/**
+	 * The thread's declared attributes, by key. A key reads as words (`finding_type` → `finding
+	 * type`); a value reads by the label its scope's declaration gives it, else as stored, so one the
+	 * device has no declaration for still reads.
+	 */
+	export const attributes = (
+		records: BoardData.DetailRecords,
+	): AttributeLine[] =>
+		records.attributes.map((attribute) => ({
+			key: attribute.key,
+			name: attribute.key.replace(/[_-]+/g, " "),
+			value: attribute.label ?? attribute.value,
+		}));
+
 	// ── comments ────────────────────────────────────────────────────────────────────────────────
 
 	/**
@@ -730,6 +753,7 @@ export namespace DetailModel {
 		const inForce = records ? now(records).length > 0 : false;
 		const described =
 			Boolean(records?.task.description?.trim()) ||
+			(records?.attributes.length ?? 0) > 0 ||
 			(records?.contextRefs.length ?? 0) > 0;
 		return [
 			{ tab: "now", empty: !inForce, ...(freshNow ? { fresh: true } : {}) },

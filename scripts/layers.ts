@@ -71,6 +71,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@kabane/core",
 			"@kabane/checklist",
 			"@kabane/questions",
+			"@kabane/registry",
 			"@kabane/acp",
 			"@kabane/extension",
 		],

@@ -20,6 +20,7 @@ import {
 	TaskUpdateSchema,
 } from "../schemas";
 import { taskReceipt } from "../task-output";
+import { declaredKeyOf } from "./custom-attribute";
 import { CLAIM_KIND, RELEASE_KIND } from "./families";
 import {
 	derivePrefix,
@@ -501,6 +502,27 @@ export namespace Planner {
 			return row ? rowToTask(row) : null;
 		});
 	};
+
+	/**
+	 * The declared attributes set on a thread (`kabane_registrySet`), by their
+	 * declared key, values as stored. A key no declaration covers any more is
+	 * here all the same: the record holds it.
+	 */
+	export const getCustomAttributes = async (
+		basePath: string,
+		id: string,
+	): Promise<Result<Record<string, string>>> =>
+		withDb(basePath, (db) => {
+			const rows = RecordRead.attributes(db, id);
+			if (!rows.ok) throw rows.error;
+			const attributes: Record<string, string> = {};
+			for (const row of rows.value) {
+				const key = declaredKeyOf(row.key);
+				if (key !== undefined && row.value !== null)
+					attributes[key] = row.value;
+			}
+			return attributes;
+		});
 
 	/**
 	 * Find a task by its source ID (provenance.sourceId).
