@@ -71,12 +71,14 @@ describe("TaskSchema deadline", () => {
 });
 
 describe("TaskSchema kind", () => {
-	it("accepts job as a third kind and refuses an unknown one", () => {
-		expect(
-			TaskDraftSchema.safeParse({ title: "Nightly", kind: "job" }).success,
-		).toBe(true);
-		expect(
-			TaskDraftSchema.safeParse({ title: "Nightly", kind: "cron" }).success,
-		).toBe(false);
+	it("accepts any kind written as a name and refuses one that is not", () => {
+		for (const kind of ["job", "thread", "signal", "vendor.alert"])
+			expect(
+				TaskDraftSchema.safeParse({ title: "Nightly", kind }).success,
+			).toBe(true);
+		for (const kind of ["Signal", "two words", "", ".x"])
+			expect(
+				TaskDraftSchema.safeParse({ title: "Nightly", kind }).success,
+			).toBe(false);
 	});
 });

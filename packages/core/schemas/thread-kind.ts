@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { EntryKindNameSchema } from "./comment";
-import type { ItemKind } from "./task";
+import type { WorkflowKind } from "./task";
 
 export const ThreadKindSchema = z
 	.object({
@@ -23,7 +23,7 @@ export const PLAIN_THREAD_KIND = "thread";
 
 /**
  * The kinds core declares. Their names are reserved: no module or scope may
- * declare one. `module.test.ts` holds that every `ItemKind` is declared here.
+ * declare one. `module.test.ts` holds that every `WORKFLOW_KINDS` entry is declared here.
  */
 export const CORE_THREAD_KINDS = [
 	{
@@ -47,5 +47,5 @@ export const CORE_THREAD_KINDS = [
 		description: "A standing request a schedule runs.",
 	},
 ] as const satisfies readonly (ThreadKind & {
-	name: ItemKind | typeof PLAIN_THREAD_KIND;
+	name: WorkflowKind | typeof PLAIN_THREAD_KIND;
 })[];

@@ -133,13 +133,13 @@ const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 const add = define({
 	name: CORE_TOOL_NAMES.add,
 	kind: "write",
-	description: `Create a task, an issue or a job (inbox by default).
+	description: `Create a task, an issue, a job, a plain thread or a thread of any declared kind (a task, inbox, by default).
 
 Parameters:
 - title: What to do, action-oriented
-- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up) or 'job' (a standing request a schedule runs). Default task
+- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Default task
 - description: Optional Markdown body; for an issue this is the brief an agent reads
-- state: inbox, next, in_progress, waiting, someday. Default inbox; use next for work ready to be picked up
+- state: inbox, next, in_progress, waiting, someday. Default inbox for a task, issue or job; a thread of any other kind has no state unless given one. Use next for work ready to be picked up
 - priority: urgent, high, normal, low. Default normal
 - scopeUri: ${SCOPE_HINT}
 - assignee: Who completes it: a person, or an agent runtime such as claude, hermes, codex
@@ -177,7 +177,7 @@ Parameters:
 			title: args.title,
 			description: args.description,
 			kind: args.kind ?? "task",
-			state: args.state ?? "inbox",
+			state: args.state,
 			priority: args.priority ?? "normal",
 			scopeUri: scope.value,
 			assignee: args.assignee,
@@ -207,7 +207,7 @@ const apply = define({
 
 Parameters:
 - key: The plan's key, lowercase letters, digits, dots, dashes and underscores
-- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to issue. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
+- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to issue, and any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
 - scopeUri: ${SCOPE_HINT} For every thread that names none`,
 	input: {
 		key: z.string().min(1),
@@ -278,7 +278,7 @@ const list = define({
 
 Parameters:
 - state: inbox, next, in_progress, waiting, someday, done, cancelled
-- kind: task, issue or job; omit for every kind but job (a job is a standing request a schedule runs)
+- kind: Any thread kind (task, issue, job, thread or a declared one); omit for every kind but job (a job is a standing request a schedule runs)
 - priority: urgent, high, normal, low
 - assignee: Who it is assigned to. An agent runtime polls with its own name and state next to find work
 - scopeUri: ${SCOPE_HINT} Omit for every scope
@@ -378,7 +378,7 @@ const today = define({
 
 Parameters:
 - scopeUri: ${SCOPE_HINT} Omit for every scope
-- kind: task, issue or job; omit for every kind but job
+- kind: Any thread kind; omit for every kind but job
 - includeDone: Include completed tasks (default false)
 - responseFormat: concise returns independent bucket pages, all text <=16KiB; omitted/full returns legacy buckets
 - limit: Concise per-bucket rows (default 20, maximum 100)
@@ -963,7 +963,7 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 
 /** Server-level instructions sent on initialize. */
 export const SERVER_INSTRUCTIONS = `Kabane is a shared work queue for humans and agent runtimes.
-Three kinds of item: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up; 'job' is a standing request a schedule runs, which a listing leaves out unless it names kind job.
+Three kinds of item have a workflow: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up; 'job' is a standing request a schedule runs, which a listing leaves out unless it names kind job. A 'thread' is plain, with no state of its own, and a scope may declare more kinds (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
 To brainstorm into work: kabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
 To pick up work as a runtime: kabane_list with responseFormat concise, your assignee and state next (follow nextCursor with the same filters), kabane_context on the chosen id, kabane_edit to in_progress with responseFormat concise, then kabane_log and kabane_comment as you go, kabane_done with responseFormat concise at the end. Use kabane_get for full fields; omitted/full formats remain legacy and unbounded.
 Scopes are the context boundary (a repo, a client). Discover them with kabane_scopeList and pass scopeUri on writes.

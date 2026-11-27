@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { ENTRY_KIND_PATTERN } from "./comment";
 import { DeadlineSchema } from "./deadline";
 
 // ============================================================
@@ -104,19 +105,33 @@ export const TaskSourceSchema = z.enum([
 export type TaskSource = z.infer<typeof TaskSourceSchema>;
 
 /**
- * Item kind - discriminates between personal tasks, agent issues and scheduled jobs
- *
- * All use the same states but with different mental models:
+ * A thread's kind (ADR 0010): any lowercase `name` or `name.key`, stored as
+ * it comes and never a closed list, so a scope or a module can file a kind
+ * core has never heard of. A declaration (`thread-kind.ts`) gives a kind its
+ * label; a kind none declares reads as its name.
+ */
+export const ItemKindSchema = z
+	.string()
+	.regex(
+		ENTRY_KIND_PATTERN,
+		'must be lowercase letters, digits and dashes, as "name" or "name.key" (e.g. "thread", "signal")',
+	);
+export type ItemKind = z.infer<typeof ItemKindSchema>;
+
+/**
+ * The kinds with a work state of their own, the same states read three ways:
  * - 'task': Personal GTD workflow (inbox → next → done)
  * - 'issue': Agent/dev workflow (backlog → in_progress → review → done)
  * - 'job': A standing request a schedule runs. A listing that names no kind leaves jobs out.
+ * A thread of one of them starts in `inbox`; a thread of any other kind starts
+ * with no state, until a write gives it one.
  */
-export const ItemKindSchema = z.enum([
-	"task", // Personal GTD task (focus management, energy levels)
-	"issue", // Agent work item (evidence, verification, review)
-	"job", // Standing request a schedule runs
-]);
-export type ItemKind = z.infer<typeof ItemKindSchema>;
+export const WORKFLOW_KINDS = ["task", "issue", "job"] as const;
+export type WorkflowKind = (typeof WORKFLOW_KINDS)[number];
+
+/** Whether a new thread of `kind` starts with a work state. */
+export const hasWorkflow = (kind: string): kind is WorkflowKind =>
+	(WORKFLOW_KINDS as readonly string[]).includes(kind);
 
 /**
  * Provenance tracking - full origin information
@@ -155,11 +170,15 @@ export const TaskSchema = z.object({
 	/** Detailed description/notes (Markdown) */
 	description: z.string().optional(),
 
-	/** Item kind - 'task' (personal GTD), 'issue' (agent work) or 'job' (scheduled) */
+	/** Thread kind: 'task' (personal GTD), 'issue' (agent work), 'job' (scheduled), 'thread' (plain) or any declared kind */
 	kind: ItemKindSchema.default("task"),
 
-	/** Current state in GTD workflow */
-	state: TaskStateSchema.default("inbox"),
+	/**
+	 * Current state in GTD workflow. Absent on a thread whose kind has no
+	 * workflow (`hasWorkflow`) until a write gives it one; a new thread of a
+	 * workflow kind starts in `inbox`.
+	 */
+	state: TaskStateSchema.optional(),
 
 	/** Priority level */
 	priority: TaskPrioritySchema.default("normal"),

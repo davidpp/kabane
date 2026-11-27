@@ -47,7 +47,7 @@ export const edit: Command = {
 	name: "edit",
 	summary: "Update fields on a task",
 	usage:
-		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind task|issue|job] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]",
+		"kabane edit <id> [--title <t>] [--description <d>] [--state <s>] [--priority <p>] [--kind <kind>] [--assignee <who>|none] [--scope <uri>] [--parent <id>|none] [--tags a,b] [--due YYYY-MM-DD|YYYY-MM-DDTHH:MM] [--format concise|full]",
 	run: async (args, ctx) => {
 		const format = responseFormat(args);
 		if (!format.ok) return usage(format.error.message, edit.usage);

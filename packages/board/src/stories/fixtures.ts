@@ -279,7 +279,7 @@ export namespace Fixtures {
 		ordinal: n,
 		title: on.title,
 		priority: on.priority,
-		state: on.state,
+		state: on.state ?? "inbox",
 		shortId: on.shortId,
 		...over,
 	});

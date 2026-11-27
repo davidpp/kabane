@@ -198,7 +198,7 @@ export namespace BoardData {
 		const held = await heldTask(basePath, filters, tasksByState);
 		if (!held.ok) return held;
 		const extra = held.value;
-		if (extra) {
+		if (extra?.state) {
 			tasksByState[extra.state] = [...(tasksByState[extra.state] ?? []), extra];
 			if (!extra.parentTaskId && !isClosed(extra.state))
 				parentIds.push(extra.id);

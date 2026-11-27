@@ -70,7 +70,7 @@ export const selectTaskQuery = (
 		params.push(...state.params);
 	}
 	if (!query.includeClosed)
-		conditions.push("state NOT IN ('done', 'cancelled')");
+		conditions.push("(state IS NULL OR state NOT IN ('done', 'cancelled'))");
 	if (!query.includeDeferred) {
 		conditions.push("(defer_until IS NULL OR defer_until <= ?)");
 		params.push(now);
@@ -170,7 +170,8 @@ export const selectTodayBucket = (
 		due.sql,
 	];
 	const params: SqlValue[] = [...due.params];
-	if (!opts.includeDone) conditions.push("state NOT IN ('done', 'cancelled')");
+	if (!opts.includeDone)
+		conditions.push("(state IS NULL OR state NOT IN ('done', 'cancelled'))");
 	if (opts.scopeUri) {
 		const scope = scopeClause(opts.scopeUri, "scope_uri");
 		conditions.push(scope.sql);

@@ -10,7 +10,7 @@ import { ok, type Result } from "./result";
 import { Runtime, withDb } from "./runtime";
 import { CONTEXT_SECTIONS } from "./schemas/assemble-context";
 import { type EntryKind, EntryKindSchema } from "./schemas/comment";
-import { ItemKindSchema } from "./schemas/task";
+import { WORKFLOW_KINDS } from "./schemas/task";
 import {
 	CORE_THREAD_KINDS,
 	PLAIN_THREAD_KIND,
@@ -284,7 +284,7 @@ it("finds a registered kind by name, and nothing for one no module declares", ()
 it("declares a plain kind and every item kind core stores, under the same contract", () => {
 	expect(
 		CORE_THREAD_KINDS.map((declared): string => declared.name).sort(),
-	).toEqual([PLAIN_THREAD_KIND, ...ItemKindSchema.options].sort());
+	).toEqual([PLAIN_THREAD_KIND, ...WORKFLOW_KINDS].sort());
 	for (const declared of CORE_THREAD_KINDS)
 		expect(ThreadKindSchema.safeParse(declared).success).toBe(true);
 });

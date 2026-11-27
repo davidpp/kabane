@@ -73,7 +73,10 @@ export const entries = async (host: Host): Promise<Result<Entry[]>> => {
 	for (const job of jobs.value) {
 		const task = await host.record.get({ id: job.taskId });
 		if (!task.ok) return task;
-		if (task.value === null || ["done", "cancelled"].includes(task.value.state))
+		if (
+			task.value === null ||
+			["done", "cancelled"].includes(task.value.state ?? "")
+		)
 			continue;
 		found.push({ job, task: task.value });
 	}
@@ -102,7 +105,7 @@ const entry = async (d: Deps, key: string): Promise<Result<Entry>> => {
 	return err(
 		new Error(
 			task.value.kind === "job" &&
-				!["done", "cancelled"].includes(task.value.state)
+				!["done", "cancelled"].includes(task.value.state ?? "")
 				? `${short} is an item of kind job with no schedule, so it never fires: ${orphanRepair(short)}`
 				: `${short} is not a job`,
 		),

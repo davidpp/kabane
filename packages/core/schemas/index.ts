@@ -130,6 +130,7 @@ export {
 } from "./sync";
 // Task schemas
 export {
+	hasWorkflow,
 	type ItemKind,
 	ItemKindSchema,
 	type Provenance,
@@ -155,6 +156,8 @@ export {
 	VerificationSchema,
 	type VerificationStatus,
 	VerificationStatusSchema,
+	WORKFLOW_KINDS,
+	type WorkflowKind,
 } from "./task";
 // Private upstream-link schemas
 export {

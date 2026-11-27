@@ -138,12 +138,14 @@ export namespace DetailModel {
 
 	/** The task at a glance: state, a priority other than normal, kind, assignee, review. */
 	export const summary = (task: Task): SummaryPart[] => {
-		const parts: SummaryPart[] = [
-			{
-				text: TASK_STATE_DISPLAY[task.state].label.toLowerCase(),
-				request: false,
-			},
-		];
+		const parts: SummaryPart[] = task.state
+			? [
+					{
+						text: TASK_STATE_DISPLAY[task.state].label.toLowerCase(),
+						request: false,
+					},
+				]
+			: [];
 		if (task.priority !== "normal")
 			parts.push({ text: task.priority, request: false });
 		parts.push({ text: task.kind, request: false });
@@ -348,7 +350,7 @@ export namespace DetailModel {
 			cancelled,
 			state: cancelled
 				? "cancelled"
-				: done
+				: done || !task.state
 					? undefined
 					: TASK_STATE_DISPLAY[task.state].label.toLowerCase(),
 		};

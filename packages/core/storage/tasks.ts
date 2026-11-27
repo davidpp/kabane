@@ -8,12 +8,14 @@ import { Modules } from "../module";
 import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
+	hasWorkflow,
 	type ItemKind,
 	KEYED_ID_PATTERN,
 	type Task,
 	type TaskDraft,
 	TaskDraftSchema,
 	type TaskQuery,
+	type TaskState,
 	type TaskUpdate,
 	TaskUpdateSchema,
 } from "../schemas";
@@ -215,6 +217,10 @@ const completedAtAfter = (
 	return new Date().toISOString();
 };
 
+/** A new thread's state: the draft's, else `inbox` for a kind with a workflow and none for any other. */
+const initialState = (draft: TaskDraft): TaskState | undefined =>
+	draft.state ?? (hasWorkflow(draft.kind ?? "task") ? "inbox" : undefined);
+
 const taskFromDraft = (
 	draft: TaskDraft,
 	scopeUri: string | undefined,
@@ -231,7 +237,7 @@ const taskFromDraft = (
 		title: draft.title,
 		description: draft.description,
 		kind: draft.kind ?? "task",
-		state: draft.state ?? "inbox",
+		state: initialState(draft),
 		priority: draft.priority ?? "normal",
 		scopeUri,
 		scopeRefs: draft.scopeRefs,
@@ -472,7 +478,7 @@ export namespace Planner {
 			scope: scopeUri ?? null,
 			parentId: draft.parentTaskId ?? null,
 			createdBy: draft.provenance?.discoveredBy ?? null,
-			state: draft.state ?? "inbox",
+			state: initialState(draft) ?? null,
 			assignee: draft.assignee ?? null,
 			now,
 		});
@@ -629,7 +635,7 @@ export namespace Planner {
 		if (!prefixResult.ok) return prefixResult;
 
 		const current = db
-			.query<{ state: Task["state"]; scope: string | null }>(
+			.query<{ state: TaskState | null; scope: string | null }>(
 				`SELECT state, scope FROM ${TABLES.threads} WHERE id = ?`,
 			)
 			.get(id);
@@ -664,11 +670,14 @@ export namespace Planner {
 		const row = TaskRows.byIdOrShortId(db, id);
 		if (!row) return ok(null);
 		const task = rowToTask(row);
-		if (current.state !== task.state) {
+		if (
+			task.state !== undefined &&
+			(current.state ?? undefined) !== task.state
+		) {
 			const hooked = Modules.taskStateChanged(
 				db,
 				task,
-				current.state,
+				current.state ?? undefined,
 				task.state,
 			);
 			if (!hooked.ok) return hooked;

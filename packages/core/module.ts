@@ -146,7 +146,8 @@ export type KabaneModule = {
 	onTaskStateChange?: (
 		db: Db,
 		task: Task,
-		from: TaskState,
+		/** Undefined when the thread had no state (a kind with no workflow). */
+		from: TaskState | undefined,
 		to: TaskState,
 	) => Result<void>;
 };
@@ -385,7 +386,7 @@ export namespace Modules {
 	export const taskStateChanged = (
 		db: Db,
 		task: Task,
-		from: TaskState,
+		from: TaskState | undefined,
 		to: TaskState,
 	): Result<void> => {
 		for (const module of registered) {

@@ -257,7 +257,9 @@ export const rowMeta = (
 ): string => {
 	const task = row.task;
 	if (row.depth === 1)
-		return ` · ${TASK_STATE_DISPLAY[task.state].label.toLowerCase()}`;
+		return task.state
+			? ` · ${TASK_STATE_DISPLAY[task.state].label.toLowerCase()}`
+			: "";
 	// Name the parent when it is loaded; otherwise still mark the row, or the lie stands.
 	const parent = orphanMeta(task, parentShortId);
 	return ` · ${task.kind}${parent}`;

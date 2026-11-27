@@ -204,7 +204,10 @@ export namespace LoopPlan {
 
 	/** Task-local eligibility; human work stays in the plan but is never dispatched. */
 	export const canClaim = (task: Task, now: Date): boolean =>
-		task.kind === "issue" && CLAIMABLE.has(task.state) && !deferred(task, now);
+		task.kind === "issue" &&
+		task.state !== undefined &&
+		CLAIMABLE.has(task.state) &&
+		!deferred(task, now);
 
 	/**
 	 * The ready frontier: open agent work in a claimable state (`inbox`, `next`), not deferred, not

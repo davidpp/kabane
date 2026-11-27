@@ -1428,7 +1428,7 @@ export namespace BoardNav {
 	): { state: BoardState; effect: Effect } => {
 		if (!task) return { state, effect: NONE };
 		const progression: readonly TaskState[] = BoardData.STATE_PROGRESSION;
-		const current = progression.indexOf(task.state);
+		const current = task.state ? progression.indexOf(task.state) : -1;
 		const target = BoardData.STATE_PROGRESSION[current + delta];
 		if (current < 0 || !target) return { state, effect: NONE };
 		return {
@@ -1712,7 +1712,7 @@ export namespace BoardNav {
 		// Group new tasks by state for section placement.
 		const newByState = new Map<TaskState, Task[]>();
 		for (const task of tasks) {
-			if (existingIds.has(task.id)) continue;
+			if (existingIds.has(task.id) || !task.state) continue;
 			const list = newByState.get(task.state) ?? [];
 			list.push(task);
 			newByState.set(task.state, list);
