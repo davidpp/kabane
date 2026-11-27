@@ -2,6 +2,7 @@
  * Planner Storage — Tasks & ID Resolution
  */
 
+import type { z } from "zod";
 import type { Db } from "../db/port";
 import { Events, PLANNER_EVENTS } from "../events";
 import { Modules } from "../module";
@@ -232,6 +233,16 @@ const writeStateChange = (
 		RecordWrite.setAttribute(db, id, "completed_at", completedAt);
 };
 
+/** A parse error on one line, each issue as `field: message`, as a CLI prints it. */
+const issuesLine = (error: z.ZodError): string =>
+	error.issues
+		.map((issue) =>
+			issue.path.length
+				? `${issue.path.join(".")}: ${issue.message}`
+				: issue.message,
+		)
+		.join("; ");
+
 /**
  * The update as written: `state: null` on a kind whose workflow starts it in a
  * state is refused, and a kind change that would leave such a kind with no
@@ -451,7 +462,7 @@ export namespace Planner {
 	): Promise<Result<Task & { existed?: true }>> => {
 		const parseResult = TaskDraftSchema.safeParse(draft);
 		if (!parseResult.success) {
-			return err(new Error(`Invalid draft: ${parseResult.error.message}`));
+			return err(new Error(`Invalid draft: ${issuesLine(parseResult.error)}`));
 		}
 		if (key !== undefined && !KEYED_ID_PATTERN.test(key))
 			return err(
@@ -682,7 +693,9 @@ export namespace Planner {
 	): Result<Task | null> => {
 		const parseResult = TaskUpdateSchema.safeParse(updates);
 		if (!parseResult.success) {
-			return err(new Error(`Invalid updates: ${parseResult.error.message}`));
+			return err(
+				new Error(`Invalid updates: ${issuesLine(parseResult.error)}`),
+			);
 		}
 
 		// Normalized and derived before the write so an unusable scope rejects the

@@ -1,6 +1,6 @@
 import {
 	CustomAttributeKeySchema,
-	type ItemKind,
+	ItemKindSchema,
 	Planner,
 	type TaskPriority,
 	type TaskState,
@@ -35,9 +35,15 @@ export const list: Command = {
 				"--attribute requires a declared key and --format concise",
 				list.usage,
 			);
+		const kind = ItemKindSchema.optional().safeParse(flagString(args, "kind"));
+		if (!kind.success)
+			return usage(
+				`--kind ${kind.error.issues.map((issue) => issue.message).join("; ")}`,
+				list.usage,
+			);
 		const query = {
 			state: flagString(args, "state") as TaskState | undefined,
-			kind: flagString(args, "kind") as ItemKind | undefined,
+			kind: kind.data,
 			priority: flagString(args, "priority") as TaskPriority | undefined,
 			assignee: flagString(args, "assignee"),
 			scopeUri: await resolveScopeUri(args, ctx),
