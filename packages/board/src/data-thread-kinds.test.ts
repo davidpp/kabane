@@ -108,6 +108,10 @@ it("lists a thread with no state in the Threads section, and in no state's", asy
 		[signal, alert].sort(),
 	);
 	expect(sections.map((s) => s.state)).toEqual([BoardData.STATELESS]);
+	const labels = Object.fromEntries(
+		threads?.rows.map((row) => [row.task.id, row.kindLabel]) ?? [],
+	);
+	expect(labels).toEqual({ [signal]: "Monitor signal", [alert]: "Alert" });
 });
 
 it("keeps a held stateless thread the section caps left out", async () => {
@@ -153,6 +157,13 @@ it("reads the same threads by their stored names without the module or the regis
 		expect(unwrap(await BoardData.taskDetail(BASE, alert)).kindLabel).toBe(
 			"alert",
 		);
+		const threads = unwrap(await BoardData.loadBoard(BASE)).find(
+			(s) => s.state === BoardData.STATELESS,
+		);
+		expect(threads?.rows.map((row) => row.kindLabel)).toEqual([
+			undefined,
+			undefined,
+		]);
 	} finally {
 		configure([registryModule, monitor]);
 	}

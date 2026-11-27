@@ -304,6 +304,8 @@ export namespace BoardNav {
 		parentId: string | null;
 		hasChildren: boolean;
 		expanded: boolean;
+		// A top-level row's kind label (BoardData.BoardRow).
+		kindLabel?: string;
 	};
 
 	// What app.tsx must do after an action. Pure nav produces `none`; filter/scope changes need a reload
@@ -1228,26 +1230,23 @@ export namespace BoardNav {
 	// One top-level task's rows, as visibleSections describes: unfiltered, its subtasks while it is
 	// expanded; narrowed, nothing when neither it nor a subtask matches.
 	const treeRows = (
-		{ task, children }: BoardData.BoardRow,
+		row: BoardData.BoardRow,
 		expanded: ReadonlySet<string>,
 		matches: ((task: Task) => boolean) | null,
 	): VisibleRow[] => {
-		if (!matches)
-			return parentRows(task, children, expanded.has(task.id) ? children : []);
+		const { task, children } = row;
+		if (!matches) return parentRows(row, expanded.has(task.id) ? children : []);
 		const parentMatch = matches(task);
 		const shown =
 			parentMatch && expanded.has(task.id)
 				? children
 				: children.filter(matches);
-		return parentMatch || shown.length > 0
-			? parentRows(task, children, shown)
-			: [];
+		return parentMatch || shown.length > 0 ? parentRows(row, shown) : [];
 	};
 
 	// A top-level row and the subtasks `shown` under it, its caret open while any are.
 	const parentRows = (
-		task: Task,
-		children: readonly Task[],
+		{ task, children, kindLabel }: BoardData.BoardRow,
 		shown: readonly Task[],
 	): VisibleRow[] => [
 		{
@@ -1256,6 +1255,7 @@ export namespace BoardNav {
 			parentId: null,
 			hasChildren: children.length > 0,
 			expanded: shown.length > 0,
+			...(kindLabel === undefined ? {} : { kindLabel }),
 		},
 		...shown.map((child): VisibleRow => ({
 			task: child,

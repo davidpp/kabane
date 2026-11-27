@@ -109,6 +109,8 @@ export namespace BoardData {
 	export type BoardRow = {
 		task: Task;
 		children: Task[];
+		// The label its kind's declaration gives, when one is here; the row reads the stored name without.
+		kindLabel?: string;
 	};
 
 	export type BoardSection = {
@@ -238,7 +240,12 @@ export namespace BoardData {
 		)
 			subtasks.value.push(extra);
 
-		return ok(assembleSections(tasksByState, subtasks.value));
+		return ok(
+			await withKindLabels(
+				basePath,
+				assembleSections(tasksByState, subtasks.value),
+			),
+		);
 	};
 
 	// The subtasks of the given roots, oldest first, closed ones included.
@@ -360,29 +367,55 @@ export namespace BoardData {
 	const keepsRegistry = (): boolean => registered(registryModule.name);
 
 	/**
-	 * The label of `task`'s kind: from its exact scope's published kinds when the registry is here,
-	 * otherwise from core and the registered modules; the stored name when nothing declares it, as
-	 * when the extension that declared it is disabled (ADR 0010).
+	 * The label of each kind a thread in `scopeUri` can have, by name: from that exact scope's
+	 * published kinds when the registry is here, otherwise from core and the registered modules. A
+	 * kind missing from it reads by its stored name, as when the extension that declared it is
+	 * disabled (ADR 0010); a failed registry read gives code's labels, since a label never fails a
+	 * read.
 	 */
-	/** The kind's declared label, else its stored name: a label never fails a detail. */
+	const kindLabelsIn = async (
+		basePath: string,
+		scopeUri: string | undefined,
+	): Promise<ReadonlyMap<string, string>> => {
+		const code = [
+			...CORE_THREAD_KINDS,
+			...Runtime.threadKinds().map(({ kind }) => kind),
+		];
+		const declared =
+			keepsRegistry() && scopeUri
+				? await Registry.kinds(basePath, scopeUri)
+				: ok({ kinds: code });
+		const kinds = declared.ok ? declared.value.kinds : code;
+		return new Map(kinds.map((kind) => [kind.name, kind.label]));
+	};
+
 	const kindLabelOf = async (
 		basePath: string,
 		task: Task,
-	): Promise<Result<string>> => {
-		const declared =
-			keepsRegistry() && task.scopeUri
-				? await Registry.kinds(basePath, task.scopeUri)
-				: ok({
-						kinds: [
-							...CORE_THREAD_KINDS,
-							...Runtime.threadKinds().map(({ kind }) => kind),
-						],
-					});
-		if (!declared.ok) return ok(task.kind);
-		return ok(
-			declared.value.kinds.find((kind) => kind.name === task.kind)?.label ??
-				task.kind,
+	): Promise<Result<string>> =>
+		ok(
+			(await kindLabelsIn(basePath, task.scopeUri)).get(task.kind) ?? task.kind,
 		);
+
+	/** Each top-level row with its kind's label, read once per scope the rows are in. */
+	const withKindLabels = async (
+		basePath: string,
+		sections: BoardSection[],
+	): Promise<BoardSection[]> => {
+		const labels = new Map<string, ReadonlyMap<string, string>>();
+		for (const section of sections)
+			for (const { task } of section.rows) {
+				const scope = task.scopeUri ?? "";
+				if (!labels.has(scope))
+					labels.set(scope, await kindLabelsIn(basePath, task.scopeUri));
+			}
+		return sections.map((section) => ({
+			...section,
+			rows: section.rows.map((row) => {
+				const label = labels.get(row.task.scopeUri ?? "")?.get(row.task.kind);
+				return label === undefined ? row : { ...row, kindLabel: label };
+			}),
+		}));
 	};
 
 	/** The declared attributes on `task`, each value with its choice's label in the task's scope. */

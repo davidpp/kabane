@@ -251,6 +251,8 @@ const orphanMeta = (task: Task, parentShortId?: string): string => {
 	return parentShortId ? ` · in ${parentShortId}` : " · subtask";
 };
 
+const KIND_WIDTH = 20;
+
 export const rowMeta = (
 	row: BoardNav.VisibleRow,
 	parentShortId?: string,
@@ -262,7 +264,9 @@ export const rowMeta = (
 			: "";
 	// Name the parent when it is loaded; otherwise still mark the row, or the lie stands.
 	const parent = orphanMeta(task, parentShortId);
-	return ` · ${task.kind}${parent}`;
+	// The declared label, lowercased as the detail's summary writes it, cut so the title keeps room.
+	const kind = row.kindLabel?.toLowerCase() ?? task.kind;
+	return ` · ${truncate(kind, KIND_WIDTH)}${parent}`;
 };
 
 const ID_GAP = "  ";

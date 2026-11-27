@@ -597,8 +597,9 @@ does not move you.
 ### Threads of any kind
 
 A thread with no state, a plain `thread` or a kind a scope or an extension declares (`signal`),
-lists under `threads`, after `someday` and before the archive. Its row ends on its kind's stored
-name. Its detail names the kind by its declared label (`monitor signal`) under the title, where
+lists under `threads`, after `someday` and before the archive. Its row ends on its kind's
+declared label, lowercased and cut at twenty columns (`monitor signal`), read once per scope on
+each load. Its detail names the kind by that label under the title, where
 an issue's summary names `issue`, and the description lists its declared attributes, each value
 by the label its exact scope gives that choice. A kind or a value the device has no declaration
 for, as when the extension that declared it is disabled, reads as stored; the content, entries

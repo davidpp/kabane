@@ -1731,6 +1731,50 @@ export const STORIES: readonly Story[] = [
 		),
 	},
 	{
+		name: "board-threads",
+		about:
+			"the threads section: a scope's signal by its declared label beside a plain thread and a kind nothing here declares, by stored name",
+		width: 40,
+		height: 8,
+		render: () => (
+			<Board
+				sections={[
+					{
+						state: "stateless",
+						label: "Threads",
+						rows: [
+							{ task: SIGNAL, children: [], kindLabel: "Monitor signal" },
+							{
+								task: task({
+									id: "01HZZPLAIN0000000000000000",
+									shortId: "MON-2",
+									kind: "thread",
+									state: undefined,
+									title: "Release notes scratch",
+								}),
+								children: [],
+								kindLabel: "Thread",
+							},
+							{
+								task: task({
+									id: "01HZZVENDOR000000000000000",
+									shortId: "MON-1",
+									kind: "vendor.alert",
+									state: undefined,
+									title: "Vendor page",
+								}),
+								children: [],
+							},
+						],
+					},
+				]}
+				expanded={new Set()}
+				selectedId={SIGNAL.id}
+				scopeLabel="acme"
+			/>
+		),
+	},
+	{
 		name: "board-badge-narrow",
 		about:
 			"a paused run's badge cut with … at forty columns, the title at its floor",
