@@ -27,7 +27,7 @@ whose `to` is a state.
 
 The board's `d`, `n`, `s` and `x` act on a stateless thread, and `⌃z` returns it to `threads`.
 Once a stateless thread has a state it is listed and filtered like any stateful thread, so a
-`state` filter finds a closed signal. The MCP and CLI edit paths do not yet expose the clear
+`state` filter finds a closed signal. `kabane_edit` and `kabane edit` take it away with state `none`
 (JCAB-712).
 
 ## Alternatives rejected

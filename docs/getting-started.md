@@ -527,7 +527,10 @@ kabane list --kind signal --scope acme
 
 A `task`, `issue` or `job` starts in `inbox`. A thread of any other kind, a plain `thread` or
 a scope's `signal`, starts with no state, so it never shows in a `--state next` work queue;
-`--state` gives it one. `kabane list` with no `--kind` shows every kind but `job`. Over MCP,
+`--state` gives it one, and `kabane edit <id> --state none` (`kabane_edit` state `none`) takes
+it away again; a task, issue or job refuses that. Editing its kind to `task`, `issue` or `job`
+puts it in `inbox` unless the edit gives a state. `kabane list` with no `--kind` shows every
+kind but `job`. Over MCP,
 `kabane_add`, `kabane_edit`, `kabane_list`, `kabane_today` and the threads of `kabane_apply`
 take the same `kind`. Kabane stores the kind as it is written: a well-formed name nobody
 declares is filed, read, synced and exported like any other, and shows as its name.
