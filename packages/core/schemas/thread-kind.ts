@@ -23,7 +23,7 @@ export const PLAIN_THREAD_KIND = "thread";
 
 /**
  * The kinds core declares. Their names are reserved: no module or scope may
- * declare one. `satisfies` keeps every `ItemKind` declared here.
+ * declare one. `module.test.ts` holds that every `ItemKind` is declared here.
  */
 export const CORE_THREAD_KINDS = [
 	{

@@ -151,6 +151,8 @@ it("shadows a synced scope kind a module on this device declares, and lists it a
 		],
 	});
 	expect(await names(beta, "acme")).not.toContain("scope:alert");
+	register("alpha");
+	expect(await names(alpha, "acme")).toContain("scope:alert");
 });
 
 it("converges two offline publications of one name to the same declaration everywhere", async () => {
