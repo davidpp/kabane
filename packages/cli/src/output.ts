@@ -73,11 +73,9 @@ export const formatTaskDetail = (task: Task): string => {
 	}
 	lines.push(`Title: ${task.title}`);
 	if (task.description) lines.push(`Description: ${task.description}`);
-	lines.push(
-		`Kind: ${task.kind}`,
-		`State: ${task.state}`,
-		`Priority: ${task.priority}`,
-	);
+	lines.push(`Kind: ${task.kind}`);
+	if (task.state) lines.push(`State: ${task.state}`);
+	lines.push(`Priority: ${task.priority}`);
 	if (task.scopeUri) lines.push(`Scope: ${task.scopeUri}`);
 	if (task.parentTaskId) lines.push(`Parent: ${task.parentTaskId}`);
 	if (task.projectId) lines.push(`Project: ${task.projectId}`);
