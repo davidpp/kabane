@@ -1008,6 +1008,26 @@ Resolve it before retrying.
 - **No going back.** The old version refuses a database this one has opened. Going back takes a
   backup made before the first open.
 
+### Upgrading from 2.0.0-beta.2: thread kinds and threads with no state
+
+Update every device, board and `kabane mcp` that shares a database or a hub before anyone files
+a thread of a new kind.
+
+- **Migrations.** The first open runs the registry module's two migrations, which create
+  `registry_declarations` and `registry_thread_kinds` (versioned in
+  `schema_migrations_registry`). Core's schema stays at 14, so a device on 2.0.0-beta.2 keeps
+  syncing with no warning. It can still open a database this release migrated.
+- **Threads with no state.** A thread of a kind other than `task`, `issue` or `job` starts with
+  no state ([Declare a thread kind for a scope](#declare-a-thread-kind-for-a-scope)). Its
+  `--json` and `--format concise` rows, and those of the MCP tools, have no `state` key, so a
+  script that reads `state` sees it missing. A thread whose kind is edited to `task`, `issue` or
+  `job` gets `inbox` unless the edit gives it a state.
+- **What an older device does with them.** 2.0.0-beta.2 leaves a thread with no state out of
+  `kabane list` and the board without saying so. `kabane list --kind signal` prints
+  `No tasks found.`, `show` prints `State: null`, and `edit` and `done` print `undefined` where
+  the state goes. The rows are stored and synced intact, and read correctly again once that
+  device updates.
+
 ### Subsequent updates
 
 ```bash
