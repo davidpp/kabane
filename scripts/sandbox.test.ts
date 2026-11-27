@@ -2,6 +2,7 @@
 // the contributor's own sandbox is untouched: what `--scripted` writes into the sandbox's config and
 // takes out again.
 import { afterAll, describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import {
 	mkdtempSync,
 	readFileSync,
@@ -17,7 +18,12 @@ import { GitFixture } from "../packages/core/scope/git-fixture";
 
 const ROOT = resolve(import.meta.dir, "..");
 const TMP = mkdtempSync(join(tmpdir(), "kabane-sandbox-test-"));
-const SANDBOX = join(TMP, "kabane-sandbox", basename(ROOT));
+// Named after the checkout and a hash of its real path, so two checkouts both named `1` differ.
+const SANDBOX = join(
+	TMP,
+	"kabane-sandbox",
+	`${basename(ROOT)}-${createHash("sha256").update(realpathSync(ROOT)).digest("hex").slice(0, 8)}`,
+);
 const CONFIG = join(SANDBOX, ".kabane", "config.json");
 const AGENT = join(ROOT, "packages/acp/scripts/scripted-agent.ts");
 
