@@ -53,3 +53,6 @@ reference), which puts the ADR in the implementer's brief.
   converges without the hub's order. Accepted (David, 2026-11-24).
 - [0010](0010-thread-kinds-remain-readable-without-extensions.md): Every thread kind is
   readable without its extension. Accepted (David, 2026-11-27).
+- [0011](0011-a-stateless-kind-closes-by-taking-a-state.md): A stateless kind closes by taking a
+  state, and an update with `state: null` takes it away again. Accepted (claude, 2026-11-27,
+  open to override).
