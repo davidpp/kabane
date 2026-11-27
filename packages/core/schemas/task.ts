@@ -327,6 +327,9 @@ export const TaskQuerySchema = z.object({
 	/** Filter by single state */
 	state: TaskStateSchema.optional(),
 
+	/** Only threads with no work state: a plain thread or a kind with no workflow */
+	stateless: z.boolean().optional(),
+
 	/** Filter by item kind. Omitted, every kind but 'job' */
 	kind: ItemKindSchema.optional(),
 

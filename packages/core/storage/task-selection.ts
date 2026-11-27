@@ -69,6 +69,7 @@ export const selectTaskQuery = (
 		conditions.push(state.sql);
 		params.push(...state.params);
 	}
+	if (query.stateless) conditions.push("state IS NULL");
 	if (!query.includeClosed)
 		conditions.push("(state IS NULL OR state NOT IN ('done', 'cancelled'))");
 	if (!query.includeDeferred) {
