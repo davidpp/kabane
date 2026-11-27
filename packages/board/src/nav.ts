@@ -236,9 +236,10 @@ export namespace BoardNav {
 
 	// Reverse patch — the subset of task fields any board mutation can change. Applied verbatim through
 	// Planner.updateTask to walk a task back to its pre-mutation values.
-	type UndoPatch = Partial<
-		Pick<Task, "state" | "needsReview" | "verification">
-	>;
+	// `state: null` walks a thread that had none back to none.
+	type UndoPatch = Partial<Pick<Task, "needsReview" | "verification">> & {
+		state?: TaskState | null;
+	};
 	// One entry on the undo stack: the reverse patch plus the copy the footer flashes on undo.
 	export type UndoEntry = {
 		id: string;
@@ -1132,20 +1133,10 @@ export namespace BoardNav {
 		return {
 			id: task.id,
 			shortId: sid,
-			patch: { state: task.state },
-			label: `${sid} → ${task.state}`,
+			patch: { state: task.state ?? null },
+			label: `${sid} → ${task.state ?? "no state"}`,
 		};
 	};
-
-	// A thread with no state (a plain thread, a scope's `signal`) takes none from the board's state
-	// keys: no write can take a state away again, so `⌃z` could not undo it. An agent or the CLI
-	// gives it one with an edit.
-	const NO_STATE: (task: Task) => { type: "notice"; notice: Notice } = (
-		task,
-	) => ({
-		type: "notice",
-		notice: { text: `${shortId(task)} has no state to move`, tone: "info" },
-	});
 
 	const clamp = (value: number, min: number, max: number): number =>
 		Math.max(min, Math.min(max, value));
@@ -1459,7 +1450,6 @@ export namespace BoardNav {
 		verb: string,
 	): { state: BoardState; effect: Effect } => {
 		if (!task) return { state, effect: NONE };
-		if (!task.state) return { state, effect: NO_STATE(task) };
 		return {
 			state: withUndo(state, stateUndoEntry(task)),
 			effect: {
@@ -1477,7 +1467,6 @@ export namespace BoardNav {
 		task: Task | undefined,
 	): { state: BoardState; effect: Effect } => {
 		if (!task) return { state, effect: NONE };
-		if (!task.state) return { state, effect: NO_STATE(task) };
 		return {
 			state: withUndo(state, stateUndoEntry(task)),
 			effect: {

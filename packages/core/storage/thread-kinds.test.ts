@@ -107,6 +107,52 @@ describe("thread kinds on the record", () => {
 		expect(given.value?.state).toBe("next");
 	});
 
+	it("takes a stateless kind's state away again, and refuses that for a workflow kind", async () => {
+		const base = await device("clear");
+		const signal = await Planner.addTask(base, {
+			title: "Disk is filling",
+			kind: "signal",
+			assignee: "claude",
+		});
+		if (!signal.ok) throw signal.error;
+		const claimed = await Planner.updateTask(base, signal.value.id, {
+			state: "in_progress",
+		});
+		if (!claimed.ok) throw claimed.error;
+		const held = await Planner.claimHolder(base, signal.value.id);
+		if (!held.ok) throw held.error;
+		expect(held.value).not.toBeNull();
+		const done = await Planner.updateTask(base, signal.value.id, {
+			state: "done",
+		});
+		if (!done.ok) throw done.error;
+		expect(done.value?.completedAt).toBeDefined();
+
+		const cleared = await Planner.updateTask(base, signal.value.id, {
+			state: null,
+		});
+		if (!cleared.ok) throw cleared.error;
+		expect(cleared.value?.state).toBeUndefined();
+		expect(cleared.value?.completedAt).toBeUndefined();
+		expect(await storedState(base, signal.value.id)).toEqual({
+			kind: "signal",
+			state: null,
+		});
+		const holder = await Planner.claimHolder(base, signal.value.id);
+		if (!holder.ok) throw holder.error;
+		expect(holder.value).toBeNull();
+
+		const task = await Planner.addTask(base, { title: "Still a task" });
+		if (!task.ok) throw task.error;
+		const refused = await Planner.updateTask(base, task.value.id, {
+			state: null,
+		});
+		expect(refused.ok).toBe(false);
+		const kept = await Planner.getTask(base, task.value.id);
+		if (!kept.ok) throw kept.error;
+		expect(kept.value?.state).toBe("inbox");
+	});
+
 	it("refuses a kind that is not a name, on every write path", async () => {
 		const base = await device("malformed");
 		const added = await Planner.addTask(base, {

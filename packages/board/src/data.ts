@@ -64,8 +64,8 @@ export namespace BoardData {
 	export type SectionState = (typeof SECTION_STATES)[number];
 
 	// The section of threads with no work state: a plain thread, or a kind with no workflow such as
-	// a scope's `signal`. It is open (nothing closes a thread without a state), so it sits with the
-	// unresolved sections, after the parked backlog and before the archive.
+	// a scope's `signal`. It is open, so it sits with the unresolved sections, after the parked
+	// backlog and before the archive. A state key gives such a thread a state and moves it out.
 	export const STATELESS = "stateless";
 	export type SectionKey = SectionState | typeof STATELESS;
 
@@ -702,7 +702,9 @@ export namespace BoardData {
 	export const applyUndo = async (
 		basePath: string,
 		id: string,
-		patch: Partial<Pick<Task, "state" | "needsReview" | "verification">>,
+		patch: Partial<Pick<Task, "needsReview" | "verification">> & {
+			state?: TaskState | null;
+		},
 	): Promise<Result<Task | null>> => {
 		return Planner.updateTask(basePath, id, patch);
 	};

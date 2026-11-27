@@ -310,7 +310,7 @@ describe("BoardNav.reduceKey", () => {
 			});
 		});
 
-		it("leaves a thread with no state as it is under d, n, s and x, and says so", () => {
+		it("gives a thread with no state one under d and x, with an undo back to none", () => {
 			const withThread = state({
 				sections: [
 					{
@@ -321,14 +321,23 @@ describe("BoardNav.reduceKey", () => {
 				],
 				selectedId: "sg",
 			});
-			for (const name of ["d", "n", "s", "x"]) {
-				const next = reduce(withThread, { name });
-				expect(next.effect).toEqual({
-					type: "notice",
-					notice: { text: "MILL-1 has no state to move", tone: "info" },
-				});
-				expect(next.state.undo).toEqual([]);
-			}
+			const done = reduce(withThread, { name: "d" });
+			expect(done.effect).toEqual({
+				type: "markDone",
+				id: "sg",
+				notice: "MILL-1 done",
+			});
+			expect(reduce(withThread, { name: "x" }).effect).toMatchObject({
+				type: "setState",
+				id: "sg",
+				state: "cancelled",
+			});
+			expect(reduce(done.state, { name: "z", ctrl: true }).effect).toEqual({
+				type: "applyUndo",
+				id: "sg",
+				patch: { state: null },
+				notice: "undo: MILL-1 → no state",
+			});
 		});
 
 		it("mutation keys are no-ops when nothing is selected", () => {

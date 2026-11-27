@@ -143,9 +143,10 @@ const HELD = ["in_progress", "waiting"];
  * claim already stands. Moving it to any state but in progress or waiting
  * releases every standing claim, each in its claimant's name, since only the
  * claimant's own release clears a claim (`RecordRead.openClaims`); `re` names
- * the claim. Who holds it is then the read's to say.
+ * the claim. Taking the state away (`null`) releases them too. Who holds it
+ * is then the read's to say.
  */
-const writeClaim = (db: Db, id: string, state: string): void => {
+const writeClaim = (db: Db, id: string, state: string | null): void => {
 	const standing = RecordRead.openClaims(db, id);
 	if (!standing.ok) throw standing.error;
 	const now = new Date().toISOString();
@@ -184,7 +185,7 @@ const writeClaim = (db: Db, id: string, state: string): void => {
 		entry(CLAIM_KIND, actor, past(released));
 		return;
 	}
-	if (HELD.includes(state)) return;
+	if (state !== null && HELD.includes(state)) return;
 	for (const claim of standing.value)
 		entry(
 			RELEASE_KIND,
@@ -203,9 +204,9 @@ const completedAtAfter = (
 	db: Db,
 	id: string,
 	from: string | null,
-	to: string,
+	to: string | null,
 ): string | null | undefined => {
-	if (!CLOSED.includes(to)) return null;
+	if (to === null || !CLOSED.includes(to)) return null;
 	if (from !== null && CLOSED.includes(from)) {
 		const held = db
 			.query<{ value: string | null }, [string]>(
@@ -216,6 +217,31 @@ const completedAtAfter = (
 		if (held) return undefined;
 	}
 	return new Date().toISOString();
+};
+
+/** What a state change writes besides the state: its claim entries and `completed_at`. */
+const writeStateChange = (
+	db: Db,
+	id: string,
+	from: string | null,
+	to: string | null,
+): void => {
+	writeClaim(db, id, to);
+	const completedAt = completedAtAfter(db, id, from, to);
+	if (completedAt !== undefined)
+		RecordWrite.setAttribute(db, id, "completed_at", completedAt);
+};
+
+/** Refuses `state: null` on a kind whose workflow starts it in a state. */
+const stateKept = (updates: TaskUpdate, stored: string): Result<void> => {
+	const kind = updates.kind ?? stored;
+	return updates.state === null && initialStateOf(kind) !== undefined
+		? err(
+				new Error(
+					`A ${kind} keeps a state: only a kind with no workflow can have it taken away`,
+				),
+			)
+		: ok(undefined);
 };
 
 /** A new thread's state: the draft's, else the one its kind's declaration starts it in. */
@@ -657,11 +683,13 @@ export namespace Planner {
 		if (!prefixResult.ok) return prefixResult;
 
 		const current = db
-			.query<{ state: TaskState | null; scope: string | null }>(
-				`SELECT state, scope FROM ${TABLES.threads} WHERE id = ?`,
+			.query<{ kind: string; state: TaskState | null; scope: string | null }>(
+				`SELECT kind, state, scope FROM ${TABLES.threads} WHERE id = ?`,
 			)
 			.get(id);
 		if (!current || !RecordRead.isVisible(db, id)) return ok(null);
+		const kept = stateKept(updates, current.kind);
+		if (!kept.ok) return kept;
 
 		const text = textUpdates(updates);
 		if (
@@ -674,20 +702,11 @@ export namespace Planner {
 		}
 		RecordWrite.updateText(db, id, text);
 		RecordWrite.updateClaim(db, id, claimUpdates(updates));
-		if (updates.state !== undefined) writeClaim(db, id, updates.state);
+		if (updates.state !== undefined)
+			writeStateChange(db, id, current.state, updates.state);
 
 		for (const [key, value] of attributeUpdates(updates))
 			if (value !== undefined) RecordWrite.setAttribute(db, id, key, value);
-		if (updates.state !== undefined) {
-			const completedAt = completedAtAfter(
-				db,
-				id,
-				current.state,
-				updates.state,
-			);
-			if (completedAt !== undefined)
-				RecordWrite.setAttribute(db, id, "completed_at", completedAt);
-		}
 
 		const row = TaskRows.byIdOrShortId(db, id);
 		if (!row) return ok(null);

@@ -602,8 +602,8 @@ name. Its detail names the kind by its declared label (`monitor signal`) under t
 an issue's summary names `issue`, and the description lists its declared attributes, each value
 by the label its exact scope gives that choice. A kind or a value the device has no declaration
 for, as when the extension that declared it is disabled, reads as stored; the content, entries
-and refs read the same either way. `d`, `n`, `s` and `x` leave such a thread as it is and say
-so: no write takes a state away again, so `⌃z` could not undo one. An edit gives it a state.
+and refs read the same either way. `d`, `n`, `s` and `x` give such a thread that state, which
+moves it out of `threads`, and `⌃z` takes the state away again.
 
 An issue opened from the detail opens over it, and `esc` comes back to the one before on the
 section you left it on; `esc` on the first one goes back to the board.
