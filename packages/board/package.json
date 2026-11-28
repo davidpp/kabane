@@ -26,17 +26,17 @@
 		"@kabane/extension": "workspace:*",
 		"@kabane/questions": "workspace:*",
 		"@kabane/registry": "workspace:*",
-		"@opentui/core": "0.9.0",
-		"@opentui/react": "0.9.0",
+		"@opentui/core": "0.9.8",
+		"@opentui/react": "0.9.8",
 		"diff": "9.0.0",
 		"react": "19.3.1"
 	},
 	"devDependencies": {
-		"@agentclientprotocol/sdk": "2.7.0",
+		"@agentclientprotocol/sdk": "2.9.1",
 		"@kabane/handoff": "workspace:*",
 		"@kabane/sqlite": "workspace:*",
 		"@kabane/work": "workspace:*",
-		"@types/bun": "1.4.4",
+		"@types/bun": "1.4.5",
 		"@types/react": "19.3.0",
 		"tsgo": "npm:typescript@7.0.2"
 	}
