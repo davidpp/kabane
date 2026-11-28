@@ -442,6 +442,14 @@ type Extension = {
   A device that has not registered the kind reads it with the defaults: its entries show in
   the Discussion and the timeline, labelled with the kind, and any reply closes one that is
   addressed.
+- **Thread kinds** a module declares (`KabaneModule.threadKinds`, `CodeThreadKind`) carry an
+  identity (name, label, description) and two optional fields core's generic paths read when
+  they run, not at import: `initialState`, the state a new thread of the kind starts in (and
+  what makes `state: null` refused on it), and `unlisted`, which keeps the kind out of a
+  listing that names no kind. Discovery (`kabane_threadKinds`, `registry kinds`) shows identity
+  only. A scope's declaration replicates and stays identity only (`ThreadKindSchema`). A device
+  or the hub that has not registered the module reads the kind with the defaults: no initial
+  state, listed, and stored threads keep their state.
 - **Skills, copilot `/` shortcuts and templates** are files in the extension's directory
   (below). Skills are how-to that `kabane mcp` serves to any session; nothing an extension ships
   is appended to the copilot's instructions.

@@ -42,9 +42,9 @@ import {
 } from "./schemas/comment";
 import type { Task, TaskState } from "./schemas/task";
 import {
+	type CodeThreadKind,
+	CodeThreadKindSchema,
 	CORE_THREAD_KINDS,
-	type ThreadKind,
-	ThreadKindSchema,
 } from "./schemas/thread-kind";
 import type { SyncFamily } from "./sync/resolve";
 
@@ -127,11 +127,14 @@ export type KabaneModule = {
 	 */
 	kinds?: readonly EntryKind[];
 	/**
-	 * Thread kinds, as data (`ThreadKind`). Unlike entry kinds a name need not
-	 * carry the module's: a shipped kind keeps the name its threads already
-	 * store (`job`). Core's own names and another module's are refused.
+	 * Thread kinds, as data (`CodeThreadKind`): identity, and optionally the
+	 * state a new thread starts in (`initialState`) and whether a listing that
+	 * names no kind leaves it out (`unlisted`). Both hold only where the module
+	 * is registered. Unlike entry kinds a name need not carry the module's: a
+	 * shipped kind keeps the name its threads already store (`job`). Core's own
+	 * names and another module's are refused.
 	 */
-	threadKinds?: readonly ThreadKind[];
+	threadKinds?: readonly CodeThreadKind[];
 	tools?: readonly ToolDef[];
 	/** Appended to the MCP server instructions, one paragraph. */
 	instructions?: string;
@@ -233,7 +236,7 @@ const threadKindProblem = (
 ): string | undefined => {
 	for (const kind of module.threadKinds ?? []) {
 		const where = `module "${module.name}" thread kind ${quoted(kind.name)}`;
-		const parsed = ThreadKindSchema.safeParse(kind);
+		const parsed = CodeThreadKindSchema.safeParse(kind);
 		if (!parsed.success) {
 			const issue = parsed.error.issues[0];
 			return `${where}: ${issue?.path.join(".") || "the declaration"} ${issue?.message ?? "is invalid"}`;
@@ -363,10 +366,26 @@ export namespace Modules {
 			.find((declared) => declared.name === name);
 
 	/** Every registered module's thread kinds, with the module declaring each. */
-	export const threadKinds = (): { module: string; kind: ThreadKind }[] =>
+	export const threadKinds = (): { module: string; kind: CodeThreadKind }[] =>
 		registered.flatMap((module) =>
 			(module.threadKinds ?? []).map((kind) => ({ module: module.name, kind })),
 		);
+
+	/** Core's declarations, then the registered modules', read now. */
+	const declaredInCode = (): CodeThreadKind[] => [
+		...CORE_THREAD_KINDS,
+		...registered.flatMap((module) => module.threadKinds ?? []),
+	];
+
+	/** The state a new thread of `kind` starts in: its declaration's, else none. */
+	export const initialStateOf = (kind: string): TaskState | undefined =>
+		declaredInCode().find((declared) => declared.name === kind)?.initialState;
+
+	/** The kinds a listing that names no kind leaves out. */
+	export const unlistedKinds = (): string[] =>
+		declaredInCode()
+			.filter((declared) => declared.unlisted)
+			.map((declared) => declared.name);
 
 	/** The schema version this build of `module` writes: its migration count. */
 	export const schemaOf = (module: KabaneModule): number =>

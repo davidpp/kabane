@@ -160,7 +160,7 @@ export const TaskSchema = z.object({
 
 	/**
 	 * Current state in GTD workflow. A new thread starts in its kind's
-	 * declared state (`initialStateOf`: `inbox` for task, issue and job) and
+	 * declared state (`Modules.initialStateOf`: `inbox` for task, issue and job) and
 	 * any other kind with none, until a write gives it one; an update with
 	 * `state: null` takes it away again.
 	 */
@@ -293,7 +293,7 @@ export type TaskDraft = z.input<typeof TaskDraftSchema>;
 
 /**
  * Partial update for existing task. `state: null` takes a thread's state
- * away, which only a kind with no workflow of its own may do (`initialStateOf`).
+ * away, which only a kind with no workflow of its own may do (`Modules.initialStateOf`).
  */
 export const TaskUpdateSchema = TaskDraftSchema.extend({
 	kind: TaskDraftSchema.shape.kind.unwrap(),

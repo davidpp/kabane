@@ -18,7 +18,7 @@ import { err, ok, type Result } from "./result";
 import type { EntryKind } from "./schemas/comment";
 import { type SyncConfig, SyncConfigSchema } from "./schemas/config";
 import { Deadline } from "./schemas/deadline";
-import type { ThreadKind } from "./schemas/thread-kind";
+import type { CodeThreadKind } from "./schemas/thread-kind";
 
 // ============================================================
 // Port types
@@ -163,7 +163,7 @@ export namespace Runtime {
 	/** The thread kinds registered modules declare; core's own are `CORE_THREAD_KINDS`. */
 	export const threadKinds = (): readonly {
 		module: string;
-		kind: ThreadKind;
+		kind: CodeThreadKind;
 	}[] => Modules.threadKinds();
 }
 

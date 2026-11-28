@@ -104,6 +104,35 @@ A replicated table needs an `id` primary key and the columns `updated_by`, `vers
 `clock` value when two devices write the same one. `childOfTasks` says `task_id` points at a task,
 so join notes to the visible `tasks` view when reading them. Deleting a task hides its notes and retains their rows.
 
+### Declare a thread kind
+
+A module can also declare thread kinds. A declaration is a `name` and a `label`, with an optional
+`description`, and two optional fields that say what kabane does with a new thread of the kind:
+`initialState` is the state it starts in, and `unlisted: true` keeps it out of a listing that
+names no kind. This `modules.ts` declares only a kind:
+
+```ts
+import type { KabaneModule } from "kabane/extension";
+
+export default (): KabaneModule[] => [
+	{
+		name: "routines",
+		threadKinds: [{ name: "routine", label: "Routine", initialState: "inbox", unlisted: true }],
+	},
+];
+```
+
+`kabane add "water the plants" --kind routine` then files it in `inbox`. `kabane list` leaves it
+out and `kabane list --kind routine` shows it. `kabane edit <id> --state none` is refused,
+because the kind has a workflow. `kabane registry kinds` and `kabane_threadKinds` list the kind's
+name, label and description, with `module:routines` as its source.
+
+The two fields hold only where the extension is enabled. With it disabled, a new `routine` starts
+with no state and shows in every listing, and a thread filed before keeps the state it has. The
+hub never loads an extension, so it treats the kind the same way. A name that core or another
+module already declares is refused, and so is a field kabane does not know: a host older than
+this field stops with `Unrecognized keys: "initialState"`.
+
 Every command that opens the database imports the modules entry of every enabled extension,
 `kabane list` included. Keep it to what the modules need. When it fails to load, those commands
 stop with one line that names the extension; `config`, `doctor` and `--help` still run, so you

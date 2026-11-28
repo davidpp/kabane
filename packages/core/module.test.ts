@@ -207,6 +207,18 @@ const refusals: { name: string; modules: KabaneModule[]; message: string }[] = [
 		message: 'thread kind "signal": label',
 	},
 	{
+		name: "thread kind starting in a state that is none",
+		modules: [
+			{
+				name: "alpha",
+				threadKinds: [
+					{ name: "signal", label: "Signal", initialState: "later" } as never,
+				],
+			},
+		],
+		message: 'thread kind "signal": initialState',
+	},
+	{
 		name: "thread kind carrying code",
 		modules: [
 			{

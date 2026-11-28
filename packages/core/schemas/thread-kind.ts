@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 import { EntryKindNameSchema } from "./comment";
-import type { TaskState } from "./task";
+import { TaskStateSchema } from "./task";
 
 export const ThreadKindSchema = z
 	.object({
@@ -22,21 +22,29 @@ export type ThreadKind = z.infer<typeof ThreadKindSchema>;
 export const PLAIN_THREAD_KIND = "thread";
 
 /**
- * What the generic record paths do with a thread of a core kind, kept on its
- * declaration so they read data instead of naming kinds. Code-only: a module
- * or a scope declares a kind's identity, never these, so they hold on a device
- * or the hub without the kind's extension (a job stays out of every work
- * queue where the jobs extension is off).
+ * A kind declared in code, by core or a registered module: its identity plus
+ * what the generic record paths do with its threads, so they read data instead
+ * of naming kinds. A scope's declaration replicates and stays identity only
+ * (`ThreadKindSchema`).
  */
-type CoreThreadKind = ThreadKind & {
+export const CodeThreadKindSchema = ThreadKindSchema.extend({
 	/** A new thread of the kind starts in this state; without it, with none. */
-	initialState?: TaskState;
+	initialState: TaskStateSchema.optional(),
 	/** A listing that names no kind leaves the kind out. */
-	unlisted?: true;
-};
+	unlisted: z.literal(true).optional(),
+}).strict();
+export type CodeThreadKind = z.infer<typeof CodeThreadKindSchema>;
+
+/** A declaration's identity, what discovery shows of it. */
+export const identityOf = ({
+	name,
+	label,
+	description,
+}: ThreadKind): ThreadKind =>
+	description === undefined ? { name, label } : { name, label, description };
 
 /** The kinds core declares. Their names are reserved: no module or scope may declare one. */
-export const CORE_THREAD_KINDS: readonly CoreThreadKind[] = [
+export const CORE_THREAD_KINDS: readonly CodeThreadKind[] = [
 	{
 		name: PLAIN_THREAD_KIND,
 		label: "Thread",
@@ -64,12 +72,3 @@ export const CORE_THREAD_KINDS: readonly CoreThreadKind[] = [
 		unlisted: true,
 	},
 ];
-
-/** The state a new thread of `kind` starts in: its declaration's, else none. */
-export const initialStateOf = (kind: string): TaskState | undefined =>
-	CORE_THREAD_KINDS.find((declared) => declared.name === kind)?.initialState;
-
-/** The kinds a listing that names no kind leaves out. */
-export const UNLISTED_KINDS: readonly string[] = CORE_THREAD_KINDS.filter(
-	(declared) => declared.unlisted,
-).map((declared) => declared.name);

@@ -4,6 +4,7 @@ import {
 	CustomAttributeKeySchema,
 	defineTool,
 	err,
+	identityOf,
 	ok,
 	normalizeScopeUri,
 	Oplog,
@@ -173,15 +174,14 @@ export namespace Registry {
 		if (!rows.ok) return rows;
 		const published = readable(ThreadKindSchema, rows.value);
 		const kinds: DiscoveredKind[] = [
-			// Identity only: what core does with its own kinds is not a declaration's.
-			...CORE_THREAD_KINDS.map(({ name, label, description }) => ({
-				name,
-				label,
-				...(description === undefined ? {} : { description }),
+			// Identity only: a code declaration's initialState and unlisted are what
+			// this host does with the kind, not part of the shared vocabulary.
+			...CORE_THREAD_KINDS.map((kind) => ({
+				...identityOf(kind),
 				source: "core" as const,
 			})),
 			...Runtime.threadKinds().map(({ module, kind }) => ({
-				...kind,
+				...identityOf(kind),
 				source: `module:${module}` as const,
 			})),
 		];

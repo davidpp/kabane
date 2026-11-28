@@ -9,7 +9,6 @@ import { Modules } from "../module";
 import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
-	initialStateOf,
 	type ItemKind,
 	KEYED_ID_PATTERN,
 	type Task,
@@ -254,7 +253,7 @@ const stateKept = (
 	stored: { kind: string; state: TaskState | null },
 ): Result<TaskUpdate> => {
 	const kind = updates.kind ?? stored.kind;
-	const initial = initialStateOf(kind);
+	const initial = Modules.initialStateOf(kind);
 	if (initial === undefined) return ok(updates);
 	if (updates.state === null)
 		return err(
@@ -269,7 +268,7 @@ const stateKept = (
 
 /** A new thread's state: the draft's, else the one its kind's declaration starts it in. */
 const initialState = (draft: TaskDraft): TaskState | undefined =>
-	draft.state ?? initialStateOf(draft.kind ?? "task");
+	draft.state ?? Modules.initialStateOf(draft.kind ?? "task");
 
 const taskFromDraft = (
 	draft: TaskDraft,
