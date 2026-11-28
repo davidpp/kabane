@@ -14,8 +14,8 @@ what the extension adds. Any of these, all optional:
 
 More come from files rather than the factory: skills under `skills/` are how-to that `kabane mcp`
 serves to any connected session, markdown files under `copilot/shortcuts/` give the board's
-copilot `/` shortcuts, and a second entry, `modules`, declares tables the extension keeps
-in the tracker's database.
+copilot `/` shortcuts, and a second entry, `modules`, declares the data modules the extension
+adds: tables it keeps in the tracker's database, and thread kinds.
 
 Keep the thread's content and attributes in the shared record so readers can
 inspect them when your extension is disabled. Use the extension for commands
@@ -40,7 +40,7 @@ ln -s "$PWD" "${KABANE_HOME:-$HOME/.kabane}/extensions/notes"
 ```
 
 `package.json` holds the manifest under `kabane`: the entry, the API it is written against, and
-the modules entry, which only an extension with tables of its own has.
+the modules entry, which an extension with tables or thread kinds of its own has.
 
 ```json
 {
