@@ -28,12 +28,16 @@ first-party data modules that both standard hosts register: the device (`MODULES
 `@kabane/work`, declares `task`, `issue` and `job` with their policy. It is always registered,
 so turning off an executable extension such as jobs or loop changes none of this policy.
 
-A module's code declaration may carry the two policy fields, through one contract for every
+A module's code declaration may carry the policy fields, through one contract for every
 module:
 
 ```ts
 // packages/core/schemas/thread-kind.ts
-export type CodeThreadKind = ThreadKind & { initialState?: TaskState; unlisted?: true };
+export const CodeThreadKindSchema = ThreadKindSchema.extend({
+	initialState: TaskStateSchema.optional(),
+	unlisted: z.literal(true).optional(),
+	defaultFor: z.array(DefaultKindWriteSchema).min(1).optional(), // "add" | "apply"
+}).strict();
 // KabaneModule.threadKinds?: readonly CodeThreadKind[]
 ```
 
@@ -56,7 +60,7 @@ Why this design, and not the alternatives in the note:
   `task`, `issue` and `job` rows read under their stored names (ADR 0010), are created stateless
   and are listed.
 - `kabane_threadKinds` and `registry kinds` report the three as `module:work`, not `core`.
-  `packages/worker/src/hub-mcp.test.ts` asserts the old sources.
+  `packages/worker/src/hub-mcp.test.ts` and `packages/cli/cli.test.ts` assert the new sources.
 - Names are claimed by the module rules: an extension declaring `job` collides with
   `module:work` at configure, and a scope's `job` is shadowed. Core reserves only `thread`.
 - The hub's job exclusion now depends on `hub.ts` registering the module, not on shared core
