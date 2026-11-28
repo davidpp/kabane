@@ -26,12 +26,10 @@ export type TodayBucket = "overdue" | "dueToday" | "next";
 const kindClause = (kind: ItemKind | undefined): TaskSelection => {
 	if (kind) return { sql: "kind = ?", params: [kind] };
 	const unlisted = Modules.unlistedKinds();
-	return unlisted.length
-		? {
-				sql: `kind NOT IN (${unlisted.map(() => "?").join(", ")})`,
-				params: unlisted,
-			}
-		: { sql: "1 = 1", params: [] };
+	return {
+		sql: `kind NOT IN (${unlisted.map(() => "?").join(", ")})`,
+		params: unlisted,
+	};
 };
 
 export const scopeClause = (scope: string, column: string): TaskSelection => {

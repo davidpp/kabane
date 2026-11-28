@@ -53,6 +53,27 @@ const names = async (base: string, scope: string) =>
 		(kind) => `${kind.source}:${kind.name}`,
 	);
 
+it("lists a module kind's identity only, without the policy its code declaration carries", async () => {
+	const routines: KabaneModule = {
+		name: "routines",
+		threadKinds: [
+			{
+				name: "routine",
+				label: "Routine",
+				initialState: "inbox",
+				unlisted: true,
+			},
+		],
+	};
+	const base = await device("alpha", [routines]);
+	const { kinds } = unwrap(await Registry.kinds(base, "acme"));
+	expect(kinds.find((kind) => kind.name === "routine")).toEqual({
+		name: "routine",
+		label: "Routine",
+		source: "module:routines",
+	});
+});
+
 it("lists core's kinds, then a module's, then the scope's own, each with its label", async () => {
 	const base = await device("alpha", [monitor]);
 	expect(unwrap(await Registry.publish(base, "acme", signal))).toEqual(signal);

@@ -131,7 +131,7 @@ The two fields hold only where the extension is enabled. With it disabled, a new
 with no state and shows in every listing, and a thread filed before keeps the state it has. The
 hub never loads an extension, so it treats the kind the same way. A name that core or another
 module already declares is refused, and so is a field kabane does not know: a host older than
-this field stops with `Unrecognized keys: "initialState"`.
+these fields stops with an `Unrecognized keys` line that names them.
 
 Every command that opens the database imports the modules entry of every enabled extension,
 `kabane list` included. Keep it to what the modules need. When it fails to load, those commands

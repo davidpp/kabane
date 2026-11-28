@@ -36,7 +36,7 @@ export const CodeThreadKindSchema = ThreadKindSchema.extend({
 export type CodeThreadKind = z.infer<typeof CodeThreadKindSchema>;
 
 /** A declaration's identity, what discovery shows of it. */
-export const identityOf = ({
+export const threadKindIdentity = ({
 	name,
 	label,
 	description,

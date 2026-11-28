@@ -34,7 +34,7 @@ export {
 	type CodeThreadKind,
 	CodeThreadKindSchema,
 	CORE_THREAD_KINDS,
-	identityOf,
+	threadKindIdentity,
 	PLAIN_THREAD_KIND,
 	type ThreadKind,
 	ThreadKindSchema,

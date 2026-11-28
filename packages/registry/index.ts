@@ -4,7 +4,7 @@ import {
 	CustomAttributeKeySchema,
 	defineTool,
 	err,
-	identityOf,
+	threadKindIdentity,
 	ok,
 	normalizeScopeUri,
 	Oplog,
@@ -177,11 +177,11 @@ export namespace Registry {
 			// Identity only: a code declaration's initialState and unlisted are what
 			// this host does with the kind, not part of the shared vocabulary.
 			...CORE_THREAD_KINDS.map((kind) => ({
-				...identityOf(kind),
+				...threadKindIdentity(kind),
 				source: "core" as const,
 			})),
 			...Runtime.threadKinds().map(({ module, kind }) => ({
-				...identityOf(kind),
+				...threadKindIdentity(kind),
 				source: `module:${module}` as const,
 			})),
 		];
