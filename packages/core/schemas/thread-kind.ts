@@ -44,14 +44,6 @@ export const CodeThreadKindSchema = ThreadKindSchema.extend({
 }).strict();
 export type CodeThreadKind = z.infer<typeof CodeThreadKindSchema>;
 
-/** A declaration's identity, what discovery shows of it. */
-export const threadKindIdentity = ({
-	name,
-	label,
-	description,
-}: ThreadKind): ThreadKind =>
-	description === undefined ? { name, label } : { name, label, description };
-
 /**
  * The kinds core declares: only the plain thread, whose name no module or scope
  * may declare. The shipped work kinds are `@kabane/work`'s (ADR 0012).

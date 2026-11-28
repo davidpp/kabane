@@ -32,9 +32,7 @@ export {
 // Thread kind declarations (ADR 0010)
 export {
 	type CodeThreadKind,
-	CodeThreadKindSchema,
 	CORE_THREAD_KINDS,
-	threadKindIdentity,
 	PLAIN_THREAD_KIND,
 	type ThreadKind,
 	ThreadKindSchema,

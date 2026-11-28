@@ -4,7 +4,6 @@ import {
 	CustomAttributeKeySchema,
 	defineTool,
 	err,
-	threadKindIdentity,
 	ok,
 	normalizeScopeUri,
 	Oplog,
@@ -65,6 +64,14 @@ const kindTable = "registry_thread_kinds";
 /** Where a discovered thread kind is declared: core, a registered module, or the scope's published vocabulary. */
 type KindSource = "core" | `module:${string}` | "scope";
 type DiscoveredKind = ThreadKind & { source: KindSource };
+
+/** A declaration's identity, what discovery shows of it. */
+const threadKindIdentity = ({
+	name,
+	label,
+	description,
+}: ThreadKind): ThreadKind =>
+	description === undefined ? { name, label } : { name, label, description };
 
 /** The declaration in code that holds `name`, if any: a scope never replaces one. */
 const declaredInCode = (name: string): KindSource | undefined => {
