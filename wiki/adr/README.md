@@ -56,3 +56,6 @@ reference), which puts the ADR in the implementer's brief.
 - [0011](0011-a-stateless-kind-closes-by-taking-a-state.md): A stateless kind closes by taking a
   state, and an update with `state: null` takes it away again. Accepted (claude, 2026-11-27,
   open to override).
+- [0012](0012-shipped-kinds-are-declared-by-a-standard-data-module.md): Core declares only the
+  plain thread; `task`, `issue` and `job` and their policy come from `@kabane/work`, a data module
+  both standard hosts register. Accepted (David, 2026-11-28).

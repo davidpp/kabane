@@ -234,6 +234,25 @@ it("refuses a newer core or module schema", async () => {
 	}
 });
 
+it("restores an export whose header lacks or adds a module with no schema", async () => {
+	const snapshot = value(await withDb(source, completeSnapshot));
+	const [line, ...rest] = Portable.encode(snapshot).split("\n");
+	const header = JSON.parse(line ?? "");
+	expect(header.modules.work).toBe(0);
+	const { work: _, ...withoutWork } = header.modules;
+	for (const modules of [withoutWork, { ...header.modules, later: 0 }]) {
+		const restored = value(
+			await withDb(rebuilt, (db) =>
+				Portable.restore(
+					db,
+					[JSON.stringify({ ...header, modules }), ...rest].join("\n"),
+				),
+			),
+		);
+		expect(restored.ok).toBe(true);
+	}
+});
+
 it("puts each thread before its children and unowned rows last", async () => {
 	const a = value(await Planner.addTask(source, { title: "A", scopeUri }));
 	const b = value(await Planner.addTask(source, { title: "B", scopeUri }));

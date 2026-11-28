@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { workModule } from "@kabane/work";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
@@ -155,7 +156,7 @@ it("lists and calls registered module tools and advertises their instructions", 
 			"Valid sections: metadata, description, decisions.answers, upstream, position, context, priorWork, discussion",
 		);
 		expect(client.getInstructions()).toBe(
-			`${SERVER_INSTRUCTIONS}\n\n${module.instructions}`,
+			`${SERVER_INSTRUCTIONS}\n\n${workModule.instructions}\n\n${module.instructions}`,
 		);
 	} finally {
 		await client.close();

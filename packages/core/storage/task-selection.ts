@@ -1,12 +1,8 @@
 /** SQL selections shared by legacy records and opt-in concise pages. */
 import type { Db, SqlValue } from "../db/port";
+import { Modules } from "../module";
 import { Runtime } from "../runtime";
-import {
-	type ItemKind,
-	type Task,
-	type TaskQuery,
-	UNLISTED_KINDS,
-} from "../schemas";
+import { type ItemKind, type Task, type TaskQuery } from "../schemas";
 import { DeadlineSql } from "./deadline-sql";
 import { stateFilter, buildScopeFamilyMatch, TABLES } from "./helpers";
 
@@ -27,13 +23,14 @@ export type TodayBucket = "overdue" | "dueToday" | "next";
 
 // A listing that names no kind leaves out the kinds declared unlisted (a job: a standing request,
 // not work to pick up), and naming one returns only that kind.
-const kindClause = (kind: ItemKind | undefined): TaskSelection =>
-	kind
-		? { sql: "kind = ?", params: [kind] }
-		: {
-				sql: `kind NOT IN (${UNLISTED_KINDS.map(() => "?").join(", ")})`,
-				params: [...UNLISTED_KINDS],
-			};
+const kindClause = (kind: ItemKind | undefined): TaskSelection => {
+	if (kind) return { sql: "kind = ?", params: [kind] };
+	const unlisted = Modules.unlistedKinds();
+	return {
+		sql: `kind NOT IN (${unlisted.map(() => "?").join(", ")})`,
+		params: unlisted,
+	};
+};
 
 export const scopeClause = (scope: string, column: string): TaskSelection => {
 	const family = buildScopeFamilyMatch(scope);

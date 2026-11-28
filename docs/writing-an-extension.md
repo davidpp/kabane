@@ -14,8 +14,8 @@ what the extension adds. Any of these, all optional:
 
 More come from files rather than the factory: skills under `skills/` are how-to that `kabane mcp`
 serves to any connected session, markdown files under `copilot/shortcuts/` give the board's
-copilot `/` shortcuts, and a second entry, `modules`, declares tables the extension keeps
-in the tracker's database.
+copilot `/` shortcuts, and a second entry, `modules`, declares the data modules the extension
+adds: tables it keeps in the tracker's database, and thread kinds.
 
 Keep the thread's content and attributes in the shared record so readers can
 inspect them when your extension is disabled. Use the extension for commands
@@ -40,7 +40,7 @@ ln -s "$PWD" "${KABANE_HOME:-$HOME/.kabane}/extensions/notes"
 ```
 
 `package.json` holds the manifest under `kabane`: the entry, the API it is written against, and
-the modules entry, which only an extension with tables of its own has.
+the modules entry, which an extension with tables or thread kinds of its own has.
 
 ```json
 {
@@ -103,6 +103,37 @@ A replicated table needs an `id` primary key and the columns `updated_by`, `vers
 `visibility`; a `private` row never leaves the device. `row-lww` keeps the row with the latest
 `clock` value when two devices write the same one. `childOfTasks` says `task_id` points at a task,
 so join notes to the visible `tasks` view when reading them. Deleting a task hides its notes and retains their rows.
+
+### Declare a thread kind
+
+A module can also declare thread kinds. A declaration is a `name` and a `label`, with an optional
+`description`, and optional fields that say what kabane does with a thread of the kind:
+`initialState` is the state a new one starts in, and `unlisted: true` keeps it out of a listing
+that names no kind. `defaultFor` takes the kind for a write that names none, `["add"]` or
+`["apply"]`; the standard distribution gives those to `task` and `issue`, so an extension that
+claims one again is refused when kabane starts. This `modules.ts` declares only a kind:
+
+```ts
+import type { KabaneModule } from "kabane/extension";
+
+export default (): KabaneModule[] => [
+	{
+		name: "routines",
+		threadKinds: [{ name: "routine", label: "Routine", initialState: "inbox", unlisted: true }],
+	},
+];
+```
+
+`kabane add "water the plants" --kind routine` then files it in `inbox`. `kabane list` leaves it
+out and `kabane list --kind routine` shows it. `kabane edit <id> --state none` is refused,
+because the kind has a workflow. `kabane registry kinds` and `kabane_threadKinds` list the kind's
+name, label and description, with `module:routines` as its source.
+
+The two fields hold only where the extension is enabled. With it disabled, a new `routine` starts
+with no state and shows in every listing, and a thread filed before keeps the state it has. The
+hub never loads an extension, so it treats the kind the same way. A name that core or another
+module already declares is refused (`task`, `issue` and `job` are the `work` module's), and so is a field kabane does not know: a host older than
+these fields stops with an `Unrecognized keys` line that names them.
 
 Every command that opens the database imports the modules entry of every enabled extension,
 `kabane list` included. Keep it to what the modules need. When it fails to load, those commands

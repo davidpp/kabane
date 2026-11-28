@@ -9,7 +9,6 @@ import { Modules } from "../module";
 import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic, Runtime, withDb } from "../runtime";
 import {
-	initialStateOf,
 	type ItemKind,
 	KEYED_ID_PATTERN,
 	type Task,
@@ -254,7 +253,7 @@ const stateKept = (
 	stored: { kind: string; state: TaskState | null },
 ): Result<TaskUpdate> => {
 	const kind = updates.kind ?? stored.kind;
-	const initial = initialStateOf(kind);
+	const initial = Modules.initialStateOf(kind);
 	if (initial === undefined) return ok(updates);
 	if (updates.state === null)
 		return err(
@@ -267,12 +266,15 @@ const stateKept = (
 		: ok(updates);
 };
 
+/** A draft whose kind is settled: the caller's write chose the default for an omitted one. */
+type KindedDraft = TaskDraft & { kind: string };
+
 /** A new thread's state: the draft's, else the one its kind's declaration starts it in. */
-const initialState = (draft: TaskDraft): TaskState | undefined =>
-	draft.state ?? initialStateOf(draft.kind ?? "task");
+const initialState = (draft: KindedDraft): TaskState | undefined =>
+	draft.state ?? Modules.initialStateOf(draft.kind);
 
 const taskFromDraft = (
-	draft: TaskDraft,
+	draft: KindedDraft,
 	scopeUri: string | undefined,
 	{
 		id,
@@ -286,7 +288,7 @@ const taskFromDraft = (
 		shortId,
 		title: draft.title,
 		description: draft.description,
-		kind: draft.kind ?? "task",
+		kind: draft.kind,
 		state: initialState(draft),
 		priority: draft.priority ?? "normal",
 		scopeUri,
@@ -486,7 +488,13 @@ export namespace Planner {
 			const task =
 				key !== undefined && existingKeyed(db, key)
 					? { ...taskOf(db, key), existed: true as const }
-					: createTaskIn(db, draft, scopeUri, prefixResult.value, key);
+					: createTaskIn(
+							db,
+							{ ...draft, kind: draft.kind ?? Modules.defaultKindFor("add") },
+							scopeUri,
+							prefixResult.value,
+							key,
+						);
 			if (concise) {
 				const receipt = taskReceipt(task);
 				if (!receipt.ok) throw receipt.error;
@@ -509,7 +517,7 @@ export namespace Planner {
 	 */
 	export const createTaskIn = (
 		db: Db,
-		draft: TaskDraft,
+		draft: KindedDraft,
 		scopeUri: string | undefined,
 		prefix: string,
 		id: string = generateId(),
@@ -522,7 +530,7 @@ export namespace Planner {
 		RecordWrite.createThread(db, {
 			id,
 			shortId,
-			kind: draft.kind ?? "task",
+			kind: draft.kind,
 			title: draft.title,
 			body: draft.description ?? null,
 			scope: scopeUri ?? null,

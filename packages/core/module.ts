@@ -42,9 +42,11 @@ import {
 } from "./schemas/comment";
 import type { Task, TaskState } from "./schemas/task";
 import {
+	type CodeThreadKind,
+	CodeThreadKindSchema,
 	CORE_THREAD_KINDS,
-	type ThreadKind,
-	ThreadKindSchema,
+	type DefaultKindWrite,
+	PLAIN_THREAD_KIND,
 } from "./schemas/thread-kind";
 import type { SyncFamily } from "./sync/resolve";
 
@@ -127,11 +129,15 @@ export type KabaneModule = {
 	 */
 	kinds?: readonly EntryKind[];
 	/**
-	 * Thread kinds, as data (`ThreadKind`). Unlike entry kinds a name need not
-	 * carry the module's: a shipped kind keeps the name its threads already
-	 * store (`job`). Core's own names and another module's are refused.
+	 * Thread kinds, as data (`CodeThreadKind`): identity, and optionally the
+	 * state a new thread starts in (`initialState`) and whether a listing that
+	 * names no kind leaves it out (`unlisted`), and the writes that take it when
+	 * they name no kind (`defaultFor`; one kind per write, a second claim is
+	 * refused). All three hold only where the module is registered. Unlike entry kinds a name need not carry the module's: a
+	 * shipped kind keeps the name its threads already store (`job`). Core's own
+	 * names and another module's are refused.
 	 */
-	threadKinds?: readonly ThreadKind[];
+	threadKinds?: readonly CodeThreadKind[];
 	tools?: readonly ToolDef[];
 	/** Appended to the MCP server instructions, one paragraph. */
 	instructions?: string;
@@ -230,10 +236,11 @@ const kindProblem = (
 const threadKindProblem = (
 	module: KabaneModule,
 	claimed: Claims,
+	defaults: Claims,
 ): string | undefined => {
 	for (const kind of module.threadKinds ?? []) {
 		const where = `module "${module.name}" thread kind ${quoted(kind.name)}`;
-		const parsed = ThreadKindSchema.safeParse(kind);
+		const parsed = CodeThreadKindSchema.safeParse(kind);
 		if (!parsed.success) {
 			const issue = parsed.error.issues[0];
 			return `${where}: ${issue?.path.join(".") || "the declaration"} ${issue?.message ?? "is invalid"}`;
@@ -242,6 +249,15 @@ const threadKindProblem = (
 		if (owner !== undefined)
 			return `${where}: the name is already ${owner}; pick another`;
 		claimed.set(kind.name, `a thread kind of module "${module.name}"`);
+		for (const write of kind.defaultFor ?? []) {
+			const holder = defaults.get(write);
+			if (holder !== undefined)
+				return `${where}: the default for ${write} is already ${holder}; pick one`;
+			defaults.set(
+				write,
+				`kind ${quoted(kind.name)} of module "${module.name}"`,
+			);
+		}
 	}
 	return undefined;
 };
@@ -259,8 +275,9 @@ const readSurfaceProblem = (
 	const threadKinds: Claims = new Map(
 		CORE_THREAD_KINDS.map((kind) => [kind.name, "a core thread kind"]),
 	);
+	const defaultKinds: Claims = new Map();
 	for (const module of modules) {
-		const problem = threadKindProblem(module, threadKinds);
+		const problem = threadKindProblem(module, threadKinds, defaultKinds);
 		if (problem !== undefined) return problem;
 		for (const section of module.contextSections ?? []) {
 			const owner = sections.get(section.name);
@@ -363,10 +380,31 @@ export namespace Modules {
 			.find((declared) => declared.name === name);
 
 	/** Every registered module's thread kinds, with the module declaring each. */
-	export const threadKinds = (): { module: string; kind: ThreadKind }[] =>
+	export const threadKinds = (): { module: string; kind: CodeThreadKind }[] =>
 		registered.flatMap((module) =>
 			(module.threadKinds ?? []).map((kind) => ({ module: module.name, kind })),
 		);
+
+	/** Core's declarations, then the registered modules', read now. */
+	const declaredInCode = (): CodeThreadKind[] => [
+		...CORE_THREAD_KINDS,
+		...registered.flatMap((module) => module.threadKinds ?? []),
+	];
+
+	/** The state a new thread of `kind` starts in: its declaration's, else none. */
+	export const initialStateOf = (kind: string): TaskState | undefined =>
+		declaredInCode().find((declared) => declared.name === kind)?.initialState;
+
+	/** The kind a `write` that names none takes: the declared holder's, else the plain thread. */
+	export const defaultKindFor = (write: DefaultKindWrite): string =>
+		declaredInCode().find((declared) => declared.defaultFor?.includes(write))
+			?.name ?? PLAIN_THREAD_KIND;
+
+	/** The kinds a listing that names no kind leaves out. */
+	export const unlistedKinds = (): string[] =>
+		declaredInCode()
+			.filter((declared) => declared.unlisted)
+			.map((declared) => declared.name);
 
 	/** The schema version this build of `module` writes: its migration count. */
 	export const schemaOf = (module: KabaneModule): number =>

@@ -659,3 +659,81 @@ describe("the owner's timezone", () => {
 		setZone("UTC");
 	});
 });
+
+// The device's work policy comes from registering @kabane/work in MODULES (ADR 0012); a host that
+// forgot it would create a stateless task and list the job.
+describe("the shipped work kinds", () => {
+	const home = join(tmpdir(), `kabane-cli-work-${crypto.randomUUID()}`);
+	const cwd = join(home, "project");
+	const run = makeRunner(home, cwd);
+
+	beforeAll(async () => {
+		mkdirSync(join(cwd, ".kabane"), { recursive: true });
+		writeFileSync(join(cwd, ".kabane", "scope"), "demo\n");
+		const init = await run(
+			"init",
+			"--actor",
+			"kabane://actor/human/tester",
+			"--device",
+			"work",
+		);
+		expect(init.code).toBe(0);
+	});
+
+	afterAll(() => rmSync(home, { recursive: true, force: true }));
+
+	type Added = { id: string; shortId: string; kind: string; state?: string };
+	const add = async (...argv: string[]): Promise<Added> => {
+		const r = await run("add", ...argv, "--json");
+		expect(r.code).toBe(0);
+		return json<Added>(r);
+	};
+
+	it("starts a task and an issue in inbox and keeps a job out of default listings", async () => {
+		const task = await add("Buy syrup");
+		expect([task.kind, task.state]).toEqual(["task", "inbox"]);
+		const issue = await add("Fix it", "--kind", "issue");
+		expect([issue.kind, issue.state]).toEqual(["issue", "inbox"]);
+		const job = await add("Nightly", "--kind", "job", "--state", "next");
+		expect(job.state).toBe("next");
+
+		const next = await run("list", "--state", "next");
+		expect(next.code).toBe(0);
+		expect(next.out).toBe("No tasks found.");
+		const jobs = json<Added[]>(await run("list", "--kind", "job", "--json"));
+		expect(jobs.map((item) => item.id)).toEqual([job.id]);
+		const all = json<Added[]>(await run("list", "--json"));
+		expect(all.map((item) => item.id).sort()).toEqual(
+			[task.id, issue.id].sort(),
+		);
+
+		const stateless = await run("edit", job.shortId, "--state", "none");
+		expect(stateless.code).toBe(1);
+	});
+
+	it("applies a plan thread that names no kind as an issue", async () => {
+		const file = join(cwd, "plan.json");
+		writeFileSync(
+			file,
+			JSON.stringify({ threads: [{ key: "fix", title: "Fix it" }] }),
+		);
+		const applied = await run("apply", file, "--key", "cli-plan");
+		expect(applied.code).toBe(0);
+		const { task } = json<{ task: Added }>(
+			await run("show", "cli-plan/fix", "--json"),
+		);
+		expect([task.kind, task.state]).toEqual(["issue", "inbox"]);
+	});
+
+	it("reports task, issue and job as declared by module:work", async () => {
+		const r = await run("registry", "kinds", "--json");
+		expect(r.code).toBe(0);
+		const { kinds } = json<{ kinds: { name: string; source: string }[] }>(r);
+		expect(kinds.map((kind) => `${kind.source}:${kind.name}`)).toEqual([
+			"core:thread",
+			"module:work:task",
+			"module:work:issue",
+			"module:work:job",
+		]);
+	});
+});

@@ -31,12 +31,11 @@ export {
 } from "./comment";
 // Thread kind declarations (ADR 0010)
 export {
+	type CodeThreadKind,
 	CORE_THREAD_KINDS,
-	initialStateOf,
 	PLAIN_THREAD_KIND,
 	type ThreadKind,
 	ThreadKindSchema,
-	UNLISTED_KINDS,
 } from "./thread-kind";
 // Config schemas
 export { type SyncConfig, SyncConfigSchema } from "./config";

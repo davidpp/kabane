@@ -15,6 +15,7 @@ packages/
 ├── outcome/   # @kabane/outcome — data module: session outcomes on the issue timeline
 ├── handoff/   # @kabane/handoff — data module: the handoff entry kind
 ├── registry/  # @kabane/registry — data module: a scope's declared attributes and thread kinds
+├── work/      # @kabane/work   — data module: the task, issue and job thread kinds
 ├── cli/       # kabane         — the device host: commands, `kabane mcp` (stdio)
 ├── board/     # @kabane/board  — OpenTUI kanban and ACP copilot
 └── worker/    # kabane-worker  — the hub: Cloudflare Worker, sync log and cloud device

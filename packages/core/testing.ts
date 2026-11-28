@@ -10,6 +10,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import { Runtime, type FileReader, type RuntimeConfig } from "./runtime";
 
 /** Read real test files through the runtime port without a CLI dependency. */
@@ -25,12 +26,18 @@ export const testFileReader: FileReader = async (path, cap) => {
 
 export const TEST_DB_NAME = "kabane.db";
 
-export const configureTestRuntime = (
-	extra: Partial<Omit<RuntimeConfig, "provider">> = {},
-): void => {
+/**
+ * Configure the test runtime as a standard host does: `@kabane/work` is always
+ * registered (ADR 0012), ahead of `extra.modules`.
+ */
+export const configureTestRuntime = ({
+	modules = [],
+	...extra
+}: Partial<Omit<RuntimeConfig, "provider">> = {}): void => {
 	Runtime.configure({
 		provider: SqliteDb.provider({ dbName: TEST_DB_NAME }),
 		timezone: () => "UTC",
+		modules: [workModule, ...modules],
 		...extra,
 	});
 };

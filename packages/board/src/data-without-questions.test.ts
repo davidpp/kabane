@@ -10,6 +10,7 @@ import { Planner, Runtime } from "@kabane/core";
 import { handoffModule } from "@kabane/handoff";
 import { Questions, questionsModule } from "@kabane/questions";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 import { dropDb, freshDb } from "./test-db";
@@ -26,7 +27,7 @@ afterAll(() => {
 	// Back to the wiring every other board test shares (test-db.ts).
 	Runtime.configure({
 		provider: SqliteDb.provider(),
-		modules: [questionsModule, handoffModule, checklistModule],
+		modules: [workModule, questionsModule, handoffModule, checklistModule],
 	});
 });
 

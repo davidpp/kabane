@@ -1,0 +1,25 @@
+{
+	"name": "@kabane/work",
+	"version": "0.1.0",
+	"description": "Kabane data module: the task, issue and job thread kinds and their workflow policy",
+	"license": "MIT",
+	"private": true,
+	"type": "module",
+	"main": "index.ts",
+	"types": "index.ts",
+	"exports": {
+		".": "./index.ts"
+	},
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"clean": "rm -rf node_modules"
+	},
+	"dependencies": {
+		"@kabane/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "1.4.4",
+		"tsgo": "npm:typescript@7.0.2"
+	}
+}

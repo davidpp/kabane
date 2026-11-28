@@ -35,6 +35,7 @@
 		"@agentclientprotocol/sdk": "2.7.0",
 		"@kabane/handoff": "workspace:*",
 		"@kabane/sqlite": "workspace:*",
+		"@kabane/work": "workspace:*",
 		"@types/bun": "1.4.4",
 		"@types/react": "19.3.0",
 		"tsgo": "npm:typescript@7.0.2"

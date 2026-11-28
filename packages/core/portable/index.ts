@@ -7,19 +7,23 @@ import { mintedLabel, SHORT_ID_PATTERN } from "../storage/helpers";
 import { binding, document, header, idOf, quote, versions } from "./format";
 import * as snapshots from "./snapshot";
 
+/**
+ * The modules whose schema an export must match: a module at schema 0 has no
+ * migrations, so no table of its own, and an export is complete without it.
+ */
+const withSchema = (modules: Record<string, number>) =>
+	Object.entries(modules).filter(([, version]) => version !== 0);
+
 const readHeader = (line: string): Result<z.infer<typeof header>> => {
 	const json = trySync(() => JSON.parse(line) as unknown);
 	if (!json.ok) return err(new Error("Invalid portable header JSON"));
 	const parsed = header.safeParse(json.value);
-	const expected = versions();
+	const expected = withSchema(versions().modules);
 	if (
 		!parsed.success ||
-		parsed.data.core !== expected.core ||
-		Object.keys(parsed.data.modules).length !==
-			Object.keys(expected.modules).length ||
-		Object.entries(expected.modules).some(
-			([name, version]) => parsed.data.modules[name] !== version,
-		)
+		parsed.data.core !== versions().core ||
+		withSchema(parsed.data.modules).length !== expected.length ||
+		expected.some(([name, version]) => parsed.data.modules[name] !== version)
 	)
 		return err(
 			new Error("Portable format or schema versions do not match this build"),

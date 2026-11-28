@@ -12,7 +12,9 @@
  */
 
 import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
+import { SERVER_INSTRUCTIONS } from "@kabane/core";
 import { questionsModule } from "@kabane/questions";
+import { workModule } from "@kabane/work";
 import { describe, expect, it } from "vitest";
 import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER } from "./names";
 import { HERMES, HUMAN, withAccess } from "./test-access";
@@ -121,12 +123,27 @@ describe("hub MCP over Streamable HTTP", () => {
 		};
 		expect(result.serverInfo.name).toBe("kabane-hub");
 		expect(result.instructions).toContain("kabane_scopeList");
+		// The work kinds are defined before anything else names issue or its states.
+		expect(
+			result.instructions?.startsWith(
+				`${SERVER_INSTRUCTIONS}\n\n${workModule.instructions}\n\n`,
+			),
+		).toBe(true);
 		expect(questionsModule.instructions).toBeTypeOf("string");
 		expect(result.instructions).toContain(questionsModule.instructions);
 		const listed = await rpc(HUMAN, "tools/list");
 		expect(listed.status).toBe(200);
 		expect(listed.body.result?.tools).toEqual(
 			expect.arrayContaining([
+				// The hub registers @kabane/work, so the descriptions name its defaults.
+				expect.objectContaining({
+					name: "kabane_add",
+					description: expect.stringContaining("Default task\n"),
+				}),
+				expect.objectContaining({
+					name: "kabane_apply",
+					description: expect.stringContaining("kind defaults to issue;"),
+				}),
 				expect.objectContaining({ name: "kabane_ask" }),
 				expect.objectContaining({ name: "kabane_questions" }),
 				expect.objectContaining({ name: "kabane_answer" }),
@@ -246,6 +263,39 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(next.value).toContain("Stale cursor");
 	});
 
+	// The hub's work policy comes from registering @kabane/work in hub.ts (ADR 0012); a hub that
+	// forgot it would create a stateless task and list the job.
+	it("starts a task in inbox and leaves a job out of a default listing and the next queue", async () => {
+		const scopeUri = "work-kinds";
+		const add = async (args: Record<string, unknown>) =>
+			(await callTool(HERMES, "kabane_add", { scopeUri, ...args }))
+				.value as TaskLike;
+		const task = await add({ title: "Plain add" });
+		expect(task.state).toBe("inbox");
+		const job = await add({ title: "Nightly", kind: "job", state: "next" });
+		expect(job.state).toBe("next");
+		const ids = async (args: Record<string, unknown>) =>
+			(
+				(await callTool(HERMES, "kabane_list", { scopeUri, ...args }))
+					.value as TaskLike[]
+			).map((item) => item.id);
+		expect(await ids({})).toEqual([task.id]);
+		expect(await ids({ state: "next" })).toEqual([]);
+		expect(await ids({ kind: "job" })).toEqual([job.id]);
+	});
+
+	it("files a plan thread that names no kind as an issue", async () => {
+		const applied = await callTool(HERMES, "kabane_apply", {
+			scopeUri: "work-kinds",
+			key: "hub-plan",
+			plan: { threads: [{ key: "fix", title: "Fix it" }] },
+		});
+		expect(applied.isError).toBe(false);
+		const got = (await callTool(HERMES, "kabane_get", { id: "hub-plan/fix" }))
+			.value as TaskLike & { kind: string };
+		expect([got.kind, got.state]).toEqual(["issue", "inbox"]);
+	});
+
 	it("publishes a scope's thread kind and lists it with core's for a hub-only agent", async () => {
 		const scopeUri = "kinds-acme";
 		const signal = { name: "signal", label: "Monitor signal" };
@@ -262,9 +312,9 @@ describe("hub MCP over Streamable HTTP", () => {
 			).kinds.map((kind) => `${kind.source}:${kind.name}`);
 		expect(await kinds(scopeUri)).toEqual([
 			"core:thread",
-			"core:task",
-			"core:issue",
-			"core:job",
+			"module:work:task",
+			"module:work:issue",
+			"module:work:job",
 			"scope:signal",
 		]);
 		expect(await kinds("kinds-other")).not.toContain("scope:signal");

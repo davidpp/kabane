@@ -155,12 +155,12 @@ export const TaskSchema = z.object({
 	/** Detailed description/notes (Markdown) */
 	description: z.string().optional(),
 
-	/** Thread kind: 'task' (personal GTD), 'issue' (agent work), 'job' (scheduled), 'thread' (plain) or any declared kind */
-	kind: ItemKindSchema.default("task"),
+	/** Thread kind: 'thread' (plain), a registered module's ('task', 'issue', 'job' from @kabane/work) or any declared kind */
+	kind: ItemKindSchema,
 
 	/**
 	 * Current state in GTD workflow. A new thread starts in its kind's
-	 * declared state (`initialStateOf`: `inbox` for task, issue and job) and
+	 * declared state (`Modules.initialStateOf`: `inbox` for task, issue and job) and
 	 * any other kind with none, until a write gives it one; an update with
 	 * `state: null` takes it away again.
 	 */
@@ -285,6 +285,8 @@ export const TaskDraftSchema = TaskSchema.omit({
 	updatedBy: true, // Storage-owned
 	version: true, // Storage-owned
 }).extend({
+	/** Omitted, the kind a module declares the default for the write (`Modules.defaultKindFor`). */
+	kind: ItemKindSchema.optional(),
 	// Make provenance optional for drafts - will be filled with defaults
 	provenance: ProvenanceSchema.optional(),
 });
@@ -293,7 +295,7 @@ export type TaskDraft = z.input<typeof TaskDraftSchema>;
 
 /**
  * Partial update for existing task. `state: null` takes a thread's state
- * away, which only a kind with no workflow of its own may do (`initialStateOf`).
+ * away, which only a kind with no workflow of its own may do (`Modules.initialStateOf`).
  */
 export const TaskUpdateSchema = TaskDraftSchema.extend({
 	kind: TaskDraftSchema.shape.kind.unwrap(),

@@ -492,8 +492,9 @@ Choose a new key for a changed vocabulary.
 
 ### Declare a thread kind for a scope
 
-A thread's kind says what it is. Kabane declares `thread` (a plain thread, with no workflow of
-its own), `task`, `issue` and `job`. A scope can add its own kind with a name and a display
+A thread's kind says what it is. Kabane's core declares `thread` (a plain thread, with no
+workflow of its own); the work module every kabane device and the hub register declares `task`,
+`issue` and `job`, listed as `module:work`. A scope can add its own kind with a name and a display
 label, without writing code. Save this as `signal.json`:
 
 ```json

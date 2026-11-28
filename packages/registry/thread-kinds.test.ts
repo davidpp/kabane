@@ -9,12 +9,10 @@ import {
 	Planner,
 	Portable,
 	type Result,
-	Runtime,
 	Sync,
 	withDb,
 } from "@kabane/core";
 import { configureTestRuntime } from "@kabane/core/testing";
-import { SqliteDb } from "@kabane/sqlite";
 import { Registry, registryModule } from "./index";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -32,13 +30,10 @@ const monitor: KabaneModule = {
 	threadKinds: [{ name: "alert", label: "Alert" }],
 };
 const register = (actor: string, extra: KabaneModule[] = []) =>
-	unwrap(
-		Runtime.configure({
-			provider: SqliteDb.provider(),
-			modules: [registryModule, ...extra],
-			actor: () => `kabane://actor/human/${actor}`,
-		}),
-	);
+	configureTestRuntime({
+		modules: [registryModule, ...extra],
+		actor: () => `kabane://actor/human/${actor}`,
+	});
 const device = async (name: string, extra: KabaneModule[] = []) => {
 	const base = mkdtempSync(join(tmpdir(), `registry-${name}-`));
 	bases.push(base);
@@ -53,15 +48,36 @@ const names = async (base: string, scope: string) =>
 		(kind) => `${kind.source}:${kind.name}`,
 	);
 
-it("lists core's kinds, then a module's, then the scope's own, each with its label", async () => {
+it("lists a module kind's identity only, without the policy its code declaration carries", async () => {
+	const routines: KabaneModule = {
+		name: "routines",
+		threadKinds: [
+			{
+				name: "routine",
+				label: "Routine",
+				initialState: "inbox",
+				unlisted: true,
+			},
+		],
+	};
+	const base = await device("alpha", [routines]);
+	const { kinds } = unwrap(await Registry.kinds(base, "acme"));
+	expect(kinds.find((kind) => kind.name === "routine")).toEqual({
+		name: "routine",
+		label: "Routine",
+		source: "module:routines",
+	});
+});
+
+it("lists core's kind, then the modules', then the scope's own, each with its label", async () => {
 	const base = await device("alpha", [monitor]);
 	expect(unwrap(await Registry.publish(base, "acme", signal))).toEqual(signal);
 	const { kinds } = unwrap(await Registry.kinds(base, "acme"));
 	expect(kinds.map((kind) => `${kind.source}:${kind.name}`)).toEqual([
 		"core:thread",
-		"core:task",
-		"core:issue",
-		"core:job",
+		"module:work:task",
+		"module:work:issue",
+		"module:work:job",
 		"module:monitor:alert",
 		"scope:signal",
 	]);
@@ -73,9 +89,9 @@ it("keeps a scope's kinds to that exact scope, and a scope with none lists code'
 	unwrap(await Registry.publish(base, "acme", signal));
 	expect(await names(base, "other")).toEqual([
 		"core:thread",
-		"core:task",
-		"core:issue",
-		"core:job",
+		"module:work:task",
+		"module:work:issue",
+		"module:work:job",
 	]);
 	expect(await names(base, "kabane://scope/acme")).toContain("scope:signal");
 });
@@ -104,7 +120,7 @@ it("refuses a scope kind that core or a registered module already declares", asy
 	const base = await device("alpha", [monitor]);
 	for (const [name, owner] of [
 		["thread", "core"],
-		["job", "core"],
+		["job", "module:work"],
 		["alert", "module:monitor"],
 	] as const) {
 		const result = await Registry.publish(base, "acme", { name, label: "X" });

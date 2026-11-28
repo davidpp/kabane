@@ -20,6 +20,7 @@
 import { z } from "zod";
 import { ActorUri } from "../actor";
 import { ContextPageOptionsSchema } from "../context-output";
+import { Modules } from "../module";
 import { err, ok, NotFoundError, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
@@ -133,11 +134,14 @@ const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 const add = define({
 	name: CORE_TOOL_NAMES.add,
 	kind: "write",
-	description: `Create a task, an issue, a job, a plain thread or a thread of any declared kind (a task, inbox, by default).
+	// A getter: the default kind is the registered modules' (`defaultFor`), so
+	// the text is rendered when the tool list is served, not at import.
+	get description() {
+		return `Create a task, an issue, a job, a plain thread or a thread of any declared kind.
 
 Parameters:
 - title: What to do, action-oriented
-- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Default task
+- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Default ${Modules.defaultKindFor("add")}
 - description: Optional Markdown body; for an issue this is the brief an agent reads
 - state: inbox, next, in_progress, waiting, someday. Default inbox for a task, issue or job; a thread of any other kind has no state unless given one. Use next for work ready to be picked up
 - priority: urgent, high, normal, low. Default normal
@@ -147,7 +151,8 @@ Parameters:
 - tags: Optional labels
 - dueDate: Optional. YYYY-MM-DD is a calendar date, due by the end of that day in the owner's timezone; an ISO datetime with Z or an offset is that exact instant; one without is a local time in the owner's timezone
 - key: Optional "<plan>/<name>" (lowercase), used as the task's id: adding again with the same key creates nothing and returns the task, marked existed, so a retry is safe. The same id kabane_apply gives thread <name> of plan <plan>
-- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
+- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`;
+	},
 	input: {
 		title: z.string().min(1).max(500),
 		kind: ItemKindSchema.optional(),
@@ -176,7 +181,7 @@ Parameters:
 		const draft: TaskDraft = {
 			title: args.title,
 			description: args.description,
-			kind: args.kind ?? "task",
+			kind: args.kind,
 			state: args.state,
 			priority: args.priority ?? "normal",
 			scopeUri: scope.value,
@@ -203,12 +208,14 @@ Parameters:
 const apply = define({
 	name: CORE_TOOL_NAMES.apply,
 	kind: "write",
-	description: `File a whole plan in one call: threads with keys you choose, and the links between them. Each thread's id is "<key>/<thread key>", so applying the same plan again creates nothing and says so: a retry after a crash is safe.
+	get description() {
+		return `File a whole plan in one call: threads with keys you choose, and the links between them. Each thread's id is "<key>/<thread key>", so applying the same plan again creates nothing and says so: a retry after a crash is safe.
 
 Parameters:
 - key: The plan's key, lowercase letters, digits, dots, dashes and underscores
-- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to issue, and any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
-- scopeUri: ${SCOPE_HINT} For every thread that names none`,
+- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to ${Modules.defaultKindFor("apply")}; any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
+- scopeUri: ${SCOPE_HINT} For every thread that names none`;
+	},
 	input: {
 		key: z.string().min(1),
 		plan: PlanSchema,
@@ -963,8 +970,6 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 
 /** Server-level instructions sent on initialize. */
 export const SERVER_INSTRUCTIONS = `Kabane is a shared work queue for humans and agent runtimes.
-Three kinds of item have a workflow: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up; 'job' is a standing request a schedule runs, which a listing leaves out unless it names kind job. A 'thread' is plain, with no state of its own, and a scope may declare more kinds (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
-To brainstorm into work: kabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
-To pick up work as a runtime: kabane_list with responseFormat concise, your assignee and state next (follow nextCursor with the same filters), kabane_context on the chosen id, kabane_edit to in_progress with responseFormat concise, then kabane_log and kabane_comment as you go, kabane_done with responseFormat concise at the end. Use kabane_get for full fields; omitted/full formats remain legacy and unbounded.
+Every item is a thread of some kind. A 'thread' is the plain kind, with no state of its own; modules and scopes declare others (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
 Scopes are the context boundary (a repo, a client). Discover them with kabane_scopeList and pass scopeUri on writes.
 When a task has a twin in Linear or GitHub, record it with kabane_upstream_link and put what the external issue says into the task's own description — the link is identity only, so nothing stored on it can go stale.`;
