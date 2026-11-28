@@ -20,6 +20,10 @@ const Workflow = z.object({
 // Bare Bun arguments are substring filters: "scripts" also selects nested scripts directories.
 // CI uses explicit ./ paths so directory ownership matches the files Bun actually runs.
 const Path = /^[\w-]+(?:\/[\w.-]+)*$/;
+// Vitest under the Workers pool runs these, through test:worker.
+const workerRoot = "packages/worker";
+const under = (file: string, root: string) =>
+	file === root || file.startsWith(`${root}/`);
 function testSelection(command: string, explicit = false) {
 	if (!command.startsWith("bun test ")) return undefined;
 	const paths: string[] = [];
@@ -86,12 +90,13 @@ export function coverageFindings(
 			);
 	}
 	for (const file of files) {
-		if (
-			!baseline.paths.some(
-				(root) => file === root || file.startsWith(`${root}/`),
-			)
-		)
+		if (under(file, workerRoot)) continue;
+		if (!baseline.paths.some((root) => under(file, root))) {
+			findings.push(
+				`${file}: no test:bun path runs it; add its directory to test:bun and one CI group.`,
+			);
 			continue;
+		}
 		const owners = selections.filter(
 			(selection) =>
 				selection.paths.some(
@@ -123,10 +128,14 @@ export function checkCiTests(root: string): string[] {
 		const baseline = testSelection(manifest.data.scripts["test:bun"]);
 		if (!baseline)
 			return ["Cannot parse test:bun; update the CI coverage guard."];
-		const files = baseline.paths
-			.flatMap((path) => [
-				...new Bun.Glob(`${path}/**/*`).scanSync({ cwd: root }),
-			])
+		// Every workspace package, not only the listed paths, so one left out is caught.
+		const files = [
+			...new Set(
+				[...baseline.paths, "packages/*", "extensions/*"].flatMap((path) => [
+					...new Bun.Glob(`${path}/**/*`).scanSync({ cwd: root }),
+				]),
+			),
+		]
 			.filter(
 				(file) =>
 					!file
