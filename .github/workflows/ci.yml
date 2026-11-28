@@ -60,7 +60,7 @@ jobs:
           - group: scripts-board
             command: bun test ./scripts ./packages/board
           - group: core-modules
-            command: bun test ./packages/core ./packages/sqlite ./packages/acp ./packages/extension ./packages/questions ./packages/checklist ./packages/handoff ./packages/outcome ./packages/registry
+            command: bun test ./packages/core ./packages/sqlite ./packages/acp ./packages/extension ./packages/questions ./packages/checklist ./packages/handoff ./packages/outcome ./packages/registry ./packages/work
           - group: worker
             command: bun run test:worker
     steps:

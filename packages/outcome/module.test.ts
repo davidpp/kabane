@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 it("registers the four outcome kinds with discussion projections", () => {
-	expect(Runtime.modules()).toEqual([outcomeModule]);
+	expect(Runtime.modules()).toContain(outcomeModule);
 	for (const kind of Object.values(OUTCOME_KINDS)) {
 		const declared = Runtime.entryKind(kind);
 		expect(declared?.projection).toBe("discussion");

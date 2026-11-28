@@ -7,10 +7,11 @@ import { Planner, Runtime } from "@kabane/core";
 import { handoffModule } from "@kabane/handoff";
 import { questionsModule } from "@kabane/questions";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 
 Runtime.configure({
 	provider: SqliteDb.provider(),
-	modules: [questionsModule, handoffModule, checklistModule],
+	modules: [workModule, questionsModule, handoffModule, checklistModule],
 });
 
 // Wipe and re-create `base`, then apply the schema. Call from beforeEach.

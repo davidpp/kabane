@@ -246,6 +246,27 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(next.value).toContain("Stale cursor");
 	});
 
+	// The hub's work policy comes from registering @kabane/work in hub.ts (ADR 0012); a hub that
+	// forgot it would create a stateless task and list the job.
+	it("starts a task in inbox and leaves a job out of a default listing and the next queue", async () => {
+		const scopeUri = "work-kinds";
+		const add = async (args: Record<string, unknown>) =>
+			(await callTool(HERMES, "kabane_add", { scopeUri, ...args }))
+				.value as TaskLike;
+		const task = await add({ title: "Plain add" });
+		expect(task.state).toBe("inbox");
+		const job = await add({ title: "Nightly", kind: "job", state: "next" });
+		expect(job.state).toBe("next");
+		const ids = async (args: Record<string, unknown>) =>
+			(
+				(await callTool(HERMES, "kabane_list", { scopeUri, ...args }))
+					.value as TaskLike[]
+			).map((item) => item.id);
+		expect(await ids({})).toEqual([task.id]);
+		expect(await ids({ state: "next" })).toEqual([]);
+		expect(await ids({ kind: "job" })).toEqual([job.id]);
+	});
+
 	it("publishes a scope's thread kind and lists it with core's for a hub-only agent", async () => {
 		const scopeUri = "kinds-acme";
 		const signal = { name: "signal", label: "Monitor signal" };
@@ -262,9 +283,9 @@ describe("hub MCP over Streamable HTTP", () => {
 			).kinds.map((kind) => `${kind.source}:${kind.name}`);
 		expect(await kinds(scopeUri)).toEqual([
 			"core:thread",
-			"core:task",
-			"core:issue",
-			"core:job",
+			"module:work:task",
+			"module:work:issue",
+			"module:work:job",
 			"scope:signal",
 		]);
 		expect(await kinds("kinds-other")).not.toContain("scope:signal");

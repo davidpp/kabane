@@ -43,6 +43,7 @@ import { handoffModule } from "@kabane/handoff";
 import { outcomeModule } from "@kabane/outcome";
 import { questionsModule } from "@kabane/questions";
 import { registryModule } from "@kabane/registry";
+import { workModule } from "@kabane/work";
 import { DoDb } from "./db-do";
 import { LogTransport } from "./log-transport";
 import { handleHttpRequest } from "./mcp-http";
@@ -93,6 +94,7 @@ export class KabaneHub extends DurableObject<Cloudflare.Env> {
 		const zone = hubTimezone(env.KABANE_TIMEZONE);
 		const configured = Runtime.configure({
 			modules: [
+				workModule,
 				questionsModule,
 				handoffModule,
 				outcomeModule,

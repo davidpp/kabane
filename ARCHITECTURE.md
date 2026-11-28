@@ -33,7 +33,7 @@ Kabane's layers, from the bottom:
 |---|---|---|
 | core | `@kabane/core` | The record, its sync, the module seam and the MCP tool definitions. Runs in Bun and in Workers. |
 | storage adapter | `@kabane/sqlite` | The `Db` port over `bun:sqlite`, for devices. |
-| data module | `@kabane/questions`, `@kabane/checklist`, `@kabane/handoff`, `@kabane/outcome`, `@kabane/registry` | One feature's own record, as a `KabaneModule`. |
+| data module | `@kabane/questions`, `@kabane/checklist`, `@kabane/handoff`, `@kabane/outcome`, `@kabane/registry`, `@kabane/work` | One feature's own record, as a `KabaneModule`. `@kabane/work` declares the `task`, `issue` and `job` thread kinds and their policy; both hosts always register it (ADR 0012). |
 | extension contract | `@kabane/extension` | The types an extension and the host exchange, and the argument, outcome and settings helpers every command is written with. |
 | harness client | `@kabane/acp` | Driving a coding harness over ACP: the harness registry, the session runner, tool calls, elicitation forms. |
 | client | `@kabane/board` | A UI over the record. |
@@ -47,7 +47,8 @@ layer, with four narrowings:
 - **The contract and the harness client depend on core alone.** Neither may depend on a client:
   a second client could not exist without the first if they did.
 - **Only a host depends on the storage adapter at runtime.** A data module or a client may use it
-  in tests, as a `devDependency`; at runtime the host picks the adapter.
+  in tests, as a `devDependency`; at runtime the host picks the adapter. Core's tests may use
+  `@kabane/work` the same way, so they register the shipped kinds instead of copying them.
 - **The hub depends on core and the data modules alone.** It runs in Workers, which cannot run
   the storage adapter, the harness client or a client.
 - **An extension depends at runtime on no `@kabane/*` package except a harness client, which it

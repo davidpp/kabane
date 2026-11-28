@@ -27,6 +27,7 @@
 		"@kabane/handoff": "workspace:*",
 		"@kabane/registry": "workspace:*",
 		"@kabane/outcome": "workspace:*",
+		"@kabane/work": "workspace:*",
 		"@kabane/questions": "workspace:*",
 		"@modelcontextprotocol/sdk": "1.32.2",
 		"jose": "6.2.17",

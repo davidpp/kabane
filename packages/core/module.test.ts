@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import { CORE_TOOL_NAMES } from "./mcp/tool-names";
 import { KABANE_TOOLS, type ToolDef } from "./mcp/tools";
 import type { KabaneModule, ModuleContextSection } from "./module";
@@ -189,9 +190,13 @@ const refusals: { name: string; modules: KabaneModule[]; message: string }[] = [
 		message: 'thread kind "thread": the name is already a core thread kind',
 	},
 	{
-		name: "thread kind with a core item kind's name",
-		modules: [{ name: "alpha", threadKinds: [{ name: "job", label: "Job" }] }],
-		message: "already a core thread kind",
+		name: "thread kind @kabane/work declares",
+		modules: [
+			workModule,
+			{ name: "alpha", threadKinds: [{ name: "job", label: "Job" }] },
+		],
+		message:
+			'thread kind "job": the name is already a thread kind of module "work"',
 	},
 	{
 		name: "thread kind another module declares",
@@ -292,10 +297,10 @@ it("finds a registered kind by name, and nothing for one no module declares", ()
 	expect(Runtime.entryKind("comment")).toBeUndefined();
 });
 
-it("declares a plain kind and every shipped kind core stores, their identity under the same contract", () => {
-	expect(
-		CORE_THREAD_KINDS.map((declared): string => declared.name).sort(),
-	).toEqual([PLAIN_THREAD_KIND, "task", "issue", "job"].sort());
+it("declares only the plain kind, the one name core reserves", () => {
+	expect(CORE_THREAD_KINDS.map((declared): string => declared.name)).toEqual([
+		PLAIN_THREAD_KIND,
+	]);
 	for (const { name, label, description } of CORE_THREAD_KINDS)
 		expect(
 			ThreadKindSchema.safeParse({ name, label, description }).success,

@@ -20,6 +20,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import { ulid } from "ulid";
 import { Migrate } from "../db/migrate";
 import type { Db } from "../db/port";
@@ -147,11 +148,12 @@ const refuse = (db: Db) =>
 let relay: Relay;
 let bases: string[];
 
+// Every device registers @kabane/work, as both standard hosts do.
 const register = (modules: readonly KabaneModule[]): void => {
 	const configured = Runtime.configure({
 		provider: SqliteDb.provider({ dbName: TEST_DB_NAME }),
 		timezone: () => "UTC",
-		modules,
+		modules: [workModule, ...modules],
 	});
 	if (!configured.ok) throw configured.error;
 };
@@ -278,6 +280,10 @@ describe("registering modules", () => {
 	};
 
 	it("defaults to none", () => {
+		const configured = Runtime.configure({
+			provider: SqliteDb.provider({ dbName: TEST_DB_NAME }),
+		});
+		expect(configured.ok).toBe(true);
 		expect(Runtime.modules()).toEqual([]);
 	});
 
@@ -342,7 +348,10 @@ describe("registering modules", () => {
 	it("changes nothing when it refuses", () => {
 		register([notes()]);
 		expect(refused([notes(), notes()])).not.toBe("");
-		expect(Runtime.modules().map((module) => module.name)).toEqual(["notes"]);
+		expect(Runtime.modules().map((module) => module.name)).toEqual([
+			"work",
+			"notes",
+		]);
 	});
 });
 
