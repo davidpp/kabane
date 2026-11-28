@@ -62,5 +62,5 @@ default (`issue`) are record defaults, not workflow behavior, and stay.
   stored jobs without the extension's source, which ADR 0010 asks for; the specialized panel
   comes from the extension's job source.
 
-JCAB-725 reviewed whether these fields can leave core for the extension contract; see
-`shipped-kind-declarations.md` and ADR 0012.
+JCAB-725 moves these fields out of core, onto `@kabane/work`'s declarations that both standard
+hosts register; see `shipped-kind-declarations.md` and ADR 0012.
