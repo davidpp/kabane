@@ -9,13 +9,10 @@ import {
 	Planner,
 	Portable,
 	type Result,
-	Runtime,
 	Sync,
 	withDb,
 } from "@kabane/core";
 import { configureTestRuntime } from "@kabane/core/testing";
-import { SqliteDb } from "@kabane/sqlite";
-import { workModule } from "@kabane/work";
 import { Registry, registryModule } from "./index";
 
 const unwrap = <T>(result: Result<T>): T => {
@@ -33,13 +30,10 @@ const monitor: KabaneModule = {
 	threadKinds: [{ name: "alert", label: "Alert" }],
 };
 const register = (actor: string, extra: KabaneModule[] = []) =>
-	unwrap(
-		Runtime.configure({
-			provider: SqliteDb.provider(),
-			modules: [workModule, registryModule, ...extra],
-			actor: () => `kabane://actor/human/${actor}`,
-		}),
-	);
+	configureTestRuntime({
+		modules: [registryModule, ...extra],
+		actor: () => `kabane://actor/human/${actor}`,
+	});
 const device = async (name: string, extra: KabaneModule[] = []) => {
 	const base = mkdtempSync(join(tmpdir(), `registry-${name}-`));
 	bases.push(base);
