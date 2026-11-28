@@ -19,7 +19,8 @@ export const layers: Readonly<Record<string, Rule>> = {
 	"@kabane/core": {
 		layer: "core",
 		dependencies: [],
-		devDependencies: ["@kabane/sqlite"],
+		// Core's tests run as a standard host does: on the device adapter, with the work kinds (ADR 0012).
+		devDependencies: ["@kabane/sqlite", "@kabane/work"],
 		testSupport: [
 			"packages/core/testing.ts",
 			"packages/core/testing/issue-corpus-seed.ts",
@@ -55,6 +56,11 @@ export const layers: Readonly<Record<string, Rule>> = {
 		dependencies: ["@kabane/core"],
 		devDependencies: [],
 	},
+	"@kabane/work": {
+		layer: "data module",
+		dependencies: ["@kabane/core"],
+		devDependencies: [],
+	},
 	"@kabane/extension": {
 		layer: "extension contract",
 		dependencies: ["@kabane/core"],
@@ -75,7 +81,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@kabane/acp",
 			"@kabane/extension",
 		],
-		devDependencies: ["@kabane/handoff", "@kabane/sqlite"],
+		devDependencies: ["@kabane/handoff", "@kabane/sqlite", "@kabane/work"],
 		// The gallery and its stories are dev tooling: `bun run gallery` and the render tests.
 		testSupport: [
 			"packages/board/gallery.tsx",
@@ -98,6 +104,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@kabane/outcome",
 			"@kabane/questions",
 			"@kabane/sqlite",
+			"@kabane/work",
 		],
 		devDependencies: [],
 	},
@@ -110,6 +117,7 @@ export const layers: Readonly<Record<string, Rule>> = {
 			"@kabane/registry",
 			"@kabane/outcome",
 			"@kabane/questions",
+			"@kabane/work",
 		],
 		devDependencies: [],
 	},

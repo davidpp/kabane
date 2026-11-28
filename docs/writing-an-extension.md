@@ -130,7 +130,7 @@ name, label and description, with `module:routines` as its source.
 The two fields hold only where the extension is enabled. With it disabled, a new `routine` starts
 with no state and shows in every listing, and a thread filed before keeps the state it has. The
 hub never loads an extension, so it treats the kind the same way. A name that core or another
-module already declares is refused, and so is a field kabane does not know: a host older than
+module already declares is refused (`task`, `issue` and `job` are the `work` module's), and so is a field kabane does not know: a host older than
 these fields stops with an `Unrecognized keys` line that names them.
 
 Every command that opens the database imports the modules entry of every enabled extension,

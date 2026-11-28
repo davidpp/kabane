@@ -32,6 +32,7 @@ import { outcomeModule } from "@kabane/outcome";
 import { questionsModule } from "@kabane/questions";
 import { registryModule } from "@kabane/registry";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import {
 	type Config,
 	configPath,
@@ -59,6 +60,7 @@ export type Command = Extension.Command<Ctx> & { contextErrorExitCode?: 1 | 2 };
  */
 /** The data modules every device registers, in the order their sections render. */
 export const MODULES = [
+	workModule,
 	questionsModule,
 	handoffModule,
 	outcomeModule,

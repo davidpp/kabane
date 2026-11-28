@@ -43,32 +43,14 @@ export const threadKindIdentity = ({
 }: ThreadKind): ThreadKind =>
 	description === undefined ? { name, label } : { name, label, description };
 
-/** The kinds core declares. Their names are reserved: no module or scope may declare one. */
+/**
+ * The kinds core declares: only the plain thread, whose name no module or scope
+ * may declare. The shipped work kinds are `@kabane/work`'s (ADR 0012).
+ */
 export const CORE_THREAD_KINDS: readonly CodeThreadKind[] = [
 	{
 		name: PLAIN_THREAD_KIND,
 		label: "Thread",
 		description: "A plain thread: content, attributes, entries and refs.",
-	},
-	{
-		name: "task",
-		label: "Task",
-		description: "Personal work: inbox, next, done.",
-		initialState: "inbox",
-	},
-	{
-		name: "issue",
-		label: "Issue",
-		description: "Work an agent runtime picks up.",
-		initialState: "inbox",
-	},
-	{
-		// A standing request a schedule runs, not work to pick up. Its schedule and
-		// runs belong to the jobs extension.
-		name: "job",
-		label: "Job",
-		description: "A standing request a schedule runs.",
-		initialState: "inbox",
-		unlisted: true,
 	},
 ];

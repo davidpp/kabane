@@ -22,6 +22,7 @@ it("Runtime.configure accepts the outcome module beside the first-party ones", (
 	).toEqual({ ok: true, value: undefined });
 	expect(Runtime.modules()).toEqual(MODULES);
 	expect(MODULES.map((module) => module.name)).toEqual([
+		"work",
 		"questions",
 		"handoff",
 		"outcome",

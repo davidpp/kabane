@@ -18,6 +18,7 @@ import { handoffModule } from "@kabane/handoff";
 import { questionsModule } from "@kabane/questions";
 import { Registry, registryModule } from "@kabane/registry";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import { BoardData } from "./data";
 import { DetailModel } from "./detail-model";
 import { dropDb, freshDb } from "./test-db";
@@ -36,7 +37,7 @@ const monitor: KabaneModule = {
 };
 
 // The modules every other board test registers (test-db.ts), and the two that declare.
-const SHARED = [questionsModule, handoffModule, checklistModule];
+const SHARED = [workModule, questionsModule, handoffModule, checklistModule];
 const configure = (modules: KabaneModule[]): void => {
 	unwrap(
 		Runtime.configure({

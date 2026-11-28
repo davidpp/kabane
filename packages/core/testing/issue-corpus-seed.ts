@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import issues from "@kabane/core/testing/fixtures/issue-corpus/issues.json";
 import { SqliteDb } from "@kabane/sqlite";
+import { workModule } from "@kabane/work";
 import { z } from "zod";
 import { Planner, Runtime, err, ok, type Result } from "../index";
 
@@ -151,6 +152,7 @@ const seed = async (): Promise<Result<string[]>> => {
 	const provider = SqliteDb.provider();
 	Runtime.configure({
 		provider,
+		modules: [workModule],
 		actor: () => "kabane://actor/human/fixture",
 		timezone: () => "UTC",
 	});

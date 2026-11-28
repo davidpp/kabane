@@ -963,7 +963,7 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 
 /** Server-level instructions sent on initialize. */
 export const SERVER_INSTRUCTIONS = `Kabane is a shared work queue for humans and agent runtimes.
-Three kinds of item have a workflow: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up; 'job' is a standing request a schedule runs, which a listing leaves out unless it names kind job. A 'thread' is plain, with no state of its own, and a scope may declare more kinds (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
+A 'thread' is plain, with no state of its own, and a scope may declare more kinds (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
 To brainstorm into work: kabane_add with kind issue, a description that is the brief, state next, and assignee set to the runtime (claude, hermes, codex).
 To pick up work as a runtime: kabane_list with responseFormat concise, your assignee and state next (follow nextCursor with the same filters), kabane_context on the chosen id, kabane_edit to in_progress with responseFormat concise, then kabane_log and kabane_comment as you go, kabane_done with responseFormat concise at the end. Use kabane_get for full fields; omitted/full formats remain legacy and unbounded.
 Scopes are the context boundary (a repo, a client). Discover them with kabane_scopeList and pass scopeUri on writes.
