@@ -45,6 +45,8 @@ import {
 	type CodeThreadKind,
 	CodeThreadKindSchema,
 	CORE_THREAD_KINDS,
+	type DefaultKindWrite,
+	PLAIN_THREAD_KIND,
 } from "./schemas/thread-kind";
 import type { SyncFamily } from "./sync/resolve";
 
@@ -233,6 +235,7 @@ const kindProblem = (
 const threadKindProblem = (
 	module: KabaneModule,
 	claimed: Claims,
+	defaults: Claims,
 ): string | undefined => {
 	for (const kind of module.threadKinds ?? []) {
 		const where = `module "${module.name}" thread kind ${quoted(kind.name)}`;
@@ -245,6 +248,15 @@ const threadKindProblem = (
 		if (owner !== undefined)
 			return `${where}: the name is already ${owner}; pick another`;
 		claimed.set(kind.name, `a thread kind of module "${module.name}"`);
+		for (const write of kind.defaultFor ?? []) {
+			const holder = defaults.get(write);
+			if (holder !== undefined)
+				return `${where}: the default for ${write} is already ${holder}; pick one`;
+			defaults.set(
+				write,
+				`kind ${quoted(kind.name)} of module "${module.name}"`,
+			);
+		}
 	}
 	return undefined;
 };
@@ -262,8 +274,9 @@ const readSurfaceProblem = (
 	const threadKinds: Claims = new Map(
 		CORE_THREAD_KINDS.map((kind) => [kind.name, "a core thread kind"]),
 	);
+	const defaultKinds: Claims = new Map();
 	for (const module of modules) {
-		const problem = threadKindProblem(module, threadKinds);
+		const problem = threadKindProblem(module, threadKinds, defaultKinds);
 		if (problem !== undefined) return problem;
 		for (const section of module.contextSections ?? []) {
 			const owner = sections.get(section.name);
@@ -380,6 +393,11 @@ export namespace Modules {
 	/** The state a new thread of `kind` starts in: its declaration's, else none. */
 	export const initialStateOf = (kind: string): TaskState | undefined =>
 		declaredInCode().find((declared) => declared.name === kind)?.initialState;
+
+	/** The kind a `write` that names none takes: the declared holder's, else the plain thread. */
+	export const defaultKindFor = (write: DefaultKindWrite): string =>
+		declaredInCode().find((declared) => declared.defaultFor?.includes(write))
+			?.name ?? PLAIN_THREAD_KIND;
 
 	/** The kinds a listing that names no kind leaves out. */
 	export const unlistedKinds = (): string[] =>

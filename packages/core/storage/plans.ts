@@ -10,6 +10,7 @@
 
 import type { z } from "zod";
 import { Events, PLANNER_EVENTS } from "../events";
+import { Modules } from "../module";
 import { err, NotFoundError, ok, quoted, type Result } from "../result";
 import { atomic } from "../runtime";
 import {
@@ -151,10 +152,10 @@ export namespace Planner {
 					!RecordRead.isVisible(db, endOf(thread.parent))
 				)
 					throw new NotFoundError(`No task found with ID: ${thread.parent}`);
-				const draft: TaskDraft = {
+				const draft = {
 					title: thread.title,
 					description: thread.description,
-					kind: thread.kind ?? "issue",
+					kind: thread.kind ?? Modules.defaultKindFor("apply"),
 					state: thread.state,
 					priority: thread.priority ?? "normal",
 					assignee: thread.assignee,
@@ -162,7 +163,7 @@ export namespace Planner {
 					parentTaskId:
 						thread.parent === undefined ? undefined : endOf(thread.parent),
 					provenance: { source, discoveredAt: now, discoveredBy: author },
-				};
+				} satisfies TaskDraft;
 				const task = Tasks.createTaskIn(db, draft, scope, prefix, id);
 				created.push(task);
 				threads.push({

@@ -711,6 +711,20 @@ describe("the shipped work kinds", () => {
 		expect(stateless.code).toBe(1);
 	});
 
+	it("applies a plan thread that names no kind as an issue", async () => {
+		const file = join(cwd, "plan.json");
+		writeFileSync(
+			file,
+			JSON.stringify({ threads: [{ key: "fix", title: "Fix it" }] }),
+		);
+		const applied = await run("apply", file, "--key", "cli-plan");
+		expect(applied.code).toBe(0);
+		const { task } = json<{ task: Added }>(
+			await run("show", "cli-plan/fix", "--json"),
+		);
+		expect([task.kind, task.state]).toEqual(["issue", "inbox"]);
+	});
+
 	it("reports task, issue and job as declared by module:work", async () => {
 		const r = await run("registry", "kinds", "--json");
 		expect(r.code).toBe(0);

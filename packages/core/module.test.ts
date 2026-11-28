@@ -207,6 +207,18 @@ const refusals: { name: string; modules: KabaneModule[]; message: string }[] = [
 		message: 'already a thread kind of module "alpha"',
 	},
 	{
+		name: "a second kind taking add's default",
+		modules: [
+			workModule,
+			{
+				name: "alpha",
+				threadKinds: [{ name: "note", label: "Note", defaultFor: ["add"] }],
+			},
+		],
+		message:
+			'thread kind "note": the default for add is already kind "task" of module "work"',
+	},
+	{
 		name: "thread kind with no label",
 		modules: [{ name: "alpha", threadKinds: [{ name: "signal", label: "" }] }],
 		message: 'thread kind "signal": label',

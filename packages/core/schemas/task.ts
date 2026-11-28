@@ -155,8 +155,8 @@ export const TaskSchema = z.object({
 	/** Detailed description/notes (Markdown) */
 	description: z.string().optional(),
 
-	/** Thread kind: 'task' (personal GTD), 'issue' (agent work), 'job' (scheduled), 'thread' (plain) or any declared kind */
-	kind: ItemKindSchema.default("task"),
+	/** Thread kind: 'thread' (plain), a registered module's ('task', 'issue', 'job' from @kabane/work) or any declared kind */
+	kind: ItemKindSchema,
 
 	/**
 	 * Current state in GTD workflow. A new thread starts in its kind's
@@ -285,6 +285,8 @@ export const TaskDraftSchema = TaskSchema.omit({
 	updatedBy: true, // Storage-owned
 	version: true, // Storage-owned
 }).extend({
+	/** Omitted, the kind a module declares the default for the write (`Modules.defaultKindFor`). */
+	kind: ItemKindSchema.optional(),
 	// Make provenance optional for drafts - will be filled with defaults
 	provenance: ProvenanceSchema.optional(),
 });

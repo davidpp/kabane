@@ -2,14 +2,15 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SqliteDb } from "@kabane/sqlite";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { TABLES } from "../db/tables";
 import { createMcpServer } from "../mcp/server";
-import { withDb } from "../runtime";
+import { withDb, Runtime } from "../runtime";
 import { LocalRelay } from "../sync/local-relay";
 import { Sync } from "../sync/namespace";
-import "../testing";
+import { configureTestRuntime, TEST_DB_NAME } from "../testing";
 import { Planner } from "./index";
 import { Oplog } from "./oplog";
 
@@ -307,5 +308,116 @@ describe("thread kinds on the record", () => {
 		expect(read.value).toMatchObject([
 			{ title: "Mystery", description: "kept as written" },
 		]);
+	});
+});
+
+// A host that registers no module: core declares only the plain thread (ADR 0012), so a write
+// that names no kind makes one, and nothing a standard host stored changes.
+describe("omitted kinds on a bare-core host", () => {
+	const bareCore = () => {
+		const configured = Runtime.configure({
+			provider: SqliteDb.provider({ dbName: TEST_DB_NAME }),
+			timezone: () => "UTC",
+		});
+		if (!configured.ok) throw configured.error;
+	};
+	afterEach(() => configureTestRuntime());
+
+	it("adds and applies plain threads, keeps explicit kinds and stored rows", async () => {
+		const base = await device("bare");
+		const stored = await Planner.addTask(base, { title: "Standard task" });
+		if (!stored.ok) throw stored.error;
+		bareCore();
+		const server = await mcp(base);
+		try {
+			const added = JSON.parse(
+				(await server.call("kabane_add", { title: "Call notes" })).text,
+			) as { id: string };
+			expect(await storedState(base, added.id)).toEqual({
+				kind: "thread",
+				state: null,
+			});
+			const named = JSON.parse(
+				(await server.call("kabane_add", { title: "Buy", kind: "task" })).text,
+			) as { id: string };
+			expect(await storedState(base, named.id)).toEqual({
+				kind: "task",
+				state: null,
+			});
+
+			const applied = await server.call("kabane_apply", {
+				key: "bare",
+				plan: {
+					threads: [
+						{ key: "notes", title: "Notes" },
+						{ key: "fix", title: "Fix it", kind: "issue" },
+					],
+				},
+			});
+			expect(applied.isError).toBe(false);
+			expect(await storedState(base, "bare/notes")).toEqual({
+				kind: "thread",
+				state: null,
+			});
+			expect(await storedState(base, "bare/fix")).toEqual({
+				kind: "issue",
+				state: null,
+			});
+		} finally {
+			await server.close();
+		}
+		expect(await storedState(base, stored.value.id)).toEqual({
+			kind: "task",
+			state: "inbox",
+		});
+		const edited = await Planner.updateTask(base, stored.value.id, {
+			state: "next",
+		});
+		if (!edited.ok) throw edited.error;
+		expect(edited.value).toMatchObject({ kind: "task", state: "next" });
+	});
+
+	it("retries a keyed add or plan under the other host without rewriting its kind", async () => {
+		const base = await device("retry");
+		const plan = { threads: [{ key: "fix", title: "Fix it" }] };
+		const author = "kabane://actor/agent/claude";
+		const first = await Planner.applyPlan(base, plan, {
+			key: "retry",
+			author,
+			source: "ai",
+		});
+		if (!first.ok) throw first.error;
+		const keyed = await Planner.addTask(
+			base,
+			{ title: "Water" },
+			{ key: "retry/water" },
+		);
+		if (!keyed.ok) throw keyed.error;
+
+		bareCore();
+		const again = await Planner.applyPlan(base, plan, {
+			key: "retry",
+			author,
+			source: "ai",
+		});
+		if (!again.ok) throw again.error;
+		expect(again.value.threads.map((thread) => thread.created)).toEqual([
+			false,
+		]);
+		const re = await Planner.addTask(
+			base,
+			{ title: "Water" },
+			{ key: "retry/water" },
+		);
+		if (!re.ok) throw re.error;
+		expect(re.value.existed).toBe(true);
+		expect(await storedState(base, "retry/fix")).toEqual({
+			kind: "issue",
+			state: "inbox",
+		});
+		expect(await storedState(base, "retry/water")).toEqual({
+			kind: "task",
+			state: "inbox",
+		});
 	});
 });

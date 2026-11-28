@@ -13,12 +13,14 @@ export const workModule: KabaneModule = {
 			label: "Task",
 			description: "Personal work: inbox, next, done.",
 			initialState: "inbox",
+			defaultFor: ["add"],
 		},
 		{
 			name: "issue",
 			label: "Issue",
 			description: "Work an agent runtime picks up.",
 			initialState: "inbox",
+			defaultFor: ["apply"],
 		},
 		{
 			// A standing request a schedule runs, not work to pick up. Its schedule and
@@ -31,5 +33,5 @@ export const workModule: KabaneModule = {
 		},
 	],
 	instructions:
-		"Three kinds of item have a workflow: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up; 'job' is a standing request a schedule runs, which a listing leaves out unless it names kind job.",
+		"Three kinds of item have a workflow: 'task' is human GTD work (inbox → next → done); 'issue' is work an agent runtime picks up; 'job' is a standing request a schedule runs, which a listing leaves out unless it names kind job. kabane_add with no kind makes a task; a kabane_apply thread with no kind is an issue.",
 };

@@ -133,11 +133,11 @@ const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 const add = define({
 	name: CORE_TOOL_NAMES.add,
 	kind: "write",
-	description: `Create a task, an issue, a job, a plain thread or a thread of any declared kind (a task, inbox, by default).
+	description: `Create a task, an issue, a job, a plain thread or a thread of any declared kind.
 
 Parameters:
 - title: What to do, action-oriented
-- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Default task
+- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Omitted, the kind the server instructions name as add's default, else thread
 - description: Optional Markdown body; for an issue this is the brief an agent reads
 - state: inbox, next, in_progress, waiting, someday. Default inbox for a task, issue or job; a thread of any other kind has no state unless given one. Use next for work ready to be picked up
 - priority: urgent, high, normal, low. Default normal
@@ -176,7 +176,7 @@ Parameters:
 		const draft: TaskDraft = {
 			title: args.title,
 			description: args.description,
-			kind: args.kind ?? "task",
+			kind: args.kind,
 			state: args.state,
 			priority: args.priority ?? "normal",
 			scopeUri: scope.value,
@@ -207,7 +207,7 @@ const apply = define({
 
 Parameters:
 - key: The plan's key, lowercase letters, digits, dots, dashes and underscores
-- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to issue, and any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
+- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind omitted is the kind the server instructions name as apply's default, else thread; any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
 - scopeUri: ${SCOPE_HINT} For every thread that names none`,
 	input: {
 		key: z.string().min(1),

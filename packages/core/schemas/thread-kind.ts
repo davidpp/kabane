@@ -32,7 +32,17 @@ export const CodeThreadKindSchema = ThreadKindSchema.extend({
 	initialState: TaskStateSchema.optional(),
 	/** A listing that names no kind leaves the kind out. */
 	unlisted: z.literal(true).optional(),
+	/**
+	 * The writes that take this kind when they name none: `add` (one thread)
+	 * and `apply` (a plan's threads). One kind holds each; without a holder,
+	 * the plain thread.
+	 */
+	defaultFor: z
+		.array(z.enum(["add", "apply"]))
+		.min(1)
+		.optional(),
 }).strict();
+export type DefaultKindWrite = "add" | "apply";
 export type CodeThreadKind = z.infer<typeof CodeThreadKindSchema>;
 
 /** A declaration's identity, what discovery shows of it. */

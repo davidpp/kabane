@@ -267,6 +267,18 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(await ids({ kind: "job" })).toEqual([job.id]);
 	});
 
+	it("files a plan thread that names no kind as an issue", async () => {
+		const applied = await callTool(HERMES, "kabane_apply", {
+			scopeUri: "work-kinds",
+			key: "hub-plan",
+			plan: { threads: [{ key: "fix", title: "Fix it" }] },
+		});
+		expect(applied.isError).toBe(false);
+		const got = (await callTool(HERMES, "kabane_get", { id: "hub-plan/fix" }))
+			.value as TaskLike & { kind: string };
+		expect([got.kind, got.state]).toEqual(["issue", "inbox"]);
+	});
+
 	it("publishes a scope's thread kind and lists it with core's for a hub-only agent", async () => {
 		const scopeUri = "kinds-acme";
 		const signal = { name: "signal", label: "Monitor signal" };

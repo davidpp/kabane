@@ -47,7 +47,7 @@ export const add: Command = {
 		const draft: TaskDraft = {
 			title,
 			description: flagString(args, "description"),
-			kind: (flagString(args, "kind") as ItemKind | undefined) ?? "task",
+			kind: flagString(args, "kind") as ItemKind | undefined,
 			state: flagString(args, "state") as TaskState | undefined,
 			priority:
 				(flagString(args, "priority") as TaskPriority | undefined) ?? "normal",

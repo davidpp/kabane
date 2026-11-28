@@ -4,6 +4,7 @@ import { TaskDraftSchema, TaskSchema } from "./task";
 const base = {
 	id: "01H000000000000000000000AA",
 	title: "Wire the board",
+	kind: "task",
 	provenance: { source: "human", discoveredAt: "2026-09-07T00:00:00.000Z" },
 	createdAt: "2026-09-07T00:00:00.000Z",
 	updatedAt: "2026-09-07T00:00:00.000Z",
