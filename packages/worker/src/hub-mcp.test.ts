@@ -12,7 +12,9 @@
  */
 
 import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
+import { SERVER_INSTRUCTIONS } from "@kabane/core";
 import { questionsModule } from "@kabane/questions";
+import { workModule } from "@kabane/work";
 import { describe, expect, it } from "vitest";
 import { ACTOR_HEADER, HUB_NAME, PRINCIPAL_HEADER } from "./names";
 import { HERMES, HUMAN, withAccess } from "./test-access";
@@ -121,6 +123,12 @@ describe("hub MCP over Streamable HTTP", () => {
 		};
 		expect(result.serverInfo.name).toBe("kabane-hub");
 		expect(result.instructions).toContain("kabane_scopeList");
+		// The work kinds are defined before anything else names issue or its states.
+		expect(
+			result.instructions?.startsWith(
+				`${SERVER_INSTRUCTIONS}\n\n${workModule.instructions}\n\n`,
+			),
+		).toBe(true);
 		expect(questionsModule.instructions).toBeTypeOf("string");
 		expect(result.instructions).toContain(questionsModule.instructions);
 		const listed = await rpc(HUMAN, "tools/list");
