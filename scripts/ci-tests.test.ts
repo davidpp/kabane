@@ -36,6 +36,18 @@ test("a missing root path is rejected even before it has tests", () => {
 	);
 });
 
+test("a workspace test outside test:bun fails coverage, except the worker's", () => {
+	expect(
+		coverageFindings(command, groups, [
+			...files,
+			"packages/new/a.test.ts",
+			"packages/worker/test/sync.test.ts",
+		]),
+	).toEqual([
+		"packages/new/a.test.ts: no test:bun path runs it; add its directory to test:bun and one CI group.",
+	]);
+});
+
 test("a duplicated path fails coverage", () => {
 	expect(
 		coverageFindings(
