@@ -20,7 +20,7 @@
 	"devDependencies": {
 		"@kabane/core": "workspace:*",
 		"@kabane/extension": "workspace:*",
-		"@types/bun": "1.4.4",
+		"@types/bun": "1.4.5",
 		"tsgo": "npm:typescript@7.0.2"
 	},
 	"kabane": {
