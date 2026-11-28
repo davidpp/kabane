@@ -14,8 +14,8 @@ evidence. `thread-kind-workflow-boundary.md` (JCAB-709) is the audit this builds
 | A module, first-party or an extension's | `KabaneModule.threadKinds`, `packages/core/module.ts:134` | `ThreadKind`, strict: name, label, description | first-party only (`packages/worker/src/hub.ts:95` lists five; the hub never loads an extension) |
 | A scope | `registry_thread_kinds` rows, `packages/registry/index.ts:75` | `ThreadKind`, strict, replicated | yes, through sync |
 
-Policy has two readers in generic core: `initialStateOf` (`storage/tasks.ts:257`, `:272`, and the
-`state: null` refusal through `schemas/task.ts:296`) and `UNLISTED_KINDS` (`storage/task-selection.ts:34`),
+Policy has two readers in generic core: `initialStateOf` (`storage/tasks.ts:257`, for an edit
+and the `state: null` refusal at `:259`, and `:272`, for creation) and `UNLISTED_KINDS` (`storage/task-selection.ts:34`),
 a constant computed at import from `CORE_THREAD_KINDS`.
 
 ## What a real declaration does today, in the sandbox
@@ -41,6 +41,14 @@ extensions probe --layer global`, whose `modules.ts` returns
    their stored kind names, and `show JGIT-1` prints `Kind: routine`.
 6. **Job with the jobs extension off.** `add --kind job --state next` stores it. `list --state
    next` answers `No tasks found.` and `list --kind job` shows `⏭️ 🟡 ⏱JGIT-3 a job`.
+7. **State changes.** On `routine`: `edit --state done` gives `"state": "done"`, and `edit --state
+   none` takes it away. `edit --kind issue` lands it in `"state": "inbox"`. On the job, `edit
+   --state none` is refused: `A job keeps a state: only a kind with no workflow can have it taken
+   away`.
+8. **The board**, under tmux at 100×30. With the probe on, the `threads` section reads
+   `JGIT-2 an audit · audit (module)` and `JGIT-1 probe routine · routine`, and the bar shows
+   `1 tracker │ 2 jobs` with the jobs extension off. With the probe off, the same rows read
+   `audit (scope)`, which is the shadowed scope label taking over, and `routine`, the stored name.
 
 On the hub, `hub-mcp.test.ts` ("publishes a scope's thread kind and lists it with core's for a
 hub-only agent") runs `kabane_threadKinds` through the Durable Object and gets
@@ -57,18 +65,36 @@ hub. The jobs extension can't carry that policy: when it is disabled its module 
 registered, and the hub never registers it. Only a first-party data module would work, and that
 module would have to be on every host.
 
-**Core can't register a first-party module for its own tests.** `scripts/layers.ts` gives
-`@kabane/core` no dependency on the data module layer. `packages/core/testing.ts:31` configures
-the runtime with no modules, and 11 core test files expect `inbox`. 20 test files across packages
-call `Runtime.configure` with their own module lists. If a `@kabane/work` package owned the
-policy, each of these would need it, and core's own storage tests would need a copy of the
-declaration. A host that left it out would create stateless tasks and list jobs, with no error.
+**Every host would have to remember the owner, and core cannot be one of them.**
+`scripts/layers.ts:18-26` gives `@kabane/core` no dependencies and only `@kabane/sqlite` as a dev
+dependency, so `packages/core/testing.ts:31` cannot register a data module package. Core's
+storage tests would need their own copy of the declaration. With the three policy fields
+stripped from `CORE_THREAD_KINDS`, `bun test packages` fails 32 of 2473 tests. That count is what
+a forgotten registration looks like in tests. In a host, the same omission raises no error: it
+creates stateless tasks and lists jobs. Today the hosts are `packages/cli/src/context.ts:77` and
+`packages/worker/src/hub.ts:95`, and any test that calls `Runtime.configure` with its own
+module list is a host too.
 
 **`task` has no single owner.** The loop owns claim and ready for issues
 (`extensions/loop/src/plan.ts`). The questions module requires an issue
 (`packages/questions/storage.ts:290`). The jobs extension owns scheduling. Nothing owns `task`,
 because a human's GTD work is the record's default (`ItemKindSchema.default("task")`,
-`schemas/task.ts:159`). David said on JCAB-702 that the task kind's own features can stay in core.
+`schemas/task.ts:159`). For context: on 2026-11-25, before JCAB-724 was filed, David said on
+JCAB-702 that the task kind's own features can stay in core. `record-primitives.md` ("Kinds and
+keys are declared as data") sets the precedent that core's own kinds are written "in the same
+declaration format", not moved out of core.
+
+## Where this sits against the North Stars and ADR 0010
+
+North Star 1 puts practice outside the base. The practice tied to these kinds is already
+outside it: claiming, scheduling, dispatch and questions. What stays in core is the record's
+default reading of a kind, a starting state and a listing default. ADR 0010 says that reading
+must hold without any extension.
+
+ADR 0010's "Shipped and project-defined kinds use the same declaration contract" holds for
+identity: name, label and description use one schema everywhere. It does not hold for policy,
+which only core can declare. That gap is the one honest reason to change the API, and the
+question to David is whether to close it before anything needs it.
 
 ## Which problem would justify an API change
 
@@ -95,6 +121,20 @@ export default () => [
 ];
 ```
 
+It is additive under api 1. The new fields are optional, and every declaration that loads today
+still loads. A module that uses them will fail on a host older than the change, with the
+`Unrecognized keys` stop line from step 2.
+
+Acceptance for JCAB-726, if David picks it, using the sandbox probe above:
+
+- `routine` with `initialState: "inbox", unlisted: true` loads, and `add --kind routine` lands in
+  `inbox`.
+- The default `list` leaves it out. `list --kind routine` shows it, and `edit --state none` is
+  refused on it.
+- With the probe disabled, a new `routine` is stateless and listed, and the stored row from
+  before keeps its state.
+- `registry kinds` still prints identity only, and the job steps 6 and 7 above are unchanged.
+
 The costs, stated before anyone builds it:
 
 - The hub would honor such a kind's policy only for a first-party module. An extension's
@@ -111,6 +151,7 @@ The costs, stated before anyone builds it:
 |---|---|---|
 | `core/schemas/thread-kind.ts` | the four declarations, `initialState`, `unlisted` | stays: the record's defaults, and the only owner every host and test has |
 | `core/schemas/task.ts:159` | `kind` defaults to `task` | stays: record default (JCAB-709) |
+| `core/storage/plans.ts:157` | `kabane_apply` threads default to `issue` | stays: record default (JCAB-709) |
 | `core/mcp/tools.ts:140`, `:966` | tool and server text naming the kinds | stays: describes core's declarations |
 | `core/storage/stats.ts:109` | stale `in_progress` counts issues only | stays: no production caller (JCAB-709) |
 | `cli/src/first-run.ts:127` | the welcome thread is an issue | stays: host content |

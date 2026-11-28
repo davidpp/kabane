@@ -25,19 +25,23 @@ The reasons are in `wiki/shipped-kind-declarations.md`, with a sandbox run of a 
 
 - The jobs extension cannot own job exclusion. Its module is not registered where it is
   disabled, and the hub never registers an extension module.
-- A first-party package could own the policy only if every host and every test registers it.
-  Core cannot register it for its own tests, because the layer table gives core no data-module
-  dependency. A host that leaves it out would silently create stateless tasks and list jobs.
-- No other single package owns `task`. David said on JCAB-702 that the task kind's own features
-  can stay in core.
+- A first-party package could own the policy only if every host registers it, and core's own
+  tests cannot: `scripts/layers.ts` gives core no data-module dependency. A host that leaves it
+  out raises no error. It creates stateless tasks and lists jobs. With the fields stripped, 32
+  tests fail.
+- No other single package owns `task`.
+- North Star 1 is already met: the practice on these kinds (claim, schedule, dispatch, questions)
+  lives outside the base. What stays is the record's default reading, which ADR 0010 says must
+  hold without any extension.
 
 ## Consequences
 
 Shipped kinds keep their names, their `core` source in `kabane_threadKinds`, and their behavior
 on every host. Old rows, disabled providers and duplicate names behave as they do now (the note's
-sandbox steps 4 to 6). An extension author who declares `initialState` or `unlisted` gets the
-`Unrecognized keys` stop line, not a silent change. JCAB-726 and JCAB-727 have no contract to
-implement and no declarations to move.
+sandbox steps 4 to 8). An extension author who declares `initialState` or `unlisted` gets the
+`Unrecognized keys` stop line, not a silent change. ADR 0010's single declaration contract holds
+for identity but not for policy, which only core can declare. That gap is accepted until a
+module needs a workflow kind of its own.
 
 ## Replaceable by
 
