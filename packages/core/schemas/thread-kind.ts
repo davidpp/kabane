@@ -27,6 +27,9 @@ export const PLAIN_THREAD_KIND = "thread";
  * of naming kinds. A scope's declaration replicates and stays identity only
  * (`ThreadKindSchema`).
  */
+const DefaultKindWriteSchema = z.enum(["add", "apply"]);
+export type DefaultKindWrite = z.infer<typeof DefaultKindWriteSchema>;
+
 export const CodeThreadKindSchema = ThreadKindSchema.extend({
 	/** A new thread of the kind starts in this state; without it, with none. */
 	initialState: TaskStateSchema.optional(),
@@ -37,12 +40,8 @@ export const CodeThreadKindSchema = ThreadKindSchema.extend({
 	 * and `apply` (a plan's threads). One kind holds each; without a holder,
 	 * the plain thread.
 	 */
-	defaultFor: z
-		.array(z.enum(["add", "apply"]))
-		.min(1)
-		.optional(),
+	defaultFor: z.array(DefaultKindWriteSchema).min(1).optional(),
 }).strict();
-export type DefaultKindWrite = "add" | "apply";
 export type CodeThreadKind = z.infer<typeof CodeThreadKindSchema>;
 
 /** A declaration's identity, what discovery shows of it. */
