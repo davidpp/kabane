@@ -37,8 +37,8 @@ export type CodeThreadKind = ThreadKind & { initialState?: TaskState; unlisted?:
 // KabaneModule.threadKinds?: readonly CodeThreadKind[]
 ```
 
-Core reads the policy from `Runtime.threadKinds()` when it is needed, instead of a constant
-computed at import. Scope declarations stay identity-only (`ThreadKindSchema` strict, replicated).
+Core reads the policy from the registered declarations when it is needed
+(`Modules.initialStateOf`, `Modules.unlistedKinds`), instead of a constant computed at import. Scope declarations stay identity-only (`ThreadKindSchema` strict, replicated).
 The change is additive under extension api 1: every declaration that loads today still loads.
 
 Why this design, and not the alternatives in the note:
