@@ -133,9 +133,9 @@ export type KabaneModule = {
 	 * state a new thread starts in (`initialState`) and whether a listing that
 	 * names no kind leaves it out (`unlisted`), and the writes that take it when
 	 * they name no kind (`defaultFor`; one kind per write, a second claim is
-	 * refused). All three hold only where the module is registered. Unlike entry kinds a name need not carry the module's: a
-	 * shipped kind keeps the name its threads already store (`job`). Core's own
-	 * names and another module's are refused.
+	 * refused). All three hold only where the module is registered. Thread kind
+	 * names can stand alone so a shipped kind keeps its stored name (`job`).
+	 * Core's own names and another module's are refused.
 	 */
 	threadKinds?: readonly CodeThreadKind[];
 	tools?: readonly ToolDef[];
