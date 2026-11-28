@@ -21,15 +21,15 @@ export type ThreadKind = z.infer<typeof ThreadKindSchema>;
 /** The kind of a thread with no workflow of its own: no work state is required. */
 export const PLAIN_THREAD_KIND = "thread";
 
+const DefaultKindWriteSchema = z.enum(["add", "apply"]);
+export type DefaultKindWrite = z.infer<typeof DefaultKindWriteSchema>;
+
 /**
  * A kind declared in code, by core or a registered module: its identity plus
  * what the generic record paths do with its threads, so they read data instead
  * of naming kinds. A scope's declaration replicates and stays identity only
  * (`ThreadKindSchema`).
  */
-const DefaultKindWriteSchema = z.enum(["add", "apply"]);
-export type DefaultKindWrite = z.infer<typeof DefaultKindWriteSchema>;
-
 export const CodeThreadKindSchema = ThreadKindSchema.extend({
 	/** A new thread of the kind starts in this state; without it, with none. */
 	initialState: TaskStateSchema.optional(),
