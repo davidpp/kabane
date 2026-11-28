@@ -963,6 +963,6 @@ export const KABANE_TOOLS: readonly ToolDef[] = [
 
 /** Server-level instructions sent on initialize. */
 export const SERVER_INSTRUCTIONS = `Kabane is a shared work queue for humans and agent runtimes.
-A 'thread' is plain, with no state of its own, and a scope may declare more kinds (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
+Every item is a thread of some kind. A 'thread' is the plain kind, with no state of its own; modules and scopes declare others (kabane_threadKinds): file one with kabane_add kind, read it with kabane_list kind.
 Scopes are the context boundary (a repo, a client). Discover them with kabane_scopeList and pass scopeUri on writes.
 When a task has a twin in Linear or GitHub, record it with kabane_upstream_link and put what the external issue says into the task's own description — the link is identity only, so nothing stored on it can go stale.`;
