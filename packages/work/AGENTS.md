@@ -13,7 +13,8 @@ default listing leaves a job out and that a task lands in `inbox`.
 ## Verify
 
 ```bash
-bun test packages/work packages/core/storage/thread-kind-policy.test.ts
+bun test ./packages/registry ./packages/core/storage/thread-kind-policy.test.ts
+bun test packages/cli/cli.test.ts -t "shipped work kinds"
 bun run --cwd packages/worker test
 bun run sandbox init
 bun run sandbox add "x" --kind job --state next
