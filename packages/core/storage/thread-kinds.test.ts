@@ -60,8 +60,12 @@ const mcp = async (base: string) => {
 		const [first] = response.content as { type: string; text: string }[];
 		return { isError: response.isError === true, text: first?.text ?? "" };
 	};
+	const describeTool = async (name: string) =>
+		(await client.listTools()).tools.find((tool) => tool.name === name)
+			?.description ?? "";
 	return {
 		call,
+		describeTool,
 		close: async () => {
 			await client.close();
 			await server.value.close();
@@ -322,6 +326,28 @@ describe("omitted kinds on a bare-core host", () => {
 		if (!configured.ok) throw configured.error;
 	};
 	afterEach(() => configureTestRuntime());
+
+	it("names each host's default kind in kabane_add and kabane_apply", async () => {
+		const base = await device("described");
+		const defaults = async () => {
+			const server = await mcp(base);
+			try {
+				return [
+					await server.describeTool("kabane_add"),
+					await server.describeTool("kabane_apply"),
+				];
+			} finally {
+				await server.close();
+			}
+		};
+		const [add, apply] = await defaults();
+		expect(add).toContain("Default task\n");
+		expect(apply).toContain("kind defaults to issue;");
+		bareCore();
+		const [bareAdd, bareApply] = await defaults();
+		expect(bareAdd).toContain("Default thread\n");
+		expect(bareApply).toContain("kind defaults to thread;");
+	});
 
 	it("adds and applies plain threads, keeps explicit kinds and stored rows", async () => {
 		const base = await device("bare");

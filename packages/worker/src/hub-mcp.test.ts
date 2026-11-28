@@ -135,6 +135,15 @@ describe("hub MCP over Streamable HTTP", () => {
 		expect(listed.status).toBe(200);
 		expect(listed.body.result?.tools).toEqual(
 			expect.arrayContaining([
+				// The hub registers @kabane/work, so the descriptions name its defaults.
+				expect.objectContaining({
+					name: "kabane_add",
+					description: expect.stringContaining("Default task\n"),
+				}),
+				expect.objectContaining({
+					name: "kabane_apply",
+					description: expect.stringContaining("kind defaults to issue;"),
+				}),
 				expect.objectContaining({ name: "kabane_ask" }),
 				expect.objectContaining({ name: "kabane_questions" }),
 				expect.objectContaining({ name: "kabane_answer" }),

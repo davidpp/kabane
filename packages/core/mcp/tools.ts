@@ -20,6 +20,7 @@
 import { z } from "zod";
 import { ActorUri } from "../actor";
 import { ContextPageOptionsSchema } from "../context-output";
+import { Modules } from "../module";
 import { err, ok, NotFoundError, type Result } from "../result";
 import { Runtime } from "../runtime";
 import {
@@ -133,11 +134,14 @@ const definedOnly = <T extends Record<string, unknown>>(value: T): T =>
 const add = define({
 	name: CORE_TOOL_NAMES.add,
 	kind: "write",
-	description: `Create a task, an issue, a job, a plain thread or a thread of any declared kind.
+	// A getter: the default kind is the registered modules' (`defaultFor`), so
+	// the text is rendered when the tool list is served, not at import.
+	get description() {
+		return `Create a task, an issue, a job, a plain thread or a thread of any declared kind.
 
 Parameters:
 - title: What to do, action-oriented
-- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Omitted, the kind the server instructions name as add's default, else thread
+- kind: 'task' (a human, GTD), 'issue' (an agent runtime picks it up), 'job' (a standing request a schedule runs), 'thread' (plain: no workflow), or a kind the scope declares (kabane_threadKinds lists them). Default ${Modules.defaultKindFor("add")}
 - description: Optional Markdown body; for an issue this is the brief an agent reads
 - state: inbox, next, in_progress, waiting, someday. Default inbox for a task, issue or job; a thread of any other kind has no state unless given one. Use next for work ready to be picked up
 - priority: urgent, high, normal, low. Default normal
@@ -147,7 +151,8 @@ Parameters:
 - tags: Optional labels
 - dueDate: Optional. YYYY-MM-DD is a calendar date, due by the end of that day in the owner's timezone; an ISO datetime with Z or an offset is that exact instant; one without is a local time in the owner's timezone
 - key: Optional "<plan>/<name>" (lowercase), used as the task's id: adding again with the same key creates nothing and returns the task, marked existed, so a retry is safe. The same id kabane_apply gives thread <name> of plan <plan>
-- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`,
+- responseFormat: concise returns a <=2KiB identity/state/version receipt; omitted/full returns the task`;
+	},
 	input: {
 		title: z.string().min(1).max(500),
 		kind: ItemKindSchema.optional(),
@@ -203,12 +208,14 @@ Parameters:
 const apply = define({
 	name: CORE_TOOL_NAMES.apply,
 	kind: "write",
-	description: `File a whole plan in one call: threads with keys you choose, and the links between them. Each thread's id is "<key>/<thread key>", so applying the same plan again creates nothing and says so: a retry after a crash is safe.
+	get description() {
+		return `File a whole plan in one call: threads with keys you choose, and the links between them. Each thread's id is "<key>/<thread key>", so applying the same plan again creates nothing and says so: a retry after a crash is safe.
 
 Parameters:
 - key: The plan's key, lowercase letters, digits, dots, dashes and underscores
-- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind omitted is the kind the server instructions name as apply's default, else thread; any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
-- scopeUri: ${SCOPE_HINT} For every thread that names none`,
+- plan: { threads: [{ key, title, kind?, description?, state?, priority?, assignee?, tags?, scopeUri?, parent? }], links?: [{ from, to, type, note? }] }. kind defaults to ${Modules.defaultKindFor("apply")}; any kind kabane_add takes is allowed. A link's ends and a parent are a thread key in this plan, or an existing task's short id or ULID. type: ${LinkTypeSchema.options.join(", ")}
+- scopeUri: ${SCOPE_HINT} For every thread that names none`;
+	},
 	input: {
 		key: z.string().min(1),
 		plan: PlanSchema,
