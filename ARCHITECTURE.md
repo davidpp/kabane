@@ -447,7 +447,9 @@ type Extension = {
   identity (name, label, description) and two optional fields core's generic paths read when
   they run, not at import: `initialState`, the state a new thread of the kind starts in (and
   what makes `state: null` refused on it), and `unlisted`, which keeps the kind out of a
-  listing that names no kind. Discovery (`kabane_threadKinds`, `registry kinds`) shows identity
+  listing that names no kind, and `defaultFor`, the writes (`add`, `apply`) that take the kind
+  when they name none; one kind holds each, and without a holder they make a plain `thread`.
+  Discovery (`kabane_threadKinds`, `registry kinds`) shows identity
   only. A scope's declaration replicates and stays identity only (`ThreadKindSchema`). A device
   or the hub that has not registered the module reads the kind with the defaults: no initial
   state, listed, and stored threads keep their state.

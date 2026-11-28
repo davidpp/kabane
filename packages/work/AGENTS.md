@@ -1,7 +1,7 @@
 # @kabane/work
 
 A data module with no table: it declares the thread kinds `task`, `issue` and `job` with their
-policy (`initialState`, `unlisted`) through `KabaneModule.threadKinds` (ADR 0012), and one MCP
+policy (`initialState`, `unlisted`, `defaultFor`) through `KabaneModule.threadKinds` (ADR 0012), and one MCP
 instructions paragraph naming them. `README.md` describes them; keep it aligned with
 `module.ts`.
 

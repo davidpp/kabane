@@ -66,12 +66,17 @@ Why this design, and not the alternatives in the note:
   it comes from a first-party module. A hub-only agent lists such a kind and creates it
   stateless, which is how the hub already treats an unregistered entry kind. Disabling that
   extension makes new threads of the kind stateless and listed. Existing rows keep their state.
-- Open to override: `kabane_add` still defaults to `task` and `kabane_apply` to `issue`, as
-  record defaults. On a plain-core host they name a kind nothing declares.
+- The kind a write takes when it names none is declared too (JCAB-730): `defaultFor: ["add"]`
+  on `@kabane/work`'s `task` and `["apply"]` on its `issue` keep `kabane add`/`kabane_add`
+  making a task and a plan's unnamed thread an issue on both standard hosts. With no holder,
+  as on a bare-core host, either write makes a plain `thread`. Configure refuses a second kind
+  claiming the same write. The default is resolved when the thread is created, so a keyed
+  retry (`applyPlan`, `addTask` with a `key`) finds the stored thread and rewrites nothing,
+  whichever host retries it.
 - Left undecided: whether the standard distribution enables executable extensions by default.
   That is JCAB-461's question, whose capabilities start off until enabled. No installer changes.
 
 ## Replaceable by
 
-A per-host default creation kind supplied by the composition, which would remove the last kind
-names from core's schemas. It needs a host that ships without `@kabane/work` first.
+A per-host default creation kind supplied by the composition instead of a declaration, if a
+host ever needs different defaults while registering the same module.
