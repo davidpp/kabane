@@ -107,9 +107,11 @@ so join notes to the visible `tasks` view when reading them. Deleting a task hid
 ### Declare a thread kind
 
 A module can also declare thread kinds. A declaration is a `name` and a `label`, with an optional
-`description`, and two optional fields that say what kabane does with a new thread of the kind:
-`initialState` is the state it starts in, and `unlisted: true` keeps it out of a listing that
-names no kind. This `modules.ts` declares only a kind:
+`description`, and optional fields that say what kabane does with a thread of the kind:
+`initialState` is the state a new one starts in, and `unlisted: true` keeps it out of a listing
+that names no kind. `defaultFor` takes the kind for a write that names none, `["add"]` or
+`["apply"]`; the standard distribution gives those to `task` and `issue`, so an extension that
+claims one again is refused when kabane starts. This `modules.ts` declares only a kind:
 
 ```ts
 import type { KabaneModule } from "kabane/extension";

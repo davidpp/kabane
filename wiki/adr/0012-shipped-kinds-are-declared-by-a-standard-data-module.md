@@ -5,7 +5,8 @@
 - Issue: JCAB-725, under JCAB-724
 - Decided by: David chose the full move and the split between Kabane core and the standard
   distribution (JCAB-725:1, 2026-11-28). claude chose the package name, the field shape and
-  the plain host's default kind while drafting; each is open to override.
+  the plain host's default kind while drafting; each is open to override. claude settled the
+  omitted-kind default this left open in JCAB-730 (2026-11-28), also open to override.
 
 ## Context
 
@@ -66,13 +67,12 @@ Why this design, and not the alternatives in the note:
   it comes from a first-party module. A hub-only agent lists such a kind and creates it
   stateless, which is how the hub already treats an unregistered entry kind. Disabling that
   extension makes new threads of the kind stateless and listed. Existing rows keep their state.
-- The kind a write takes when it names none is declared too (JCAB-730): `defaultFor: ["add"]`
-  on `@kabane/work`'s `task` and `["apply"]` on its `issue` keep `kabane add`/`kabane_add`
-  making a task and a plan's unnamed thread an issue on both standard hosts. With no holder,
-  as on a bare-core host, either write makes a plain `thread`. Configure refuses a second kind
-  claiming the same write. The default is resolved when the thread is created, so a keyed
-  retry (`applyPlan`, `addTask` with a `key`) finds the stored thread and rewrites nothing,
-  whichever host retries it.
+- The kind a write takes when it names none is declared with the kinds (`defaultFor`,
+  JCAB-730), so the standard distribution keeps add making a task and a plan's thread an issue,
+  and a bare-core host makes a plain `thread` instead of a kind nothing declares. A declaration
+  keeps that policy in `@kabane/work` beside the rest, where a host-supplied default would
+  repeat it in each host. It is resolved when a thread is created, so a keyed retry rewrites
+  nothing whichever host runs it.
 - Left undecided: whether the standard distribution enables executable extensions by default.
   That is JCAB-461's question, whose capabilities start off until enabled. No installer changes.
 
