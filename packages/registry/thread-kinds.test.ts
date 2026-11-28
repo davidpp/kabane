@@ -75,7 +75,7 @@ it("lists a module kind's identity only, without the policy its code declaration
 	});
 });
 
-it("lists core's kind, then the modules', , then the scope's own, each with its label", async () => {
+it("lists core's kind, then the modules', then the scope's own, each with its label", async () => {
 	const base = await device("alpha", [monitor]);
 	expect(unwrap(await Registry.publish(base, "acme", signal))).toEqual(signal);
 	const { kinds } = unwrap(await Registry.kinds(base, "acme"));
